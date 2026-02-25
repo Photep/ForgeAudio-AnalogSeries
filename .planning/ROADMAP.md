@@ -12,7 +12,7 @@ This roadmap delivers the Forge Audio Analog Series LFO module for VCV Rack 2 --
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Plugin Scaffold and Panel** - Buildable VCV Rack 2 plugin with branded SVG panel and module registration
+- [x] **Phase 1: Plugin Scaffold and Panel** - Buildable VCV Rack 2 plugin with branded SVG panel and module registration
 - [ ] **Phase 2: Waveform Engine** - Four-shape morph oscillator with rate control and bipolar output
 - [ ] **Phase 3: Waveform Display** - Real-time single-cycle waveform visualization with phase-tracking dot
 - [ ] **Phase 4: Pitch Controls** - Octave snap and semitone selector for precise LFO rate tuning
@@ -33,8 +33,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Plugin scaffold and branded SVG panel (INFR-01, PANL-01)
-- [ ] 01-02-PLAN.md -- Designer handoff documentation and visual verification (PANL-02)
+- [x] 01-01-PLAN.md -- Plugin scaffold and branded SVG panel (INFR-01, PANL-01)
+- [x] 01-02-PLAN.md -- Designer handoff documentation and visual verification (PANL-02)
 
 ### Phase 2: Waveform Engine
 **Goal**: Users can generate sound and continuously sweep through four waveform shapes with a morph knob
@@ -116,7 +116,7 @@ Note: Phases 3, 4, and 5 all depend on Phase 2 but not on each other.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Plugin Scaffold and Panel | 0/TBD | Not started | - |
+| 1. Plugin Scaffold and Panel | 2/2 | Complete | 2026-02-25 |
 | 2. Waveform Engine | 0/TBD | Not started | - |
 | 3. Waveform Display | 0/TBD | Not started | - |
 | 4. Pitch Controls | 0/TBD | Not started | - |
