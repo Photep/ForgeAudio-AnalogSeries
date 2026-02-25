@@ -9,7 +9,7 @@
 
 - [ ] **WAVE-01**: Module generates sine, triangle, saw, and square waveforms from shared double-precision phase accumulator
 - [ ] **WAVE-02**: Morph knob continuously sweeps Sine → Triangle → Saw → Square using parametric shape morphing (each intermediate position is a musically valid waveshape, not a blended crossfade)
-- [ ] **WAVE-03**: Morph CV input modulates morph position
+- [x] **WAVE-03**: Morph CV input modulates morph position
 
 ### Analog Character
 
@@ -36,14 +36,14 @@
 
 ### Pitch Control
 
-- [ ] **PTCH-01**: Rate knob controls LFO frequency across sub-audio range
+- [x] **PTCH-01**: Rate knob controls LFO frequency across sub-audio range
 - [ ] **PTCH-02**: Octave snap knob with ±4 octave range
 - [ ] **PTCH-03**: Semitone selector with up/down buttons and small digital display showing current value
 
 ### Output
 
 - [ ] **OUT-01**: Bipolar ±5V morphed waveform output
-- [ ] **OUT-02**: Inverted morphed waveform output
+- [x] **OUT-02**: Inverted morphed waveform output
 
 ### Panel & Infrastructure
 
@@ -104,10 +104,10 @@
 | PANL-02 | Phase 1 | Complete |
 | WAVE-01 | Phase 2 | Pending |
 | WAVE-02 | Phase 2 | Pending |
-| WAVE-03 | Phase 2 | Pending |
+| WAVE-03 | Phase 2 | Complete |
 | OUT-01 | Phase 2 | Pending |
-| OUT-02 | Phase 2 | Pending |
-| PTCH-01 | Phase 2 | Pending |
+| OUT-02 | Phase 2 | Complete |
+| PTCH-01 | Phase 2 | Complete |
 | DISP-01 | Phase 3 | Pending |
 | DISP-02 | Phase 3 | Pending |
 | DISP-03 | Phase 3 | Pending |

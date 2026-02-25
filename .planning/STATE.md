@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 1 - Plugin Scaffold and Panel
+**Current focus:** Phase 2 - Waveform Engine
 
 ## Current Position
 
-Phase: 1 of 6 (Plugin Scaffold and Panel) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase complete, ready for Phase 2
-Last activity: 2026-02-25 -- Completed 01-02-PLAN.md
+Phase: 2 of 6 (Waveform Engine)
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: Plan 02-01 complete, ready for Plan 02-02
+Last activity: 2026-02-25 -- Completed 02-01-PLAN.md
 
-Progress: [##░░░░░░░░] 17%
+Progress: [###░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 5 min
-- Total execution time: 0.17 hours
+- Total plans completed: 3
+- Average duration: 4 min
+- Total execution time: 0.22 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-plugin-scaffold-and-panel | 2 | 10 min | 5 min |
+| 02-waveform-engine | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 5min, 5min
-- Trend: steady
+- Last 5 plans: 5min, 5min, 3min
+- Trend: improving
 
 *Updated after each plan completion*
 
@@ -49,6 +50,9 @@ Recent decisions affecting current work:
 - Reused POC letter library for Forge Audio brand consistency across plugins
 - Moved Morph knob center from y=52.0 to y=54.0 after visual verification showed label readability issues
 - Adjusted MORPH/CHARACTER/DRIFT label Y positions for better label-to-knob association
+- Linear rate 0.01-20Hz with default 0.7Hz -- raw param value IS frequency in Hz
+- Morph CV attenuator defaults to 0 (no CV effect until user turns up)
+- Bottom row redesigned: Trimpot x=9, MCV x=21, DCV x=35, OUT x=51
 
 ### Pending Todos
 
@@ -61,5 +65,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-waveform-engine/02-CONTEXT.md
+Stopped at: Completed 02-01-PLAN.md
+Resume file: .planning/phases/02-waveform-engine/02-01-SUMMARY.md
