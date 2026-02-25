@@ -30,11 +30,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Module appears in VCV Rack's module browser under "Forge Audio" brand
   3. Panel displays at correct HP width with Forge Audio brand identity (navy background, amber accents, lavender labels)
   4. SVG panel file is structured with documented coordinates and nanosvg-compatible elements ready for designer handoff
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md -- Plugin scaffold and branded SVG panel (INFR-01, PANL-01)
+- [ ] 01-02-PLAN.md -- Designer handoff documentation and visual verification (PANL-02)
 
 ### Phase 2: Waveform Engine
 **Goal**: Users can generate sound and continuously sweep through four waveform shapes with a morph knob
