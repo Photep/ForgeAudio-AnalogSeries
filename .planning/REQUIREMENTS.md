@@ -47,9 +47,9 @@
 
 ### Panel & Infrastructure
 
-- [ ] **PANL-01**: 14-16HP SVG panel with Forge Audio brand identity (deep navy #1a1a2e, amber #e8a838, lavender labels, white-gray text)
+- [x] **PANL-01**: 14-16HP SVG panel with Forge Audio brand identity (deep navy #1a1a2e, amber #e8a838, lavender labels, white-gray text)
 - [ ] **PANL-02**: Panel SVG structured for designer handoff (template files, documented coordinates, nanosvg-compatible)
-- [ ] **INFR-01**: VCV Rack 2 plugin with proper plugin.json, Makefile, module registration, and cross-platform build
+- [x] **INFR-01**: VCV Rack 2 plugin with proper plugin.json, Makefile, module registration, and cross-platform build
 
 ## v2 Requirements
 
@@ -99,8 +99,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFR-01 | Phase 1 | Pending |
-| PANL-01 | Phase 1 | Pending |
+| INFR-01 | Phase 1 | Complete |
+| PANL-01 | Phase 1 | Complete |
 | PANL-02 | Phase 1 | Pending |
 | WAVE-01 | Phase 2 | Pending |
 | WAVE-02 | Phase 2 | Pending |
