@@ -29,7 +29,7 @@ struct AnalogLFO : Module {
 	float computeMorphedWave(float phase, float morph) {
 		float sine = std::sin(2.f * (float)M_PI * phase);
 		float tri  = 2.f * std::fabs(2.f * phase - 1.f) - 1.f;
-		float saw  = 2.f * phase - 1.f;
+		float saw  = 1.f - 2.f * phase;
 		float sqr  = (phase < 0.5f) ? 1.f : -1.f;
 
 		float scaled = morph * 4.f;
