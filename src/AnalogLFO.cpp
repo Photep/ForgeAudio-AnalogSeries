@@ -1,5 +1,7 @@
 #include "plugin.hpp"
 #include <cmath>
+#include <atomic>
+#include <array>
 
 struct AnalogLFO : Module {
 	enum ParamId {
@@ -26,6 +28,16 @@ struct AnalogLFO : Module {
 
 	double phase = 0.0;
 
+	// Display double buffer (lock-free audio-to-GUI transfer)
+	static constexpr int DISPLAY_SAMPLES = 256;
+	std::array<float, DISPLAY_SAMPLES> displayBuffers[2] = {};
+	std::atomic<int> displayReadIdx{0};
+	std::atomic<float> displayPhase{0.f};
+
+	// Display update tracking
+	float prevDisplayMorph = -1.f;
+	double prevPhaseForDisplay = 0.0;
+
 	float computeMorphedWave(float phase, float morph) {
 		float sine = std::sin(2.f * (float)M_PI * phase);
 		float tri  = 2.f * std::fabs(2.f * phase - 1.f) - 1.f;
@@ -45,6 +57,15 @@ struct AnalogLFO : Module {
 		return sine;
 	}
 
+	void updateDisplayBuffer(float morph) {
+		int writeIdx = 1 - displayReadIdx.load(std::memory_order_relaxed);
+		for (int i = 0; i < DISPLAY_SAMPLES; i++) {
+			float p = (float)i / (float)DISPLAY_SAMPLES;
+			displayBuffers[writeIdx][i] = computeMorphedWave(p, morph);
+		}
+		displayReadIdx.store(writeIdx, std::memory_order_release);
+	}
+
 	AnalogLFO() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(MORPH_PARAM, 0.f, 1.f, 0.f, "Morph");
@@ -56,6 +77,7 @@ struct AnalogLFO : Module {
 		configInput(MORPH_CV_INPUT, "Morph CV");
 		configInput(DRIFT_CV_INPUT, "Drift CV");
 		configOutput(OUTPUT, "LFO");
+		updateDisplayBuffer(0.f);
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -73,6 +95,19 @@ struct AnalogLFO : Module {
 		float morphAtten = params[MORPH_ATTEN_PARAM].getValue();
 		float morphCV = inputs[MORPH_CV_INPUT].getVoltage();
 		float morph = rack::math::clamp(morphKnob + morphAtten * morphCV / 10.f, 0.f, 1.f);
+
+		// Update display phase
+		displayPhase.store((float)phase, std::memory_order_relaxed);
+
+		// Update display buffer on phase wrap or morph change
+		// TODO Phase 5/6: add characterChanged and driftChanged triggers here
+		bool phaseWrapped = (phase < prevPhaseForDisplay);
+		bool morphChanged = (std::fabs(morph - prevDisplayMorph) > 0.002f);
+		if (phaseWrapped || morphChanged) {
+			updateDisplayBuffer(morph);
+			prevDisplayMorph = morph;
+		}
+		prevPhaseForDisplay = phase;
 
 		// Waveform generation
 		float p = (float)phase;
