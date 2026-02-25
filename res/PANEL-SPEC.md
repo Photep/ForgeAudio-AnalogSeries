@@ -43,8 +43,8 @@ The panel follows a diamond hierarchy: the most important control (Morph) is lar
 | Top accent + brand | 0 - 8 | 8 | Amber stripe (1mm), "FORGE AUDIO" brand text |
 | Module name | 8 - 14 | 6 | "ANALOG LFO" title, amber decorative line at 14.5mm |
 | Waveform display | 17 - 42 | 25 | Dark display area for Phase 3 waveform visualization |
-| Morph knob zone | 46 - 60 | 14 | Primary Morph knob (largest), "MORPH" label above |
-| Character/Drift zone | 62 - 76 | 14 | Medium knobs flanking center, labels above |
+| Morph knob zone | 43 - 62 | 19 | "MORPH" label at y=43.5, primary Morph knob (largest) centered at y=54.0 |
+| Character/Drift zone | 60 - 76 | 16 | Labels at y=60.5, medium knobs flanking center at y=69.0 |
 | Rate/Octave zone | 79 - 92 | 13 | Smaller utility knobs, labels above |
 | Section divider | 94 | -- | Amber decorative line (0.15mm, 50% opacity) |
 | Jack labels | 97 | -- | MCV, DCV, OUT, INV labels |
@@ -59,7 +59,7 @@ All coordinates are center positions in millimeters. Diameter is the physical wi
 
 | Component | Widget Class | Center X (mm) | Center Y (mm) | Diameter (mm) | Type |
 |-----------|-------------|---------------|---------------|---------------|------|
-| Morph | RoundBigBlackKnob | 30.48 | 52.0 | 15.24 | Param |
+| Morph | RoundBigBlackKnob | 30.48 | 54.0 | 15.24 | Param |
 | Character | RoundLargeBlackKnob | 18.0 | 69.0 | 12.19 | Param |
 | Drift | RoundLargeBlackKnob | 42.96 | 69.0 | 12.19 | Param |
 | Rate | RoundBlackKnob | 18.0 | 86.0 | 9.60 | Param |
@@ -93,7 +93,7 @@ Example from the SVG:
 ```xml
 <g id="components" style="display:none">
   <!-- Params (red) -->
-  <circle cx="30.48" cy="52.0" r="7.62" fill="#ff0000"/>   <!-- Morph -->
+  <circle cx="30.48" cy="54.0" r="7.62" fill="#ff0000"/>   <!-- Morph -->
   <circle cx="18.0" cy="69.0" r="6.1" fill="#ff0000"/>     <!-- Character -->
   <!-- Inputs (green) -->
   <circle cx="11.0" cy="104.0" r="4.0" fill="#00ff00"/>    <!-- Morph CV -->
