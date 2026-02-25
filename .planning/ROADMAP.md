@@ -13,7 +13,7 @@ This roadmap delivers the Forge Audio Analog Series LFO module for VCV Rack 2 --
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Plugin Scaffold and Panel** - Buildable VCV Rack 2 plugin with branded SVG panel and module registration
-- [ ] **Phase 2: Waveform Engine** - Four-shape morph oscillator with rate control and bipolar output
+- [x] **Phase 2: Waveform Engine** - Four-shape morph oscillator with rate control and bipolar output
 - [ ] **Phase 3: Waveform Display** - Real-time single-cycle waveform visualization with phase-tracking dot
 - [ ] **Phase 4: Pitch Controls** - Octave snap and semitone selector for precise LFO rate tuning
 - [ ] **Phase 5: Analog Character** - Character knob crossfading from digital perfection to classic synth references per shape
@@ -49,8 +49,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Panel restructuring: remove INV output, add Morph CV attenuator, linear rate knob (OUT-02, PTCH-01, WAVE-03)
-- [ ] 02-02-PLAN.md -- DSP engine: phase accumulator, waveform generation, morph interpolation, CV processing, output (WAVE-01, WAVE-02, OUT-01)
+- [x] 02-01-PLAN.md -- Panel restructuring: remove INV output, add Morph CV attenuator, linear rate knob (OUT-02, PTCH-01, WAVE-03)
+- [x] 02-02-PLAN.md -- DSP engine: phase accumulator, waveform generation, morph interpolation, CV processing, output (WAVE-01, WAVE-02, OUT-01)
 
 ### Phase 3: Waveform Display
 **Goal**: Users see exactly what the oscillator is outputting in real time with a phase-tracking indicator
@@ -117,7 +117,7 @@ Note: Phases 3, 4, and 5 all depend on Phase 2 but not on each other.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Plugin Scaffold and Panel | 2/2 | Complete    | 2026-02-25 |
-| 2. Waveform Engine | 0/2 | Not started | - |
+| 2. Waveform Engine | 2/2 | Complete    | 2026-02-25 |
 | 3. Waveform Display | 0/TBD | Not started | - |
 | 4. Pitch Controls | 0/TBD | Not started | - |
 | 5. Analog Character | 0/TBD | Not started | - |

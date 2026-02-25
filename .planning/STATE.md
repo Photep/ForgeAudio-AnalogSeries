@@ -5,34 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 2 - Waveform Engine
+**Current focus:** Phase 2 complete - Ready for Phase 3 (Waveform Display)
 
 ## Current Position
 
-Phase: 2 of 6 (Waveform Engine)
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: Plan 02-01 complete, ready for Plan 02-02
-Last activity: 2026-02-25 -- Completed 02-01-PLAN.md
+Phase: 2 of 6 (Waveform Engine) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase 2 complete, ready for Phase 3
+Last activity: 2026-02-25 -- Completed 02-02-PLAN.md
 
-Progress: [###░░░░░░░] 25%
+Progress: [####░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 4 min
-- Total execution time: 0.22 hours
+- Total plans completed: 4
+- Average duration: 5 min
+- Total execution time: 0.47 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-plugin-scaffold-and-panel | 2 | 10 min | 5 min |
-| 02-waveform-engine | 1 | 3 min | 3 min |
+| 02-waveform-engine | 2 | 18 min | 9 min |
 
 **Recent Trend:**
-- Last 5 plans: 5min, 5min, 3min
-- Trend: improving
+- Last 5 plans: 5min, 5min, 3min, 15min
+- Trend: stable (plan 02-02 included human-verify checkpoint)
 
 *Updated after each plan completion*
 
@@ -53,6 +53,8 @@ Recent decisions affecting current work:
 - Linear rate 0.01-20Hz with default 0.7Hz -- raw param value IS frequency in Hz
 - Morph CV attenuator defaults to 0 (no CV effect until user turns up)
 - Bottom row redesigned: Trimpot x=9, MCV x=21, DCV x=35, OUT x=51
+- Saw flipped to falling ramp to eliminate morph crossfade amplitude dip (matches Minimoog/SH-101/Juno convention)
+- Tri-to-saw peak asymmetry accepted as inherent to linear crossfading (not a defect)
 
 ### Pending Todos
 
@@ -65,5 +67,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 02-01-PLAN.md
-Resume file: .planning/phases/02-waveform-engine/02-01-SUMMARY.md
+Stopped at: Completed 02-02-PLAN.md (Phase 2 complete)
+Resume file: .planning/phases/02-waveform-engine/02-02-SUMMARY.md

@@ -7,8 +7,8 @@
 
 ### Waveform Engine
 
-- [ ] **WAVE-01**: Module generates sine, triangle, saw, and square waveforms from shared double-precision phase accumulator
-- [ ] **WAVE-02**: Morph knob continuously sweeps Sine → Triangle → Saw → Square using parametric shape morphing (each intermediate position is a musically valid waveshape, not a blended crossfade)
+- [x] **WAVE-01**: Module generates sine, triangle, saw, and square waveforms from shared double-precision phase accumulator
+- [x] **WAVE-02**: Morph knob continuously sweeps Sine → Triangle → Saw → Square using parametric shape morphing (each intermediate position is a musically valid waveshape, not a blended crossfade)
 - [x] **WAVE-03**: Morph CV input modulates morph position
 
 ### Analog Character
@@ -42,7 +42,7 @@
 
 ### Output
 
-- [ ] **OUT-01**: Bipolar ±5V morphed waveform output
+- [x] **OUT-01**: Bipolar ±5V morphed waveform output
 - [x] **OUT-02**: Inverted morphed waveform output
 
 ### Panel & Infrastructure
@@ -102,10 +102,10 @@
 | INFR-01 | Phase 1 | Complete |
 | PANL-01 | Phase 1 | Complete |
 | PANL-02 | Phase 1 | Complete |
-| WAVE-01 | Phase 2 | Pending |
-| WAVE-02 | Phase 2 | Pending |
+| WAVE-01 | Phase 2 | Complete |
+| WAVE-02 | Phase 2 | Complete |
 | WAVE-03 | Phase 2 | Complete |
-| OUT-01 | Phase 2 | Pending |
+| OUT-01 | Phase 2 | Complete |
 | OUT-02 | Phase 2 | Complete |
 | PTCH-01 | Phase 2 | Complete |
 | DISP-01 | Phase 3 | Pending |
