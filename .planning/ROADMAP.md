@@ -61,11 +61,11 @@ Plans:
   2. Bright amber dot tracks the current phase position along the waveform trace, visibly moving at LFO rate
   3. Display renders with amber trace on dark navy background matching Forge Audio brand identity
   4. Display uses lock-free double buffer -- no audio dropouts or clicks when display is visible and animating
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md -- Lock-free double buffer and WaveformDisplay widget with NanoVG rendering (DISP-01, DISP-02, DISP-03, DISP-04, DISP-05)
+- [ ] 03-02-PLAN.md -- Visual verification of display in VCV Rack (DISP-01, DISP-02, DISP-04)
 
 ### Phase 4: Pitch Controls
 **Goal**: Users can precisely set LFO rate using octave snap and semitone selection
