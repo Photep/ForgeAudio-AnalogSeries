@@ -47,8 +47,8 @@ The panel follows a diamond hierarchy: the most important control (Morph) is lar
 | Character/Drift zone | 60 - 76 | 16 | Labels at y=60.5, medium knobs flanking center at y=69.0 |
 | Rate/Octave zone | 79 - 92 | 13 | Smaller utility knobs, labels above |
 | Section divider | 94 | -- | Amber decorative line (0.15mm, 50% opacity) |
-| Jack labels | 97 | -- | MCV, DCV, OUT, INV labels |
-| Jack row | 100 - 108 | 8 | All 4 jacks in a single horizontal row |
+| Jack labels | 97 | -- | MCV, DCV, OUT labels |
+| Jack row | 100 - 108 | 8 | Morph CV attenuator (Trimpot) + 3 jacks in bottom row |
 | Bottom brand + accent | 109 - 128.5 | 19.5 | "FORGE AUDIO" brand text, amber stripe (1mm) |
 
 ---
@@ -64,17 +64,18 @@ All coordinates are center positions in millimeters. Diameter is the physical wi
 | Drift | RoundLargeBlackKnob | 42.96 | 69.0 | 12.19 | Param |
 | Rate | RoundBlackKnob | 18.0 | 86.0 | 9.60 | Param |
 | Octave | RoundBlackKnob | 42.96 | 86.0 | 9.60 | Param |
-| Morph CV | PJ301MPort | 11.0 | 104.0 | 8.03 | Input |
-| Drift CV | PJ301MPort | 24.5 | 104.0 | 8.03 | Input |
-| Output | PJ301MPort | 38.0 | 104.0 | 8.03 | Output |
-| Inv. Output | PJ301MPort | 51.5 | 104.0 | 8.03 | Output |
+| Morph CV Atten | Trimpot | 9.0 | 104.0 | 6.05 | Param |
+| Morph CV | PJ301MPort | 21.0 | 104.0 | 8.03 | Input |
+| Drift CV | PJ301MPort | 35.0 | 104.0 | 8.03 | Input |
+| Output | PJ301MPort | 51.0 | 104.0 | 8.03 | Output |
 
 **Knob size hierarchy:**
 - RoundBigBlackKnob: 15.24mm diameter (primary control)
 - RoundLargeBlackKnob: 12.19mm diameter (secondary controls)
 - RoundBlackKnob: 9.60mm diameter (utility controls)
+- Trimpot: 6.05mm diameter (attenuator)
 
-**Jack spacing:** All jacks at Y=104.0mm, spaced approximately 13.5mm apart across the panel width.
+**Bottom row layout:** All at Y=104.0mm. Morph CV attenuator Trimpot at x=9.0 is visually grouped with Morph CV jack at x=21.0 (~12mm gap). Drift CV jack at x=35.0 (~14mm from MCV). Output jack at x=51.0 (~16mm from DCV). The Trimpot (6.05mm) and jacks (8.03mm) fit comfortably within the 12HP panel width.
 
 ---
 
@@ -95,10 +96,11 @@ Example from the SVG:
   <!-- Params (red) -->
   <circle cx="30.48" cy="54.0" r="7.62" fill="#ff0000"/>   <!-- Morph -->
   <circle cx="18.0" cy="69.0" r="6.1" fill="#ff0000"/>     <!-- Character -->
+  <circle cx="9.0" cy="104.0" r="3.03" fill="#ff0000"/>    <!-- Morph CV Atten -->
   <!-- Inputs (green) -->
-  <circle cx="11.0" cy="104.0" r="4.0" fill="#00ff00"/>    <!-- Morph CV -->
+  <circle cx="21.0" cy="104.0" r="4.0" fill="#00ff00"/>    <!-- Morph CV -->
   <!-- Outputs (blue) -->
-  <circle cx="38.0" cy="104.0" r="4.0" fill="#0000ff"/>    <!-- Out -->
+  <circle cx="51.0" cy="104.0" r="4.0" fill="#0000ff"/>    <!-- Out -->
 </g>
 ```
 
