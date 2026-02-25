@@ -28,11 +28,11 @@
 
 ### Display
 
-- [ ] **DISP-01**: Real-time waveform display shows single cycle of current output waveform in upper portion of module
-- [ ] **DISP-02**: Bright amber dot tracks current phase position along the waveform trace
-- [ ] **DISP-03**: Display reflects all three knobs (morph shape + character deformation + drift effects) in real time
-- [ ] **DISP-04**: Amber trace on dark navy background matching Forge Audio brand identity
-- [ ] **DISP-05**: Lock-free double buffer architecture for audio-to-display data transfer (no mutexes in audio thread)
+- [x] **DISP-01**: Real-time waveform display shows single cycle of current output waveform in upper portion of module
+- [x] **DISP-02**: Bright amber dot tracks current phase position along the waveform trace
+- [x] **DISP-03**: Display reflects all three knobs (morph shape + character deformation + drift effects) in real time
+- [x] **DISP-04**: Amber trace on dark navy background matching Forge Audio brand identity
+- [x] **DISP-05**: Lock-free double buffer architecture for audio-to-display data transfer (no mutexes in audio thread)
 
 ### Pitch Control
 
@@ -108,11 +108,11 @@
 | OUT-01 | Phase 2 | Complete |
 | OUT-02 | Phase 2 | Complete |
 | PTCH-01 | Phase 2 | Complete |
-| DISP-01 | Phase 3 | Pending |
-| DISP-02 | Phase 3 | Pending |
-| DISP-03 | Phase 3 | Pending |
-| DISP-04 | Phase 3 | Pending |
-| DISP-05 | Phase 3 | Pending |
+| DISP-01 | Phase 3 | Complete |
+| DISP-02 | Phase 3 | Complete |
+| DISP-03 | Phase 3 | Complete |
+| DISP-04 | Phase 3 | Complete |
+| DISP-05 | Phase 3 | Complete |
 | PTCH-02 | Phase 4 | Pending |
 | PTCH-03 | Phase 4 | Pending |
 | CHAR-01 | Phase 5 | Pending |
