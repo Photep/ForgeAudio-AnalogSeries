@@ -46,11 +46,11 @@ Plans:
   3. Morph CV input modulates morph position when patched from an external source
   4. Module produces bipolar +/-5V output and inverted output simultaneously from the output jacks
   5. Phase accumulator uses double precision (verified: no LFO stall below 0.01Hz)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md -- Panel restructuring: remove INV output, add Morph CV attenuator, linear rate knob (OUT-02, PTCH-01, WAVE-03)
+- [ ] 02-02-PLAN.md -- DSP engine: phase accumulator, waveform generation, morph interpolation, CV processing, output (WAVE-01, WAVE-02, OUT-01)
 
 ### Phase 3: Waveform Display
 **Goal**: Users see exactly what the oscillator is outputting in real time with a phase-tracking indicator
@@ -117,7 +117,7 @@ Note: Phases 3, 4, and 5 all depend on Phase 2 but not on each other.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Plugin Scaffold and Panel | 2/2 | Complete    | 2026-02-25 |
-| 2. Waveform Engine | 0/TBD | Not started | - |
+| 2. Waveform Engine | 0/2 | Not started | - |
 | 3. Waveform Display | 0/TBD | Not started | - |
 | 4. Pitch Controls | 0/TBD | Not started | - |
 | 5. Analog Character | 0/TBD | Not started | - |
