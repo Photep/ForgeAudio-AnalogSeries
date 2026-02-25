@@ -26,6 +26,25 @@ struct AnalogLFO : Module {
 
 	double phase = 0.0;
 
+	float computeMorphedWave(float phase, float morph) {
+		float sine = std::sin(2.f * (float)M_PI * phase);
+		float tri  = 2.f * std::fabs(2.f * phase - 1.f) - 1.f;
+		float saw  = 2.f * phase - 1.f;
+		float sqr  = (phase < 0.5f) ? 1.f : -1.f;
+
+		float scaled = morph * 4.f;
+		int segment = std::min((int)scaled, 3);
+		float frac = scaled - (float)segment;
+
+		switch (segment) {
+			case 0: return sine + frac * (tri - sine);
+			case 1: return tri  + frac * (saw - tri);
+			case 2: return saw  + frac * (sqr - saw);
+			case 3: return sqr;
+		}
+		return sine;
+	}
+
 	AnalogLFO() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(MORPH_PARAM, 0.f, 1.f, 0.f, "Morph");
@@ -40,7 +59,27 @@ struct AnalogLFO : Module {
 	}
 
 	void process(const ProcessArgs& args) override {
-		// DSP added in Phase 2
+		// Rate (linear Hz, direct value)
+		float freq = params[RATE_PARAM].getValue();
+		freq = std::fmax(freq, 0.001f);  // safety floor
+
+		// Phase accumulation (double precision to prevent stall at low frequencies)
+		double deltaPhase = (double)freq * (double)args.sampleTime;
+		phase += deltaPhase;
+		if (phase >= 1.0) phase -= 1.0;
+
+		// Morph with CV (additive offset, attenuator, hard clamp)
+		float morphKnob = params[MORPH_PARAM].getValue();
+		float morphAtten = params[MORPH_ATTEN_PARAM].getValue();
+		float morphCV = inputs[MORPH_CV_INPUT].getVoltage();
+		float morph = rack::math::clamp(morphKnob + morphAtten * morphCV / 10.f, 0.f, 1.f);
+
+		// Waveform generation
+		float p = (float)phase;
+		float sample = computeMorphedWave(p, morph);
+
+		// Bipolar +/-5V output
+		outputs[OUTPUT].setVoltage(5.f * sample);
 	}
 };
 
