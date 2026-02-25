@@ -1,0 +1,13 @@
+# VCV Rack build artifacts
+build/
+dep/
+dist/
+plugin.so
+plugin.dylib
+plugin.dll
+*.d
+*.o
+
+# OS files
+.DS_Store
+Thumbs.db
