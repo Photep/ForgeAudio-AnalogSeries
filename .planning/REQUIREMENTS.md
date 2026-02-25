@@ -99,37 +99,37 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WAVE-01 | — | Pending |
-| WAVE-02 | — | Pending |
-| WAVE-03 | — | Pending |
-| CHAR-01 | — | Pending |
-| CHAR-02 | — | Pending |
-| CHAR-03 | — | Pending |
-| CHAR-04 | — | Pending |
-| CHAR-05 | — | Pending |
-| CHAR-06 | — | Pending |
-| CHAR-07 | — | Pending |
-| DRFT-01 | — | Pending |
-| DRFT-02 | — | Pending |
-| DISP-01 | — | Pending |
-| DISP-02 | — | Pending |
-| DISP-03 | — | Pending |
-| DISP-04 | — | Pending |
-| DISP-05 | — | Pending |
-| PTCH-01 | — | Pending |
-| PTCH-02 | — | Pending |
-| PTCH-03 | — | Pending |
-| OUT-01 | — | Pending |
-| OUT-02 | — | Pending |
-| PANL-01 | — | Pending |
-| PANL-02 | — | Pending |
-| INFR-01 | — | Pending |
+| INFR-01 | Phase 1 | Pending |
+| PANL-01 | Phase 1 | Pending |
+| PANL-02 | Phase 1 | Pending |
+| WAVE-01 | Phase 2 | Pending |
+| WAVE-02 | Phase 2 | Pending |
+| WAVE-03 | Phase 2 | Pending |
+| OUT-01 | Phase 2 | Pending |
+| OUT-02 | Phase 2 | Pending |
+| PTCH-01 | Phase 2 | Pending |
+| DISP-01 | Phase 3 | Pending |
+| DISP-02 | Phase 3 | Pending |
+| DISP-03 | Phase 3 | Pending |
+| DISP-04 | Phase 3 | Pending |
+| DISP-05 | Phase 3 | Pending |
+| PTCH-02 | Phase 4 | Pending |
+| PTCH-03 | Phase 4 | Pending |
+| CHAR-01 | Phase 5 | Pending |
+| CHAR-02 | Phase 5 | Pending |
+| CHAR-03 | Phase 5 | Pending |
+| CHAR-04 | Phase 5 | Pending |
+| CHAR-05 | Phase 5 | Pending |
+| CHAR-06 | Phase 5 | Pending |
+| CHAR-07 | Phase 5 | Pending |
+| DRFT-01 | Phase 6 | Pending |
+| DRFT-02 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25 ⚠️
+- Mapped to phases: 25
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 after initial definition*
+*Last updated: 2026-02-25 after roadmap creation*
