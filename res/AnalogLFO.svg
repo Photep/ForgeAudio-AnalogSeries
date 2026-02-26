@@ -86,8 +86,8 @@
 
   <!-- ==================== WAVEFORM DISPLAY AREA ==================== -->
   <!-- Generous display area for Phase 3 waveform visualization -->
-  <!-- ~2mm side margins, starts right below title line, ~27% of panel height -->
-  <rect x="2" y="15" width="57" height="35" rx="1.5"
+  <!-- ~2mm side margins, starts right below title line, ~21% of panel height -->
+  <rect x="2" y="15" width="57" height="27" rx="1.5"
         fill="#0d0d1a" stroke="#e8a838" stroke-width="0.2" stroke-opacity="0.3"/>
 
 

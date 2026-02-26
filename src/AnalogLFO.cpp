@@ -317,7 +317,7 @@ struct AnalogLFOWidget : ModuleWidget {
 			WaveformDisplay* display = new WaveformDisplay();
 			display->module = module;
 			display->box.pos = mm2px(Vec(2.f, 15.f));
-			display->box.size = mm2px(Vec(57.f, 35.f));
+			display->box.size = mm2px(Vec(57.f, 27.f));
 			addChild(display);
 		}
 
