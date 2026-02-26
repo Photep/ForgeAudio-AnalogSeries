@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 3 in progress - Waveform Display (plan 1 of 2 complete)
+**Current focus:** Phase 3 complete - Waveform Display (2 of 2 plans complete)
 
 ## Current Position
 
-Phase: 3 of 6 (Waveform Display)
-Plan: 1 of 2 in current phase
-Status: Executing Phase 3 -- Plan 1 complete
-Last activity: 2026-02-25 -- Completed 03-01-PLAN.md
+Phase: 3 of 6 (Waveform Display) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase 3 complete -- ready for Phase 4
+Last activity: 2026-02-26 -- Completed 03-02-PLAN.md
 
-Progress: [#####░░░░░] 42%
+Progress: [######░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 5 min
-- Total execution time: 0.50 hours
+- Total execution time: 0.52 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [#####░░░░░] 42%
 |-------|-------|-------|----------|
 | 01-plugin-scaffold-and-panel | 2 | 10 min | 5 min |
 | 02-waveform-engine | 2 | 18 min | 9 min |
-| 03-waveform-display | 1 | 2 min | 2 min |
+| 03-waveform-display | 2 | 3 min | 1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 5min, 5min, 3min, 15min, 2min
-- Trend: fast (03-01 was straightforward code placement)
+- Last 5 plans: 5min, 3min, 15min, 2min, 1min
+- Trend: fast (03-02 was checkpoint approval + height fix)
 
 *Updated after each plan completion*
 
@@ -60,6 +60,8 @@ Recent decisions affecting current work:
 - All display rendering on layer 1 for self-illumination (visible at any room brightness)
 - Four-pass glow rendering for amber trace bloom (widths 6/4/2.5/1.5, alphas 0.04/0.08/0.15/0.85)
 - Display size 57x35mm at (2,15) -- 27% panel height, matching CONTEXT.md 25-35% guideline
+- Display height reduced from 35mm to 27mm to prevent occlusion of Morph knob (visual verification feedback)
+- Display position kept at (2, 15) -- only height changed, not origin
 
 ### Pending Todos
 
@@ -71,6 +73,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-25
-Stopped at: Completed 03-01-PLAN.md
-Resume file: .planning/phases/03-waveform-display/03-01-SUMMARY.md
+Last session: 2026-02-26
+Stopped at: Completed 03-02-PLAN.md (Phase 3 complete)
+Resume file: .planning/phases/03-waveform-display/03-02-SUMMARY.md
