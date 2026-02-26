@@ -1,0 +1,585 @@
+# Phase 3: Waveform Display - Research
+
+**Researched:** 2026-02-25
+**Domain:** Real-time NanoVG waveform visualization with lock-free audio-to-GUI data transfer in VCV Rack 2
+**Confidence:** HIGH
+
+## Summary
+
+Phase 3 adds a real-time single-cycle waveform display with a phase-tracking dot to the AnalogLFO module. The display occupies the upper portion of the panel (the existing dark navy placeholder rectangle at y=17-42mm in the SVG) and uses NanoVG drawing on VCV Rack's self-illuminating layer (layer 1) via `drawLayer()`. The critical technical challenge is the lock-free double buffer that transfers waveform shape data from the audio thread to the GUI thread without mutexes.
+
+The current codebase has a working DSP engine in `src/AnalogLFO.cpp` with `computeMorphedWave()`, a `double phase` accumulator, and morph CV processing. The module produces output at the `OUTPUT` jack. The SVG panel already has a display placeholder rectangle at `(4.5, 17, 52, 25)` mm with `#0d0d1a` fill and a faint amber border. This phase needs to: (1) add a display buffer data structure to the Module, (2) populate it from `process()` using lock-free double buffering, (3) create a custom `WaveformDisplay` widget that reads the buffer and renders the waveform trace + phase dot using NanoVG, and (4) add visual effects (amber glow, dot trail/halo, dim-when-bypassed).
+
+**Primary recommendation:** Implement the display as a `TransparentWidget` subclass drawing on layer 1 via `drawLayer()`. Use `std::atomic<int>` double-buffer index for lock-free audio-to-GUI communication. Generate the display buffer by evaluating `computeMorphedWave()` at 256 evenly-spaced phase points, triggered on phase wrap or parameter change. Create the glow effect by drawing the waveform path multiple times at increasing widths with decreasing alpha (multi-pass glow). The phase dot uses a radial gradient for the halo effect.
+
+<user_constraints>
+## User Constraints (from CONTEXT.md)
+
+### Locked Decisions
+
+#### Display Size & Placement
+- Generous window: ~25-35% of panel height, the display is a featured visual element
+- Starts right below the module title with no gap -- maximize display real estate
+- Near full width with small margins (~2mm each side) -- maximize waveform visibility
+- Darker navy background inside the display -- creates visual depth like a real screen
+- Subtle inset frame with thin border -- embedded hardware screen feel
+- No grid lines, no axis markers, no center line -- clean background only
+- Purely visual -- no text labels or frequency readouts inside the display
+
+#### Waveform Trace Style
+- Subtle amber glow/bloom around the trace line -- adds warmth without looking retro
+- Continuous morph update -- display morphs smoothly in sync with the knob, every intermediate shape visible
+- Exact DSP output -- display shows precisely what the engine computes (WYSIWYG); future character/drift will be visible here
+- Clean modern aesthetic (Mutable Instruments style), not retro oscilloscope
+
+#### Phase Dot Behavior
+- Small and precise dot -- just a few pixels bigger than the line width
+- Both glow halo AND short comet-like trail -- gives the dot life and shows direction of travel
+- Brighter amber / white-amber center -- hotter color than the trace for contrast
+- At very slow rates: subtle pulse/breathe animation so the dot shows it's active even when movement is imperceptible
+
+#### Display Edge Cases
+- On startup: show waveform immediately -- pre-compute current morph shape, display is never empty
+- When bypassed or rate=0: dim the entire display -- waveform and dot fade to lower brightness, visually reads as inactive
+- Target monitor refresh rate (typically 60fps) for smoothest possible animation
+
+### Claude's Discretion
+- Exact line weight for waveform trace
+- Visual smoothing behavior during fast knob changes
+- Exact dimensions and margins (within the "generous" and "near full width" guidelines)
+- Trail length and glow intensity details
+- Pulse/breathe animation timing at slow rates
+
+### Deferred Ideas (OUT OF SCOPE)
+None -- discussion stayed within phase scope
+</user_constraints>
+
+<phase_requirements>
+## Phase Requirements
+
+| ID | Description | Research Support |
+|----|-------------|-----------------|
+| DISP-01 | Real-time waveform display shows single cycle of current output waveform in upper portion of module | Display widget at SVG placeholder (4.5, 17, 52, 25)mm; 256-sample buffer evaluated from `computeMorphedWave()`; updated on phase wrap and param change; renders via NanoVG polyline on layer 1 |
+| DISP-02 | Bright amber dot tracks current phase position along the waveform trace | Phase dot drawn using `std::atomic<float> displayPhase` read from module; interpolates buffer position; radial gradient for halo; trail rendered as 3-5 previous positions with fading alpha |
+| DISP-03 | Display reflects all three knobs (morph shape + character deformation + drift effects) in real time | Buffer generated by calling the same `computeMorphedWave()` function used in audio path (WYSIWYG); future character/drift phases will automatically appear since buffer captures final engine output |
+| DISP-04 | Amber trace on dark navy background matching Forge Audio brand identity | Trace: amber `#e8a838` with glow; Background: dark navy `#0d0d1a`; Dot: bright white-amber `#ffe8a0` center; all within established Forge Audio palette |
+| DISP-05 | Lock-free double buffer architecture for audio-to-display data transfer (no mutexes in audio thread) | `std::atomic<int>` buffer index pattern; audio thread writes to back buffer then atomically swaps; GUI thread reads from front buffer; zero blocking; pattern verified in VCV Rack Fundamental Scope and architecture research |
+</phase_requirements>
+
+## Standard Stack
+
+### Core
+
+| Component | Version | Purpose | Why Standard | Confidence |
+|-----------|---------|---------|--------------|------------|
+| NanoVG | SDK-bundled | All display rendering (paths, fills, gradients) | The only graphics API available to VCV Rack plugins. Exposed through `drawLayer()` via `args.vg`. | HIGH (verified in SDK headers) |
+| `std::atomic<int>` | C++17 std | Lock-free buffer index for audio/GUI sync | Standard C++ atomic operations. The canonical pattern for real-time audio-to-GUI data transfer. No external dependencies. | HIGH |
+| `std::array<float, 256>` | C++17 std | Fixed-size display buffer | Pre-allocated, no heap allocation, cache-friendly. 256 samples provides smooth visual curve at display sizes up to ~160px wide. | HIGH |
+| `TransparentWidget` | SDK built-in | Base class for display widget | Does not consume input events (knobs behind display remain clickable). Draws each frame via `drawLayer()`. | HIGH (verified in SDK header) |
+
+### Supporting
+
+| Component | Purpose | When to Use |
+|-----------|---------|-------------|
+| `nvgRadialGradient()` | Phase dot glow halo | Draw a radial gradient fill around the dot center for the halo effect |
+| `nvgGlobalCompositeBlendFunc(vg, NVG_ONE, NVG_ONE)` | Additive blending for glow | Used during the glow pass to create additive bloom around the trace line |
+| `nvgScissor()` | Clip rendering to display bounds | Prevent waveform/dot from drawing outside the display rectangle |
+| `nvgLineCap(vg, NVG_ROUND)` | Rounded line endings | Clean line termination on the waveform trace |
+
+### Alternatives Considered
+
+| Instead of | Could Use | Tradeoff |
+|------------|-----------|----------|
+| TransparentWidget | LedDisplay | LedDisplay provides themed background/frame rendering automatically, but we need full control over the background (custom navy, inset frame) and LedDisplay's styling would clash with the CONTEXT.md requirement for a specific embedded-screen look |
+| TransparentWidget | FramebufferWidget + overlay | Could cache waveform trace in FBW and draw dot as lightweight overlay; would save some GPU on static waveforms, but adds complexity and CONTEXT.md requires continuous morph update (waveform changes every frame during knob movement), negating the caching benefit for the primary use case |
+| Multi-pass glow | Single thick translucent stroke | Simpler but produces a flat, even border rather than a bloom/glow falloff; does not match the "subtle amber glow/bloom" requirement |
+| 256-sample buffer | 128-sample buffer | 128 saves negligible memory (512 bytes) but shows visible faceting on smooth sine waveforms at the display width (~150px) |
+
+## Architecture Patterns
+
+### Recommended Project Structure Changes
+
+```
+src/
+  AnalogLFO.cpp          # Modified: add display buffer, double-buffer logic, param change detection
+  ui/
+    WaveformDisplay.hpp   # NEW: custom display widget declaration
+    WaveformDisplay.cpp   # NEW: NanoVG rendering implementation
+```
+
+The `src/ui/` directory needs to be created. The Makefile SOURCES wildcard `$(wildcard src/*.cpp)` only matches `src/*.cpp`, NOT subdirectories. The Makefile must be updated to also include `src/ui/*.cpp`.
+
+### Pattern 1: Lock-Free Double Buffer (Audio Thread to GUI Thread)
+
+**What:** Two identical buffers, an atomic index indicating which one the GUI should read from, and a separate atomic for the current phase position.
+**When to use:** Every time the audio thread needs to send data to the display.
+**Source:** Architecture research (ARCHITECTURE.md), VCV Rack Fundamental Scope module.
+
+```cpp
+// In AnalogLFO struct (audio thread writes, GUI thread reads):
+static constexpr int DISPLAY_SAMPLES = 256;
+std::array<float, DISPLAY_SAMPLES> displayBuffers[2];
+std::atomic<int> displayReadIdx{0};
+std::atomic<float> displayPhase{0.f};
+
+// Audio thread (in process()):
+void updateDisplayBuffer(float morph) {
+    int writeIdx = 1 - displayReadIdx.load(std::memory_order_relaxed);
+    for (int i = 0; i < DISPLAY_SAMPLES; i++) {
+        float p = (float)i / (float)DISPLAY_SAMPLES;
+        displayBuffers[writeIdx][i] = computeMorphedWave(p, morph);
+    }
+    displayReadIdx.store(writeIdx, std::memory_order_release);
+}
+
+// GUI thread (in WaveformDisplay::drawLayer()):
+int readIdx = module->displayReadIdx.load(std::memory_order_acquire);
+const auto& buffer = module->displayBuffers[readIdx];
+float phase = module->displayPhase.load(std::memory_order_relaxed);
+```
+
+**Memory ordering rationale:** The writer uses `memory_order_release` on the index store to ensure all buffer writes are visible before the index update. The reader uses `memory_order_acquire` on the index load to see all buffer writes made before the index was published. The phase float uses `relaxed` because it is an independent value (slight staleness is visually imperceptible at 60fps).
+
+### Pattern 2: Display Buffer Update Triggers
+
+**What:** Regenerate the 256-sample display buffer on two conditions: (1) phase wrap (the oscillator completed a cycle), or (2) morph parameter changed significantly.
+**When to use:** In `process()` after phase accumulation.
+
+```cpp
+// In process():
+displayPhase.store((float)phase, std::memory_order_relaxed);
+
+// Condition 1: phase wrapped
+bool phaseWrapped = (phase < prevPhaseForDisplay);
+
+// Condition 2: morph knob changed
+bool morphChanged = (std::fabs(morph - prevDisplayMorph) > 0.002f);
+
+if (phaseWrapped || morphChanged) {
+    updateDisplayBuffer(morph);
+    prevDisplayMorph = morph;
+}
+prevPhaseForDisplay = phase;
+```
+
+**Why both triggers:** At very slow LFO rates (e.g., 0.01Hz = 100s cycle), waiting for phase wrap would leave the display stale for up to 100 seconds when the user turns the morph knob. The parameter change trigger ensures immediate visual feedback during knob movement. The threshold of 0.002 (~0.2% of range) prevents unnecessary updates from CV noise while remaining responsive to intentional knob turns.
+
+### Pattern 3: Multi-Pass Glow Rendering
+
+**What:** Draw the waveform path multiple times at decreasing opacity and increasing stroke width to create a bloom/glow effect around the trace line.
+**When to use:** For the amber glow requirement. NanoVG does not support blur or glow natively.
+
+```cpp
+// Glow passes (widest/faintest first, then core line on top)
+struct GlowPass {
+    float width;
+    float alpha;
+};
+static constexpr GlowPass glowPasses[] = {
+    {6.0f, 0.04f},   // Outermost bloom
+    {4.0f, 0.08f},   // Mid bloom
+    {2.5f, 0.15f},   // Inner glow
+    {1.5f, 0.85f},   // Core trace
+};
+
+for (const auto& pass : glowPasses) {
+    nvgBeginPath(vg);
+    // ... build waveform polyline path ...
+    nvgStrokeColor(vg, nvgRGBAf(amberR, amberG, amberB, pass.alpha));
+    nvgStrokeWidth(vg, pass.width);
+    nvgStroke(vg);
+}
+```
+
+**Why multi-pass instead of additive blending:** Additive blending (`NVG_LIGHTER`) would be simpler conceptually but interacts poorly with the dark background (additive on near-black is just the source color) and could cause unexpected brightness accumulation with self-overlapping waveform paths (square wave corners). Multi-pass alpha layering produces a predictable, controllable glow falloff that works on any background.
+
+**Alternative with additive blending for dot halo:** For the phase dot's glow halo specifically, `nvgRadialGradient` with a filled circle produces a clean radial falloff without needing additive blending.
+
+### Pattern 4: drawLayer on Layer 1 (Self-Illuminating)
+
+**What:** Override `drawLayer()` and draw on layer 1, which renders above the panel but is self-illuminating (visible even when VCV Rack room brightness is reduced).
+**When to use:** All waveform display rendering.
+**Source:** VCV Rack Plugin API Guide, Fundamental Scope source.
+
+```cpp
+void WaveformDisplay::drawLayer(const DrawArgs& args, int layer) {
+    if (layer != 1) return;
+
+    NVGcontext* vg = args.vg;
+    nvgSave(vg);
+    nvgScissor(vg, 0, 0, box.size.x, box.size.y);
+
+    drawBackground(vg);
+    drawInsetFrame(vg);
+
+    if (module) {
+        drawWaveformGlow(vg);
+        drawWaveformTrace(vg);
+        drawPhaseDot(vg);
+    } else {
+        drawPlaceholder(vg);  // Module browser preview
+    }
+
+    nvgResetScissor(vg);
+    nvgRestore(vg);
+
+    TransparentWidget::drawLayer(args, layer);  // Recurse to children
+}
+```
+
+**Critical: call superclass `drawLayer()`** at the end to recurse to any child widgets.
+
+### Pattern 5: Phase Dot with Glow Halo and Comet Trail
+
+**What:** The phase dot consists of three visual elements: (1) a radial gradient halo, (2) a small bright center circle, and (3) a short comet trail of fading dots behind the current position.
+**When to use:** Every frame, using the current `displayPhase` value.
+
+```cpp
+void WaveformDisplay::drawPhaseDot(NVGcontext* vg, float phase,
+                                    const std::array<float, 256>& buffer) {
+    // Calculate dot position on waveform
+    float x = phaseToX(phase);
+    float y = bufferValueToY(interpolateBuffer(buffer, phase));
+
+    // 1. Comet trail: draw 4-5 previous positions with fading alpha
+    for (int i = trailLength - 1; i >= 0; i--) {
+        float trailPhase = phase - (float)(i + 1) * trailSpacing;
+        if (trailPhase < 0.f) trailPhase += 1.f;
+        float tx = phaseToX(trailPhase);
+        float ty = bufferValueToY(interpolateBuffer(buffer, trailPhase));
+        float alpha = 0.3f * (1.f - (float)(i + 1) / (float)(trailLength + 1));
+        float radius = dotRadius * (0.5f + 0.5f * (1.f - (float)(i + 1) / (float)(trailLength + 1)));
+
+        nvgBeginPath(vg);
+        nvgCircle(vg, tx, ty, radius);
+        nvgFillColor(vg, nvgRGBAf(amberR, amberG, amberB, alpha));
+        nvgFill(vg);
+    }
+
+    // 2. Glow halo (radial gradient: bright center fading to transparent)
+    NVGpaint haloPaint = nvgRadialGradient(vg, x, y, 0.f, dotRadius * 3.f,
+        nvgRGBAf(1.f, 0.9f, 0.5f, 0.3f),  // Inner: warm white-amber
+        nvgRGBAf(1.f, 0.9f, 0.5f, 0.0f)); // Outer: transparent
+    nvgBeginPath(vg);
+    nvgCircle(vg, x, y, dotRadius * 3.f);
+    nvgFillPaint(vg, haloPaint);
+    nvgFill(vg);
+
+    // 3. Bright center dot
+    nvgBeginPath(vg);
+    nvgCircle(vg, x, y, dotRadius);
+    nvgFillColor(vg, nvgRGBAf(1.f, 0.93f, 0.65f, 1.f)); // White-amber
+    nvgFill(vg);
+}
+```
+
+### Pattern 6: Pulse/Breathe Animation at Slow Rates
+
+**What:** When the LFO rate is very slow (dot movement imperceptible), animate the dot brightness with a gentle pulse to signal the display is active.
+**When to use:** When phase movement per frame is below a threshold.
+
+```cpp
+// In WaveformDisplay, track animation state:
+float breathePhase = 0.f;  // 0 to 2*PI, advances each frame
+
+void step() override {
+    // Advance breathe animation (~0.8 Hz cycle)
+    breathePhase += 2.f * M_PI * 0.8f / 60.f;  // Assuming ~60fps
+    if (breathePhase > 2.f * M_PI) breathePhase -= 2.f * M_PI;
+    TransparentWidget::step();
+}
+
+// In drawPhaseDot, when dot is nearly stationary:
+float dotMovement = std::fabs(currentPhase - prevFramePhase);
+if (dotMovement < 0.001f) {
+    // Apply breathe: modulate dot alpha between 0.6 and 1.0
+    float breathe = 0.8f + 0.2f * std::sin(breathePhase);
+    // Apply breathe to dot center alpha and halo intensity
+}
+```
+
+### Pattern 7: Startup Display Initialization
+
+**What:** Pre-compute the display buffer in the Module constructor so the display is never empty.
+**When to use:** Module initialization.
+
+```cpp
+AnalogLFO() {
+    config(...);
+    // ... configParam calls ...
+
+    // Pre-compute initial display buffer (morph=0 -> sine wave)
+    updateDisplayBuffer(0.f);
+}
+```
+
+### Pattern 8: Dim When Bypassed/Inactive
+
+**What:** When the module is bypassed or rate is effectively zero, reduce the brightness of all display elements.
+**When to use:** Check `module->isBypassed()` and rate parameter value at draw time.
+
+```cpp
+// In drawLayer:
+float dimFactor = 1.f;
+if (module->isBypassed()) {
+    dimFactor = 0.25f;  // Significantly dimmed
+}
+// Apply dimFactor to all color alphas used in drawing
+```
+
+### Anti-Patterns to Avoid
+
+- **Reading `module->phase` directly without atomics:** The `phase` field is a `double` written by the audio thread. On some platforms, reading a `double` is not atomic and can produce torn reads. Use `std::atomic<float>` for the display phase value (float precision is sufficient for display purposes -- 60fps rendering does not need double precision).
+- **Calling `computeMorphedWave()` from the GUI thread:** The GUI thread must not call functions that read Module state directly. The display buffer is pre-computed by the audio thread and the GUI thread reads only the atomic-protected buffer copy.
+- **Using `FramebufferWidget` for the continuously-animated display:** The phase dot moves every frame, so a cached framebuffer would need to be dirtied every frame anyway. Direct drawing via `TransparentWidget` + `drawLayer()` is simpler and equally performant for a 256-point polyline + a few circles.
+- **Allocating memory in `process()` when updating display buffer:** The display buffers are pre-allocated `std::array`s. No dynamic allocation occurs during buffer updates.
+- **Drawing outside the display bounds:** Always use `nvgScissor()` to clip rendering to the display rectangle. Waveform peaks or dot halos could extend past the display border without clipping.
+
+## Don't Hand-Roll
+
+| Problem | Don't Build | Use Instead | Why |
+|---------|-------------|-------------|-----|
+| Thread-safe data transfer | Custom mutex-based sharing | `std::atomic<int>` double-buffer pattern | Mutex in audio thread causes priority inversion and audio dropouts |
+| Glow/bloom effect | Custom shader or texture-based approach | Multi-pass NanoVG stroke at varying widths/alphas | NanoVG is the only rendering API available in VCV Rack; shaders are not accessible |
+| Radial gradient for dot halo | Manual per-pixel alpha computation | `nvgRadialGradient()` | NanoVG provides hardware-accelerated radial gradient natively |
+| Display clipping | Manual bounds checking per draw call | `nvgScissor()` | GPU-level clipping, zero CPU cost, handles all edge cases |
+| Frame timing for animation | Manual timer tracking | Widget `step()` method (called each frame) | VCV Rack calls `step()` at the display refresh rate automatically |
+
+**Key insight:** NanoVG provides all the primitives needed for this display. The glow is the only effect that requires a workaround (multi-pass rendering), and that workaround is well-established in the VCV Rack community.
+
+## Common Pitfalls
+
+### Pitfall 1: Torn Reads on Display Phase
+**What goes wrong:** Reading `module->phase` (a `double`) from the GUI thread while the audio thread writes to it can produce a torn value on 32-bit platforms or non-atomic 64-bit access.
+**Why it happens:** `double` is 8 bytes; on some architectures, reads/writes are not atomic.
+**How to avoid:** Store the display phase as `std::atomic<float>` (4 bytes, always atomic on modern platforms). Float precision is sufficient for display purposes (~7 decimal digits, mapping to sub-pixel accuracy).
+**Warning signs:** Occasional visual glitch where the dot jumps to an impossible position.
+
+### Pitfall 2: Display Buffer Stale at Slow LFO Rates
+**What goes wrong:** If the display buffer only updates on phase wrap, at 0.01Hz the display will show the wrong waveform for up to 100 seconds after a morph knob change.
+**Why it happens:** Phase wrap occurs once per LFO cycle; at very slow rates, that is minutes apart.
+**How to avoid:** Also trigger display buffer update on morph parameter change (threshold ~0.002). See Pattern 2 above.
+**Warning signs:** User turns morph knob and display does not update (or updates with long delay).
+
+### Pitfall 3: Module Browser Crash (Null Module Pointer)
+**What goes wrong:** The widget's `drawLayer()` dereferences `module` when the module is null (in the module browser preview).
+**Why it happens:** VCV Rack creates the Widget without a Module for the browser thumbnail. `module` is null.
+**How to avoid:** Always check `if (!module)` before accessing module data. Draw a static placeholder waveform (e.g., a pre-computed sine wave) when module is null.
+**Warning signs:** Crash when opening the module browser.
+
+### Pitfall 4: Display Not Self-Illuminating
+**What goes wrong:** The display goes dark when VCV Rack room brightness is reduced.
+**Why it happens:** Drawing in `draw()` instead of `drawLayer(args, 1)`. Layer 0 (`draw()`) is affected by room brightness. Layer 1 is self-illuminating.
+**How to avoid:** All display rendering must happen in `drawLayer()` with `layer == 1`. The background can optionally be drawn in `draw()` (layer 0) to interact with room lighting, but the waveform trace and dot must be on layer 1.
+**Warning signs:** Display dims when adjusting room brightness slider.
+
+### Pitfall 5: Forgetting to Call Superclass drawLayer
+**What goes wrong:** Child widgets of the display do not render.
+**Why it happens:** The overridden `drawLayer()` does not call `TransparentWidget::drawLayer(args, layer)` at the end.
+**How to avoid:** Always end the `drawLayer()` override with the superclass call.
+**Warning signs:** Subtler -- matters if child widgets are added to the display in the future.
+
+### Pitfall 6: Makefile Not Picking Up Subdirectory Sources
+**What goes wrong:** `src/ui/WaveformDisplay.cpp` does not compile; linker errors for undefined symbols.
+**Why it happens:** The current Makefile uses `SOURCES += $(wildcard src/*.cpp)` which does not match files in subdirectories.
+**How to avoid:** Update the Makefile to include `SOURCES += $(wildcard src/ui/*.cpp)` or change to `SOURCES += $(wildcard src/**/*.cpp)`. The simpler approach is to add a second wildcard line.
+**Warning signs:** Linker errors referencing WaveformDisplay symbols.
+
+### Pitfall 7: Performance with Many Module Instances
+**What goes wrong:** With 10+ AnalogLFO instances visible, frame rate drops due to NanoVG rendering overhead.
+**Why it happens:** Each instance draws a 256-point polyline with 4 glow passes = 1024 line segments + dot effects, all on every frame.
+**How to avoid:** VCV Rack only calls `drawLayer()` on visible widgets, so off-screen modules have zero display cost. For visible modules, the rendering budget is reasonable: at 10 instances, that is ~10,000 line segments per frame, well within NanoVG's capacity. If performance becomes an issue, reduce glow passes from 4 to 2 for a significant reduction.
+**Warning signs:** Frame rate drops below 30fps with many visible instances.
+
+## Code Examples
+
+### Complete Display Buffer Integration into AnalogLFO
+
+The existing `AnalogLFO` struct needs these additions:
+
+```cpp
+// In AnalogLFO struct:
+static constexpr int DISPLAY_SAMPLES = 256;
+
+// Double-buffered display data (lock-free)
+std::array<float, DISPLAY_SAMPLES> displayBuffers[2] = {};
+std::atomic<int> displayReadIdx{0};
+std::atomic<float> displayPhase{0.f};
+
+// Change detection for display updates
+float prevDisplayMorph = -1.f;
+double prevPhaseForDisplay = 0.0;
+
+void updateDisplayBuffer(float morph) {
+    int writeIdx = 1 - displayReadIdx.load(std::memory_order_relaxed);
+    for (int i = 0; i < DISPLAY_SAMPLES; i++) {
+        float p = (float)i / (float)DISPLAY_SAMPLES;
+        displayBuffers[writeIdx][i] = computeMorphedWave(p, morph);
+    }
+    displayReadIdx.store(writeIdx, std::memory_order_release);
+}
+```
+
+### WaveformDisplay Widget Skeleton
+
+```cpp
+// src/ui/WaveformDisplay.hpp
+#pragma once
+#include <rack.hpp>
+#include <array>
+
+struct AnalogLFO;  // Forward declaration
+
+struct WaveformDisplay : rack::widget::TransparentWidget {
+    AnalogLFO* module = nullptr;
+
+    // Visual constants
+    static constexpr float TRACE_WIDTH = 1.5f;
+    static constexpr float DOT_RADIUS = 2.5f;
+    static constexpr int TRAIL_LENGTH = 4;
+    static constexpr float TRAIL_SPACING = 0.015f;
+
+    // Animation state
+    float breathePhase = 0.f;
+    float prevFramePhase = 0.f;
+
+    // Colors (Forge Audio brand)
+    NVGcolor amberColor;   // Trace color
+    NVGcolor dotColor;     // Dot center (brighter)
+    NVGcolor bgColor;      // Display background (dark navy)
+
+    WaveformDisplay();
+    void step() override;
+    void drawLayer(const DrawArgs& args, int layer) override;
+
+private:
+    void drawBackground(NVGcontext* vg);
+    void drawInsetFrame(NVGcontext* vg);
+    void drawWaveformTrace(NVGcontext* vg, const std::array<float, 256>& buffer, float dimFactor);
+    void drawPhaseDot(NVGcontext* vg, const std::array<float, 256>& buffer, float phase, float dimFactor);
+    void drawPlaceholder(NVGcontext* vg);
+
+    float phaseToX(float phase) const;
+    float valueToY(float value) const;
+    float interpolateBuffer(const std::array<float, 256>& buffer, float phase) const;
+};
+```
+
+### NanoVG Inset Frame (Embedded Screen Look)
+
+```cpp
+void WaveformDisplay::drawInsetFrame(NVGcontext* vg) {
+    float w = box.size.x;
+    float h = box.size.y;
+
+    // Outer shadow (subtle dark border suggesting depth)
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, 0, 0, w, h, 1.5f);  // Match SVG rx
+    nvgStrokeColor(vg, nvgRGBAf(0.f, 0.f, 0.f, 0.3f));
+    nvgStrokeWidth(vg, 1.0f);
+    nvgStroke(vg);
+
+    // Inner highlight (subtle amber border, very faint)
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, 0.5f, 0.5f, w - 1.f, h - 1.f, 1.0f);
+    nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, 0.15f));
+    nvgStrokeWidth(vg, 0.5f);
+    nvgStroke(vg);
+}
+```
+
+### Widget Placement in ModuleWidget
+
+```cpp
+// In AnalogLFOWidget constructor:
+{
+    // Waveform display
+    WaveformDisplay* display = new WaveformDisplay();
+    display->module = module;
+    // Position matches the SVG placeholder rectangle: x=4.5mm y=17mm w=52mm h=25mm
+    display->box.pos = mm2px(Vec(4.5f, 17.f));
+    display->box.size = mm2px(Vec(52.f, 25.f));
+    addChild(display);
+}
+```
+
+## State of the Art
+
+| Old Approach | Current Approach | When Changed | Impact |
+|--------------|------------------|--------------|--------|
+| `draw()` for all rendering | `drawLayer(args, 1)` for self-illuminating content | VCV Rack 2.0 | Display stays visible when room brightness is reduced; critical for a waveform display |
+| `FramebufferWidget` for all custom displays | Direct `TransparentWidget` drawing for continuously animated displays | Community best practice | FramebufferWidget adds overhead for displays that change every frame (dirty every frame negates caching benefit) |
+| Single buffer with mutex | Lock-free double buffer with `std::atomic` | Established RT audio pattern | Zero audio thread blocking; no priority inversion risk |
+
+**Deprecated/outdated:**
+- Drawing in `draw()` for display content: Will be dimmed by room brightness. Use `drawLayer()` layer 1 instead.
+- Using `std::mutex` for audio/GUI sync: Will cause audio dropouts under load. Use lock-free patterns.
+- `FramebufferWidget` wrapping continuously animated displays: Overhead without benefit. Use direct drawing.
+
+## Recommendations for Claude's Discretion Areas
+
+### Line Weight: 1.5px Recommended
+Rationale: At the display size (~73px tall in VCV Rack pixels after mm2px conversion), 1.5px provides a clean, visible trace that is neither too thin (would look fragile/aliased) nor too thick (would lose detail on sharp waveform transitions like square wave edges). The VCV Fundamental Scope uses 1.5px stroke width for its waveform traces.
+
+### Visual Smoothing During Fast Knob Changes: Direct/Instant Update
+Rationale: The CONTEXT.md specifies "continuous morph update -- display morphs smoothly in sync with the knob, every intermediate shape visible." Since the display buffer is regenerated on parameter change with a low threshold (0.002), and the morph function itself is continuous (linear crossfade between shapes), the display will naturally show smooth transitions without additional smoothing. Adding a visual slew would delay the display behind the knob position, breaking the WYSIWYG principle.
+
+### Exact Dimensions: 52mm x 25mm at (4.5, 17)
+Rationale: This matches the existing SVG placeholder exactly. The display starts at y=17mm, immediately below the decorative amber line at y=14.5mm and module name, with ~2.5mm gap (which contains the amber line). The width of 52mm leaves 4.5mm margins on each side (~2mm visual margin accounting for the border frame). This places the display at approximately 19.5% of panel height (25/128.5), which is at the lower end of the user's "25-35%" guideline. To increase to ~30%, the display height could be expanded to ~38mm, but this would require moving the MORPH label and knob down significantly. The current 25mm is a reasonable starting point -- it is "generous" relative to the controls below it and can be adjusted visually if the user feels it needs to be larger.
+
+### Trail Length: 4 Dots, Spacing 0.015 Phase Units
+Rationale: At typical LFO rates (0.5-5Hz) and 60fps, each frame advances phase by approximately 0.008-0.083 units. A trail spacing of 0.015 means the trail spans about 0.06 phase units (6% of the waveform cycle), which creates a visible but subtle directional indicator. 4 dots fading linearly from 30% to near-transparent produces a clean comet effect without cluttering the display.
+
+### Glow Intensity: Subtle (4-Pass, Low Alpha)
+Rationale: The CONTEXT.md specifies "subtle amber glow/bloom" and "clean modern aesthetic (Mutable Instruments style), not retro oscilloscope." The 4-pass glow with maximum outer alpha of 0.04 produces a barely perceptible warm halo that suggests luminescence without the heavy bloom of a CRT emulation. The core trace at 0.85 alpha (not 1.0) slightly reveals the background through the line, adding to the "screen" feel.
+
+### Pulse/Breathe Timing: ~0.8Hz Cycle
+Rationale: 0.8Hz is slow enough to be perceived as a gentle breathing rather than a blink (which would be distracting) but fast enough that the user sees it change within a second or two of watching. The modulation range (0.6 to 1.0 brightness) is subtle -- the dot is always clearly visible, just gently pulsing.
+
+## Open Questions
+
+1. **Display height vs CONTEXT.md "25-35%" guideline**
+   - What we know: The existing SVG placeholder is 25mm tall (19.5% of panel). CONTEXT.md says "~25-35% of panel height."
+   - What's unclear: Whether 25mm is sufficient or if we need to expand to 32-45mm. Expanding requires moving the MORPH label (y=43.5) and knob (y=54) down.
+   - Recommendation: Start with the existing 25mm placeholder. This is a visual judgment call that is best made in-VCV-Rack. If the user finds it too small during human verification, the display height, MORPH label Y, and MORPH knob Y can be adjusted without architectural changes (just coordinate updates in the widget and SVG). The code should use the widget's `box.size` for all coordinate calculations, not hardcoded dimensions, so resizing is trivial.
+
+2. **DISP-03: "Display reflects all three knobs" but only morph exists**
+   - What we know: Character and drift are not yet implemented (Phases 5 and 6). The display buffer currently evaluates only `computeMorphedWave(phase, morph)`.
+   - What's unclear: How to satisfy DISP-03 now when character/drift do not exist yet.
+   - Recommendation: DISP-03 is future-proofed by design. The display buffer is generated by calling the same function the audio path uses. When character/drift are added in later phases, they will modify the waveform output, and the display buffer will automatically reflect those changes because it will call the updated engine function. For Phase 3, DISP-03 is satisfied for the morph knob; character and drift satisfaction will come automatically in Phases 5 and 6.
+
+3. **Display background rendering: layer 0 vs layer 1**
+   - What we know: Layer 1 is self-illuminating (not affected by room brightness). The dark navy background could logically go on either layer.
+   - What's unclear: Whether the background should dim with room brightness (layer 0) or stay constant (layer 1).
+   - Recommendation: Render the background on layer 1 along with everything else. The display should look like an embedded screen that has its own backlight -- it should not dim with room brightness. This matches the "embedded hardware screen feel" from CONTEXT.md.
+
+## Sources
+
+### Primary (HIGH confidence)
+- VCV Rack SDK 2.6.6 headers at `/Users/mrcbrown/Claude/Software/Forge Audio/Rack-SDK/include/` -- `TransparentWidget`, `FramebufferWidget`, `Widget::drawLayer()`, `Widget::step()`, `Widget::DrawArgs` verified directly
+- NanoVG header at `/Users/mrcbrown/Claude/Software/Forge Audio/Rack-SDK/dep/include/nanovg.h` -- `nvgRadialGradient()`, `nvgGlobalCompositeBlendFunc()`, `nvgScissor()`, `NVG_LIGHTER`, composite operations verified directly
+- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) -- `drawLayer()` on layer 1 for self-illuminating content, NanoVG drawing patterns, `FramebufferWidget` caching guidance
+- VCV Rack Fundamental Scope source (`VCVRack/Fundamental/blob/v2/src/Scope.cpp`) -- Confirmed pattern: `LedDisplay` base, `drawLayer` layer 1, `NVG_LIGHTER` blending, `nvgScissor` clipping, 1.5px stroke width, module data accessed via stored pointer
+- Existing codebase at `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` -- Current Module struct, `computeMorphedWave()` function, `double phase` accumulator, widget layout coordinates
+- Existing SVG panel at `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/res/AnalogLFO.svg` -- Display placeholder at `(4.5, 17, 52, 25)` mm confirmed
+- ARCHITECTURE.md research doc -- Lock-free double buffer pattern, display data flow, component boundaries
+
+### Secondary (MEDIUM confidence)
+- [VCV Community: NanoVG blending ops](https://community.vcvrack.com/t/help-understanding-nanovg-blending-ops/25330) -- Confirmed additive blending formula `(Src*1) + (Dst*1)`, premultiplied alpha default, `nvgSave`/`nvgRestore` for state management
+- [NanoVG issue #460: shiny lines](https://github.com/memononen/nanovg/issues/460) -- Confirmed NanoVG does not support native glow; fringeWidth tweak or texture-based approaches suggested
+- [NanoVG issue #227: glow fx](https://github.com/memononen/nanovg/issues/227) -- Confirmed glow is not a built-in feature; multi-pass rendering is the standard workaround
+
+### Tertiary (LOW confidence)
+- Multi-pass glow pass parameters (alpha values, widths) -- Empirical values that will need visual tuning in-app. Starting values are reasonable estimates based on display size and brand aesthetic.
+- Breathe animation rate (0.8Hz) -- Subjective choice; may need adjustment based on user perception.
+
+## Metadata
+
+**Confidence breakdown:**
+- Standard stack: HIGH -- NanoVG, `std::atomic`, `TransparentWidget` all verified in SDK headers; patterns verified in Fundamental Scope
+- Architecture: HIGH -- Lock-free double buffer is the canonical real-time audio pattern; `drawLayer` layer 1 is the documented VCV Rack approach
+- Pitfalls: HIGH -- Thread safety, null module, stale buffer, self-illumination are well-documented concerns verified against multiple sources
+- Visual effects (glow, trail, breathe): MEDIUM -- Multi-pass glow is the established workaround for NanoVG; specific parameter values (alpha, width, trail length) will need visual tuning
+
+**Research date:** 2026-02-25
+**Valid until:** 2026-03-25 (VCV Rack SDK is stable; NanoVG API is unchanged since Rack 2.0)
