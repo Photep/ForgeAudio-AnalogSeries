@@ -10,11 +10,13 @@ struct AnalogLFO : Module {
 		DRIFT_PARAM,
 		RATE_PARAM,
 		MORPH_ATTEN_PARAM,
+		CHARACTER_ATTEN_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
 		MORPH_CV_INPUT,
 		DRIFT_CV_INPUT,
+		CHARACTER_CV_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
@@ -72,8 +74,10 @@ struct AnalogLFO : Module {
 		configParam(DRIFT_PARAM, 0.f, 1.f, 0.f, "Drift");
 		configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz");
 		configParam(MORPH_ATTEN_PARAM, 0.f, 1.f, 0.f, "Morph CV", "%", 0.f, 100.f);
+		configParam(CHARACTER_ATTEN_PARAM, 0.f, 1.f, 0.f, "Character CV", "%", 0.f, 100.f);
 		configInput(MORPH_CV_INPUT, "Morph CV");
 		configInput(DRIFT_CV_INPUT, "Drift CV");
+		configInput(CHARACTER_CV_INPUT, "Character CV");
 		configOutput(OUTPUT, "LFO");
 		updateDisplayBuffer(0.f);
 	}
@@ -327,11 +331,13 @@ struct AnalogLFOWidget : ModuleWidget {
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(9.0, 104.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
 
 		// Inputs
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(21.0, 104.0)), module, AnalogLFO::MORPH_CV_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(35.0, 104.0)), module, AnalogLFO::DRIFT_CV_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(18.0, 104.0)), module, AnalogLFO::MORPH_CV_INPUT));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(27.0, 104.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(36.0, 104.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(46.0, 104.0)), module, AnalogLFO::DRIFT_CV_INPUT));
 
 		// Outputs
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(51.0, 104.0)), module, AnalogLFO::OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(55.0, 104.0)), module, AnalogLFO::OUTPUT));
 	}
 };
 
