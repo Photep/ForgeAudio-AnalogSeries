@@ -79,7 +79,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- Character DSP engine: per-shape analog models, CV input, panel updates (CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-06, CHAR-07)
+- [x] 04-01-PLAN.md -- Character DSP engine: per-shape analog models, CV input, panel updates (CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-06, CHAR-07)
 - [ ] 04-02-PLAN.md -- Visual verification of character in VCV Rack (CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-07)
 
 ### Phase 5: Drift Engine
@@ -106,5 +106,5 @@ Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 | 1. Plugin Scaffold and Panel | 2/2 | Complete    | 2026-02-25 |
 | 2. Waveform Engine | 2/2 | Complete    | 2026-02-25 |
 | 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
-| 4. Analog Character | 0/2 | Not started | - |
+| 4. Analog Character | 1/2 | In progress | - |
 | 5. Drift Engine | 0/TBD | Not started | - |

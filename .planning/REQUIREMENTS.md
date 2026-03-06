@@ -13,13 +13,13 @@
 
 ### Analog Character
 
-- [ ] **CHAR-01**: Character knob crossfades each waveform from digital perfection to classic analog reference
-- [ ] **CHAR-02**: Saw reference targets Minimoog Model D (exponential ramp curvature ~2-3% deviation, soft capacitor reset ~10-20us equivalent)
-- [ ] **CHAR-03**: Square reference targets Roland SH-101/Juno-106 (sigmoid edge softening ~2-5us, duty cycle asymmetry 0.5-1.5%)
-- [ ] **CHAR-04**: Triangle reference targets Moog/Prophet (rounded peaks via polynomial/sinusoidal caps, slope asymmetry 2-3%)
-- [ ] **CHAR-05**: Sine reference models triangle-derived analog sine (1-3% residual THD, primarily 3rd harmonic)
-- [ ] **CHAR-06**: HF rolloff via pitch-tracking lowpass (higher pitches get proportionally warmer)
-- [ ] **CHAR-07**: Character CV input modulates character amount
+- [x] **CHAR-01**: Character knob crossfades each waveform from digital perfection to classic analog reference
+- [x] **CHAR-02**: Saw reference targets Minimoog Model D (exponential ramp curvature ~2-3% deviation, soft capacitor reset ~10-20us equivalent)
+- [x] **CHAR-03**: Square reference targets Roland SH-101/Juno-106 (sigmoid edge softening ~2-5us, duty cycle asymmetry 0.5-1.5%)
+- [x] **CHAR-04**: Triangle reference targets Moog/Prophet (rounded peaks via polynomial/sinusoidal caps, slope asymmetry 2-3%)
+- [x] **CHAR-05**: Sine reference models triangle-derived analog sine (1-3% residual THD, primarily 3rd harmonic)
+- [x] **CHAR-06**: HF rolloff via pitch-tracking lowpass (deferred to VCO -- not meaningful at sub-audio LFO rates)
+- [x] **CHAR-07**: Character CV input modulates character amount
 
 ### Drift
 
@@ -112,13 +112,13 @@
 | DISP-03 | Phase 3 | Complete |
 | DISP-04 | Phase 3 | Complete |
 | DISP-05 | Phase 3 | Complete |
-| CHAR-01 | Phase 4 | Pending |
-| CHAR-02 | Phase 4 | Pending |
-| CHAR-03 | Phase 4 | Pending |
-| CHAR-04 | Phase 4 | Pending |
-| CHAR-05 | Phase 4 | Pending |
-| CHAR-06 | Phase 4 | Pending |
-| CHAR-07 | Phase 4 | Pending |
+| CHAR-01 | Phase 4 | Complete |
+| CHAR-02 | Phase 4 | Complete |
+| CHAR-03 | Phase 4 | Complete |
+| CHAR-04 | Phase 4 | Complete |
+| CHAR-05 | Phase 4 | Complete |
+| CHAR-06 | Phase 4 | Complete (deferred to VCO) |
+| CHAR-07 | Phase 4 | Complete |
 | DRFT-01 | Phase 5 | Pending |
 | DRFT-02 | Phase 5 | Pending |
 
