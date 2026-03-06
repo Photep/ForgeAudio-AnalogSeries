@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 
 ## Current Position
 
-Phase: 3 of 6 (Waveform Display) -- COMPLETE
+Phase: 3 of 5 (Waveform Display) -- COMPLETE
 Plan: 2 of 2 in current phase
-Status: Phase 3 complete -- ready for Phase 4
-Last activity: 2026-02-26 -- Completed 03-02-PLAN.md
+Status: Phase 3 complete -- ready for Phase 4 (Analog Character)
+Last activity: 2026-03-06 -- Removed Phase 4 (Pitch Controls), renumbered phases
 
-Progress: [######░░░░] 50%
+Progress: [######░░░░] 60%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Recent decisions affecting current work:
 - Display size 57x35mm at (2,15) -- 27% panel height, matching CONTEXT.md 25-35% guideline
 - Display height reduced from 35mm to 27mm to prevent occlusion of Morph knob (visual verification feedback)
 - Display position kept at (2, 15) -- only height changed, not origin
+- Removed Phase 4 (Pitch Controls) -- octave/semitone not meaningful for sub-audio LFO. OCTAVE_PARAM removed from code/SVG. Phases renumbered: Character=4, Drift=5
 
 ### Pending Todos
 

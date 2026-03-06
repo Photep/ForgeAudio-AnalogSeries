@@ -9,7 +9,6 @@ struct AnalogLFO : Module {
 		CHARACTER_PARAM,
 		DRIFT_PARAM,
 		RATE_PARAM,
-		OCTAVE_PARAM,
 		MORPH_ATTEN_PARAM,
 		PARAMS_LEN
 	};
@@ -72,7 +71,6 @@ struct AnalogLFO : Module {
 		configParam(CHARACTER_PARAM, 0.f, 1.f, 0.f, "Character");
 		configParam(DRIFT_PARAM, 0.f, 1.f, 0.f, "Drift");
 		configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz");
-		configParam(OCTAVE_PARAM, -4.f, 4.f, 0.f, "Octave");
 		configParam(MORPH_ATTEN_PARAM, 0.f, 1.f, 0.f, "Morph CV", "%", 0.f, 100.f);
 		configInput(MORPH_CV_INPUT, "Morph CV");
 		configInput(DRIFT_CV_INPUT, "Drift CV");
@@ -326,7 +324,6 @@ struct AnalogLFOWidget : ModuleWidget {
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(18.0, 69.0)), module, AnalogLFO::CHARACTER_PARAM));
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(42.96, 69.0)), module, AnalogLFO::DRIFT_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(18.0, 86.0)), module, AnalogLFO::RATE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(42.96, 86.0)), module, AnalogLFO::OCTAVE_PARAM));
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(9.0, 104.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
 
 		// Inputs

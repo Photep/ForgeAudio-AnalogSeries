@@ -2,7 +2,7 @@
 
 ## Overview
 
-This roadmap delivers the Forge Audio Analog Series LFO module for VCV Rack 2 -- a sub-audio oscillator built around a three-knob analog engine (morph, character, drift) with real-time waveform display. The build follows a strict dependency chain: plugin scaffold and panel first, then the morph waveform engine, then visual feedback via the display, then precise pitch controls, then analog character modeling against specific classic synth references, and finally the drift engine that brings the module to life with authentic analog imperfections. Each phase delivers a verifiable capability that the next phase builds on.
+This roadmap delivers the Forge Audio Analog Series LFO module for VCV Rack 2 -- a sub-audio oscillator built around a three-knob analog engine (morph, character, drift) with real-time waveform display. The build follows a strict dependency chain: plugin scaffold and panel first, then the morph waveform engine, then visual feedback via the display, then analog character modeling against specific classic synth references, and finally the drift engine that brings the module to life with authentic analog imperfections. Each phase delivers a verifiable capability that the next phase builds on.
 
 ## Phases
 
@@ -15,9 +15,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Plugin Scaffold and Panel** - Buildable VCV Rack 2 plugin with branded SVG panel and module registration
 - [x] **Phase 2: Waveform Engine** - Four-shape morph oscillator with rate control and bipolar output
 - [x] **Phase 3: Waveform Display** - Real-time single-cycle waveform visualization with phase-tracking dot (completed 2026-02-26)
-- [ ] **Phase 4: Pitch Controls** - Octave snap and semitone selector for precise LFO rate tuning
-- [ ] **Phase 5: Analog Character** - Character knob crossfading from digital perfection to classic synth references per shape
-- [ ] **Phase 6: Drift Engine** - Layered analog imperfections via Ornstein-Uhlenbeck pitch drift
+- [ ] **Phase 4: Analog Character** - Character knob crossfading from digital perfection to classic synth references per shape
+- [ ] **Phase 5: Drift Engine** - Layered analog imperfections via Ornstein-Uhlenbeck pitch drift
 
 ## Phase Details
 
@@ -64,22 +63,10 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- Lock-free double buffer and WaveformDisplay widget with NanoVG rendering (DISP-01, DISP-02, DISP-03, DISP-04, DISP-05)
-- [ ] 03-02-PLAN.md -- Visual verification of display in VCV Rack (DISP-01, DISP-02, DISP-04)
+- [x] 03-01-PLAN.md -- Lock-free double buffer and WaveformDisplay widget with NanoVG rendering (DISP-01, DISP-02, DISP-03, DISP-04, DISP-05)
+- [x] 03-02-PLAN.md -- Visual verification of display in VCV Rack (DISP-01, DISP-02, DISP-04)
 
-### Phase 4: Pitch Controls
-**Goal**: Users can precisely set LFO rate using octave snap and semitone selection
-**Depends on**: Phase 2
-**Requirements**: PTCH-02, PTCH-03
-**Success Criteria** (what must be TRUE):
-  1. Octave snap knob quantizes rate in octave steps across a +/-4 octave range from the base rate
-  2. Semitone selector with up/down buttons adjusts pitch in semitone increments, with a small digital display showing the current semitone value
-**Plans**: TBD
-
-Plans:
-- [ ] 04-01: TBD
-
-### Phase 5: Analog Character
+### Phase 4: Analog Character
 **Goal**: Users can dial in authentic vintage analog tone per waveform shape using the character knob
 **Depends on**: Phase 2
 **Requirements**: CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-06, CHAR-07
@@ -92,12 +79,12 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 04-01: TBD
+- [ ] 04-02: TBD
 
-### Phase 6: Drift Engine
+### Phase 5: Drift Engine
 **Goal**: Users can add authentic analog instability that makes the oscillator sound alive and unique
-**Depends on**: Phase 5
+**Depends on**: Phase 4
 **Requirements**: DRFT-01, DRFT-02
 **Success Criteria** (what must be TRUE):
   1. Drift knob at zero produces perfectly stable output; increasing drift introduces progressively more pitch variation with audible multi-timescale movement (slow wander plus faster jitter)
@@ -106,19 +93,18 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 06-01: TBD
+- [ ] 05-01: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
-Note: Phases 3, 4, and 5 all depend on Phase 2 but not on each other.
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Plugin Scaffold and Panel | 2/2 | Complete    | 2026-02-25 |
 | 2. Waveform Engine | 2/2 | Complete    | 2026-02-25 |
-| 3. Waveform Display | 0/TBD | Complete    | 2026-02-26 |
-| 4. Pitch Controls | 0/TBD | Not started | - |
-| 5. Analog Character | 0/TBD | Not started | - |
-| 6. Drift Engine | 0/TBD | Not started | - |
+| 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
+| 4. Analog Character | 0/TBD | Not started | - |
+| 5. Drift Engine | 0/TBD | Not started | - |

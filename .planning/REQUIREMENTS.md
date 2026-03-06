@@ -37,8 +37,6 @@
 ### Pitch Control
 
 - [x] **PTCH-01**: Rate knob controls LFO frequency across sub-audio range
-- [ ] **PTCH-02**: Octave snap knob with ±4 octave range
-- [ ] **PTCH-03**: Semitone selector with up/down buttons and small digital display showing current value
 
 ### Output
 
@@ -94,6 +92,7 @@
 | Individually exposed drift params | One drift knob scaling everything in curated proportions. Right-click for advanced tuning |
 | Built-in sub-oscillator | Panel complexity, dilutes three-knob focus |
 | MinBLEP antialiasing | Defer to v2+ only if polyBLEP aliasing proves insufficient |
+| Octave snap / semitone selector | Not meaningful for sub-audio LFO rates — pitch quantization is a VCO concept |
 
 ## Traceability
 
@@ -113,23 +112,21 @@
 | DISP-03 | Phase 3 | Complete |
 | DISP-04 | Phase 3 | Complete |
 | DISP-05 | Phase 3 | Complete |
-| PTCH-02 | Phase 4 | Pending |
-| PTCH-03 | Phase 4 | Pending |
-| CHAR-01 | Phase 5 | Pending |
-| CHAR-02 | Phase 5 | Pending |
-| CHAR-03 | Phase 5 | Pending |
-| CHAR-04 | Phase 5 | Pending |
-| CHAR-05 | Phase 5 | Pending |
-| CHAR-06 | Phase 5 | Pending |
-| CHAR-07 | Phase 5 | Pending |
-| DRFT-01 | Phase 6 | Pending |
-| DRFT-02 | Phase 6 | Pending |
+| CHAR-01 | Phase 4 | Pending |
+| CHAR-02 | Phase 4 | Pending |
+| CHAR-03 | Phase 4 | Pending |
+| CHAR-04 | Phase 4 | Pending |
+| CHAR-05 | Phase 4 | Pending |
+| CHAR-06 | Phase 4 | Pending |
+| CHAR-07 | Phase 4 | Pending |
+| DRFT-01 | Phase 5 | Pending |
+| DRFT-02 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 25 total
-- Mapped to phases: 25
+- v1 requirements: 23 total
+- Mapped to phases: 23
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 after roadmap creation*
+*Last updated: 2026-03-06 — removed PTCH-02/PTCH-03, renumbered phases after Phase 4 (Pitch Controls) removal*
