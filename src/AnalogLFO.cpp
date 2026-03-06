@@ -37,13 +37,93 @@ struct AnalogLFO : Module {
 
 	// Display update tracking
 	float prevDisplayMorph = -1.f;
+	float prevDisplayCharacter = -1.f;
 	double prevPhaseForDisplay = 0.0;
 
-	float computeMorphedWave(float phase, float morph) {
+	float progressiveCurve(float character) {
+		return character * character;  // x^2: subtle first half, aggressive second half
+	}
+
+	float computeSine(float phase, float character) {
 		float sine = std::sin(2.f * (float)M_PI * phase);
-		float tri  = 2.f * std::fabs(2.f * phase - 1.f) - 1.f;
-		float saw  = 1.f - 2.f * phase;
-		float sqr  = (phase < 0.5f) ? 1.f : -1.f;
+		if (character < 0.001f) return sine;
+		float c = progressiveCurve(character);
+		// Triangle-derived analog sine: residual THD via Chebyshev polynomials
+		float h2 = 2.f * sine * sine - 1.f;                     // T2: 2nd harmonic
+		float h3 = 4.f * sine * sine * sine - 3.f * sine;       // T3: 3rd harmonic
+		float thd3 = c * 0.02f;   // 2% 3rd harmonic at full character
+		float thd2 = c * 0.008f;  // 0.8% 2nd harmonic at full character
+		return sine + thd3 * h3 + thd2 * h2;
+	}
+
+	float computeTriangle(float phase, float character) {
+		float tri = 2.f * std::fabs(2.f * phase - 1.f) - 1.f;
+		if (character < 0.001f) return tri;
+		float c = progressiveCurve(character);
+		// Slope asymmetry: rising slope slightly steeper
+		float asymmetry = c * 0.03f;
+		float midpoint = 0.25f + asymmetry * 0.5f;
+		float analogTri;
+		if (phase < midpoint) {
+			analogTri = -1.f + 2.f * phase / midpoint;
+		} else if (phase < (1.f - midpoint)) {
+			analogTri = 1.f - 2.f * (phase - midpoint) / (1.f - 2.f * midpoint);
+		} else {
+			analogTri = -1.f + 2.f * (phase - (1.f - midpoint)) / midpoint;
+		}
+		// Rounded peaks via sinusoidal smoothing
+		float roundAmount = c * 0.15f;
+		if (analogTri > (1.f - roundAmount)) {
+			float t = (analogTri - (1.f - roundAmount)) / roundAmount;
+			analogTri = (1.f - roundAmount) + roundAmount * std::sin(t * (float)M_PI * 0.5f);
+		} else if (analogTri < -(1.f - roundAmount)) {
+			float t = (-(1.f - roundAmount) - analogTri) / roundAmount;
+			analogTri = -(1.f - roundAmount) - roundAmount * std::sin(t * (float)M_PI * 0.5f);
+		}
+		return analogTri;
+	}
+
+	float computeSaw(float phase, float character) {
+		float saw = 1.f - 2.f * phase;  // falling ramp (Minimoog convention)
+		if (character < 0.001f) return saw;
+		float c = progressiveCurve(character);
+		// Exponential ramp curvature (~3% deviation at full)
+		float expRamp = 1.f - 2.f * (1.f - std::exp(-3.f * phase)) / (1.f - std::exp(-3.f));
+		float curvedSaw = saw + c * 0.03f * (expRamp - saw);
+		// Soft capacitor reset (~5% of cycle at full character)
+		float resetWidth = c * 0.05f;
+		if (phase < resetWidth && resetWidth > 0.001f) {
+			float t = phase / resetWidth;
+			float smoothT = 0.5f - 0.5f * std::cos(t * (float)M_PI);
+			float resetValue = 1.f;
+			curvedSaw = resetValue + smoothT * (curvedSaw - resetValue);
+		}
+		return curvedSaw;
+	}
+
+	float computeSquare(float phase, float character) {
+		float sqr = (phase < 0.5f) ? 1.f : -1.f;
+		if (character < 0.001f) return sqr;
+		float c = progressiveCurve(character);
+		// Duty cycle asymmetry (1.5% at full)
+		float duty = 0.5f + c * 0.015f;
+		// Sigmoid edge softening via tanh (~3% edge width at full)
+		float edgeWidth = c * 0.03f;
+		float sharpness = (edgeWidth > 0.001f) ? 1.f / edgeWidth : 1000.f;
+		float rising = std::tanh(sharpness * phase);
+		float falling = std::tanh(sharpness * (duty - phase));
+		float softSquare = rising + falling - 1.f;
+		// Normalize to [-1, +1]
+		float peak = std::tanh(sharpness * duty * 0.5f);
+		if (peak > 0.001f) softSquare /= peak;
+		return softSquare;
+	}
+
+	float computeMorphedWave(float phase, float morph, float character) {
+		float sine = computeSine(phase, character);
+		float tri  = computeTriangle(phase, character);
+		float saw  = computeSaw(phase, character);
+		float sqr  = computeSquare(phase, character);
 
 		float scaled = morph * 4.f;
 		int segment = std::min((int)scaled, 3);
@@ -58,11 +138,11 @@ struct AnalogLFO : Module {
 		return sine;
 	}
 
-	void updateDisplayBuffer(float morph) {
+	void updateDisplayBuffer(float morph, float character) {
 		int writeIdx = 1 - displayReadIdx.load(std::memory_order_relaxed);
 		for (int i = 0; i < DISPLAY_SAMPLES; i++) {
 			float p = (float)i / (float)DISPLAY_SAMPLES;
-			displayBuffers[writeIdx][i] = computeMorphedWave(p, morph);
+			displayBuffers[writeIdx][i] = computeMorphedWave(p, morph, character);
 		}
 		displayReadIdx.store(writeIdx, std::memory_order_release);
 	}
@@ -79,7 +159,7 @@ struct AnalogLFO : Module {
 		configInput(DRIFT_CV_INPUT, "Drift CV");
 		configInput(CHARACTER_CV_INPUT, "Character CV");
 		configOutput(OUTPUT, "LFO");
-		updateDisplayBuffer(0.f);
+		updateDisplayBuffer(0.f, 0.f);
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -98,22 +178,30 @@ struct AnalogLFO : Module {
 		float morphCV = inputs[MORPH_CV_INPUT].getVoltage();
 		float morph = rack::math::clamp(morphKnob + morphAtten * morphCV / 10.f, 0.f, 1.f);
 
+		// Character with CV (additive offset, attenuator, hard clamp)
+		float charKnob = params[CHARACTER_PARAM].getValue();
+		float charAtten = params[CHARACTER_ATTEN_PARAM].getValue();
+		float charCV = inputs[CHARACTER_CV_INPUT].getVoltage();
+		float character = rack::math::clamp(charKnob + charAtten * charCV / 10.f, 0.f, 1.f);
+
 		// Update display phase
 		displayPhase.store((float)phase, std::memory_order_relaxed);
 
-		// Update display buffer on phase wrap or morph change
-		// TODO Phase 5/6: add characterChanged and driftChanged triggers here
+		// Update display buffer on phase wrap, morph change, or character change
+		// TODO Phase 5: add driftChanged trigger here
 		bool phaseWrapped = (phase < prevPhaseForDisplay);
 		bool morphChanged = (std::fabs(morph - prevDisplayMorph) > 0.002f);
-		if (phaseWrapped || morphChanged) {
-			updateDisplayBuffer(morph);
+		bool characterChanged = (std::fabs(character - prevDisplayCharacter) > 0.002f);
+		if (phaseWrapped || morphChanged || characterChanged) {
+			updateDisplayBuffer(morph, character);
 			prevDisplayMorph = morph;
+			prevDisplayCharacter = character;
 		}
 		prevPhaseForDisplay = phase;
 
 		// Waveform generation
 		float p = (float)phase;
-		float sample = computeMorphedWave(p, morph);
+		float sample = computeMorphedWave(p, morph, character);
 
 		// Bipolar +/-5V output
 		outputs[OUTPUT].setVoltage(5.f * sample);
