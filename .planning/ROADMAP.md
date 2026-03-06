@@ -76,11 +76,11 @@ Plans:
   3. Square reference exhibits Roland SH-101/Juno-106-style sigmoid edge softening and duty cycle asymmetry
   4. Triangle reference exhibits Moog/Prophet-style rounded peaks and slope asymmetry
   5. Sine reference exhibits triangle-derived analog sine characteristics with audible residual harmonic distortion
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md -- Character DSP engine: per-shape analog models, CV input, panel updates (CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-06, CHAR-07)
+- [ ] 04-02-PLAN.md -- Visual verification of character in VCV Rack (CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-07)
 
 ### Phase 5: Drift Engine
 **Goal**: Users can add authentic analog instability that makes the oscillator sound alive and unique
@@ -106,5 +106,5 @@ Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 | 1. Plugin Scaffold and Panel | 2/2 | Complete    | 2026-02-25 |
 | 2. Waveform Engine | 2/2 | Complete    | 2026-02-25 |
 | 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
-| 4. Analog Character | 0/TBD | Not started | - |
+| 4. Analog Character | 0/2 | Not started | - |
 | 5. Drift Engine | 0/TBD | Not started | - |
