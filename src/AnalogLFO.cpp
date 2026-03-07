@@ -189,6 +189,102 @@ struct AnalogLFO : Module {
 		displayReadIdx.store(writeIdx, std::memory_order_release);
 	}
 
+	void processClockInput(float sampleTime) {
+		bool clkConnected = inputs[CLK_INPUT].isConnected();
+
+		// Instant revert on cable disconnect
+		if (!clkConnected) {
+			if (prevClkConnected) {
+				if (smoothedPeriod > 0.f) {
+					lastSmoothedPeriod = smoothedPeriod;
+				}
+				clockState = FREE;
+				clockEdgeCount = 0;
+				clockTimer.reset();
+				smoothedPeriod = 0.f;
+				displayClockState.store(FREE, std::memory_order_relaxed);
+			}
+			prevClkConnected = false;
+			return;
+		}
+		prevClkConnected = true;
+
+		// Accumulate time
+		clockTimer.process(sampleTime);
+
+		// Timeout check (only when connected but no pulses arriving)
+		if (clockState != FREE && smoothedPeriod > 0.f) {
+			float timeout = std::fmax(1.0f, std::fmin(3.0f * smoothedPeriod, 5.0f));
+			if (clockTimer.getTime() > timeout) {
+				lastSmoothedPeriod = smoothedPeriod;
+				clockState = FREE;
+				clockEdgeCount = 0;
+				smoothedPeriod = 0.f;
+				clockTimer.reset();
+				displayClockState.store(FREE, std::memory_order_relaxed);
+			}
+		}
+
+		// Edge detection
+		float clkVoltage = inputs[CLK_INPUT].getVoltage();
+		if (clockTrigger.process(clkVoltage, 0.1f, 1.0f)) {
+			float rawPeriod = clockTimer.getTime();
+			clockTimer.reset();
+			clockEdgeCount++;
+
+			// Phase reset on every edge (hard reset per CONTEXT.md)
+			phase = 0.0;
+
+			if (clockEdgeCount == 1) {
+				// First edge: enter ACQUIRING, no period measurement possible
+				clockState = ACQUIRING;
+				displayClockState.store(ACQUIRING, std::memory_order_relaxed);
+			}
+			else if (rawPeriod > 0.001f) {
+				// Second edge onward: we have a period measurement
+
+				// Outlier rejection (LOCKED state only, per CLK-05)
+				if (clockState == LOCKED && smoothedPeriod > 0.f) {
+					bool isOutlier = (rawPeriod > 3.0f * smoothedPeriod) ||
+					                 (rawPeriod < smoothedPeriod / 3.0f);
+					if (isOutlier) {
+						return;  // Silently discard
+					}
+				}
+
+				// Fast-track re-acquisition check
+				// clockEdgeCount == 2 in ACQUIRING with a remembered period means
+				// this is the second edge of a fresh acquisition sequence
+				if (clockState == ACQUIRING && clockEdgeCount == 2 && lastSmoothedPeriod > 0.f) {
+					float ratio = rawPeriod / lastSmoothedPeriod;
+					if (ratio > 0.8f && ratio < 1.2f) {
+						// Fast-track to LOCKED: same clock source reconnected
+						smoothedPeriod = lastSmoothedPeriod;
+						smoothedPeriod += 0.3f * (rawPeriod - smoothedPeriod);
+						clockState = LOCKED;
+						displayClockState.store(LOCKED, std::memory_order_relaxed);
+						return;
+					}
+				}
+
+				// EMA smoothing (per CLK-03)
+				if (smoothedPeriod <= 0.f) {
+					smoothedPeriod = rawPeriod;  // First measurement: snap (avoids Pitfall 4)
+				} else {
+					smoothedPeriod += 0.3f * (rawPeriod - smoothedPeriod);
+				}
+
+				// State transition: ACQUIRING -> LOCKED after 4 consistent edges
+				if (clockState == ACQUIRING && clockEdgeCount >= 4) {
+					clockState = LOCKED;
+					displayClockState.store(LOCKED, std::memory_order_relaxed);
+				} else if (clockState == ACQUIRING) {
+					displayClockState.store(ACQUIRING, std::memory_order_relaxed);
+				}
+			}
+		}
+	}
+
 	AnalogLFO() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(MORPH_PARAM, 0.f, 1.f, 0.f, "Morph");
@@ -229,6 +325,9 @@ struct AnalogLFO : Module {
 	}
 
 	void process(const ProcessArgs& args) override {
+		// Clock detection (Phase 7)
+		processClockInput(args.sampleTime);
+
 		// Rate (linear Hz, direct value)
 		float freq = params[RATE_PARAM].getValue();
 		freq = std::fmax(freq, 0.001f);  // safety floor
