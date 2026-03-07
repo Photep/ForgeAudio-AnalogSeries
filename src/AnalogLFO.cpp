@@ -2,6 +2,7 @@
 #include <cmath>
 #include <atomic>
 #include <array>
+#include <random>
 
 struct AnalogLFO : Module {
 	enum ParamId {
@@ -11,6 +12,7 @@ struct AnalogLFO : Module {
 		RATE_PARAM,
 		MORPH_ATTEN_PARAM,
 		CHARACTER_ATTEN_PARAM,
+		DRIFT_ATTEN_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
@@ -29,6 +31,20 @@ struct AnalogLFO : Module {
 
 	double phase = 0.0;
 
+	// Drift engine: multi-timescale Ornstein-Uhlenbeck process
+	struct OULayer {
+		float state = 0.f;
+		float theta;    // mean reversion rate
+		float sigma;    // noise amplitude
+		float weight;   // contribution weight
+	};
+
+	rack::random::Xoroshiro128Plus rng;
+	std::normal_distribution<float> normalDist{0.f, 1.f};
+	float sqrtSampleTime = 0.f;
+	static constexpr int NUM_OU_LAYERS = 4;
+	OULayer ouLayers[NUM_OU_LAYERS];
+
 	// Display double buffer (lock-free audio-to-GUI transfer)
 	static constexpr int DISPLAY_SAMPLES = 256;
 	std::array<float, DISPLAY_SAMPLES> displayBuffers[2] = {};
@@ -43,6 +59,10 @@ struct AnalogLFO : Module {
 
 	float progressiveCurve(float character) {
 		return character * character;  // x^2: subtle first half, aggressive second half
+	}
+
+	void onSampleRateChange(const SampleRateChangeEvent& e) override {
+		sqrtSampleTime = std::sqrt(e.sampleTime);
 	}
 
 	float computeSine(float phase, float character) {
@@ -162,11 +182,34 @@ struct AnalogLFO : Module {
 		configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz");
 		configParam(MORPH_ATTEN_PARAM, 0.f, 1.f, 0.f, "Morph CV", "%", 0.f, 100.f);
 		configParam(CHARACTER_ATTEN_PARAM, 0.f, 1.f, 0.f, "Character CV", "%", 0.f, 100.f);
+		configParam(DRIFT_ATTEN_PARAM, 0.f, 1.f, 0.f, "Drift CV", "%", 0.f, 100.f);
 		configInput(MORPH_CV_INPUT, "Morph CV");
 		configInput(DRIFT_CV_INPUT, "Drift CV");
 		configInput(CHARACTER_CV_INPUT, "Character CV");
 		configOutput(OUTPUT, "LFO");
 		updateDisplayBuffer(0.f, 0.f);
+
+		// Per-module unique RNG seed
+		std::random_device rd;
+		rng.seed(rd(), rd());
+
+		// Initialize OU layers (multi-timescale drift)
+		// Layer 0: 0.05Hz slow wander
+		ouLayers[0].theta = 2.f * (float)M_PI * 0.05f;   // 0.314
+		ouLayers[0].sigma = 0.793f;
+		ouLayers[0].weight = 0.50f;
+		// Layer 1: 0.2Hz medium drift
+		ouLayers[1].theta = 2.f * (float)M_PI * 0.2f;    // 1.257
+		ouLayers[1].sigma = 1.586f;
+		ouLayers[1].weight = 0.25f;
+		// Layer 2: 0.8Hz fast drift
+		ouLayers[2].theta = 2.f * (float)M_PI * 0.8f;    // 5.027
+		ouLayers[2].sigma = 3.170f;
+		ouLayers[2].weight = 0.15f;
+		// Layer 3: ~2Hz jitter
+		ouLayers[3].theta = 2.f * (float)M_PI * 2.0f;    // 12.566
+		ouLayers[3].sigma = 5.013f;
+		ouLayers[3].weight = 0.10f;
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -176,6 +219,29 @@ struct AnalogLFO : Module {
 
 		// Phase accumulation (double precision to prevent stall at low frequencies)
 		double deltaPhase = (double)freq * (double)args.sampleTime;
+
+		// Drift processing (modifies deltaPhase BEFORE phase accumulation)
+		float driftKnob = params[DRIFT_PARAM].getValue();
+		float driftAtten = params[DRIFT_ATTEN_PARAM].getValue();
+		float driftCV = inputs[DRIFT_CV_INPUT].getVoltage();
+		float drift = rack::math::clamp(driftKnob + driftAtten * driftCV / 10.f, 0.f, 1.f);
+
+		if (drift >= 0.001f) {
+			// Lazy init sqrtSampleTime (edge case before onSampleRateChange fires)
+			if (sqrtSampleTime == 0.f) sqrtSampleTime = std::sqrt(args.sampleTime);
+
+			float driftAmount = progressiveCurve(drift);
+			float combinedOU = 0.f;
+			for (int i = 0; i < NUM_OU_LAYERS; i++) {
+				float noise = normalDist(rng);
+				ouLayers[i].state += ouLayers[i].theta * (0.f - ouLayers[i].state) * args.sampleTime
+				                   + ouLayers[i].sigma * sqrtSampleTime * noise;
+				combinedOU += ouLayers[i].state * ouLayers[i].weight;
+			}
+			float driftScale = driftAmount * 0.075f;  // 7.5% max frequency deviation
+			deltaPhase *= (1.0 + (double)(driftScale * combinedOU));
+		}
+
 		phase += deltaPhase;
 		if (phase >= 1.0) phase -= 1.0;
 
@@ -195,7 +261,6 @@ struct AnalogLFO : Module {
 		displayPhase.store((float)phase, std::memory_order_relaxed);
 
 		// Update display buffer on phase wrap, morph change, or character change
-		// TODO Phase 5: add driftChanged trigger here
 		bool phaseWrapped = (phase < prevPhaseForDisplay);
 		bool morphChanged = (std::fabs(morph - prevDisplayMorph) > 0.002f);
 		bool characterChanged = (std::fabs(character - prevDisplayCharacter) > 0.002f);
@@ -309,6 +374,9 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	void drawPhaseDot(NVGcontext* vg, const std::array<float, 256>& buffer, float phase, float dimFactor) {
 		float dotRadius = box.size.y * 0.03f;
 
+		// Read drift level for visual instability
+		float driftLevel = module ? module->params[AnalogLFO::DRIFT_PARAM].getValue() : 0.f;
+
 		// Movement detection and breathe
 		float movement = std::fabs(phase - prevFramePhase);
 		if (movement > 0.5f) movement = 1.f - movement;  // wrapped
@@ -324,6 +392,14 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			if (trailPhase < 0.f) trailPhase += 1.f;
 			float tx = phaseToX(trailPhase);
 			float ty = valueToY(interpolateBuffer(buffer, trailPhase));
+
+			// Drift instability: trail Y jitter
+			if (driftLevel > 0.01f) {
+				float jitterAmount = driftLevel * 0.3f;
+				float trailJitter = jitterAmount * std::sin(breathePhase * 3.7f + (float)i * 1.3f);
+				ty += trailJitter;
+			}
+
 			float trailAlpha = 0.3f * (1.f - (float)(i + 1) / 5.f) * dimFactor * breatheFactor;
 			float trailRadius = dotRadius * (0.5f + 0.5f * (1.f - (float)(i + 1) / 5.f));
 
@@ -333,10 +409,11 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			nvgFill(vg);
 		}
 
-		// Glow halo
+		// Glow halo with drift instability
 		float x = phaseToX(phase);
 		float y = valueToY(interpolateBuffer(buffer, phase));
-		float haloRadius = dotRadius * 3.f;
+		float haloJitter = 1.f + driftLevel * 0.15f * std::sin(breathePhase * 2.3f);
+		float haloRadius = dotRadius * 3.f * haloJitter;
 		NVGpaint halo = nvgRadialGradient(vg, x, y, 0.f, haloRadius,
 			nvgRGBAf(1.f, 0.9f, 0.5f, 0.3f * dimFactor * breatheFactor),
 			nvgRGBAf(1.f, 0.9f, 0.5f, 0.f));
