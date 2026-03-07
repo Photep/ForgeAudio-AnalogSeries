@@ -153,8 +153,8 @@ struct AnalogLFO : Module {
 		float saw  = computeSaw(phase, character);
 		float sqr  = computeSquare(phase, character);
 
-		float scaled = morph * 4.f;
-		int segment = std::min((int)scaled, 3);
+		float scaled = morph * 3.f;
+		int segment = std::min((int)scaled, 2);
 		float frac = scaled - (float)segment;
 
 		switch (segment) {
@@ -181,9 +181,9 @@ struct AnalogLFO : Module {
 		configParam(CHARACTER_PARAM, 0.f, 1.f, 0.f, "Character");
 		configParam(DRIFT_PARAM, 0.f, 1.f, 0.f, "Drift");
 		configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz");
-		configParam(MORPH_ATTEN_PARAM, 0.f, 1.f, 0.f, "Morph CV", "%", 0.f, 100.f);
-		configParam(CHARACTER_ATTEN_PARAM, 0.f, 1.f, 0.f, "Character CV", "%", 0.f, 100.f);
-		configParam(DRIFT_ATTEN_PARAM, 0.f, 1.f, 0.f, "Drift CV", "%", 0.f, 100.f);
+		configParam(MORPH_ATTEN_PARAM, 0.f, 1.f, 1.f, "Morph CV", "%", 0.f, 100.f);
+		configParam(CHARACTER_ATTEN_PARAM, 0.f, 1.f, 1.f, "Character CV", "%", 0.f, 100.f);
+		configParam(DRIFT_ATTEN_PARAM, 0.f, 1.f, 1.f, "Drift CV", "%", 0.f, 100.f);
 		configInput(MORPH_CV_INPUT, "Morph CV");
 		configInput(DRIFT_CV_INPUT, "Drift CV");
 		configInput(CHARACTER_CV_INPUT, "Character CV");
@@ -225,7 +225,7 @@ struct AnalogLFO : Module {
 		float driftKnob = params[DRIFT_PARAM].getValue();
 		float driftAtten = params[DRIFT_ATTEN_PARAM].getValue();
 		float driftCV = inputs[DRIFT_CV_INPUT].getVoltage();
-		float drift = rack::math::clamp(driftKnob + driftAtten * driftCV / 10.f, 0.f, 1.f);
+		float drift = rack::math::clamp(driftKnob + driftAtten * driftCV / 5.f, 0.f, 1.f);
 		displayDrift.store(drift, std::memory_order_relaxed);
 
 		if (drift >= 0.001f) {
@@ -251,13 +251,13 @@ struct AnalogLFO : Module {
 		float morphKnob = params[MORPH_PARAM].getValue();
 		float morphAtten = params[MORPH_ATTEN_PARAM].getValue();
 		float morphCV = inputs[MORPH_CV_INPUT].getVoltage();
-		float morph = rack::math::clamp(morphKnob + morphAtten * morphCV / 10.f, 0.f, 1.f);
+		float morph = rack::math::clamp(morphKnob + morphAtten * morphCV / 5.f, 0.f, 1.f);
 
 		// Character with CV (additive offset, attenuator, hard clamp)
 		float charKnob = params[CHARACTER_PARAM].getValue();
 		float charAtten = params[CHARACTER_ATTEN_PARAM].getValue();
 		float charCV = inputs[CHARACTER_CV_INPUT].getVoltage();
-		float character = rack::math::clamp(charKnob + charAtten * charCV / 10.f, 0.f, 1.f);
+		float character = rack::math::clamp(charKnob + charAtten * charCV / 5.f, 0.f, 1.f);
 
 		// Update display phase
 		displayPhase.store((float)phase, std::memory_order_relaxed);
@@ -376,8 +376,13 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	void drawPhaseDot(NVGcontext* vg, const std::array<float, 256>& buffer, float phase, float dimFactor) {
 		float dotRadius = box.size.y * 0.03f;
 
-		// Read drift level for visual instability
+		// Read drift level for visual instability, scaled down at low rates
 		float driftLevel = module ? module->displayDrift.load(std::memory_order_relaxed) : 0.f;
+		if (driftLevel > 0.f && module) {
+			float rate = module->params[AnalogLFO::RATE_PARAM].getValue();
+			float rateScale = std::min(1.f, 0.3f + rate * 0.7f);  // 30% floor, full at 1Hz+
+			driftLevel *= rateScale;
+		}
 
 		// Movement detection and breathe
 		float movement = std::fabs(phase - prevFramePhase);
@@ -395,11 +400,12 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			float tx = phaseToX(trailPhase);
 			float ty = valueToY(interpolateBuffer(buffer, trailPhase));
 
-			// Drift instability: trail Y jitter
+			// Drift instability: trail jitter (scaled to display size)
 			if (driftLevel > 0.01f) {
-				float jitterAmount = driftLevel * 1.5f;
+				float jitterAmount = driftLevel * box.size.y * 0.05f;
 				float trailJitter = jitterAmount * std::sin(breathePhase * 3.7f + (float)i * 1.3f);
 				ty += trailJitter;
+				tx += jitterAmount * 0.3f * std::sin(breathePhase * 4.1f + (float)i * 2.1f);
 			}
 
 			float trailAlpha = 0.3f * (1.f - (float)(i + 1) / 5.f) * dimFactor * breatheFactor;
@@ -414,10 +420,19 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		// Glow halo with drift instability
 		float x = phaseToX(phase);
 		float y = valueToY(interpolateBuffer(buffer, phase));
+
+		// Drift jitter on main dot position
+		if (driftLevel > 0.01f) {
+			float dotJitter = driftLevel * box.size.y * 0.03f;
+			y += dotJitter * std::sin(breathePhase * 5.1f);
+			x += dotJitter * 0.5f * std::sin(breathePhase * 3.3f);
+		}
+
 		float haloJitter = 1.f + driftLevel * 0.75f * std::sin(breathePhase * 2.3f);
 		float haloRadius = dotRadius * 3.f * haloJitter;
+		float haloAlpha = (0.3f + driftLevel * 0.25f) * dimFactor * breatheFactor;
 		NVGpaint halo = nvgRadialGradient(vg, x, y, 0.f, haloRadius,
-			nvgRGBAf(1.f, 0.9f, 0.5f, 0.3f * dimFactor * breatheFactor),
+			nvgRGBAf(1.f, 0.9f, 0.5f, haloAlpha),
 			nvgRGBAf(1.f, 0.9f, 0.5f, 0.f));
 		nvgBeginPath(vg);
 		nvgCircle(vg, x, y, haloRadius);
