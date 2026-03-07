@@ -39,6 +39,7 @@ struct AnalogLFO : Module {
 	float prevDisplayMorph = -1.f;
 	float prevDisplayCharacter = -1.f;
 	double prevPhaseForDisplay = 0.0;
+	float displayUpdateTimer = 0.f;
 
 	float progressiveCurve(float character) {
 		return character * character;  // x^2: subtle first half, aggressive second half
@@ -51,28 +52,29 @@ struct AnalogLFO : Module {
 		// Triangle-derived analog sine: residual THD via Chebyshev polynomials
 		float h2 = 2.f * sine * sine - 1.f;                     // T2: 2nd harmonic
 		float h3 = 4.f * sine * sine * sine - 3.f * sine;       // T3: 3rd harmonic
-		float thd3 = c * 0.02f;   // 2% 3rd harmonic at full character
-		float thd2 = c * 0.008f;  // 0.8% 2nd harmonic at full character
+		float thd3 = c * 0.08f;   // 8% 3rd harmonic at full character
+		float thd2 = c * 0.03f;   // 3% 2nd harmonic at full character
 		return sine + thd3 * h3 + thd2 * h2;
 	}
 
 	float computeTriangle(float phase, float character) {
+		// Digital: peak (+1) at phase=0 and 1, valley (-1) at phase=0.5
 		float tri = 2.f * std::fabs(2.f * phase - 1.f) - 1.f;
 		if (character < 0.001f) return tri;
 		float c = progressiveCurve(character);
-		// Slope asymmetry: rising slope slightly steeper
-		float asymmetry = c * 0.03f;
-		float midpoint = 0.25f + asymmetry * 0.5f;
+		// Slope asymmetry: valley shifts slightly right (falling slope longer)
+		float asymmetry = c * 0.10f;
+		float valley = 0.5f + asymmetry * 0.5f;
 		float analogTri;
-		if (phase < midpoint) {
-			analogTri = -1.f + 2.f * phase / midpoint;
-		} else if (phase < (1.f - midpoint)) {
-			analogTri = 1.f - 2.f * (phase - midpoint) / (1.f - 2.f * midpoint);
+		if (phase < valley) {
+			// Falling from +1 (phase=0) to -1 (phase=valley)
+			analogTri = 1.f - 2.f * phase / valley;
 		} else {
-			analogTri = -1.f + 2.f * (phase - (1.f - midpoint)) / midpoint;
+			// Rising from -1 (phase=valley) to +1 (phase=1)
+			analogTri = -1.f + 2.f * (phase - valley) / (1.f - valley);
 		}
 		// Rounded peaks via sinusoidal smoothing
-		float roundAmount = c * 0.15f;
+		float roundAmount = c * 0.35f;
 		if (analogTri > (1.f - roundAmount)) {
 			float t = (analogTri - (1.f - roundAmount)) / roundAmount;
 			analogTri = (1.f - roundAmount) + roundAmount * std::sin(t * (float)M_PI * 0.5f);
@@ -87,11 +89,11 @@ struct AnalogLFO : Module {
 		float saw = 1.f - 2.f * phase;  // falling ramp (Minimoog convention)
 		if (character < 0.001f) return saw;
 		float c = progressiveCurve(character);
-		// Exponential ramp curvature (~3% deviation at full)
+		// Exponential ramp curvature (50% blend toward exponential at full character)
 		float expRamp = 1.f - 2.f * (1.f - std::exp(-3.f * phase)) / (1.f - std::exp(-3.f));
-		float curvedSaw = saw + c * 0.03f * (expRamp - saw);
-		// Soft capacitor reset (~5% of cycle at full character)
-		float resetWidth = c * 0.05f;
+		float curvedSaw = saw + c * 0.5f * (expRamp - saw);
+		// Soft capacitor reset (~8% of cycle at full character)
+		float resetWidth = c * 0.08f;
 		if (phase < resetWidth && resetWidth > 0.001f) {
 			float t = phase / resetWidth;
 			float smoothT = 0.5f - 0.5f * std::cos(t * (float)M_PI);
@@ -102,21 +104,26 @@ struct AnalogLFO : Module {
 	}
 
 	float computeSquare(float phase, float character) {
+		// Digital: +1 for phase<0.5, -1 for phase>=0.5
 		float sqr = (phase < 0.5f) ? 1.f : -1.f;
 		if (character < 0.001f) return sqr;
 		float c = progressiveCurve(character);
-		// Duty cycle asymmetry (1.5% at full)
-		float duty = 0.5f + c * 0.015f;
-		// Sigmoid edge softening via tanh (~3% edge width at full)
-		float edgeWidth = c * 0.03f;
-		float sharpness = (edgeWidth > 0.001f) ? 1.f / edgeWidth : 1000.f;
-		float rising = std::tanh(sharpness * phase);
-		float falling = std::tanh(sharpness * (duty - phase));
-		float softSquare = rising + falling - 1.f;
-		// Normalize to [-1, +1]
-		float peak = std::tanh(sharpness * duty * 0.5f);
-		if (peak > 0.001f) softSquare /= peak;
-		return softSquare;
+		// Duty cycle asymmetry (4% at full)
+		float duty = 0.5f + c * 0.04f;
+		// Sigmoid edge softening via tanh (~8% edge width at full)
+		float edgeWidth = c * 0.08f;
+		float sharpness = 1.f / std::fmax(edgeWidth, 0.001f);
+		// Soft square: +1 region [0, duty], -1 region [duty, 1]
+		// Use distance from center of +1 region with wrap-aware calculation
+		float center = duty * 0.5f;
+		float halfWidth = duty * 0.5f;
+		float d = phase - center;
+		if (d > 0.5f) d -= 1.f;
+		if (d < -0.5f) d += 1.f;
+		float dist = halfWidth - std::fabs(d);
+		float analog = std::tanh(sharpness * dist);
+		// Crossfade: prevents snap at low character values
+		return sqr + c * (analog - sqr);
 	}
 
 	float computeMorphedWave(float phase, float morph, float character) {
@@ -192,10 +199,15 @@ struct AnalogLFO : Module {
 		bool phaseWrapped = (phase < prevPhaseForDisplay);
 		bool morphChanged = (std::fabs(morph - prevDisplayMorph) > 0.002f);
 		bool characterChanged = (std::fabs(character - prevDisplayCharacter) > 0.002f);
-		if (phaseWrapped || morphChanged || characterChanged) {
+		displayUpdateTimer += args.sampleTime;
+		// Phase wrap always triggers; param changes rate-limited to ~30fps
+		// to prevent visual artifacts from fast CV modulation
+		bool paramReady = displayUpdateTimer >= (1.f / 30.f);
+		if (phaseWrapped || ((morphChanged || characterChanged) && paramReady)) {
 			updateDisplayBuffer(morph, character);
 			prevDisplayMorph = morph;
 			prevDisplayCharacter = character;
+			displayUpdateTimer = 0.f;
 		}
 		prevPhaseForDisplay = phase;
 
