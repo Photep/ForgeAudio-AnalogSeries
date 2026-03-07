@@ -1,432 +1,367 @@
-# Feature Landscape
+# Feature Landscape: Clock Sync LFO (v1.1)
 
-**Domain:** Analog-modeled VCV Rack oscillator modules (LFO + VCO)
-**Researched:** 2026-02-25
-**Confidence:** MEDIUM (deep domain expertise in DSP/synth design from training data; web verification of current VCV module landscape unavailable this session)
+**Domain:** VCV Rack / Eurorack clock-synchronized LFO
+**Researched:** 2026-03-07
+**Overall Confidence:** HIGH
+**Scope:** NEW features only -- clock sync additions to existing Analog Series LFO
+
+---
+
+## Existing Foundation (v1.0 -- already built, must not be disrupted)
+
+- Three-knob analog engine (Morph, Character, Drift)
+- Four-shape parametric morph (Sine-Tri-Saw-Square)
+- Per-shape analog character modeling
+- Four-layer OU drift engine
+- Real-time waveform display with phase-tracking dot, comet trail, glow
+- CV inputs for all three knobs with trimpot attenuators
+- Rate knob (0.01-20Hz linear, at x=18, y=86mm)
+- Bipolar +/-5V single output
+- 12HP panel with Forge Audio branding
+- Lock-free double buffer for audio-to-display transfer
+- Per-module Xoroshiro128Plus RNG
 
 ---
 
 ## Table Stakes
 
-Features users expect from any VCV Rack oscillator claiming analog modeling. Missing any of these means the module feels unfinished and gets passed over in a crowded library.
-
-### Waveform Generation
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Four core waveforms (sine, triangle, saw, square) | Universal expectation for any analog oscillator module. Every classic synth had these. | Low | POC already generates all four from shared phase. |
-| Waveform morphing / continuous sweep | Common in modern VCV modules (VCV Fundamental VCO-2 has a wave knob, Bogaudio VCO). Users expect smooth transitions, not hard switching. | Medium | Sine-to-tri via peak sharpening. Tri-to-saw via asymmetry sweep. Saw-to-square via slope steepening. Must be click-free at all morph speeds including audio-rate CV. |
-| Antialiased audio output (VCO) | Any VCO without antialiasing sounds obviously digital at high pitches. Users notice immediately. Bogaudio, Befaco, Fundamental VCO all antialias. | High | PolyBLEP is the standard. See dedicated Antialiasing section below. |
-| V/Oct pitch input (VCO) | Standard 1V/octave. Without this the VCO is unusable in any patch. | Low | Standard exponential pitch calculation via `exp2_taylor5`. |
-| FM input | Every VCO and most LFOs have FM. Exponential FM is table stakes. | Low | Exponential FM = adding voltage to pitch before exp conversion. Already in POC. |
-| Hard sync input (VCO) | Standard on nearly all analog-modeled VCOs. Users expect it for classic sync lead sounds. | Medium | Reset phase on rising edge. Must handle sub-sample timing for clean sync sweep. |
-| Reset/sync input (LFO) | Standard on all LFOs. Needed for tempo-synced modulation. | Low | Already in POC via Schmitt trigger. |
-| Bipolar +/-5V output | VCV Rack standard for oscillator outputs. | Low | Already in POC. |
-| CV inputs for primary parameters | Any knob without a CV input feels incomplete in modular. Morph, character, and drift all need CV. | Low | Standard VCV pattern: knob value + attenuated CV input. |
-| Reasonable CPU usage | Users run 50-100+ modules in a patch. An oscillator eating >1% single-core CPU gets replaced immediately. | Medium | PolyBLEP is efficient. Drift calculations should be amortized (update every N samples). Display updates at screen rate, not audio rate. |
-| Right-click context menu | VCV Rack convention for secondary settings. Users expect to find options here. | Low | Framework provides this. Use for oversampling, tracking error toggle, etc. |
-| Clean panel with readable labels | Users browse modules visually in the library. Poor panel design = not taken seriously. | Low | SVG panel with established Forge Audio brand identity. |
-
-### Visual Feedback
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Real-time waveform display | Increasingly expected on modern VCV oscillators. Valley Terrorform, Bogaudio LVCO, Lindenberg Research modules all have displays. Without it, the morph/character knobs feel blind. | High | NanoVG custom drawing on FramebufferWidget. Use dirty-flag pattern: only redraw when parameters change. Buffer one cycle of the composite waveform shape. |
-| Phase indicator on display | Shows current position in the cycle. Standard on LFO displays (VCV Fundamental LFO-2). | Medium | Bright dot riding the waveform curve. Update at display rate (~30-60 Hz), not audio rate. |
-
-### Analog Modeling Core
-
-Since the module's entire identity is analog character, these are table stakes *for this specific product* even though generic VCOs skip them.
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Analog character control (digital-to-analog crossfade) | The core promise. Without convincing analog character there is no reason to use this over Fundamental VCO. | High | Per-shape reference waveform models. See Classic Reference Targets below. |
-| Pitch drift | The single most recognizable analog imperfection. Every analog modeling synth includes it. Users test for this immediately. | Medium | Ornstein-Uhlenbeck process: mean-reverting random walk. Must sound like warming-up oscillator, not random noise. |
-| HF rolloff on waveforms | Real analog oscillators have bandwidth-limited harmonics. A saw wave equally bright at C1 and C7 sounds digital. This is the most immediately audible warmth cue. | Medium | One-pole or two-pole lowpass whose cutoff tracks pitch. Higher notes get relatively more rolloff. Part of the character engine. |
-
----
-
-## Classic Analog Reference Targets per Waveform Shape
-
-Which specific synths to target as the "character=1.0" reference for each waveform, and exactly what makes them sound the way they do.
-
-### Sawtooth -- Primary Reference: Minimoog Model D
-
-**Why Minimoog:** The Minimoog sawtooth is the most iconic analog saw wave ever produced. It is the gold standard that virtually every analog modeling synth and plugin targets. When users think "fat analog saw," they hear the Minimoog in their mind.
-
-**What makes it sound that way (circuit-level):**
-
-- **Capacitor discharge reset:** The Minimoog oscillator uses a capacitor that charges linearly (ramp up), then discharges through a transistor switch when it hits a threshold. The discharge is not instantaneous -- it takes approximately 5-15 microseconds, creating a slightly rounded falling edge rather than a mathematically perfect vertical reset. This finite reset time naturally attenuates the highest harmonics.
-- **Exponential ramp curvature:** The charging capacitor creates a slightly convex (exponential approach) ramp rather than a perfectly linear slope. The deviation from linearity is subtle (approximately 1-3% of the waveform amplitude) but contributes perceptible warmth by slightly de-emphasizing upper harmonics relative to a perfect linear ramp.
-- **Natural bandwidth limitation:** The transistor reset circuit and parasitic capacitances roll off harmonics above roughly 15-20 kHz, giving the saw a "dark" quality compared to a mathematically perfect sawtooth. This rolloff increases with pitch (higher notes sound proportionally warmer).
-- **DC offset:** Minimoog oscillators carry a slight DC offset that drifts with temperature, typically 10-50mV equivalent in a 10Vpp signal.
-
-**Secondary reference (contrast, not implementation target):** Roland SH-101 saw -- slightly brighter and thinner, with a faster reset time due to the CEM3340 IC design. More "precise" while still recognizably analog.
-
-**Implementation at character=1.0:** Apply to the base saw: (a) slight exponential curvature to the ramp (convex bend, ~2-3% deviation from linear), (b) soften the reset transition with a short polynomial or tanh rolloff (equivalent to ~10-20us at current pitch), (c) gentle one-pole lowpass tracking pitch. Crossfade all deformations smoothly from character=0 (perfect digital) to character=1.0 (full Minimoog reference).
-
-**Confidence:** HIGH -- Minimoog circuit analysis extensively documented in Stilson & Smith (CCRMA, 1996), Valimaki et al. (2010), and Moog service manuals.
-
-### Square/Pulse -- Primary Reference: Roland SH-101 / Juno-106
-
-**Why Roland:** Roland's CEM3340-based square waves defined the sound of new wave, synthpop, and acid house. They have a distinctively warm, round quality that sits perfectly in a mix.
-
-**What makes them sound that way:**
-
-- **Comparator slew rate:** The square is derived from the saw via a comparator. Real comparators have finite slew rate, producing rounded rising/falling edges with rise/fall times of approximately 1-5 microseconds depending on load capacitance. This is the primary source of the "round" quality -- it naturally rolls off harmonics proportional to the slew rate.
-- **Slight ringing at transitions:** Parasitic capacitance and inductance (PCB traces, component leads) cause subtle overshoot at transitions, typically 5-10% of amplitude that decays within 1-2 microseconds. This adds a tiny burst of high-frequency energy at each edge that gives the square a slight "snap."
-- **Duty cycle asymmetry:** Different propagation delays for rising vs falling edges create slight asymmetry, typically 0.5-2% deviation from perfect 50% duty cycle. This introduces even harmonics that would be absent from a perfect symmetric square.
-- **Inherited saw character:** Since the square is derived from the saw via comparison, imperfections in the saw (ramp curvature, reset shape) subtly affect the comparator switching point timing, coupling the saw's character into the square.
-
-**Implementation at character=1.0:** Apply: (a) sigmoid/tanh edge softening with adjustable rise/fall time (~2-5us equivalent), (b) optional tiny overshoot modeled as a damped sinusoid at transitions, (c) slight duty cycle offset of 0.5-1.5%. Edge softening is by far the most important component.
-
-**Confidence:** HIGH -- CEM3340 datasheet is publicly available; SH-101 and Juno-106 are among the most analyzed synths in existence.
-
-### Triangle -- Primary Reference: Moog Voyager / Prophet-5 Rev 3.3
-
-**Why these:** Triangle waves reveal analog character through peak rounding and slope asymmetry. The Moog Voyager (modern Moog, classic topology) and Prophet-5 Rev 3.3 (SSM2040-based) produce warm, characterful triangles.
-
-**What makes them sound that way:**
-
-- **Rounded peaks and valleys:** The integrator circuit generating the triangle has finite bandwidth. At the direction-reversal points, the integrator curves through the transition rather than changing direction instantaneously. Peak shape approximates a sinusoidal cap rather than a sharp mathematical point. The radius of curvature is determined by the integrator's bandwidth.
-- **Slope asymmetry:** Charging and discharging current paths through the integrating capacitor are never perfectly matched. Typical mismatch is 1-5%, creating one slope slightly steeper than the other. This introduces even harmonics (primarily 2nd harmonic) that are absent from a perfect symmetric triangle.
-- **Subtlety:** A perfect triangle has only odd harmonics at 1/n^2 amplitude, making it already close to a sine. Analog imperfections on triangle are more subtle than on saw or square -- real but requiring attentive listening to appreciate.
-
-**Implementation at character=1.0:** Apply: (a) polynomial or sinusoidal rounding at peaks and valleys (smooth curve over the top/bottom ~5-10% of waveform amplitude), (b) slight asymmetry between rising/falling slopes (2-3% steeper on one side). Peak rounding is the more perceptually important effect.
-
-**Confidence:** MEDIUM -- General mechanisms well-understood, but triangle character differences between specific synths are subtle and less extensively documented than saw/square. Quantitative targets are approximate.
-
-### Sine -- Primary Reference: Minimoog (Triangle-Derived)
-
-**Why Minimoog:** Most classic analog synths lack a dedicated sine oscillator. The "sine" is derived from the triangle via a waveshaper circuit -- typically a differential transistor pair (Moog, Sequential) or diode network. This derivation process defines the character.
-
-**What makes it sound that way:**
-
-- **Residual harmonics (THD):** The triangle-to-sine waveshaper intentionally cancels the triangle's harmonics, but cancellation is imperfect. Typical THD for an analog "sine" is 1-5%, primarily 3rd harmonic (residual from triangle source) plus some 2nd harmonic (from asymmetry in the shaping circuit). A perfect mathematical sine is actually a telltale sign of digital origin.
-- **Asymmetry inheritance:** Triangle asymmetry carries through to the sine, appearing as even-harmonic distortion (primarily 2nd harmonic). This gives the sine a slightly "fat" quality.
-- **Soft clipping at peaks:** The waveshaper saturates the triangle peaks into sinusoidal shape, but the saturation curve is not mathematically perfect. Peaks are marginally wider or narrower than a true sine depending on the specific circuit.
-
-**Key implementation insight:** At character=0, output a pure `sin(2*pi*phase)`. At character=1.0, add 1-3% THD using Chebyshev polynomial mixing or a simple polynomial waveshaper on a triangle: `out = a1*tri + a3*tri^3 + a5*tri^5` with tuned coefficients. Do NOT add too much distortion -- real analog sines are surprisingly clean. The difference from a perfect sine is subtle.
-
-**Confidence:** MEDIUM -- sine shaping circuits vary significantly between manufacturers. The general principle (triangle-derived with residual THD) is universal, but specific harmonic profiles vary.
-
----
-
-## Analog Imperfections: Detailed Analysis
-
-Ranked by perceptual impact. This directly informs what the Drift knob controls and in what proportions.
-
-### Tier 1: Perceptually Critical (users notice immediately)
-
-| Imperfection | What It Is | Perceptual Effect | Implementation | Complexity |
-|-------------|------------|-------------------|----------------|------------|
-| **Pitch drift** | Slow random wandering of pitch, typically +/- 2-10 cents over seconds to minutes | The "warming up" sound. The single most recognizable analog behavior. Creates natural chorusing when multiple oscillators drift apart. Makes sustained notes feel alive rather than static. | Ornstein-Uhlenbeck process: sum of 3-4 independent band-limited random walks at different time scales (0.05 Hz very slow drift, 0.2 Hz medium wander, 0.8 Hz gentle vibrato-like movement, ~2 Hz subtle fast wobble). The OU process has mean-reversion, which prevents unbounded pitch wandering and creates realistic "centered but wandering" behavior. Scale total deviation with drift knob. | Medium |
-| **HF rolloff** | Progressive attenuation of harmonics above ~10-15 kHz | Warmth. Digital saws and squares sound "brittle" and "icy" without this. This is arguably the single most important contributor to perceived warmth, even more than waveshape deformation. Immediately audible in A/B comparison. | One-pole lowpass whose cutoff decreases as pitch increases. At C2 (65 Hz): cutoff ~18 kHz (barely audible). At C5 (523 Hz): cutoff ~14 kHz (noticeable warmth). At C7 (2093 Hz): cutoff ~10 kHz (significant softening). Scale with character knob (this is character, not drift). Can alternatively be baked directly into waveform generation by rolling off the higher PolyBLEP corrections. | Low-Med |
-| **Waveform shape deformation** | Non-ideal waveshapes: curved saw ramp, rounded square edges, rounded triangle peaks, impure sine | This IS the analog character. When users say "it sounds analog" they primarily mean the waveforms have these specific imperfections. The waveshape difference is what makes Minimoog saw sound different from a digital saw. | Per-shape parametric deformation as detailed in the Reference Targets section. This is the character knob's primary job. | Med-High |
-
-### Tier 2: Important for Authenticity (noticed in careful listening, felt as "aliveness")
-
-| Imperfection | What It Is | Perceptual Effect | Implementation | Complexity |
-|-------------|------------|-------------------|----------------|------------|
-| **Phase jitter** | Cycle-to-cycle timing variation, typically <0.1% of the period | Subtle animation. Prevents the perfectly static, mechanical quality of digital oscillators. Each cycle is very slightly different in duration. Most audible on sustained notes and in stereo with another oscillator. | Small random perturbation added to phase increment each sample. Use band-limited noise (lowpass filtered white noise, cutoff ~100-500 Hz) scaled very small. Must be subtle enough to not sound like FM modulation. | Low |
-| **DC offset drift** | Small slowly-varying voltage added to the output, typically 10-50mV in a +/-5V signal | Not directly audible as pitch or timbre change, but affects downstream modules: filters respond differently with DC at input, waveshapers become asymmetric, VCAs produce soft clicks on note edges. Adds authenticity when users scope the output. | Slow random walk (0.01-0.1 Hz) added to final output. Very small amplitude relative to signal. | Low |
-| **Pitch slew** | Pitch does not change instantaneously; small lag when CV changes rapidly | Subtle portamento-like smoothing on fast pitch sequences. Prevents the perfectly instant pitch transitions that sound digital. Audible on rapid arpeggios as a very slight "slide" into each note. | One-pole lowpass on the pitch CV before exponential conversion. Time constant ~1-5ms at full drift, 0ms at drift=0. | Low |
-| **Component spread** | Each physical unit has slightly different characteristics due to manufacturing tolerances | Multiple module instances sound slightly different, like buying two of the same synth from different production runs. One drifts faster, another has a slightly brighter saw. Meaningful for detuned unison patches. | Per-instance random seed from module ID. Offsets: drift rate (+/- 20%), DC offset base (+/- 30%), waveform curvature (+/- 10%), HF rolloff frequency (+/- 5%). Calculated once at creation. | Low |
-
-### Tier 3: Subtle/Specialist (completionists value, most users will not notice)
-
-| Imperfection | What It Is | Perceptual Effect | Implementation | Complexity |
-|-------------|------------|-------------------|----------------|------------|
-| **Tracking error** | Pitch deviates from perfect V/Oct at range extremes. Real VCOs go sharp in upper octaves, flat in lower. | Authentic but potentially frustrating. Detuning at extremes was a constant annoyance for real analog synth players. Noticeable when playing wide intervals. | Slight nonlinear S-curve on V/Oct: +5-15 cents at C7, -5-10 cents at C1, accurate around C3-C4 center. Must be togglable via right-click. Default: OFF. | Low |
-| **Waveform bleed** | Residual signal from other waveform stages in the output | Very subtle crosstalk. See dedicated Bleed section below. For a morphed output, manifests as widened transition zones. | Mix small amounts of adjacent shapes into morph boundaries. Scale with character knob. | Low |
-| **Power supply ripple** | Very low-level hum from supply coupling into oscillator | Barely audible at ~-60 dB in real synths. Not worth the CPU. | Do not implement for v1. | N/A |
-| **Temperature sensitivity** | Pitch/character change with temperature over minutes/hours | Already covered perceptually by pitch drift and component spread. Modeling actual thermal curves adds complexity with zero additional audible benefit. | Do not implement separately. Drift knob covers this perception. | N/A |
-
-### Drift Knob Scaling Recommendation
-
-The drift knob scales all Tier 1 drift effects and Tier 2 imperfections together in musically curated proportions. HF rolloff and waveform deformation are controlled by the character knob instead.
-
-| Drift Position | Pitch Drift | Phase Jitter | DC Offset | Pitch Slew | Subjective Quality |
-|----------------|-------------|--------------|-----------|------------|-------------------|
-| 0.0 | 0 cents | 0% | 0 mV | 0 ms | Perfectly stable digital |
-| 0.25 | +/- 1 cent | 0.01% | 5 mV | 0.5 ms | Barely perceptible movement |
-| 0.50 | +/- 3 cents | 0.03% | 15 mV | 1.5 ms | "Well-maintained studio analog" |
-| 0.75 | +/- 6 cents | 0.06% | 30 mV | 3 ms | "Vintage, character-full" |
-| 1.0 | +/- 10 cents | 0.1% | 50 mV | 5 ms | "Just powered on, still warming up" |
-
-**Note:** These are starting points from literature and experience. Final values MUST be tuned by ear. The subjective "feel" matters more than hitting specific numbers. Use logarithmic or exponential scaling so most of the useful range is in the first 75% of knob travel.
-
----
-
-## Waveform Bleed in Real Analog Circuits
-
-In real analog oscillators, waveform bleed occurs because:
-
-1. **Shared core oscillator:** All waveforms derive from the same ramp/saw core. Triangle is integrated from the square; sine is shaped from the triangle. They share circuit nodes.
-2. **Parasitic capacitive coupling:** PCB traces running near each other couple signals at approximately -40 to -60 dB below the primary signal level.
-3. **Op-amp crosstalk through power rails:** Output buffers in close proximity couple through shared supply rails, especially at high frequencies.
-4. **Imperfect waveshaper nulling:** The triangle-to-sine shaper does not perfectly cancel triangle harmonics, leaving residual odd harmonics in the sine output.
-
-**What it sounds like in practice:** At individual outputs of a real synth, faint ghosts of other waveforms are present. Most noticeable on the sine output where a faint "buzz" (sawtooth residual) is audible at -40 dB. On saw and square outputs, bleed is masked by rich harmonic content and is effectively inaudible.
-
-**Relevance to this project's single morphed output:** Traditional inter-output bleed does not directly apply since there is one output. Instead, model bleed as part of the morph transition:
-
-- **At morph positions near shape boundaries** (~0.25 where tri meets saw, ~0.50 where saw meets square), the transition should not be a perfectly clean mathematical crossfade when character > 0. A small amount of the adjacent shape should "leak" into the transition zone.
-- **Scale with character knob:** At character=0, crossfade is mathematically precise. At character=1.0, transition zones are wider with ~2-5% residual from the neighboring shape.
-- **Most critical zone:** The sine region. A sine with character > 0.5 should carry faint traces of triangle harmonics (3rd, 5th harmonic at -30 to -40 dB), simulating imperfect triangle-to-sine waveshaping.
-
----
-
-## Antialiasing Approaches for Audio-Rate VCO
-
-### PolyBLEP -- Recommended Primary Approach
-
-**What:** Polynomial Band-Limited Step. Applies a low-order polynomial correction to samples near discontinuities (saw resets, square transitions).
-
-**Used by:** VCV Fundamental VCO, Befaco EvenVCO, Bogaudio VCO, and most quality VCV Rack oscillators.
-
-**Quality:** Good. Eliminates the worst aliasing (loud inharmonic tones). Some residual aliasing above C7, but acceptable and consistent with real analog oscillators' high-frequency behavior.
-
-**CPU cost:** Very low. 2-4 extra multiplications per sample, only near discontinuities.
-
-**Implementation notes:**
-- For discontinuity at fractional position `t` within current sample (0 <= t < 1):
-  - Apply correction to the sample containing the discontinuity and the next sample
-  - 2nd-order PolyBLEP: `correction = t*t + 2*t - 1` (before) and `-(t*t) + 2*t - 1` scaled by discontinuity magnitude
-- Apply to saw: one correction per cycle at reset
-- Apply to square: two corrections per cycle (both edges)
-- Triangle and sine: no correction needed (continuous, no discontinuities)
-- Use 4th-order (or higher) PolyBLEP from the start -- marginal CPU increase, meaningful quality improvement at high pitches
-
-**Critical morphing consideration:** As the morph sweeps, discontinuity structure changes:
-- Sine/triangle region (0.0-0.25): no discontinuities, no PolyBLEP
-- Tri-to-saw (0.25-0.50): discontinuity appears and grows. PolyBLEP magnitude must ramp in smoothly, proportional to discontinuity size
-- Saw-to-square (0.50-0.75): one discontinuity splits into two. Must transition correction from one to two discontinuities per cycle
-- Square region (0.75-1.0): two discontinuities at full PolyBLEP correction
-
-This morph-aware PolyBLEP is the trickiest part of the VCO implementation.
-
-### MinBLEP -- Higher Quality Alternative (Defer to v2)
-
-**What:** Minimum-phase Band-Limited Step using a precomputed windowed sinc table. More accurate than PolyBLEP.
-
-**Quality:** Excellent. Virtually alias-free across full frequency range.
-
-**CPU cost:** Moderate. ~3-5x PolyBLEP due to table lookup, interpolation, and correction buffer (~32-64 samples).
-
-**Why defer:** More complex to implement, harder to integrate with morphing (correction buffer interacts with morph changes), and quality difference over PolyBLEP is marginal for musical use. Consider for v2 if users specifically request better aliasing.
-
-### Oversampling -- Complementary Option
-
-**What:** Process at 2x/4x sample rate, downsample with steep lowpass (half-band FIR).
-
-**Quality:** PolyBLEP + 2x oversampling approaches MinBLEP quality.
-
-**CPU cost:** 2x oversampling approximately doubles oscillator CPU; 4x quadruples.
-
-**Recommendation:** Offer as right-click menu option: "Oversampling: Off / 2x / 4x". Default Off. This is established VCV convention (Befaco and Bogaudio both do this).
-
-### Antialiasing Recommendation
-
-**Use PolyBLEP (4th-order) as the always-on primary method, with optional 2x/4x oversampling via right-click menu.** This matches quality expectations, keeps default CPU low, and provides an upgrade path. Defer MinBLEP to v2.
-
----
-
-## Existing VCV Rack Module Landscape
-
-### Befaco EvenVCO
-- **Morphing:** None. Separate outputs per shape.
-- **Analog character:** Minimal. Targets precision, not vintage.
-- **Antialiasing:** PolyBLEP.
-- **Competitive position:** Not a competitor in analog-character space.
-
-### Bogaudio VCO / LVCO
-- **Morphing:** No continuous morph.
-- **Analog character:** Minimal. Clean digital focus.
-- **Antialiasing:** PolyBLEP with optional oversampling.
-- **Display:** LVCO has waveform display (good UI reference).
-- **Competitive position:** Well-regarded for features/efficiency. Not analog-modeling.
-
-### Valley Terrorform
-- **Morphing:** Wavetable scanning. Different paradigm.
-- **Analog character:** Modern digital aesthetic.
-- **Display:** Waveform display (good reference).
-- **Competitive position:** Different market segment entirely.
-
-### Lindenberg Research (VCO, Woldemar, Alma)
-- **Morphing:** Some modules have wave morphing.
-- **Analog character:** Explicitly analog-modeled with drift and nonlinearity. Closest competitor.
-- **Display:** Excellent oscilloscope-style with glow effects.
-- **Competitive position:** Main competitor. However, Lindenberg provides "generic analog character" rather than specific classic synth references. Forge Audio differentiates with: (a) named synth targets rather than generic warmth, (b) three independent axes (morph/character/drift) rather than single analog amount, (c) character knob answers "WHICH analog" not just "HOW MUCH."
-
-### VCV Fundamental VCO-2
-- **Morphing:** Has a "wave" knob that morphs between shapes. The free baseline.
-- **Analog character:** None. Pure digital.
-- **Antialiasing:** PolyBLEP.
-- **Competitive position:** The module Forge Audio must clearly surpass. If the character knob at zero sounds identical to VCO-2, the morph alone is insufficient differentiation. The analog character engine is what justifies the module's existence.
-
-### Gap Analysis
-
-**No existing VCV Rack module combines all three of:**
-1. Continuous waveform morphing between four classic shapes
-2. Specific classic synth reference modeling (not generic warmth)
-3. Controllable, multi-dimensional analog imperfection system
-
-This three-axis approach is genuine whitespace.
+Features users expect from ANY clock-synced LFO. Missing any of these means the module feels broken or incomplete. Every reference module (VCV LFO-1, Batumi, Tides, Mutable Instruments Stages) implements all of these.
+
+| Feature | Why Expected | Complexity | Dependencies on Existing | Notes |
+|---------|--------------|------------|-------------------------|-------|
+| **CLK trigger input jack** | Every synced Eurorack LFO has one. No jack = no sync. This is the physical entry point for the entire feature set. | Low | New `InputId` enum entry, panel SVG update, widget code for jack placement | Standard PJ301MPort jack. Must fit on existing 12HP panel without moving existing components. |
+| **Edge detection via Schmitt trigger** | VCV Rack standard: low threshold 0.1V, high threshold 1.0V (per official Voltage Standards). Without proper hysteresis, noise causes false triggers. | Low | None -- new state variable | Use `dsp::SchmittTrigger` with `process(x, 0.1f, 1.f)`. Well-documented VCV SDK pattern. Single line of code per sample. |
+| **Clock period measurement** | Core mechanism: measure elapsed time between consecutive rising edges to derive tempo. Every other feature depends on this measurement. | Low | None -- new state variables (`float clockPeriod`, `int samplesSinceEdge`) | Increment sample counter each `process()` call. On trigger, compute `period = counter * sampleTime`. Store for frequency derivation. |
+| **Clock period smoothing** | Single-edge measurement is jittery (clock generators have timing variance). Users expect stable, non-wobbling tempo tracking. Batumi, Tides, and Stages all smooth over multiple edges. | Medium | Requires period measurement | Exponential moving average (EMA) is the right approach: `smoothed = alpha * new + (1-alpha) * smoothed` with alpha ~0.3-0.5. Responds to tempo changes within 2-3 edges. Simpler than ring buffer, no allocation. |
+| **Dual-mode Rate knob** | When CLK connected: Rate selects division/multiplication ratio. When CLK disconnected: Rate works exactly as v1.0 (free Hz). This is exactly how VCV LFO-1 works -- FREQ knob becomes multiplier when CLK patched, with 1x at center. The canonical reference behavior. | Medium | Modifies existing `RATE_PARAM` interpretation in `process()` | Must be fully backward compatible: unpatched CLK = identical to v1.0. The knob does not physically change -- only its interpretation changes based on `inputs[CLK_INPUT].isConnected()`. |
+| **Phase reset on clock edge** | LFO restarts from phase=0.0 on each relevant clock tick. Beat alignment is the entire point of clock sync. Batumi's SYNC mode does this. Without phase reset, the LFO drifts out of alignment with the beat. | Medium | Modifies existing `phase` accumulator (set `phase = 0.0` on trigger) | For x1 ratio: reset on every clock edge. For divisions (/2, /4): reset every Nth edge via counter. For multiplications (x2, x4): reset on clock edge, subdivide between edges. |
+| **Clock division ratios** | Slower than clock: /1, /2, /4, /8 minimum. These map to standard musical note values (whole, half, quarter, eighth relative to clock). Every clocked module from Doepfer A-160-1 to Pamela's includes power-of-2 divisions. | Medium | Requires period measurement, modifies phase accumulation rate | Count incoming clock edges with a division counter. Phase frequency = `1.0 / (clockPeriod * divisionRatio)`. |
+| **Clock multiplication ratios** | Faster than clock: x1, x2, x4, x8 minimum. Subdivide the measured period. Tides does 1-16x. Pamela's does up to 192x. Users need faster-than-clock modulation for tremolo-like effects synced to beat. | Medium | Requires smoothed period measurement (jitter more noticeable when multiplied) | Set LFO frequency to `multiplier / smoothedPeriod`. Phase accumulates at the multiplied rate. Jitter in period measurement is amplified by multiplier, so smoothing is critical. |
+| **Visual sync indicator** | Users need to know at a glance whether the LFO is free-running or clock-locked. Ohmer KlokSpid uses green SYNC LED. Surge XT uses orange switch. Every clock module shows sync state. | Low | Existing NanoVG display infrastructure, new `std::atomic<bool>` for sync state | Small "SYNC" text badge or icon on the waveform display when CLK connected and receiving valid edges. Use existing forge amber (#e8a838). |
+| **Division/multiplication label** | When synced, the Rate knob maps to a ratio, not Hz. Users need to see "/4" or "x2" on screen. Without this, the Rate knob is opaque in synced mode. | Low | Existing NanoVG display, requires ratio calculation | Text overlay on display showing current ratio string. Updates when Rate knob moves. Small, lower corner, unobtrusive. |
+
+**Confidence:** HIGH -- these features are universally present across VCV LFO-1 (official), Batumi (industry standard hardware LFO), Tides (Mutable Instruments reference), Pamela's New/Pro Workout, and Mutable Instruments Stages. Verified through official documentation and multiple community sources.
 
 ---
 
 ## Differentiators
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Three-knob analog engine (morph + character + drift)** | No other VCV module separates waveform selection, tonal reference, and imperfection into three independent CV-controllable axes. The system architecture is the differentiator. | High | Each axis independently useful; together they create a unique design space. |
-| **Named classic synth references on character knob** | "Minimoog saw" is more compelling and concrete than generic "warmth." Users know what a Minimoog sounds like. The character knob has a specific, verifiable target. | High | Requires accurate per-shape modeling. Reference targets documented above. |
-| **Component spread (per-instance variation)** | Multiple instances sound slightly different, like real hardware units. Meaningful for detuned unison patches. | Low | Seed from module ID. One-time random offsets to drift, DC, curvature, rolloff. |
-| **Waveform display showing all three axes** | Display makes the abstract tangible: SEE the curved Minimoog ramp, SEE drift wobble, SEE DC offset. Not just a scope -- a composite view of the three control axes. | High | Dirty-flag updates. Must efficiently composite morph+character+drift. |
-| **Through-zero FM (VCO)** | True TZFM for clean, stable FM tones with analog character layered on. Uncommon in VCV analog-style VCOs. | High | Signed frequency, phase decrements. Tricky with antialiasing near zero-crossing. |
-| **Phase distortion (VCO)** | Casio CZ-style synthesis adds a timbral dimension orthogonal to morph. Rare in VCV Rack combined with analog modeling. | Medium | Modifies phase lookup. Interacts uniquely with character (phase-distorted analog waveforms are unexplored territory). |
-| **Inverted output** | Both normal and inverted morphed output. Saves a utility module. | Low | Negate output. Trivial but useful. |
-| **Oversampling option** | Power users can trade CPU for quality. Established VCV convention. | Medium | Right-click: Off/2x/4x. Half-band FIR decimation. |
+Features that would set this clock sync apart from typical implementations. Not expected, but would be noticed and valued.
+
+| Feature | Value Proposition | Complexity | Dependencies on Existing | Notes |
+|---------|-------------------|------------|-------------------------|-------|
+| **Triplet and dotted ratios (/3, /6, x3, x6, /1.5, x1.5)** | Most basic clock-synced LFOs only offer power-of-2 ratios. Triplet divisions create polyrhythmic modulation that musicians actively seek. Part of why Pamela's Pro Workout is so popular. | Low (incremental over basic ratios) | Same mechanism as even divisions | Adds /3, /6, x3, x6 for triplet feel. /1.5 and x1.5 for dotted note relationships. Musical value per added complexity is very high. |
+| **Drift interaction with clock sync** | Unique to Forge Audio: the existing OU drift engine could apply reduced modulation to the synced frequency, creating an LFO that follows the clock but with analog-style imperfection. No other VCV clock-synced LFO does this because no other has a drift engine. | Low | Existing drift engine -- just apply a scaled fraction to synced frequency | When synced, apply `driftScale * 0.25` (reduced from free-running 0.075) to the clock-derived frequency. Creates "analog clock follower" feel. Must be subtle enough not to break perceived sync. The drift knob at 0 = perfect digital sync; drift knob up = slightly wobbly vintage clock follower. |
+| **Smooth clock-loss transition** | When clock stops, most modules either freeze abruptly or snap to free-running. A gradual transition to free-running at the last-known tempo feels more musical and less jarring. Mutable Instruments Stages implements adaptive timeout. | Medium | Requires timeout detection logic, modifies mode-switching code | Track time since last clock edge. Timeout threshold = 3x last smoothed period (adaptive, per Stages approach). After timeout, continue oscillating at last known frequency in free-running mode. On next valid clock edge, immediately re-engage sync. |
+| **Animated sync badge** | Instead of static "SYNC" text, the badge pulses with the clock -- brief brightness increase on each clock edge, fading over ~100ms. Fits the existing "alive" display aesthetic with breathing dots and comet trails. | Low | Existing NanoVG display animation infrastructure | Store `lastClockTime` as atomic float. In display draw, compute fade = `1.0 - min(1.0, timeSinceEdge / 0.1)`. Modulate badge alpha. Complements existing display animation language. |
+| **Extended ratio range (/16 to x16)** | Tides does 1/16 to 16x. Pamela's does /16384 to x192. Offering a wide range gives more creative options for both glacially slow modulation and fast rhythmic effects. | Low (just more entries in ratio table) | Same mechanism as basic ratios | 15 ratio steps across the knob range: /16, /8, /6, /4, /3, /2, /1.5, x1, x1.5, x2, x3, x4, x6, x8, x16. Comfortable spacing of ~6.7% per step. |
+
+**Confidence:** MEDIUM -- these are design differentiators based on analysis of what existing modules lack, not explicitly community-requested features. The drift interaction is novel and untested in the wild.
 
 ---
 
 ## Anti-Features
 
+Features to explicitly NOT build for clock sync. Either out of scope, over-engineered, or undermining the module's identity.
+
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **Separate waveform outputs** | Breaks the design concept. The single morphed output IS the point. Separate outputs make it "just another multi-output VCO with knobs." | Single morphed + inverted. Users wanting separate shapes have Befaco, Bogaudio, Fundamental. |
-| **Polyphonic operation (v1)** | 16x CPU cost, complicates drift (N independent generators), complicates display (which voice to show?). Mono is the modular norm. | Mono for v1. Per-instance component spread gives natural detuning across multiple instances. |
-| **Built-in effects** | Scope creep. Oscillators oscillate; effects process. Modular philosophy = separate concerns. | Clean output. Users choose their own downstream signal chain. |
-| **Wavetable mode** | Different paradigm. Dilutes analog identity. Competitors (Valley Terrorform) own this space. | Four classic shapes with morphing. The constraint is the identity. |
-| **Named synth presets** | Undercuts hands-on tweaking. "Minimoog" preset implies emulation accuracy and invites trademark issues. | Character knob position IS the preset. Descriptive labels only (no trademarked names on panel). |
-| **MIDI input / quantization** | Out of scope for an oscillator. These are upstream module responsibilities. | Standard V/Oct input. |
-| **Amplitude envelope** | Oscillators oscillate; envelopes shape. Combining = semi-voice that breaks modular philosophy. | Continuous output. Users patch through VCA + EG. |
-| **Scope / spectrum analyzer display** | The display is a shape preview, not a measurement tool. Adding FFT, time-base, triggers bloats UI and CPU. | Single-cycle shape display, fixed zoom, phase dot. Users have Fundamental Scope for analysis. |
-| **Individually exposed drift parameters on panel** | Separate knobs for drift rate, jitter, DC, slew creates option paralysis and panel clutter. The power is ONE knob scaling everything in curated proportions. | Single drift knob. Individual parameter fine-tuning available in right-click menu for advanced users. |
-| **PWM as separate control** | Already subsumed by morph architecture. In the square region, morph position inherently controls duty cycle. Separate PWM input is redundant. | Modulate morph CV while knob is in square region for PWM effect. |
-| **Built-in sub-oscillator** | Panel complexity, dilutes three-knob focus. Users patch a second instance one octave down. | Leave to dedicated sub-osc modules or second instance. |
+| **Separate RESET input jack** | Panel space on 12HP is precious -- we have room for exactly one new jack. A dedicated RESET jack separate from CLK adds panel complexity for a use case mostly covered by clock-edge phase reset. Batumi combines sync and reset behavior. | Phase reset happens automatically on CLK edge. If users need independent reset timing, they can use an external trigger combiner or sequential switch upstream. |
+| **Phase offset knob or CV** | Would require a 4th panel knob or CV jack, breaking the three-knob engine identity that IS the brand. Phase offset is a niche feature for multi-LFO phase relationships. | Defer to a hypothetical future "quad LFO" module. The three-knob engine must remain three knobs. |
+| **Swing/shuffle** | Adds rhythmic variation to clock divisions. Musically interesting but belongs in a clock generator (Pamela's) or clock modifier, not an LFO. Adding swing makes this module try to be a clock processor. | Users who want swing should swing the incoming clock before it reaches CLK input. Modular philosophy: each module does one thing well. |
+| **Internal BPM/tempo mode** | Turning the LFO into its own clock generator with BPM display and tap tempo. This makes it a clock module, not an LFO. Scope creep. | The Rate knob in free-running mode already sets frequency in Hz. BPM display is a clock module feature (Impromptu Clocked, Pamela's). |
+| **Tap tempo button on panel** | A physical panel button for manually tapping tempo. Requires panel real estate and is completely redundant when CLK input exists -- CLK input IS the tap tempo mechanism (measures period from triggers). | CLK input handles this. Users can use any external button/trigger module to tap. |
+| **PLL (Phase-Locked Loop) sync** | A PLL continuously adjusts frequency to maintain phase coherence without hard reset. Massively over-engineered for sub-audio LFO rates. Introduces tracking delay, potential oscillation/hunting artifacts, and complex tuning. PLLs are for audio-rate VCO hard sync. | Simple period measurement + phase reset is sufficient and predictable at LFO rates. Users understand "measure tempo, reset phase" behavior intuitively. |
+| **CV control of division ratio** | A CV input to modulate the clock division ratio externally. Adds another jack to an already-tight 12HP panel. Complex edge cases (what happens when ratio changes mid-cycle? Glitches, clicks, phase jumps). | The Rate knob handles ratio selection manually. CV-controlled clock division is a separate utility module's job (like Pamela's per-channel CV). |
+| **Clock output / clock-through jack** | Re-emitting the measured clock or a derived clock output. This is clock distribution, not LFO territory. | Users who need clock distribution use dedicated clock modules (Impromptu Clocked, etc.). |
+| **Separate Reset vs. Sync mode toggle** | Batumi has a back-panel jumper choosing between "Reset" mode (hard restart on each pulse) and "Sync" mode (adapt period from pulse timing). Adding a mode toggle increases complexity and user confusion for a subtle behavioral difference. | Implement ONE well-designed behavior that combines the best of both: measure period (Sync-style tempo tracking) AND reset phase on clock edge (Reset-style alignment). This is what users actually want -- tempo following with beat alignment. |
+| **Continuous (non-snapped) ratio interpolation** | Allowing the Rate knob to smoothly interpolate between, say, /4 and /2. Sounds like it offers precision, but creates non-musical frequencies that defeat the purpose of clock sync. A ratio of 3.7x is meaningless musically. | Snap to nearest discrete ratio. The whole point of clock division is musical relationships. |
+
+**Confidence:** HIGH -- these decisions align with the established "three-knob engine" philosophy, the 12HP panel constraint, and modular design principles verified across the Eurorack ecosystem.
 
 ---
 
 ## Feature Dependencies
 
 ```
-Core Waveform Generation (sine, tri, saw, square from shared phase)
-  |
-  +-- Waveform Morphing (requires all four shapes)
-  |     |
-  |     +-- Morph CV Input
-  |     |
-  |     +-- PolyBLEP Antialiasing [VCO only]
-  |     |     (must track morph position for discontinuity locations/magnitudes)
-  |     |     |
-  |     |     +-- Oversampling Option (complements PolyBLEP, independent toggle)
-  |     |
-  |     +-- Waveform Bleed in Morph Zones (widens transitions at high character)
-  |
-  +-- Analog Character Engine (deforms base waveforms toward reference targets)
-  |     |
-  |     +-- Minimoog Saw Reference (exponential ramp, soft reset)
-  |     +-- Roland Square Reference (slewed transitions, duty asymmetry)
-  |     +-- Moog/Prophet Triangle Reference (rounded peaks, slope asymmetry)
-  |     +-- Analog Sine Reference (1-3% THD, residual harmonics)
-  |     |
-  |     +-- HF Rolloff (pitch-tracking lowpass, part of character chain)
-  |     +-- Character CV Input
-  |
-  +-- Drift Engine (modulates oscillator, independent of character)
-  |     |
-  |     +-- Pitch Drift (Ornstein-Uhlenbeck, primary component)
-  |     +-- Phase Jitter (band-limited noise on phase increment)
-  |     +-- DC Offset Drift (slow random walk on output)
-  |     +-- Pitch Slew (one-pole lowpass on pitch CV)
-  |     +-- Component Spread (per-instance seed, offsets all parameters)
-  |     |
-  |     +-- Drift CV Input
-  |
-  +-- Tracking Error [VCO only] (toggle, modifies V/Oct curve)
-
-Waveform Display
-  +-- Requires: phase access, morph state, character state, drift state
-  +-- Phase Tracking Dot (requires phase accumulator)
-  +-- Dirty-flag redraw (requires parameter change detection)
-
-VCO-Specific (extends shared foundation)
-  +-- V/Oct Input
-  +-- Hard Sync (phase reset on external trigger)
-  +-- Through-Zero FM (signed frequency, phase decrements)
-  |     +-- Stable antialiasing at negative frequencies
-  +-- Phase Distortion (modifies phase lookup, orthogonal to morph)
+CLK Input Jack (panel SVG + InputId enum + widget placement)
+    |
+    v
+Edge Detection (dsp::SchmittTrigger, process per sample)
+    |
+    v
+Clock Period Measurement (sample counter between edges)
+    |
+    +-------> Clock Period Smoothing (EMA, alpha ~0.3-0.5)
+    |              |
+    |              v
+    |         Synced Frequency Derivation (ratio / smoothedPeriod)
+    |              |
+    |              v
+    |         Rate Knob Remapping (free Hz -> snapped ratio table)
+    |              |
+    |              v
+    |         Phase Accumulation Override (synced deltaPhase in process())
+    |              |
+    |              +---> Drift Interaction [differentiator]
+    |                    (reduced OU scaling applied to synced frequency)
+    |
+    +-------> Phase Reset on Clock Edge (phase = 0.0)
+    |              |
+    |              v
+    |         Division Counter (for /2, /4 etc. -- reset every N edges)
+    |
+    +-------> Sync State Detection (isConnected + validEdgeCount >= 2)
+    |              |
+    |              +---> Display: Sync Badge (atomic<bool> syncActive)
+    |              |
+    |              +---> Display: Ratio Label (atomic<int> currentRatioIndex)
+    |              |
+    |              +---> Display: Clock Pulse Flash [differentiator]
+    |
+    +-------> Clock-Loss Timeout (3x smoothedPeriod elapsed with no edge)
+                   |
+                   v
+               Fallback to Free-Running at last known frequency
 ```
+
+**Critical path:** CLK Jack -> Edge Detection -> Period Measurement -> Period Smoothing -> Ratio Mapping -> Phase Accumulation Override. Everything else branches off this spine.
+
+**Existing code touch points:**
+- `process()`: Add CLK detection before phase accumulation, conditionally override `deltaPhase`
+- `AnalogLFO()` constructor: Add `configInput(CLK_INPUT, "Clock")`, new param config for rate tooltip
+- `AnalogLFOWidget()`: Add CLK jack placement, potentially adjust layout
+- `WaveformDisplay::drawLayer()`: Add sync badge and ratio label rendering
+- Enums: Add `CLK_INPUT` to `InputId`
+
+---
+
+## Rate Knob Dual-Mode Specification
+
+This is the most design-critical feature -- how the existing Rate knob changes behavior when CLK is connected.
+
+### Free-Running Mode (no CLK patched) -- UNCHANGED from v1.0
+
+- Range: 0.01 Hz to 20 Hz
+- Linear mapping
+- Direct frequency control
+- Tooltip: "Rate: X.XX Hz"
+- Code: `float freq = params[RATE_PARAM].getValue();`
+
+### Synced Mode (CLK patched and receiving valid clock)
+
+The Rate knob selects from discrete, snapped musical ratios:
+
+| Knob Range | Ratio | Meaning | Display Label | Phase Reset Behavior |
+|------------|-------|---------|---------------|---------------------|
+| 0.00-0.03 | /16 | 16x slower than clock | "/16" | Reset every 16th clock edge |
+| 0.04-0.10 | /8 | 8x slower | "/8" | Reset every 8th clock edge |
+| 0.11-0.17 | /6 | 6x slower (dotted triplet) | "/6" | Reset every 6th clock edge |
+| 0.18-0.24 | /4 | 4x slower | "/4" | Reset every 4th clock edge |
+| 0.25-0.31 | /3 | 3x slower (triplet) | "/3" | Reset every 3rd clock edge |
+| 0.32-0.38 | /2 | 2x slower | "/2" | Reset every 2nd clock edge |
+| 0.39-0.45 | /1.5 | Dotted note | "/1.5" | Reset every 1.5 clocks (alternate 1,2 pattern) |
+| 0.46-0.53 | x1 | Matches clock exactly | "x1" | Reset every clock edge |
+| 0.54-0.60 | x1.5 | Dotted subdivision | "x1.5" | Reset on clock, extra cycle at 1.5x |
+| 0.61-0.67 | x2 | 2x faster | "x2" | Reset on clock edge, 2 cycles between |
+| 0.68-0.74 | x3 | 3x faster (triplet) | "x3" | Reset on clock edge, 3 cycles between |
+| 0.75-0.81 | x4 | 4x faster | "x4" | Reset on clock edge, 4 cycles between |
+| 0.82-0.88 | x6 | 6x faster | "x6" | Reset on clock edge, 6 cycles between |
+| 0.89-0.95 | x8 | 8x faster | "x8" | Reset on clock edge, 8 cycles between |
+| 0.96-1.00 | x16 | 16x faster | "x16" | Reset on clock edge, 16 cycles between |
+
+**Rationale for ratio set:**
+- Power-of-2 (/16, /8, /4, /2, x1, x2, x4, x8, x16) = standard in every clock module
+- Triplets (/6, /3, x3, x6) = polyrhythmic musical value, what makes Pamela's popular
+- Dotted (/1.5, x1.5) = common in DAW LFO sync, translates well to modular
+- 15 positions across knob range = comfortable spacing
+- Center position = x1 (1:1) matches VCV LFO-1 convention
+
+**Snap behavior:** Knob snaps to nearest ratio. No interpolation between ratios -- continuous interpolation creates non-musical frequencies that defeat clock sync.
+
+**Tooltip in synced mode:** "Rate: x2 (synced)" or "Rate: /4 (synced)"
+
+---
+
+## Clock Period Measurement Specification
+
+### Algorithm
+
+```
+On each process() call:
+    samplesSinceClock++
+
+    if (clockTrigger.process(inputs[CLK_INPUT].getVoltage(), 0.1f, 1.f)):
+        // Rising edge detected
+        float newPeriod = samplesSinceClock * args.sampleTime
+        samplesSinceClock = 0
+
+        if (newPeriod >= 0.01f AND newPeriod <= 30.f):  // 100Hz to 0.033Hz guard
+            if (smoothedPeriod <= 0):
+                smoothedPeriod = newPeriod  // First edge: no smoothing
+            else if (newPeriod / smoothedPeriod > 3.0 OR smoothedPeriod / newPeriod > 3.0):
+                smoothedPeriod = newPeriod  // Tempo jump: reset smoothing
+            else:
+                smoothedPeriod = 0.4 * newPeriod + 0.6 * smoothedPeriod  // EMA
+
+        clockEdgeCount++
+        // Phase reset logic here
+```
+
+### Guard Rails
+
+| Guard | Value | Reason |
+|-------|-------|--------|
+| Minimum period | 10ms (100Hz) | Faster than any reasonable LFO clock |
+| Maximum period | 30s (0.033Hz) | Longer gaps likely mean clock stopped, not slow tempo |
+| Outlier rejection | 3x ratio threshold | Tempo changes > 3x are treated as new tempo, not smoothed |
+| Minimum edges for sync | 2 | Need at least 2 edges to establish a period |
+
+### Clock-Loss Timeout
+
+- Timeout threshold: `3.0 * smoothedPeriod`
+- After timeout: set `syncActive = false`, continue oscillating at `1.0 / smoothedPeriod` (last known frequency) in free-running mode
+- On next valid edge: immediately re-engage sync, reset phase
+- Adaptive: timeout scales with tempo. Fast clock (100ms period) = 300ms timeout. Slow clock (5s period) = 15s timeout. This prevents false timeouts on slow clocks (a problem Mutable Instruments Stages specifically solved).
+
+---
+
+## Display Integration Specification
+
+The existing waveform display needs three additions, all rendered through the existing NanoVG/FramebufferWidget pipeline.
+
+### 1. Sync Badge
+
+- **Content:** Text "SYNC" in upper-right corner of display area
+- **Style:** Forge amber (#e8a838) at 50-70% opacity, small font (~6-8px)
+- **Visibility:** Appears when `syncActive == true` (CLK connected AND >= 2 valid edges received AND not timed out)
+- **Thread safety:** Read `std::atomic<bool> displaySyncActive` from audio thread
+
+### 2. Ratio Label
+
+- **Content:** Current ratio string (e.g., "x4", "/2", "x1") in lower-right corner
+- **Style:** Same amber, slightly larger than sync badge (~8-10px)
+- **Visibility:** Only when synced (same condition as sync badge)
+- **Update:** Changes when Rate knob position crosses a ratio boundary
+- **Thread safety:** Read `std::atomic<int> displayRatioIndex` from audio thread, map to string in GUI thread
+
+### 3. Clock Pulse Flash (differentiator -- can be cut if performance issue)
+
+- **Effect:** Brief brightness boost on the waveform trace on each clock edge
+- **Implementation:** Store `std::atomic<float> lastClockTimestamp`. In draw, compute `flash = max(0, 1 - (currentTime - lastClockTimestamp) / 0.08)`. Multiply trace alpha by `1.0 + 0.15 * flash`.
+- **Duration:** ~80ms fade, 15% peak brightness increase
+- **Risk:** If this causes excessive dirty-flagging of the FramebufferWidget, cut it. Display performance is more important than this polish detail.
+
+### Performance Considerations
+
+- All new display data transferred via `std::atomic` variables (matching existing `displayPhase`, `displayDrift` pattern)
+- No new allocations in audio thread
+- Ratio label string lookup happens in GUI thread (map index to `const char*`)
+- Sync badge and ratio label are static text -- only need redraw when state changes, not every frame
+
+---
+
+## Panel Layout Specification
+
+The CLK jack must fit on the existing 12HP panel. Current bottom section:
+
+```
+Rate knob:        [RATE]
+                   x=18, y=86
+
+Trimpots (y=96):  [MorphCV]  [CharCV]  [DriftCV]
+                   x=10       x=24       x=38
+
+Jacks (y=108):    [MorphCV]  [CharCV]  [DriftCV]    [OUT]
+                   x=10       x=24       x=38        x=52
+```
+
+### Recommended: CLK jack at x=52, y=96 (above OUT jack)
+
+```
+Trimpots (y=96):  [MorphCV]  [CharCV]  [DriftCV]    [CLK]
+                   x=10       x=24       x=38        x=52
+
+Jacks (y=108):    [MorphCV]  [CharCV]  [DriftCV]    [OUT]
+                   x=10       x=24       x=38        x=52
+```
+
+**Rationale:**
+- The spot at x=52, y=96 is currently empty (no component there in v1.0)
+- CLK is visually grouped with the output section (right side) rather than the CV section (left/center)
+- Functional grouping: CLK (timing input) near OUT (signal output) is logical
+- Zero disruption to existing component positions
+- CLK label goes between the jack positions, standard Eurorack labeling
 
 ---
 
 ## MVP Recommendation
 
-### Phase 1: LFO Module
+### Must Have (minimum viable clock sync):
+1. CLK input jack with `dsp::SchmittTrigger` edge detection
+2. Clock period measurement with EMA smoothing
+3. Dual-mode Rate knob (free Hz / snapped ratios)
+4. Phase reset on clock edge (with division counter for /N ratios)
+5. Power-of-2 ratios: /8, /4, /2, x1, x2, x4, x8
+6. Sync badge on display ("SYNC" text)
+7. Ratio label on display (current ratio string)
+8. Panel SVG updated with CLK jack at x=52, y=96
+9. Clock-loss timeout with free-running fallback
 
-Validates the three-knob concept at LFO rates where antialiasing is irrelevant.
+### Should Have (high-value additions):
+10. Triplet ratios: /3, /6, x3, x6
+11. Extended range: /16, x16
+12. Dotted ratios: /1.5, x1.5
+13. Guard rails on period measurement (min/max/outlier rejection)
 
-**Implementation order:**
-1. **Core waveform generation with morphing** -- foundation
-2. **Waveform display with phase dot** -- build early so all subsequent work is visible
-3. **Drift engine** (pitch drift + phase jitter + DC offset + pitch slew) -- audible proof of analog promise
-4. **Analog character engine with all four reference models** -- the key differentiator
-5. **HF rolloff** (pitch-tracking lowpass) -- major warmth contributor
-6. **CV inputs for morph, character, drift** -- modular integration
-7. **Component spread** -- low effort, high value
-8. **FM input and reset/sync** -- standard LFO functionality (proven in POC)
-9. **Inverted output** -- trivial, useful
-10. **Waveform bleed in morph zones** -- subtle polish
+### Nice to Have (defer if timeline tight):
+14. Drift interaction with synced frequency
+15. Animated sync badge (pulse with clock)
+16. Clock pulse flash on display trace
 
-**Defer:** Tracking error (N/A for LFO), phase distortion (VCO feature), oversampling (N/A at LFO rates).
-
-### Phase 2: VCO Module
-
-Adds audio-rate complexity on shared foundation.
-
-**Implementation order:**
-1. **PolyBLEP antialiasing** (morph-aware) -- mandatory for audio rate
-2. **V/Oct input** -- mandatory
-3. **Hard sync** -- table stakes
-4. **Reuse morph/character/drift from LFO** -- shared engine code
-5. **Through-zero FM** -- differentiator
-6. **Phase distortion** -- differentiator
-7. **Tracking error toggle** -- authenticity detail
-8. **Oversampling option** -- power user quality upgrade
-
-**Defer:** MinBLEP (only if aliasing complaints), polyphony (only if significant demand).
+### Defer to Later:
+- Phase offset -- breaks three-knob identity
+- Swing/shuffle -- clock generator territory
+- CV control of division ratio -- panel space constraint
+- Separate RESET jack -- panel space constraint
 
 ---
 
-## Morph Implementation Strategy
+## Backward Compatibility Requirements (Non-Negotiable)
 
-| Knob Range | Transition | Technique | Antialiasing Notes |
-|------------|------------|-----------|-------------------|
-| 0.00-0.25 | Sine to Triangle | Sharpen peaks progressively. Use `sign(sin) * |sin|^(1/k)` where k goes from 1.0 (sine) upward (triangle). Or: parametric blend of curvature at zero-crossings from sinusoidal to linear. | No discontinuities. No PolyBLEP needed. |
-| 0.25-0.50 | Triangle to Saw | Introduce progressive asymmetry. One slope steepens while the other shallows. At 0.50, one slope is near-vertical (saw reset), other spans full cycle. | Discontinuity appears and grows. PolyBLEP ramps in proportional to discontinuity magnitude. |
-| 0.50-0.75 | Saw to Square | Ramp steepens into two flat segments connected by two transitions. Parametrize as variable-slope trapezoid. | One discontinuity becomes two. PolyBLEP transitions from single to dual correction. |
-| 0.75-1.00 | Square (endpoint) | Square wave at morph=1.0. Option: sweep PWM from 50% toward narrow pulse in this zone. | Two discontinuities at full PolyBLEP. |
-
-**Critical:** Every intermediate morph position must be a musically valid waveshape, not a blend artifact. Position 0.375 should sound like an asymmetric triangle/ramp, not "triangle plus saw noise." Morph must change waveshape parameters, not crossfade two audio signals.
+| Requirement | How to Verify |
+|-------------|--------------|
+| No CLK patched = identical behavior to v1.0 | Rate knob range, phase accumulation, drift, output voltage all unchanged. A/B test: v1.0 and v1.1 with same knob positions must produce identical output. |
+| Existing patches load correctly | New params/inputs must have safe defaults. `CLK_INPUT` unconnected = free mode. No new params that alter existing behavior. |
+| No CPU regression in free-running mode | Clock detection code early-exits when `!inputs[CLK_INPUT].isConnected()`. The `isConnected()` check is essentially free. |
+| Display unchanged when not synced | No sync badge, no ratio label, no visual artifacts from sync code when CLK is unpatched. |
+| Serialization backward compatible | v1.0 presets load in v1.1 without errors. New inputs/params use safe defaults. VCV Rack SDK handles missing inputs gracefully. |
+| Output voltage range unchanged | Still bipolar +/-5V. Clock sync changes frequency/phase, not amplitude. |
 
 ---
 
-## Sources and Confidence
+## Sources
 
-| Topic | Basis | Confidence |
-|-------|-------|------------|
-| Minimoog oscillator characteristics | Training data: Stilson & Smith (CCRMA 1996), Valimaki et al. (2010), service manuals | HIGH |
-| Roland CEM3340/SH-101/Juno-106 | Training data: CEM3340 datasheet, service manuals, community analysis | HIGH |
-| PolyBLEP antialiasing | Training data: Valimaki, Esqueda et al., VCV Rack source analysis | HIGH |
-| Ornstein-Uhlenbeck for drift | Training data: DSP and stochastic process literature | HIGH |
-| VCV module landscape (current) | Training data through May 2025 | MEDIUM -- may have changed |
-| Prophet-5/Voyager triangle specifics | Training data: service manuals, community analysis | MEDIUM |
-| Waveform bleed levels (-40 to -60 dB) | Training data: analog circuit design knowledge | MEDIUM -- approximate |
-| MinBLEP in VCV context | Training data only | LOW -- not verified against current SDK |
+### HIGH Confidence (Official documentation, SDK API references)
+- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- trigger thresholds (0.1V low, 1V high), trigger duration (1ms at 10V), clock signal conventions
+- [VCV Rack API: dsp::TSchmittTrigger](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TSchmittTrigger) -- edge detection API, `process(value, lowThreshold, highThreshold)`
+- [VCV Rack API: dsp::TTimer](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TTimer) -- timing utility for period measurement
+- [VCV Rack API: dsp::ClockDivider](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1ClockDivider) -- clock division utility
+- [VCV Rack API: dsp::PulseGenerator](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1PulseGenerator) -- pulse generation utility
+- [VCV Free Modules](https://vcvrack.com/Free) -- VCV LFO-1: CLK input syncs frequency (not phase), FREQ knob becomes multiplier with 1x at center
 
-**Gaps requiring future verification:**
-- VCV Rack module landscape may have new analog-character competitors since May 2025
-- Specific parameter values (drift amounts, rolloff frequencies, character scaling) are literature-based starting points that MUST be tuned by ear
-- Morph-aware PolyBLEP behavior across shape transitions needs careful testing for click-free operation
+### MEDIUM Confidence (Multiple manufacturer/community sources agree)
+- [Xaoc Devices Batumi](https://xaocdevices.com/main/batumi/) -- Reset vs Sync modes: Reset shortens cycle, Sync adapts period (tap tempo). Setting affects all 4 LFOs via back-panel jumper.
+- [Mutable Instruments Tides Manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/tides_2018/manual/) -- Clock mode: frequency knob becomes ratio control (1/16 to 16x). External clock as reference.
+- [Pamela's Pro Workout](https://busycircuits.com/pages/alm034) -- Division/multiplication x192 to /16384 including non-integer. Color display with real-time visualization.
+- [Pamela's NEW Workout](https://busycircuits.com/pages/alm017) -- Division /512 to x48 including non-integer factors. OLED display.
+- [VCV Community: Clock multiplier implementation](https://community.vcvrack.com/t/example-clock-multiplier-code/20570) -- Developer discussion of clock multiplication in VCV Rack
+- [VCV Community: LFO Clock discussion](https://community.vcvrack.com/t/vcv-lfo-clock/19755) -- User expectations for CLK input behavior
+- [ModWiggler: Syncable/Clockable LFOs](https://modwiggler.com/forum/viewtopic.php?t=165407) -- User expectations for synced LFOs across hardware ecosystem
+- [ModWiggler: LFO with sync and reset](https://www.modwiggler.com/forum/viewtopic.php?t=222452) -- Community discussion of reset vs sync behavior preferences
+- [Mutable Instruments Stages firmware](https://github.com/qiemem/eurorack/tree/v1.1.0/stages) -- Adaptive clock-loss timeout (adapts to cycle duration, logic from Marbles/Tides 2)
+- [Keith McMillen: Clock Division](https://www.keithmcmillen.com/blog/simple-synthesis-part-13-clock-division/) -- Standard division ratios (/2, /4, /8, /16, /32, /64)
+
+### LOW Confidence (Single source, training data only)
+- Specific EMA alpha value (0.3-0.5) -- based on DSP best practice knowledge, not verified in VCV context
+- Outlier rejection threshold (3x) -- engineering judgment, not empirically validated for this use case

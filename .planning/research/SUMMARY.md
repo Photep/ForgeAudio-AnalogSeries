@@ -1,184 +1,178 @@
 # Project Research Summary
 
-**Project:** Forge Audio - Analog Series (VCV Rack LFO + VCO)
-**Domain:** Analog-modeled virtual synthesizer oscillator modules
-**Researched:** 2026-02-25
-**Confidence:** MEDIUM-HIGH
+**Project:** Forge Audio - Analog Series v1.1 (Clock Sync)
+**Domain:** Clock-synchronized LFO in VCV Rack 2
+**Researched:** 2026-03-07
+**Confidence:** HIGH
 
 ## Executive Summary
 
-The Forge Audio Analog Series is a pair of VCV Rack 2 modules (LFO and VCO) built around a three-knob analog engine: morph (continuous waveform sweep sine-tri-saw-square), character (crossfade from digital perfection to classic synth references like Minimoog saw and Roland square), and drift (layered analog imperfections). This is a well-understood problem domain. VCV Rack 2's C++17 SDK provides all necessary DSP primitives (MinBlepGenerator, SchmittTrigger, exp2_taylor5, TRCFilter), NanoVG for custom display rendering, and a stable build system (GNU Make + plugin.mk). No external libraries are needed. The existing POC validates the core build pipeline and basic waveform generation. The architecture cleanly separates a portable AnalogEngine (pure C++ DSP with no SDK dependencies) from VCV Rack host modules, with a lock-free double buffer bridging the audio and GUI threads for the waveform display.
+The v1.1 milestone adds clock synchronization to the existing Analog Series LFO -- a well-understood feature in the Eurorack ecosystem with clear reference implementations (VCV Fundamental LFO-1, Mutable Instruments Tides, Xaoc Batumi). The approach is straightforward: a single CLK input jack feeds a Schmitt trigger for edge detection, a float-accumulating timer measures the period between edges, an EMA filter smooths the measurement, and the Rate knob reinterprets its range as discrete musical division/multiplication ratios when a clock cable is connected. All required components are VCV Rack SDK built-ins already validated in v1.0. No new dependencies, source files, or build changes are needed. The entire feature adds approximately 50-80 lines to the existing 538-line `AnalogLFO.cpp`.
 
-The recommended approach is LFO-first development. The LFO validates the entire three-knob engine at sub-audio rates where antialiasing is irrelevant, then the VCO reuses the same engine and adds audio-rate concerns (polyBLEP antialiasing, V/Oct tracking, hard sync, through-zero FM). The morph architecture uses linear crossfade between adjacent waveform shapes along a sine-tri-saw-square chain. Character modeling targets specific classic synths per waveform (Minimoog saw via exponential ramp curvature and soft reset, Roland square via sigmoid edge softening and duty asymmetry, Moog/Prophet triangle via rounded peaks, and analog sine via residual 1-3% THD). Drift uses layered independent noise sources at different timescales (Ornstein-Uhlenbeck pitch drift, phase jitter, DC offset wander, pitch slew, per-instance component spread) rather than a single noise generator.
+The recommended approach is to treat this as a targeted modification of the existing `process()` function: insert clock tracking before frequency computation, conditionally override the frequency source (clock-derived ratio vs. Rate knob Hz), and add phase reset on clock edges. The existing drift, morph, character, and display systems remain untouched in free-running mode. The critical design decision is how drift interacts with clock sync -- the OU drift engine was designed for free-running operation and actively fights clock alignment. Drift authority must be reduced in clocked mode (from 7.5% to ~2% frequency deviation) to prevent accumulating phase errors that cause clicks on reset.
 
-The primary risks are: morph discontinuities producing clicks during sweeps (prevent with phase-aligned waveform definitions and derivative-continuous transitions), incorrect polyBLEP implementation causing aliasing artifacts in the VCO (prevent with known-correct reference implementation and spectral verification), analog character modeling falling into an uncanny valley (prevent by targeting specific measured synth characteristics and validating with A/B listening tests), and display rendering blocking the audio thread (prevent with lock-free double buffer architecture from day one). Research found genuine market whitespace -- no existing VCV Rack module combines continuous four-shape morphing, specific classic synth reference modeling, and a multi-dimensional imperfection system.
+The primary risks are: phase reset discontinuity producing audible clicks (mitigate with 2-5ms output crossfade), drift engine fighting clock sync (mitigate by scaling drift down in clocked mode), and clock period measurement instability with irregular or changing-tempo sources (mitigate with EMA smoothing and outlier rejection). All three risks have well-documented prevention strategies, and the module's backward compatibility is guaranteed by design -- `isConnected()` gates all clock behavior, so no CLK cable means identical v1.0 behavior.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack is VCV Rack 2 SDK exclusively -- no external libraries. The SDK provides everything needed: C++17 compiled against plugin.mk, MinBlepGenerator for antialiasing, exp2_taylor5 for pitch conversion, SchmittTrigger for sync, TRCFilter/ExponentialFilter for CV smoothing, and NanoVG for custom display drawing. The DSP engines (morph, character, drift) are hand-rolled pure C++ with no SDK dependencies, making them testable in isolation and potentially portable.
+No new dependencies. Every component needed for clock sync is already available in the VCV Rack 2 SDK and was already listed (though not all used) in the v1.0 stack. The addition is purely about using existing SDK primitives for a new purpose.
 
-**Core technologies:**
-- **VCV Rack 2 SDK (2.5.x):** Plugin host framework -- the only option for VCV modules
-- **C++17 via GNU Make + plugin.mk:** Build system -- do not fight this with CMake
-- **PolyBLEP (4th-order):** Primary antialiasing for VCO waveform discontinuities (minBLEP available in SDK as upgrade path)
-- **NanoVG (SDK-bundled):** Waveform display rendering via TransparentWidget
-- **Custom AnalogEngine (hand-rolled):** Morph + character + drift stages as portable C++
-- **Double-precision phase accumulator:** Prevents LFO stall at ultra-low rates and VCO pitch drift at high frequencies
+**Core technologies (new usage):**
+- **`dsp::SchmittTrigger`:** Edge detection on CLK input -- SDK built-in with standard 0.1V/1.0V thresholds matching VCV voltage standards
+- **`dsp::Timer` (TTimer):** Float-precision time accumulation between clock edges -- avoids integer sample-counting quantization error
+- **`dsp::ExponentialFilter`:** Period smoothing via EMA -- already used for parameter smoothing in v1.0, same utility applied to clock tracking
+- **NanoVG (bundled):** Sync badge and division label rendering in existing display -- `nvgText()` with system font for dynamic ratio labels
 
-**Critical version requirement:** C++17 only -- C++20 breaks cross-platform SDK builds.
+**Explicitly rejected:** `dsp::ClockDivider` (sample-counting utility, NOT musical division), PLL (overkill for LFO rates), external libraries (nonexistent in VCV ecosystem), `std::mutex` (violates real-time audio constraints), serialization of clock state (transient by design).
+
+**Build changes:** None. No new files, no new includes, no Makefile modifications.
 
 ### Expected Features
 
 **Must have (table stakes):**
-- Four core waveforms with continuous morph sweep between them
-- Antialiased audio output for VCO (polyBLEP, 4th order)
-- V/Oct pitch input (VCO), rate knob (LFO)
-- FM input, hard sync (VCO), reset/sync (LFO)
-- CV inputs for morph, character, and drift
-- Real-time waveform display with phase-tracking dot
-- Analog character control (the core product promise)
-- Pitch drift and HF rolloff (most perceptible analog imperfections)
-- Bipolar +/-5V output, inverted output
-- Reasonable CPU (<1% single core per instance)
-- Right-click context menu for secondary settings
+- CLK trigger input jack at x=52, y=96mm (empty space on existing 12HP panel)
+- Edge detection via `dsp::SchmittTrigger` with VCV standard thresholds
+- Clock period measurement with EMA smoothing (alpha ~0.3)
+- Dual-mode Rate knob (free Hz when unpatched, snapped ratios when clocked)
+- Phase reset on clock edge with division-aware counting
+- Power-of-2 division/multiplication ratios: /8, /4, /2, x1, x2, x4, x8
+- Sync badge ("SYNC" text) on waveform display
+- Division ratio label on display
+- Clock-loss timeout with automatic free-running fallback
 
 **Should have (differentiators):**
-- Three-knob analog engine as independent CV-controllable axes (unique in VCV Rack)
-- Named classic synth references per waveform shape (Minimoog, Roland, Moog/Prophet)
-- Component spread giving each instance unique "personality"
-- Through-zero FM (VCO) for clean, musical FM timbres
-- Oversampling option (Off/2x/4x) via context menu
+- Triplet ratios (/3, /6, x3, x6) and dotted ratios (/1.5, x1.5) -- 15 total positions
+- Extended range (/16 to x16) for creative extremes
+- Drift interaction with clock sync -- reduced OU authority for "analog clock follower" feel
+- Guard rails on period measurement (min 10ms, max 30s, 3x outlier rejection)
 
 **Defer (v2+):**
-- MinBLEP upgrade (only if polyBLEP aliasing complaints arise)
-- Phase distortion (interesting but adds scope; evaluate after core is solid)
-- Polyphonic operation (16x CPU, complex display, mono is the modular norm)
-- Tracking error (implement toggle but default OFF; subtle specialist feature)
-- Waveform bleed in morph zones (subtle polish, low priority)
+- Phase offset knob/CV -- breaks three-knob identity
+- Swing/shuffle -- clock generator territory, not LFO
+- CV control of division ratio -- panel space constraint
+- Separate RESET jack -- panel space constraint
+- Animated sync badge (clock-pulse flash) -- cut if display performance issue
+- Tap tempo -- CLK input IS tap tempo
 
 ### Architecture Approach
 
-Three-layer separation: Host Module (VCV Rack Module subclass handling I/O, phase accumulation, and module-specific features), AnalogEngine (pure C++ class with no SDK dependencies containing MorphStage, CharacterStage, and DriftProcessor), and WaveformDisplay (NanoVG TransparentWidget reading a lock-free snapshot buffer). The engine takes normalized inputs (phase 0-1, params 0-1) and returns normalized output (-1 to +1). The host handles all VCV-specific voltage conventions.
+The clock sync integrates directly into the existing monolithic `AnalogLFO` struct as a set of member variables and one helper method (`processClockInput()`). No new classes, no separate files. The architecture follows a simple insertion pattern: clock tracking runs at the top of `process()`, conditionally overrides the frequency source, and everything downstream (drift, morph, character, display) is unaware of whether the frequency came from the Rate knob or the clock. This is architecturally clean because the clock sync's output is just a float frequency value, exactly what the existing code expects.
 
-**Major components:**
-1. **AnalogEngine** -- Orchestrates MorphStage -> CharacterStage -> DriftProcessor pipeline; owns display buffer
-2. **MorphStage** -- Linear crossfade between adjacent waveforms across three segments (sine-tri, tri-saw, saw-square); stateless pure math
-3. **CharacterStage** -- Per-shape analog reference generators (mathematical deformation, not wavetables); crossfades digital output toward analog reference
-4. **DriftProcessor** -- Six independent noise sources (pitch drift, phase jitter, component spread, DC offset, HF rolloff, pitch slew); xorshift PRNG with filtered noise shaping
-5. **WaveformDisplay** -- 256-sample lock-free double buffer; TransparentWidget (not FramebufferWidget) since phase dot animates every frame
-6. **Host Modules** (ForgeAnalogLFO, ForgeAnalogVCO) -- Phase accumulation, I/O routing, antialiasing (VCO only), sync/FM handling
+**Major components (modified):**
+1. **Clock Tracker (inline)** -- `SchmittTrigger` + float timer + EMA smoother + validity flag; ~30 lines of state and one method
+2. **Ratio Table (static)** -- 13-15 discrete musical ratios (/8 through x8 or /16 through x16); Rate knob maps to nearest index
+3. **Phase Reset Logic** -- Division-aware edge counter; resets phase only on the Nth clock edge for /N ratios
+4. **Display Overlay** -- Two new `std::atomic` variables (`displayClockValid`, `displayRatioIndex`) following existing lock-free pattern; NanoVG text rendering for badge and label
+5. **Panel SVG** -- One new jack hole at x=52, y=86mm (or y=96mm) with "CLK" label
 
 ### Critical Pitfalls
 
-1. **Morph click artifacts** -- Naive crossfade between waveforms with different derivative profiles produces clicks. Prevent with phase-aligned definitions (all shapes share zero-crossings at phase 0 and 0.5), sine-tri-saw-square ordering, and parameter slew limiting (1-5ms lowpass on morph CV). Must be addressed in the first phase.
+1. **Phase reset discontinuity (clicks)** -- Hard-resetting phase to 0.0 on clock edges produces voltage jumps up to 6.2V on a sine wave. Prevent with a 2-5ms cosine crossfade on the output side. Apply crossfade after character modeling to avoid interaction with saw soft-reset. Test with LFO modulating a resonant filter.
 
-2. **Incorrect polyBLEP aliasing** -- Wrong fractional delay calculation, wrong discontinuity height, or missing edges on square waves makes aliasing worse, not better. Start with the canonical 2-sample polyBLEP implementation and verify spectrally (10kHz saw at 44.1kHz, check for mirror frequencies). Always address in the core oscillator, not bolted on later.
+2. **Drift engine fighting clock sync** -- OU drift modifies `deltaPhase` by up to 7.5%, accumulating phase error between clock edges that amplifies reset clicks. Prevent by reducing drift authority to ~2% in clocked mode. The drift knob at 0 = perfect digital sync; drift up = subtle analog wobble that stays within acceptable phase error.
 
-3. **Display blocking audio thread** -- Any mutex the audio thread waits on causes dropouts. Users report "module sounds great but clicks when I look at it." Use lock-free double buffer with atomic index swap from day one. This is an architectural decision, not a feature.
+3. **Clock period measurement instability** -- Single-edge measurement is jittery; first pulse has no reference; tempo changes cause frequency overshoot. Prevent with EMA smoothing (alpha 0.3), first-edge snap (no smoothing), outlier rejection (3x threshold for tempo jumps), and adaptive timeout (3x smoothed period).
 
-4. **Analog character uncanny valley** -- Half-modeled analog character sounds "wrong" rather than "warm." Prevent by targeting specific measured synth characteristics (Minimoog capacitor discharge, Roland slew rate), calibrating in objective units (cents of drift, % THD), and A/B testing against reference recordings. Less is more -- real Minimoog oscillators are surprisingly clean.
+4. **Wrong Schmitt trigger thresholds** -- Non-standard thresholds break interoperability with certain clock sources. Prevent by using exactly `dsp::SchmittTrigger::process(x, 0.1f, 1.f)` per VCV Voltage Standards. Test with multiple clock modules.
 
-5. **Phase accumulator precision** -- Float32 phase accumulator stalls LFO below ~0.01Hz and drifts VCO at high pitches. Use double-precision. Trivial to prevent, catastrophic if caught late.
+5. **Division phase reset on every edge** -- Resetting phase on every clock edge at /4 ratio means the waveform never completes a full cycle. Prevent with a beat counter that only resets phase every Nth edge for /N divisions.
 
 ## Implications for Roadmap
 
-Based on research, the project naturally divides into 5 phases following a strict dependency chain. The LFO-first strategy is strongly validated: it proves the entire engine without audio-rate complexity.
+Based on research, the v1.1 clock sync milestone divides into 4-5 phases along a strict dependency chain. The critical path is: CLK input -> edge detection -> period measurement -> ratio mapping -> phase accumulation override. Everything else branches off this spine.
 
-### Phase 1: Foundation -- Morph Engine and Display
-**Rationale:** MorphStage is the foundation everything else builds on. WaveformDisplay built early provides visual feedback that accelerates all subsequent development. Lock-free display architecture must be designed from the start (Pitfall 5).
-**Delivers:** Working LFO module with four-shape morph sweep and real-time waveform display with phase dot. No analog character yet, but the core interaction loop is complete.
-**Addresses:** Core waveform generation, morph sweep, display with phase dot, bipolar output, inverted output, reset/sync input, FM input, rate knob.
-**Avoids:** Morph discontinuities (P1) via phase-aligned waveform definitions; display threading (P5) via lock-free double buffer; phase precision (P9) via double accumulator; memory allocation (P6) via pre-allocated buffers; voltage standards (P14) via defined constants; sample rate handling (P16) via onSampleRateChange().
+### Phase 1: Clock Input and Period Tracking
+**Rationale:** Everything depends on detecting clock edges and measuring the period. This is the foundation -- if edges are not detected correctly or the period is unstable, nothing else can work. Get this right first and validate in isolation.
+**Delivers:** CLK_INPUT enum entry, `configInput()`, `processClockInput()` method with SchmittTrigger edge detection, float timer period measurement, EMA smoothing, clock validity tracking, cable disconnect handling, clock-loss timeout.
+**Addresses:** CLK jack, edge detection, period measurement, period smoothing, clock-loss fallback (table stakes)
+**Avoids:** Pitfall 4 (wrong thresholds -- use SDK SchmittTrigger), Pitfall 9 (integer counting -- use float timer), Pitfall 3 (instability -- EMA smoothing), Pitfall 8 (stuck in clocked mode -- check isConnected every process call), Pitfall 13 (first pulse -- phase reset but keep free-run frequency until second edge)
 
-### Phase 2: Character Engine -- Analog Reference Modeling
-**Rationale:** Character defines the target sound that makes this module worth using. It must come before drift because character is the "what it sounds like" and drift is the "how it behaves." Tuning drift without knowing the character target is working blind.
-**Delivers:** Character knob crossfading from digital to analog references for all four waveform shapes. HF rolloff (pitch-tracking lowpass). The module now sounds distinctly different from Fundamental VCO.
-**Addresses:** Minimoog saw reference, Roland square reference, Moog/Prophet triangle reference, analog sine with residual THD, HF rolloff, character CV input.
-**Avoids:** Uncanny valley (P7) via specific synth targets with measured characteristics; testing by ear only (P15) via quantitative THD and spectral targets.
+### Phase 2: Frequency Override and Ratio Table
+**Rationale:** With period tracking working, the next step is using it to drive the LFO frequency. The dual-mode Rate knob and ratio table are the core functional change -- this is where the module actually "syncs" to the clock.
+**Delivers:** Static ratio table (13-15 musical divisions/multiplications), `getRatioIndex()` mapping from Rate knob position to table index, conditional frequency computation in `process()` (clock-derived vs. Rate knob Hz), snap quantization to discrete ratios.
+**Addresses:** Dual-mode Rate knob, division ratios, multiplication ratios, triplet/dotted ratios (table stakes + differentiators)
+**Avoids:** Pitfall 5 (wrong ratios -- discrete table, no continuous interpolation), Pitfall 6 (tempo overshoot -- frequency derived from already-smoothed period)
 
-### Phase 3: Drift Engine -- Analog Imperfections
-**Rationale:** Drift is independent of character and adds the "living, breathing" quality. Built on top of a solid character engine so the drift modulates a known-good sound.
-**Delivers:** Full three-knob LFO with pitch drift, phase jitter, DC offset, pitch slew, component spread. Each module instance sounds slightly unique. The core product promise is now complete.
-**Addresses:** Drift knob with all six imperfection sources, drift CV input, component spread via per-instance seed, state serialization for recall.
-**Avoids:** Bad drift modeling (P8) via layered 1/f noise sources at different timescales (not white noise); serialization loss (P11) via versioned JSON with deterministic seed storage.
+### Phase 3: Phase Reset and Drift Integration
+**Rationale:** Phase reset is what makes clock sync feel "locked." It depends on both period tracking (Phase 1) and division ratios (Phase 2) because division-aware counting requires knowing the current ratio. Drift interaction must be designed alongside phase reset because drift directly affects the magnitude of phase error at reset time.
+**Delivers:** Phase reset on clock edge, division-aware beat counter, anti-click crossfade (2-5ms cosine on output), drift authority reduction in clocked mode, smooth clock-to-free transition.
+**Addresses:** Phase reset, drift interaction with sync (differentiator), smooth clock-loss transition (differentiator)
+**Avoids:** Pitfall 1 (clicks -- crossfade), Pitfall 2 (drift fighting sync -- reduced authority), Pitfall 11 (character interaction -- crossfade on final output after character)
 
-### Phase 4: VCO Core -- Audio-Rate Antialiasing
-**Rationale:** VCO reuses the entire AnalogEngine from the LFO and adds audio-rate concerns. PolyBLEP antialiasing must be morph-aware (discontinuity structure changes with morph position), which is the trickiest implementation challenge in the project.
-**Delivers:** ForgeAnalogVCO with V/Oct tracking, morph-aware polyBLEP antialiasing, hard sync with sub-sample BLEP compensation. Full three-knob engine inherited from LFO.
-**Addresses:** V/Oct input, polyBLEP antialiasing (4th order), hard sync with antialiased sync discontinuities, coarse/fine tune, oversampling option (Off/2x/4x).
-**Avoids:** Wrong BLEP (P2) via canonical implementation with spectral verification; hard sync aliasing (P4) via fractional sample timing and BLEP at sync points; wasted oversampling (P10) via surgical application only where needed.
+### Phase 4: Display and Panel
+**Rationale:** Pure visual layer with no functional dependency except reading state from Phases 1-3. Can be started in parallel with Phase 3 but is listed after because it is lower priority. The panel SVG update is trivial and independent.
+**Delivers:** "SYNC" badge on waveform display, division ratio label, `displayClockValid` and `displayRatioIndex` atomics, NanoVG font rendering setup, panel SVG update with CLK jack hole and label, `addInput()` widget call.
+**Addresses:** Sync badge, ratio label, CLK jack panel placement (table stakes)
+**Avoids:** Pitfall 7 (display glitch -- clock reset flag, rate-limit rebuilds at high multiplication ratios)
 
-### Phase 5: VCO Advanced -- FM and Polish
-**Rationale:** Through-zero FM is a premium differentiator that builds on top of the stable VCO. It has its own aliasing challenges (phase increment can skip cycles) that should not compromise the base oscillator quality.
-**Delivers:** Through-zero FM, DC blocking filter for VCO output, final CPU optimization, oversampling refinement.
-**Addresses:** Through-zero FM with soft-limited phase increment, FM depth attenuverter, DC offset filtering (VCO only), phase distortion (stretch goal).
-**Avoids:** TZFM catastrophic aliasing (P3) via surgical oversampling on FM path and soft-limiting at extreme indices.
+### Phase 5: Polish and Edge Cases
+**Rationale:** Refinement that depends on all prior phases being functionally complete. Rate knob tooltip, stress testing, edge case handling.
+**Delivers:** Custom `ParamQuantity` for Rate knob tooltip in clocked mode (shows "x4 (synced)" instead of "3.50 Hz"), animated sync badge (if performance allows), stress testing for rapid connect/disconnect, extreme ratios, very slow/fast clocks.
+**Addresses:** Rate knob tooltip (minor pitfall), animated clock pulse flash (differentiator, cuttable)
+**Avoids:** Pitfall 12 (tooltip wrong units), Pitfall 10 (audio-rate LFO at high multiplication -- display warning or cap)
 
 ### Phase Ordering Rationale
 
-- **Strict dependency chain:** MorphStage -> CharacterStage -> DriftProcessor -> VCO antialiasing -> VCO FM. Each layer depends on the one before it being solid.
-- **Visual feedback first:** Display in Phase 1 means every subsequent phase's work is visible and debuggable immediately.
-- **Character before drift:** Character defines the sound target; drift destabilizes it. Building drift first means tuning imperfections against an unknown target.
-- **LFO before VCO:** The engine gets battle-tested at sub-audio rates where bugs are easier to diagnose. When VCO starts, the only new concerns are antialiasing, sync, and FM.
-- **TZFM last:** It is the hardest feature with the most aliasing risk. Isolating it in the final phase prevents it from compromising base quality.
+- **Strict dependency chain:** Period tracking -> ratio mapping -> phase reset -> display. Each layer requires the previous to be testable.
+- **Audio before visual:** Get the clock sync sounding correct (Phases 1-3) before making it look correct (Phase 4). Clicks and drift artifacts matter more than missing display badges.
+- **Drift integrated with phase reset:** These two concerns are tightly coupled -- drift magnitude determines phase error at reset, which determines click severity. Designing them together in Phase 3 prevents retrofitting.
+- **Panel SVG is trivial:** The jack position (x=52, y=86mm or y=96mm) is in empty space. No existing components move. This can happen any time.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 2 (Character Engine):** Analog reference waveform shapes need empirical tuning. The mathematical models (exponential ramp curvature, sigmoid edge softening) are starting points, not final values. Plan for iterative A/B testing against hardware recordings. Research should include capturing reference waveforms from actual synths if possible.
-- **Phase 4 (VCO Antialiasing):** Morph-aware polyBLEP is the project's most technically demanding implementation. The discontinuity structure changes continuously with morph position (no discontinuities in sine/tri region, one in saw, two in square). Research the exact transition behavior at morph boundaries. Reference VCV Fundamental VCO-1 source code.
-- **Phase 5 (Through-Zero FM):** Digital TZFM at high indices is a known unsolved problem. Research the practical limits and set user expectations. Investigate soft-limiting strategies and surgical oversampling for the FM path.
+- **Phase 3 (Phase Reset + Drift):** The anti-click crossfade interacts with the existing character modeling (saw soft-reset region) in ways that need empirical testing. The drift authority reduction factor (2% vs 1% vs 3%) needs perceptual tuning. This is the phase most likely to require iteration.
 
-Phases with standard patterns (skip deep research):
-- **Phase 1 (Foundation):** Well-documented VCV Rack patterns. POC validates the build system and basic waveform generation. Lock-free double buffer is a standard real-time audio pattern.
-- **Phase 3 (Drift Engine):** Ornstein-Uhlenbeck processes and filtered noise are textbook DSP. Component spread via seeded PRNG is straightforward. Main work is perceptual tuning, not research.
+Phases with standard patterns (skip research-phase):
+- **Phase 1 (Clock Input):** Entirely standard VCV Rack SDK patterns. SchmittTrigger + Timer + EMA is the canonical approach, well-documented with community examples.
+- **Phase 2 (Ratio Table):** Pure math -- a static array and an index calculation. No unknowns.
+- **Phase 4 (Display):** Follows the exact same atomic pattern established in v1.0. NanoVG font rendering is standard.
+- **Phase 5 (Polish):** Custom ParamQuantity is a documented VCV Rack pattern.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | VCV Rack 2 SDK is stable and well-documented. POC validates build system. No external dependencies needed. Only uncertainty is exact latest SDK point release (2.5.x). |
-| Features | MEDIUM-HIGH | Table stakes and differentiators well-identified. Competitive landscape analysis based on training data through May 2025 -- new analog-character competitors may have emerged. Feature prioritization is sound. |
-| Architecture | HIGH | Three-layer separation (host/engine/display), lock-free display buffer, normalized internal representation are established patterns. PolyBLEP and morph crossfade architecture validated by VCV Fundamental and community modules. |
-| Pitfalls | HIGH | DSP pitfalls (morph clicks, BLEP implementation, phase precision, TZFM aliasing) are mathematically grounded and well-documented in academic literature. VCV Rack-specific pitfalls (threading, serialization, voltage standards) confirmed by SDK documentation and community experience. |
+| Stack | HIGH | All components are VCV Rack SDK built-ins validated in v1.0. Zero new dependencies. API stable across 2.0-2.5. |
+| Features | HIGH | Table stakes verified across 6+ reference modules (VCV LFO-1, Batumi, Tides, Pamela's, Stages, Doepfer A-160-1). Feature set is unambiguous. |
+| Architecture | HIGH | Monolithic inline approach matches existing codebase style. Integration points are minimal (one new enum, one helper method, two conditionals in process()). Direct source code analysis confirms feasibility. |
+| Pitfalls | MEDIUM-HIGH | Critical pitfalls (clicks, drift conflict, period instability) are well-grounded in DSP fundamentals and confirmed by community reports. Moderate pitfalls are based on sound engineering judgment. Specific EMA alpha values and crossfade durations need empirical tuning. |
 
-**Overall confidence:** MEDIUM-HIGH
+**Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Analog reference waveform accuracy:** The Minimoog saw, Roland square, etc. reference models are based on published circuit analysis, not direct measurements. Specific parameter values (ramp curvature percentage, edge softening time constants, THD levels) are educated starting points that must be tuned by ear against hardware recordings during Phase 2.
-- **VCV Rack module landscape (current):** Competitive analysis is based on training data through May 2025. New analog-character modules may have launched. Verify the whitespace claim before marketing.
-- **Morph-aware polyBLEP at transition boundaries:** The behavior when discontinuity count changes (one BLEP becoming two BLEPs as morph sweeps from saw to square) needs careful implementation and testing. No known reference implementation of this exact pattern.
-- **PolyBLEP vs minBLEP decision:** STACK.md recommends minBLEP for quality; FEATURES.md and ARCHITECTURE.md use polyBLEP for simplicity and better morph compatibility. Recommendation: start with polyBLEP (simpler, better morph interaction), upgrade to minBLEP only if spectrum analysis shows insufficient suppression at high pitches.
-- **Drift perceptual tuning:** Drift parameter values (cents of pitch wander, phase jitter amplitude, slew time constants) are literature-based starting points. Final values require systematic listening tests, ideally with multiple listeners.
-- **SDK version verification:** Exact VCV Rack 2 SDK version (2.5.x assumed) and any API changes since May 2025 should be verified against live documentation before starting development.
-- **Phase distortion feature:** Listed in PROJECT.md requirements but interaction with the morph engine is unclear -- may conflict with morph crossfade approach if it changes zero-crossing structure. Research during VCO implementation.
+- **Anti-click crossfade duration:** The 2-5ms range is a starting point. Too short and clicks remain audible; too long and the waveform transition sounds "smeared." Needs A/B testing with the LFO modulating filter cutoff and VCA gain at various clock rates.
+- **EMA alpha tuning:** 0.3 is the recommended default but the optimal value depends on real-world clock jitter characteristics in VCV Rack. Test with multiple clock sources (Fundamental CLKD, Impromptu CLOCKED, MIDI clock) and both steady and changing tempos.
+- **Drift authority in clocked mode:** The 2% figure is an engineering estimate. Too high and clicks persist; too low and the "analog clock follower" character is lost. Needs perceptual testing with Drift knob across its full range while clocked.
+- **CLK jack position:** Two positions proposed -- x=52,y=86mm (across from Rate knob, per ARCHITECTURE.md) and x=52,y=96mm (above OUT jack, per FEATURES.md). Both are in empty space. Final decision during panel layout phase.
+- **Ratio table size:** 13 ratios (ARCHITECTURE.md) vs 15 ratios (FEATURES.md). The 15-ratio set includes /16, x16, /1.5, x1.5 which add musical value at negligible complexity. Recommend the 15-ratio set.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- VCV Rack 2 SDK documentation (vcvrack.com) -- plugin architecture, threading model, DSP utilities
-- Existing POC at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` -- validates build system, phase accumulation, waveform generation
-- Stilson & Smith (CCRMA, 1996) -- Minimoog oscillator circuit analysis
-- Valimaki et al. (2010) -- Virtual analog oscillator synthesis, polyBLEP/minBLEP techniques
-- CEM3340 datasheet -- Roland SH-101/Juno-106 oscillator characteristics
-- Eli Brandt, "Hard Sync Without Aliasing" -- antialiased hard sync techniques
-- Ross Bencina, "Real-time audio programming 101" -- lock-free audio/GUI patterns
+- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- trigger thresholds (0.1V/1.0V), clock timing conventions
+- [VCV Rack API: dsp::TSchmittTrigger](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TSchmittTrigger) -- edge detection API
+- [VCV Rack API: dsp::TTimer](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TTimer) -- time measurement API
+- [VCV Rack API: dsp namespace](https://vcvrack.com/docs-v2/namespacerack_1_1dsp) -- full DSP utilities
+- [VCV Rack DSP Manual](https://vcvrack.com/manual/DSP) -- general DSP guidance
+- Existing codebase: `src/AnalogLFO.cpp` (538 lines, directly analyzed)
 
 ### Secondary (MEDIUM confidence)
-- VCV Fundamental VCO source (GitHub) -- polyBLEP reference implementation
-- NanoVG documentation (GitHub) -- display rendering API
-- Prophet-5/Voyager service manuals -- triangle waveform characteristics
-- musicdsp.org archives -- community DSP patterns and implementations
-- Analog circuit analysis literature -- waveform bleed levels, component tolerance ranges
+- [VCV Fundamental LFO](https://library.vcvrack.com/Fundamental/LFO) -- CLK input syncs frequency, FREQ knob becomes multiplier
+- [Xaoc Devices Batumi](https://xaocdevices.com/main/batumi/) -- Reset vs Sync modes
+- [Mutable Instruments Tides Manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/tides_2018/manual/) -- Clock mode with 1/16 to 16x range
+- [Pamela's Pro Workout](https://busycircuits.com/pages/alm034) -- Division/multiplication reference
+- [VCV Community: Clock multiplier code](https://community.vcvrack.com/t/example-clock-multiplier-code/20570) -- Implementation patterns
+- [VCV Community: TTimer usage](https://community.vcvrack.com/t/ttimer-understand-how-to-use-it/20987) -- Practical Timer patterns
 
 ### Tertiary (LOW confidence)
-- VCV Rack current module landscape -- based on training data, may have changed since May 2025
-- Specific drift calibration values (cents, milliseconds) -- approximate, need perceptual validation
-- FramebufferWidget vs TransparentWidget performance tradeoffs -- may vary with GPU/driver
+- Specific EMA alpha value (0.3) -- engineering judgment, needs empirical validation
+- Anti-click crossfade duration (2-5ms) -- standard DSP practice, needs tuning for this specific module
+- Drift authority scaling (2%) -- estimated from source code analysis, needs perceptual validation
 
 ---
-*Research completed: 2026-02-25*
+*Research completed: 2026-03-07*
 *Ready for roadmap: yes*

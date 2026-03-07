@@ -1,8 +1,8 @@
-# Domain Pitfalls
+# Domain Pitfalls: Clock Sync for Analog Series LFO
 
-**Domain:** Analog-modeled VCV Rack oscillator/LFO modules (waveform morphing, analog character, drift)
-**Researched:** 2026-02-25
-**Overall Confidence:** MEDIUM-HIGH (established DSP engineering principles; VCV Rack SDK specifics based on training data without live verification)
+**Domain:** Adding clock synchronization to an existing analog-modeled VCV Rack LFO module
+**Researched:** 2026-03-07
+**Overall Confidence:** MEDIUM-HIGH (VCV Rack voltage standards verified via official docs; DSP patterns from established engineering practice; drift/clock interaction analysis based on direct source code review of existing AnalogLFO.cpp)
 
 ---
 
@@ -12,484 +12,355 @@ Mistakes that cause rewrites, audible artifacts, or architectural dead-ends.
 
 ---
 
-### Pitfall 1: Waveform Morphing Discontinuities (Clicks and Pops)
+### Pitfall 1: Phase Reset Discontinuity (Clicks and Pops)
 
-**What goes wrong:** Naive linear interpolation between waveforms at different morph positions produces discontinuities when the waveforms have different zero-crossing structures. For example, morphing from a sine (smooth everywhere) to a sawtooth (sharp reset at phase=1.0) creates an interpolated waveform where a sudden ramp appears/disappears, causing audible clicks at the morph transition boundaries.
+**What goes wrong:** When a clock edge arrives and the LFO phase is hard-reset to 0.0, the output voltage jumps instantaneously from wherever the waveform currently is to the waveform value at phase 0.0. For a sine wave at phase 0.7, that is a jump from approximately -3.1V to 0V. For a falling saw at phase 0.3, that is a jump from +2V to +5V. This produces a broadband impulse -- an audible click or pop -- identical to a needle drop on vinyl.
 
-**Why it happens:** Each waveform shape has different derivative profiles at the same phase position. A sine at phase=0.75 has negative slope, while a sawtooth at phase=0.75 has positive slope. Crossfading produces a momentary near-flat segment that abruptly shifts as the morph knob passes through the 50% point. At audio rate modulation of the morph parameter, this becomes a click train.
+**Why it happens:** The existing `AnalogLFO::process()` uses a continuous phase accumulator (`double phase`) that wraps smoothly at 1.0. Clock sync introduces a forced discontinuity: the phase must snap to 0.0 on each clock edge to maintain beat alignment. The larger the phase error at the moment of reset, the larger the output voltage discontinuity.
 
-**Consequences:** Audible clicks during morph sweeps, especially noticeable at slow morph rates. Users perceive it as a bug. At audio-rate morph modulation, it creates unmusical artifacts rather than the expected timbral movement.
+**Consequences:** Audible clicks on every clock pulse, especially noticeable when the LFO modulates a filter cutoff or VCA gain. At slow clock rates (e.g., 1 beat per 2 seconds), the click stands alone and is very obvious. Users will perceive the module as broken. If the LFO is modulating pitch, each click is a transient tuning spike.
 
 **Prevention:**
-1. Use phase-aligned waveform definitions where all shapes share the same zero-crossing at phase=0.0 and phase=0.5. Define the morph path so that waveforms with similar derivative structure are adjacent (sine -> triangle -> saw -> square is good; sine -> square -> saw -> triangle is bad).
-2. Implement derivative-continuous morphing: interpolate not just amplitude but also the first derivative at each phase point. Hermite interpolation between waveform segments preserves slope continuity.
-3. For the morph parameter itself, apply a one-pole lowpass (slew limiter) to prevent discontinuous jumps, especially when driven by CV. A 1-5ms slew time is inaudible for knob turns but prevents clicks from stepped CV.
-4. Test morph with a slow LFO (0.1 Hz) sweeping full range while monitoring on headphones at high volume. Clicks are immediately obvious.
+1. **Short crossfade on reset:** When a clock edge triggers a phase reset, do not snap `phase = 0.0` immediately. Instead, capture the current output value and crossfade from it to the new waveform value over 2-5ms (roughly 100-220 samples at 44.1kHz). A cosine crossfade (`0.5 - 0.5 * cos(pi * t / fadeTime)`) avoids corners that produce their own clicks.
+2. **Reset at natural zero-crossing:** If the waveform is within a few percent of phase 0.0 or 1.0 when the clock arrives, snap directly (the discontinuity is small enough to be inaudible). Only engage the crossfade when the phase error exceeds a threshold (e.g., >5% of cycle).
+3. **Separate the phase reset from the output reset:** Update `phase = 0.0` immediately for timing accuracy, but apply a short slew on the output side. This keeps the internal phase accumulator sample-accurate for downstream timing while hiding the artifact.
+4. **Test with the LFO modulating a resonant filter:** Clicks are most audible through a resonant filter because the impulse excites the filter's resonance, producing a "ping" on every clock pulse.
 
 **Detection (warning signs):**
-- Audible click when morph knob is swept quickly
-- Spectral analysis showing broadband impulse energy during morph transitions
-- Waveform display showing visible jumps at morph boundaries
+- Audible tick/click synchronized with clock input
+- Waveform display shows visible vertical jump at clock edge
+- Spectral analysis shows broadband energy spikes at clock rate
 
-**Phase mapping:** Address in Phase 1 (core waveform engine). This is foundational -- getting the morph topology right early prevents cascading issues in all downstream features.
+**Phase mapping:** Address in the first implementation phase of clock sync. The phase reset mechanism is the foundation -- if this clicks, nothing else matters.
 
-**Confidence:** HIGH (well-established DSP principle)
-
----
-
-### Pitfall 2: Wrong BLEP/PolyBLEP Implementation Causing Worse Aliasing
-
-**What goes wrong:** Implementing polyBLEP antialiasing incorrectly, resulting in aliasing that is *different* (but not less) than the naive oscillator, or introducing new artifacts. Common mistakes: applying the BLEP correction at the wrong sample relative to the discontinuity, using the wrong polynomial order, or failing to handle the case where a discontinuity falls between samples (fractional delay).
-
-**Why it happens:** PolyBLEP works by subtracting an approximation of the aliased energy near waveform discontinuities. The correction must be applied at exactly the right phase, with the right amplitude, at the right polynomial evaluation point. The math is simple but the implementation details are finicky:
-- The residual `d = phase / phaseIncrement` must be computed correctly (where `d` is how far past the discontinuity we are, in samples)
-- For a sawtooth, the BLEP is applied at the wrap point (phase >= 1.0)
-- For a square wave, BLEPs are applied at both the rising AND falling edges
-- The polynomial must be evaluated for `d` in [0,1] for the current sample and `d` in [-1,0] for the previous sample
-- The sign and scale of the correction depends on the discontinuity height
-
-**Consequences:** Aliasing remains audible (especially in high notes C5+), or new artifacts appear as tonal ringing near Nyquist. Users comparing to well-known modules (Befaco EvenVCO, Fundamental VCO-1) will immediately notice.
-
-**Prevention:**
-1. Start with a known-correct polyBLEP implementation. The canonical 2-sample polyBLEP residual function is:
-   ```cpp
-   float polyBLEP(float t, float dt) {
-       // t = phase position [0,1), dt = phase increment per sample
-       if (t < dt) {
-           float d = t / dt;
-           return d + d - d * d - 1.f;
-       } else if (t > 1.f - dt) {
-           float d = (t - 1.f) / dt;
-           return d * d + d + d + 1.f;
-       }
-       return 0.f;
-   }
-   ```
-2. For the saw, subtract polyBLEP at the reset. For square, subtract at rising edge and add at falling edge.
-3. Verify by generating a 10kHz sawtooth at 44.1kHz and examining the spectrum. Aliased components should be at least 40dB below the fundamental for polyBLEP (60dB+ for higher-order BLEP).
-4. Consider using minBLEP (precomputed table) for higher quality. PolyBLEP is a 2-sample approximation; minBLEP uses a longer kernel (8-16 samples) for much better suppression, at moderate CPU cost.
-
-**Detection:**
-- Generate test tones at high frequencies (>5kHz) and examine FFT for mirror frequencies
-- Sweep a saw wave from C1 to C8 while watching a spectrogram -- aliased partials appear as lines sweeping downward from Nyquist
-- A/B test against Befaco EvenVCO or Fundamental VCO at high pitches
-
-**Phase mapping:** Address in Phase 1 (core oscillator). Antialiasing is not something you bolt on later -- it fundamentally affects the waveform generation architecture. If you build morph/FM/sync on top of a naive oscillator then add antialiasing, you may need to restructure.
-
-**Confidence:** HIGH (textbook DSP, extensively documented in Julius O. Smith's work and the musicdsp.org community)
+**Confidence:** HIGH (fundamental DSP principle; verified by KVR Audio forum discussions on discontinuity artifacts and JUCE forum LFO click threads)
 
 ---
 
-### Pitfall 3: Through-Zero FM That Aliases Catastrophically
+### Pitfall 2: Drift Engine Fighting Clock Sync
 
-**What goes wrong:** Through-zero FM (TZFM) by definition allows the instantaneous frequency to go negative (the oscillator reverses direction). If implemented naively as `phase += baseFreq + fmInput`, the phase increment can become very large when the FM index is high, causing the oscillator to skip over multiple waveform cycles per sample. Each skipped cycle means skipped discontinuities, each of which aliases. The result is a harsh, digital, inharmonic mess rather than the rich, controlled FM timbres expected.
+**What goes wrong:** The existing OU (Ornstein-Uhlenbeck) drift engine modifies `deltaPhase` before phase accumulation (line 244 of AnalogLFO.cpp: `deltaPhase *= (1.0 + (double)(driftScale * combinedOU))`). When clock sync is active, the LFO frequency is derived from the measured clock period, not from the Rate knob. If drift continues to modulate `deltaPhase`, it pulls the LFO frequency away from the clock-derived frequency, causing the phase to accumulate error between clock edges. On the next clock edge, the phase error is larger, requiring a bigger reset correction, which produces a bigger click. At high drift levels, the LFO could be as much as 7.5% off-frequency (the current `driftScale` maximum), meaning the phase at clock arrival could be off by 7.5% of a full cycle per period.
 
-**Why it happens:** In analog TZFM (like the Buchla 259), the integrator naturally handles continuous phase traversal. In digital, we advance phase in discrete steps. At 44.1kHz with a carrier at 440Hz, the base phase increment is ~0.01 per sample. But with FM index of 10 and a 440Hz modulator, the instantaneous frequency can reach 4840Hz (increment ~0.11) -- still manageable. At FM index 50 (common for aggressive FM), the frequency hits 22kHz+ and phase increments exceed 0.5, meaning more than half a cycle per sample. Antialiasing breaks down entirely.
+**Why it happens:** The drift engine was designed for free-running operation where cumulative phase error is musically desirable (it IS the drift). But in clocked mode, phase error is a defect, not a feature. The two systems have contradictory goals: drift wants to wander, clock sync wants to lock.
 
-**Consequences:** TZFM sounds "digital" and harsh at moderate-to-high indices. Users comparing to hardware TZFM (Buchla, DPO, Hertz Donut) will find it unusable for the metallic-but-musical timbres they expect.
+**Consequences:** Phase reset clicks proportional to drift amount. At Drift=1.0 with slow clock rates, the click becomes a pronounced "thump" as the phase can be 7.5% off (0.375V discontinuity on a +/-5V output). Users who want "clocked LFO with analog character" -- a very reasonable use case -- get punished with artifacts. They must choose between clock sync and drift, which defeats the module's value proposition.
 
 **Prevention:**
-1. Accept that perfect TZFM antialiasing at extreme indices is an unsolved problem in real-time DSP. Set expectations: target FM indices up to ~20 cleanly, with graceful degradation beyond.
-2. Implement oversampling specifically for the FM path. 4x oversampling extends the clean FM index range by ~4x. Use a minimum-phase antialiasing filter for the downsample stage.
-3. Apply the BLEP corrections accounting for the FM-modulated phase increment. Each discontinuity crossing needs its own BLEP, and the fractional delay calculation uses the *actual* phase increment at that sample (not the base frequency).
-4. For very high FM indices, consider soft-limiting the phase increment to prevent multi-cycle jumps. This is technically inaccurate but sounds vastly better than aliased multi-cycle skipping. A `tanh()` soft limiter on the phase increment preserves the character while preventing catastrophic aliasing.
-5. Provide an FM index attenuator that is calibrated so 100% = musical maximum without aliasing, with an "overdrive" range beyond that which is clearly marked as experimental.
+1. **Reduce drift authority in clocked mode:** When clocked, scale drift contribution down significantly. A 1-2% frequency deviation is enough to add subtle analog feel without accumulating large phase errors between clock edges. Use `driftScale = driftAmount * 0.02f` in clocked mode vs the current `0.075f` in free mode.
+2. **Apply drift to waveform shape, not frequency:** In clocked mode, redirect drift energy to subtle waveform deformation (character perturbation, tiny duty cycle wobble) rather than frequency deviation. The user gets analog feel without timing drift.
+3. **Phase correction with slew:** On each clock edge, measure the accumulated phase error, then apply a gradual correction over the next ~10% of the cycle rather than an instant snap. This distributes the correction energy over time, hiding it as a subtle speed change rather than a click.
+4. **Document the interaction:** Make it clear in tooltips or documentation that Drift in clocked mode affects waveform character rather than timing. Users coming from hardware analog synths will understand -- real clocked LFOs also have less drift than free-running ones.
 
 **Detection:**
-- Apply a sine wave FM signal and sweep the index from 0 to 50. Listen for the transition from clean FM to digital hash
-- Compare spectrograms at index=5 vs index=20 vs index=50. Clean FM shows discrete sidebands; aliased FM shows noise-like energy across the entire spectrum
-- Test with carrier and modulator at the same frequency (1:1 ratio) -- this should produce recognizable harmonic timbres at any index, not noise
+- Increase Drift to maximum, enable clock, listen for periodic clicks
+- Watch the waveform display: visible "jerk" at phase reset means drift accumulated too much error
+- Compare the display at Drift=0 clocked vs Drift=1 clocked
 
-**Phase mapping:** Address in Phase 2 (VCO-specific features). Build the core oscillator with clean BLEP first, then add FM with oversampling. TZFM is a premium feature that should not compromise the base oscillator quality.
+**Phase mapping:** Must be designed alongside the clock sync engine, not as an afterthought. The drift behavior in clocked mode is an architectural decision.
 
-**Confidence:** HIGH (well-known limitation of digital FM synthesis, extensively discussed in academic and open-source DSP literature)
+**Confidence:** HIGH (direct analysis of existing source code at `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` lines 230-245)
 
 ---
 
-### Pitfall 4: Hard Sync That Loses Antialiasing
+### Pitfall 3: Clock Period Measurement Instability
 
-**What goes wrong:** Hard sync resets the slave oscillator's phase when the master crosses zero. This reset creates a new discontinuity in the slave waveform that occurs at a point *not aligned* with the slave's natural discontinuities. If you only apply BLEP at the slave's natural reset points, the sync-induced discontinuities alias freely. This is especially bad because sync is typically used at pitch ratios that produce dense harmonic series -- exactly where aliasing is most audible.
+**What goes wrong:** Measuring the time between clock edges by counting samples seems simple but has multiple failure modes: (1) the first clock pulse has no previous edge, so no period can be computed; (2) tempo changes (the user adjusts BPM upstream) cause a sudden period change that, if applied instantly, produces a frequency jump; (3) irregular clock sources (swing, shuffle, humanized clocks) produce alternating long/short periods; (4) very slow clocks (e.g., 1 beat per 8 seconds) mean the LFO runs at a guessed frequency for a very long time before getting corrected.
 
-**Why it happens:** The sync reset introduces a discontinuity whose position within the sample period depends on the master's exact zero-crossing time (which is usually between samples). Simply resetting `slavePhase = 0` at the sample where the master crosses zero ignores the fractional sample timing, causing:
-1. Jitter in the reset position (up to 1 sample of timing error)
-2. An uncompensated discontinuity jump in the slave waveform
-3. Missing BLEP correction for the sync-induced edge
+**Why it happens:** A single period measurement between two edges is inherently noisy. Real-world clock sources in VCV Rack include hand-turned knobs, CV-controlled BPM, swung/shuffled clocks, and MIDI clocks with jitter. Taking a single inter-edge interval as truth produces jittery LFO frequency.
 
-**Consequences:** Sync sounds buzzy and aliased instead of the signature "vocal" sync sweep. The aliasing is pitch-dependent and changes character as you sweep the slave frequency, which sounds particularly unmusical.
+**Consequences:** LFO frequency wobbles visibly on the display. At slow tempos, the LFO may run at wildly wrong speeds for seconds. With swung clocks, the LFO alternates between two different speeds every beat, producing an unpleasant "breathing" artifact rather than the intended smooth modulation.
 
 **Prevention:**
-1. Calculate the master's exact fractional zero-crossing time within the sample period using linear interpolation between the previous and current master phase values.
-2. At the sync point: compute the slave's value just before reset, compute the slave's value just after reset (at phase=0 or wherever you reset to), and the difference is the discontinuity height. Apply a BLEP correction for this discontinuity at the fractional sample position.
-3. After the sync reset, advance the slave phase by the remaining fractional sample time (not a full sample). This preserves sub-sample timing accuracy.
-4. Handle the case where multiple sync events occur within a single sample (very high master frequency) -- this requires iterating through all zero crossings.
-
-```cpp
-// Pseudocode for antialiased hard sync
-if (masterPhaseWrapped) {
-    float fracDelay = masterPrevPhase / (masterPrevPhase - masterPhase + 1.f);
-    float slaveValueBefore = computeSlaveWaveform(slavePhase);
-    float syncedPhase = slavePhaseIncrement * (1.f - fracDelay);
-    float slaveValueAfter = computeSlaveWaveform(syncedPhase);
-    float discontinuity = slaveValueAfter - slaveValueBefore;
-    applyBLEP(discontinuity, fracDelay);
-    slavePhase = syncedPhase;
-}
-```
+1. **Exponential moving average (EMA) of period:** Smooth the measured period using `smoothedPeriod = alpha * newPeriod + (1 - alpha) * smoothedPeriod`. An alpha of 0.3-0.5 balances responsiveness with stability. This requires at least 2-3 clock pulses before the estimate is usable.
+2. **Outlier rejection:** If a new period measurement differs from the smoothed period by more than 50%, treat it as a tempo change rather than noise. Apply it immediately but flag the system to expect further changes (tempo is ramping).
+3. **First-pulse handling:** On the first clock edge, do not attempt to set the LFO frequency. Simply record the timestamp. On the second edge, compute the first period but treat it as preliminary. On the third edge, you have two measurements and can begin smoothing. Before the second edge arrives, keep the LFO running at its current Rate knob frequency.
+4. **Timeout detection:** If no clock edge arrives for more than 2x the last measured period, consider the clock stopped. Either revert to free-running mode or hold the last known frequency. Do not let the timer overflow or accumulate indefinitely.
+5. **Display the measured BPM/period:** Show the user what the module thinks the tempo is. This makes debugging easy and builds trust.
 
 **Detection:**
-- Sweep slave frequency while sync is active: listen for artifacts that sound like digital buzz rather than the expected smooth timbral sweep
-- Compare spectrogram of synced oscillator against a known-good reference (hardware or oversampled reference implementation)
-- Test with master at low frequency (100Hz) and slave at high frequency (5kHz+) where aliasing is most visible
+- Patch a slightly irregular clock (e.g., a clock with swing) and observe LFO frequency stability
+- Change upstream BPM abruptly and watch for frequency overshoot
+- Remove the clock cable and verify the module recovers gracefully
 
-**Phase mapping:** Address in Phase 2 alongside TZFM. Sync and FM share the same core challenge: correctly handling sub-sample discontinuity timing.
+**Phase mapping:** Core clock sync implementation phase. Period measurement is the foundation that everything else (division, multiplication, display) depends on.
 
-**Confidence:** HIGH (well-documented in Eli Brandt's "Hard Sync Without Aliasing" and Valimaki/Nam's virtual analog literature)
+**Confidence:** HIGH (established digital clock recovery principle; community reports of jitter issues with VCV Rack clocks)
 
 ---
 
-### Pitfall 5: NanoVG Display Blocking the Audio Thread
+### Pitfall 4: Wrong Schmitt Trigger Thresholds Breaking Interoperability
 
-**What goes wrong:** VCV Rack uses NanoVG for module panel rendering. If the display's `draw()` method reads oscillator state without proper synchronization, or if the draw routine is computationally expensive, two things happen: (1) the audio thread may stall waiting on a mutex that the display thread holds, causing audio dropouts, and (2) the display itself may drop frames, making the waveform display look choppy and unresponsive.
+**What goes wrong:** Using non-standard trigger thresholds means the module fails to detect clock pulses from certain sources, or falsely triggers on noise. VCV Rack has an official voltage standard: Schmitt trigger with low threshold ~0.1V and high threshold ~1-2V. Modules that deviate from this (e.g., using 2.5V threshold for "cleaner" detection) will miss triggers from modules outputting weak pulses, or modules using 5V gates instead of 10V triggers.
 
-**Why it happens:** VCV Rack's `process()` runs on the audio thread (real-time priority) and `draw()`/`drawLayer()` runs on the UI thread (non-real-time). These are different threads. Sharing oscillator state between them requires synchronization, but any mutex that the audio thread might wait on is a real-time safety violation. Even a brief lock contention spike (microseconds) can cause an audio glitch.
+**Why it happens:** Developers assume all triggers are clean 0-10V pulses and use a simple comparator instead of a Schmitt trigger. Or they implement hysteresis but pick thresholds that don't match the ecosystem. The VCV Rack Voltage Standards page explicitly warns about the Gibbs phenomenon: bandlimited trigger sources (e.g., a VCO square wave used as a clock) produce ringing around transitions that causes false retriggering without proper hysteresis.
 
-**Consequences:** Audio dropouts when the display is visible (especially with multiple instances). Users report "the module sounds great but causes clicks when I look at it." This is a reputation-destroying bug because it seems so bizarre and is hard to diagnose.
-
-**Prevention:**
-1. NEVER use `std::mutex` or any blocking synchronization primitive that the audio thread might wait on.
-2. Use a lock-free communication pattern: the audio thread writes to a ring buffer or double buffer, the display thread reads from it. A simple approach:
-   ```cpp
-   // In the module (audio thread writes, display thread reads)
-   struct DisplayBuffer {
-       float waveform[256];  // display resolution
-       std::atomic<int> writeIndex{0};
-       // Double-buffer: audio writes to back, display reads from front
-       float front[256];
-       float back[256];
-       std::atomic<bool> swapReady{false};
-   };
-   ```
-3. In `process()`: accumulate one cycle of waveform data into the back buffer. When a full cycle is captured, set `swapReady = true`. In `draw()`: if `swapReady`, swap pointers and set `swapReady = false`, then render from the front buffer.
-4. Decimate the display data. You need at most 256 points per waveform cycle for visual display. Do not send 44100 samples/sec to the display.
-5. Rate-limit display updates. VCV Rack's UI runs at the monitor refresh rate (typically 60Hz). Updating display data at 60Hz is sufficient. Use a sample counter in `process()` to only capture display data every ~735 samples (at 44.1kHz).
-
-**Detection:**
-- Monitor CPU usage with the module's panel visible vs minimized/scrolled off-screen. If CPU drops significantly when the display is hidden, you have a display performance issue.
-- Test with 8+ instances of the module visible simultaneously. If audio starts crackling, the display is interfering with the audio thread.
-- Profile with Instruments (macOS) or perf (Linux) looking for lock contention on the audio thread.
-
-**Phase mapping:** Address in Phase 1 architecture. The display communication pattern must be designed into the module's data architecture from the start. Retrofitting lock-free communication into a mutex-based design is a significant refactor.
-
-**Confidence:** HIGH (standard real-time audio programming principle; VCV Rack threading model is well-documented)
-
----
-
-### Pitfall 6: Memory Allocation in process() Causing Audio Glitches
-
-**What goes wrong:** Calling `new`, `delete`, `malloc`, `free`, `std::vector::push_back()` (when it reallocates), `std::string` operations, or any other heap-allocating function inside `process()` causes unpredictable latency spikes. The memory allocator uses mutexes internally and may trigger OS virtual memory operations. A single allocation can stall the audio thread for milliseconds -- enough to cause an audible click.
-
-**Why it happens:** Developers accustomed to non-real-time C++ habitually use heap allocation. The compiler won't warn you. The problem is intermittent (depends on allocator state, memory pressure, OS scheduling), so it may not appear during development but manifests under load or on slower machines.
-
-**Consequences:** Intermittent audio glitches that are nearly impossible to reproduce reliably. Users on slower machines or with many modules loaded will experience clicks and dropouts. Extremely difficult to debug because the glitch occurs in the allocator, not in your code.
+**Consequences:** Module works in testing with one clock source but fails with others. Users report "clock sync doesn't work" with specific module combinations. Extremely frustrating to debug because the developer's test setup works fine.
 
 **Prevention:**
-1. Pre-allocate everything in the constructor or `onAdd()`. All buffers, lookup tables, temporary arrays -- allocate once at initialization.
-2. Use `std::array` instead of `std::vector` when the size is known at compile time (which it usually is for audio buffers).
-3. If you need dynamic state (e.g., variable-length delay lines for oversampling), allocate the maximum size at construction and use a length variable to track the active portion.
-4. Run your code through a real-time safety checker. On macOS, the `RealtimeSanitizer` (RADSan) can flag allocations on the audio thread. Alternatively, override `operator new` in debug builds to assert when called from the audio thread.
-5. Audit every function called from `process()`. Check that none of them allocate internally. Common hidden allocators: `std::function` (captures may allocate), `std::map`/`std::unordered_map` operations, `std::string` concatenation, `printf`/`LOG` with format strings, exception construction.
+1. **Use `dsp::SchmittTrigger` from the VCV Rack SDK.** Call `schmittTrigger.process(input, 0.1f, 1.f)` exactly as documented in the Voltage Standards. Do not roll your own.
+2. **Test with multiple clock sources:** VCV Fundamental CLKD, Impromptu CLOCKED, Bogaudio CLKD, a raw square wave from a VCO, and an attenuated trigger (3V amplitude). If any of these fail, the thresholds are wrong.
+3. **Handle the clock-after-reset timing rule:** VCV Rack standard says modules with CLOCK and RESET inputs should ignore CLOCK triggers up to 1ms after a RESET trigger. This prevents the 1-sample cable delay from causing clock and reset to be processed in the wrong order. Use `dsp::Timer` to track the post-reset blanking window.
 
 **Detection:**
-- Static analysis: grep for `new`, `malloc`, `vector`, `string`, `map` usage within `process()` call tree
-- Runtime: RADSan or custom allocator debugging
-- Symptom: glitches that appear only under high CPU load or with many modules
+- Clock sync works with some modules but not others
+- Occasional double-triggers (two resets per clock pulse) from bandlimited clock sources
+- Module triggers on noise when no clock is connected but the input jack has crosstalk
 
-**Phase mapping:** Enforce from Phase 1 onward as a coding standard. Every `process()` code path must be allocation-free. This is a discipline issue, not a feature to add later.
+**Phase mapping:** First thing to implement in clock input handling. Get this wrong and nothing else can be tested reliably.
 
-**Confidence:** HIGH (fundamental real-time audio programming rule)
+**Confidence:** HIGH (verified against official VCV Rack Voltage Standards documentation)
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that degrade quality or cause significant rework, but don't necessarily force a complete rewrite.
+---
+
+### Pitfall 5: Clock Division/Multiplication Producing Wrong Ratios
+
+**What goes wrong:** The Rate knob in clocked mode should select division/multiplication ratios (x1, x2, x4, /2, /4, etc.). Common implementation mistakes: (1) allowing continuous ratios that produce non-musical subdivisions; (2) implementing multiplication by outputting phase-advanced clocks instead of adjusting the LFO frequency; (3) getting the direction backwards (x2 should mean the LFO completes 2 cycles per clock period, not half a cycle).
+
+**Why it happens:** In free-running mode, the Rate knob is continuous (0.01-20Hz). Reusing this continuous range in clocked mode produces values like "x1.37" which has no musical meaning. The knob needs to snap to discrete ratios in clocked mode.
+
+**Consequences:** LFO never quite lines up with the beat. Divisions feel "off" to musicians. Non-standard ratios confuse users who expect x1, x2, x4, /2, /3, /4 etc.
+
+**Prevention:**
+1. **Define a fixed ratio table:** Common useful ratios: /16, /8, /4, /3, /2, x1, x2, x3, x4, x8, x16. Map the 0-1 knob range to indices into this table with equal-width zones.
+2. **Snap the knob position to detent-like zones:** Apply quantization to the knob value before looking up the ratio. Display the current ratio (e.g., "x4" or "/2") on the display or in the tooltip.
+3. **Dual-mode Rate knob:** The existing `configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz")` needs different range, labels, and tooltip formatting in clocked mode. Use `paramQuantity->displayMultiplier` or override the display string dynamically.
+4. **Test triplet ratios:** /3 and x3 are musically important but easy to accidentally omit from the ratio table.
+
+**Detection:**
+- LFO completes cycle at unexpected times relative to clock
+- Display shows non-integer ratio
+- Users report confusion about what the Rate knob does in clocked mode
+
+**Phase mapping:** Part of the Rate knob dual-mode implementation phase.
+
+**Confidence:** MEDIUM-HIGH (based on study of existing clocked LFO behaviors in Mutable Instruments Tides and VCV Fundamental LFO documentation)
 
 ---
 
-### Pitfall 7: Analog Character Modeling -- The Uncanny Valley
+### Pitfall 6: Tempo Change Causing Frequency Overshoot or Oscillation
 
-**What goes wrong:** The "analog character" knob (digital -> classic synth crossfade) falls into an uncanny valley where the analog modeling is present enough to be noticed but not accurate enough to be convincing. It sounds "wrong" rather than "warm." Specific failure modes:
-- Adding white noise to approximate analog noise floor, which sounds like hiss rather than character
-- Using random pitch modulation that is too fast or too uniform (sounds like vibrato, not drift)
-- Applying a single filter that makes everything sound "muffled" rather than "warm"
-- Over-modeling: adding so many analog imperfections that the oscillator sounds broken
+**What goes wrong:** When upstream tempo changes (e.g., user rotates the BPM knob on a clock module), the measured period changes. If the LFO frequency tracks the measured period with too little smoothing, it jerks to the new tempo. If it smooths too much, it takes many beats to catch up. The worst case: the EMA smoothing constant is tuned for one tempo range but oscillates at another. For example, alpha=0.5 is stable at 120 BPM but at 30 BPM (2-second periods), each measurement has massive weight and the frequency ping-pongs.
 
-**Why it happens:** Analog character is the sum of many subtle, correlated effects. Real analog oscillators have: temperature-dependent pitch drift (slow, correlated across voices), capacitor leakage (affects waveform shape, not just pitch), component tolerance spread (static per-instance offsets), power supply ripple (correlated across all oscillators in a synth), slew rate limiting in op-amps (rounds sharp edges frequency-dependently). Modeling any one of these in isolation sounds wrong because the ear expects them to be correlated.
+**Why it happens:** Exponential smoothing with a fixed alpha treats fast and slow tempos identically in terms of samples-between-updates, but the musical expectation differs. At 120 BPM, you get 2 period measurements per second -- plenty of data. At 30 BPM, you get 0.5 per second -- each measurement dominates.
 
-**Consequences:** The "analog" setting sounds worse than digital, undermining the module's core value proposition. Users leave the character knob at 0% and the feature becomes wasted development effort.
+**Consequences:** At slow tempos, the LFO visibly lurches when tempo changes. At fast tempos, the smoothing makes tempo tracking feel sluggish. Users perceive the module as "laggy" or "twitchy" depending on the tempo.
 
 **Prevention:**
-1. Model a small number of effects authentically rather than many effects superficially. Start with: (a) gentle frequency-dependent waveform rounding (1-pole lowpass on the output, cutoff tracking the fundamental), (b) static per-instance DC offset and gain variation, (c) slow pitch drift (see Pitfall 8 below).
-2. Use reference recordings. Record actual analog oscillators (Minimoog, SH-101, MS-20) through a clean DI and analyze: spectrum shape, pitch stability over 30-second windows, waveform shape variation. A/B your analog model against these references.
-3. The crossfade parameter should interpolate effect *intensities*, not switch between entirely different signal paths. At 25% analog, all the analog effects should be present at 25% of their maximum, producing a subtle warmth. Not "digital waveform at 0-49%, analog waveform at 50-100%."
-4. Less is more. A real Minimoog's analog character is subtle -- the oscillators are quite stable and clean by today's standards. Don't make "100% analog" sound like a broken oscillator. Use hardware measurements to calibrate the maximum intensity.
+1. **Use period-adaptive smoothing:** Scale alpha based on the number of measurements received recently. Start with alpha=0.7 for the first few measurements at a new tempo, then reduce to alpha=0.3 for steady-state tracking.
+2. **Detect large tempo changes explicitly:** If the new period differs from the smoothed period by more than 25%, treat it as an intentional tempo change. Apply the new period with high weight (alpha=0.8) rather than the steady-state alpha.
+3. **Rate-limit frequency changes:** Apply a slew to the LFO frequency itself (not just the period measurement). A 50ms slew on the frequency prevents audible jumps while tracking tempo changes within a few beats.
+4. **Test with BPM automation:** Patch a CV source into the clock module's BPM input and sweep from 60 to 240 BPM. The LFO should track smoothly without overshoot.
 
 **Detection:**
-- A/B test against dry/digital at the 25% and 50% settings. If the character is not pleasant at 25%, the modeling is wrong.
-- Have someone blind-test: "which sounds more analog?" If they can't tell or prefer digital, recalibrate.
-- Check that the analog setting at 100% is still musically useful, not just a novelty.
+- Visible frequency jump in display when tempo changes
+- LFO takes more than 3 beats to lock to new tempo
+- Oscillating frequency visible in output when tempo is changing
 
-**Phase mapping:** Address in Phase 2 or 3 (analog engine). Build the digital oscillator first, get it sounding excellent, then add analog character as a refineable layer. The analog modeling should be developed iteratively with listening tests, not designed theoretically and implemented once.
+**Phase mapping:** Refinement phase after basic clock sync works. Get the basic period measurement working first, then tune the smoothing behavior.
 
-**Confidence:** MEDIUM (subjective audio quality assessment; recommendations based on common patterns in successful analog modeling plugins)
+**Confidence:** MEDIUM (EMA smoothing is standard, but optimal alpha values require empirical tuning specific to this module's use cases)
 
 ---
 
-### Pitfall 8: Drift Modeling That Sounds Bad
+### Pitfall 7: Display Not Updating Correctly in Clocked Mode
 
-**What goes wrong:** Pitch drift that uses white noise or simple random walk sounds like a broken oscillator -- too jittery, too fast, and uncorrelated with the kinds of instability real analog circuits exhibit. Conversely, drift that is too slow (period > 30 seconds) is imperceptible and pointless.
+**What goes wrong:** The existing display update logic relies on phase wrapping (`phase < prevPhaseForDisplay`) to trigger waveform buffer redraws (line 266). In clocked mode, phase wrapping behavior changes: phase resets to 0.0 on clock edges (which triggers the wrap detection) but the LFO may also wrap naturally between clock edges if the division ratio is >1. Additionally, the phase-tracking dot and comet trail animations assume smooth continuous phase progression. A hard phase reset makes the dot teleport to the start, breaking the smooth animation.
 
-**Why it happens:** Real analog drift has a specific spectral character: it is dominated by 1/f noise (pink noise) in the 0.01Hz to 1Hz range, with occasional slow excursions (thermal drift) and rare sudden jumps (component settling). White noise LFO modulating pitch sounds like vibrato; random walk (brownian motion) accumulates unboundedly and the oscillator wanders completely out of tune.
+**Why it happens:** The display code was designed for free-running operation with continuous, monotonic phase progression. Clock sync introduces discontinuities that violate the `phase < prevPhaseForDisplay` assumption -- any phase reset looks like a wrap, and multiple wraps per clock period (for multiplied ratios) produce excessive buffer rebuilds.
 
-**Consequences:** Users either turn drift off (too jittery/fast) or can't hear it (too slow). The feature fails to deliver the "living, breathing" quality of real analog.
+**Consequences:** Display flickers or redraws too frequently at high multiplication ratios. Dot animation glitches visibly on phase resets. Users see a "jump" in the animation that makes the module feel janky, even if the audio output is clean (thanks to crossfading). The display undermines confidence in the clock sync feature.
 
 **Prevention:**
-1. Use filtered noise with a 1/f (pink) spectral characteristic in the 0.01-2Hz range. Implementation: generate white noise at a low sample rate (e.g., 100Hz), apply a pinking filter (3dB/octave rolloff), then interpolate up to audio rate with cubic interpolation.
-2. Calibrate the drift amount in cents, not in arbitrary units. Real analog oscillators drift approximately 1-5 cents over seconds-to-minutes timescales. Maximum drift at 100% should be about 10-15 cents (enough to be clearly audible as "alive" but not out-of-tune).
-3. Add a DC offset component (static, set on module initialization, randomized per instance) of 1-3 cents. This gives each oscillator instance a unique "personality" even at drift=0.
-4. For phase jitter (distinct from pitch drift): modulate the phase accumulator with very low-amplitude noise (0.001-0.01 radians) filtered to 1-100Hz. This creates subtle waveform "shimmer" without pitch instability.
-5. Implement drift as multiple independent noise sources at different timescales: (a) sub-Hz thermal drift, (b) 1-10Hz circuit noise, (c) >10Hz component buzz (very subtle, from power supply ripple). Layer these with decreasing amplitude as frequency increases.
+1. **Add a "clock reset" flag:** When a clock edge triggers a phase reset, set a flag that the display code can check. The display can then animate the dot smoothly back to the start (or skip the trail for that frame) instead of showing a teleport.
+2. **Rate-limit display rebuilds in multiplied mode:** At x8 multiplication, the phase wraps 8 times per clock period. The display does not need to rebuild the waveform buffer 8 times per beat. Add a minimum interval between wrap-triggered rebuilds (e.g., 100ms).
+3. **Show a clock sync indicator:** Add a small visual badge (e.g., a "CLK" label or a dot that blinks on each clock edge) so users know the module is tracking. This sets the expectation that behavior is different from free-running mode.
+4. **Display the division ratio:** Show "x4" or "/2" on the display or in the Rate knob tooltip. This gives immediate feedback about what the Rate knob is doing in clocked mode.
 
 **Detection:**
-- Record 30 seconds of the oscillator with drift at various settings. Measure pitch deviation with a tuner. It should wander 1-5 cents, not 50 cents.
-- Listen to two oscillators with drift enabled and slightly detuned. They should produce slowly evolving beating patterns, not chaotic warbling.
-- A/B against recordings of real analog oscillators' drift behavior.
+- Visual glitch when clock edge arrives (dot jumps, trail breaks)
+- Display appears to flicker at high multiplication ratios
+- Waveform buffer rebuilds visible as brief rendering stutter
 
-**Phase mapping:** Phase 2-3 (analog engine). Drift modeling can be iterated without architectural changes -- it is a modulation source, not a structural component.
+**Phase mapping:** Display updates come after core clock sync is working. But plan the display changes during the design phase to avoid retrofitting.
 
-**Confidence:** MEDIUM (based on analog circuit analysis literature and audio engineering community knowledge; specific cent values are approximate)
+**Confidence:** HIGH (direct analysis of existing display code in AnalogLFO.cpp lines 265-279 and 376-447)
 
 ---
 
-### Pitfall 9: Phase Accumulator Precision at Extreme Frequencies
+### Pitfall 8: Cable Disconnection Not Reverting to Free-Running Mode
 
-**What goes wrong:** Using `float` (32-bit) for the phase accumulator causes two problems at opposite ends of the frequency range:
-- **Very low LFO rates** (0.001 Hz): The phase increment per sample is ~2.27e-8 at 44.1kHz. A 32-bit float has ~7 decimal digits of precision. When the accumulator reaches 0.5, adding 2.27e-8 rounds to 0.5 (no change) due to floating-point precision limits. The LFO stalls or stutters.
-- **Very high audio rates** (>10kHz): The phase increment is large (~0.25+ per sample), and accumulated rounding errors cause pitch drift of several cents over time. This is different from intentional analog drift -- it is a precision bug.
+**What goes wrong:** When the user unplugs the CLK cable, the module should seamlessly revert to free-running mode using the Rate knob value. Common mistakes: (1) the module keeps running at the last clocked frequency indefinitely; (2) the module stops outputting because it is waiting for a clock edge that will never come; (3) the transition from clocked to free-running produces a frequency jump because the Rate knob was in "division ratio" mode and the raw value no longer maps to a sensible frequency.
 
-**Why it happens:** IEEE 754 single-precision float has a 23-bit mantissa (~7.2 decimal digits). The relative precision of addition degrades as the magnitude of the accumulator increases relative to the increment. When `accumulator >> increment`, the increment is lost to rounding.
+**Why it happens:** The module checks `inputs[CLK_INPUT].isConnected()` but only on clock edges, not every sample. Or the module stores a "clocked mode" state that is not cleared when the cable is removed. Or the Rate knob parameter range was remapped for division mode and the unmapped value is now wrong.
 
-**Consequences:** LFO stalls at very low rates (users expect rates down to 0.001 Hz or lower for evolving textures). VCO has measurable pitch inaccuracy at high frequencies. Both are embarrassing bugs that undermine precision.
+**Consequences:** Module appears to "freeze" or "break" when CLK cable is removed. Users must restart the module or re-patch to recover. This is especially frustrating during a performance.
 
 **Prevention:**
-1. Use `double` (64-bit) for the phase accumulator. This provides ~15.9 decimal digits of precision, which handles increments down to ~1e-15 without loss -- sufficient for LFO rates down to 0.0001 Hz at 96kHz sample rate.
-2. Keep the accumulator in the range [0, 1) by subtracting 1.0 (not using fmod, which is expensive). The subtraction approach preserves the fractional precision:
-   ```cpp
-   phase += increment;
-   if (phase >= 1.0) phase -= 1.0;  // NOT phase = fmod(phase, 1.0)
-   ```
-3. If you must use `float` for the accumulator (e.g., SIMD constraints), use a compensated summation technique (Kahan summation) to preserve precision. Or use a modular counter approach: increment a `uint32_t` counter and convert to float phase only when needed.
-4. For LFO mode specifically, if rates below 0.01 Hz are needed, consider using a separate `double`-precision accumulator path for LFO mode regardless of the VCO's precision.
+1. **Check `isConnected()` every process() call:** It is cheap (a pointer check) and authoritative. When the CLK input transitions from connected to disconnected, immediately enter free-running mode.
+2. **Keep the Rate knob parameter range unchanged:** Do not modify `paramQuantity->minValue/maxValue` when switching modes. Instead, interpret the same 0.01-20Hz range differently: in free mode it is a direct frequency; in clocked mode it maps to the ratio table. This means the knob position is always valid in both modes.
+3. **Smooth the frequency transition:** When switching from clocked to free-running (or vice versa), apply a short frequency slew (50-100ms) to avoid an abrupt frequency change. The LFO might be running at 2Hz (clocked x2 at 60 BPM) and the Rate knob says 0.7Hz -- a direct switch would be audible.
+4. **Clear clock state on disconnect:** Reset `smoothedPeriod`, `clockEdgeCount`, and any EMA state when the cable is removed. Stale clock data should not influence behavior when the cable is reconnected later.
+5. **Serialize the mode state?** Probably not. When a patch loads and the CLK cable is connected, the module should detect the first two clock edges and lock on. Saving clock period to JSON is fragile because the upstream clock may have changed. The OU drift state is already not serialized (by design, line 109 of PROJECT.md) -- treat clock state the same way.
 
 **Detection:**
-- Set LFO to 0.001 Hz and record the output for 1000 seconds (one full cycle). Verify the waveform completes a full cycle. With float, it likely stalls partway.
-- Generate a 10kHz tone for 60 seconds. Measure the frequency at the start and end. With float accumulator, you may see drift.
-- Unit test: run the phase accumulator for 10 million samples and verify the accumulated phase matches the expected value within tolerance.
+- Unplug CLK cable and verify LFO immediately returns to Rate knob frequency
+- Replug CLK cable and verify clock sync re-engages within 2-3 beats
+- Save/load patch with CLK connected and verify module re-syncs on load
 
-**Phase mapping:** Address in Phase 1 (core engine design). The phase accumulator type is foundational. Changing from float to double later may require updating every function that reads the phase.
+**Phase mapping:** Must be handled in the core clock sync implementation. Backward compatibility (no CLK = unchanged behavior) is a hard requirement per PROJECT.md.
 
-**Confidence:** HIGH (IEEE 754 floating-point arithmetic is mathematically precise; these limits are calculable)
+**Confidence:** HIGH (standard VCV Rack module design pattern; `isConnected()` behavior well-documented)
 
 ---
 
-### Pitfall 10: Oversampling Implementation That Burns CPU Without Benefit
+### Pitfall 9: Accumulating Timing Error from Integer Sample Counting
 
-**What goes wrong:** Applying blanket 4x or 8x oversampling to the entire signal path when only specific operations (discontinuity generation, FM, nonlinear waveshaping) need it. Or using an oversampling filter with poor stopband rejection that lets aliased content through anyway.
+**What goes wrong:** Counting samples between clock edges using an integer counter introduces quantization error. At 44100Hz sample rate and 120 BPM (0.5s period), the period is exactly 22050 samples -- no error. But at 130 BPM (0.4615s period), the true period is 20353.846... samples. Rounding to 20354 or 20353 introduces a 0.005% error per beat. Over a long session (hundreds of beats), this accumulates as phase drift between the LFO and the clock.
 
-**Why it happens:** Oversampling is the "easy" answer to aliasing: just run everything at a higher rate. But it multiplies CPU cost linearly (4x oversampling = ~4x CPU for the oversampled portion), and if the decimation filter is poorly designed, the aliasing reduction may be only 10-20dB instead of the expected 60dB+.
+**Why it happens:** Sample counting is inherently integer-quantized. The error is small per beat but cumulative. At musical tempos, the error is typically sub-millisecond per beat, but over 1000 beats (about 8 minutes at 120 BPM) it can reach several milliseconds -- enough to be noticeable as a slight "drift" in the sync.
 
-**Consequences:** Module uses 4x more CPU than necessary for minimal aliasing improvement. Users with large patches (50+ modules) will avoid CPU-heavy modules. VCV Rack's built-in oversampling (engine-level) is separate from module-level oversampling, and stacking both wastes even more CPU.
-
-**Prevention:**
-1. Use oversampling surgically: only oversample the nonlinear/discontinuous operations (FM, sync, waveshaping), not the entire signal path. Linear operations (mixing, filtering, gain) do not generate aliasing and do not benefit from oversampling.
-2. Design the decimation filter properly. Use a half-band FIR filter with at least 60dB stopband rejection. For 4x oversampling, you need a 2-stage cascade of half-band filters (each 2x), which is much more efficient than a single 4x filter.
-3. Profile CPU usage per-module. VCV Rack shows per-module CPU in the context menu. Target less than 5% of a single core per instance at 44.1kHz. Compare against Befaco EvenVCO and Fundamental VCO as benchmarks.
-4. Make oversampling user-configurable via the context menu (Off / 2x / 4x / 8x). Some users prioritize CPU, others prioritize quality. VCV Rack convention is to offer this choice.
-5. Consider whether polyBLEP/minBLEP + oversampling is redundant. Well-implemented minBLEP at 1x may sound better than polyBLEP at 4x, at lower CPU cost.
-
-**Detection:**
-- A/B test 1x with minBLEP vs 4x with polyBLEP at various frequencies. If they sound similar, the oversampling is wasted.
-- Measure CPU: right-click module -> "CPU meter" in VCV Rack. Compare against reference modules.
-- Test with VCV Rack's engine oversampling enabled simultaneously -- verify your module-level oversampling is bypassed or at least doesn't cause problems.
-
-**Phase mapping:** Address in Phase 2 (VCO features, FM/sync). Implement clean BLEP at 1x first, then add optional oversampling only where measurements show it's needed.
-
-**Confidence:** HIGH (CPU cost of oversampling is straightforward; filter design is well-established DSP)
-
----
-
-### Pitfall 11: State Serialization That Loses Analog Character State
-
-**What goes wrong:** VCV Rack saves/loads patch state via JSON serialization (`dataToJson` / `dataFromJson`). If you forget to serialize the analog character state -- per-instance random offsets, drift phase, component spread values -- then every time the patch is loaded, each module instance gets new random values. Users who carefully tuned a patch find it sounds different every time they open it.
-
-**Why it happens:** Developers test with fresh instances and don't notice that persistent state matters. The random seed or per-instance parameters seem like implementation details, not user-facing state. But if a user has two oscillators and one sounds slightly brighter due to component spread, that is part of their patch's sound.
-
-**Consequences:** Patches sound different on reload. This is especially problematic for users doing studio work who need recalls to be exact. It will be reported as a bug.
+**Consequences:** LFO slowly drifts out of phase with the clock over long sessions. Phase reset on each clock edge corrects this, but the correction becomes a periodic click (pitfall 1) if the accumulated error is large enough.
 
 **Prevention:**
-1. Serialize ALL per-instance state: random seeds, DC offsets, component spread values, drift oscillator phases, filter states for analog modeling.
-2. Use deterministic random generation seeded from a serialized seed value. Store the seed, not the derived values. On load, regenerate from the seed -- this produces identical results and minimizes JSON size.
-3. Test serialization explicitly: create a patch with specific settings, save, close, reload, and verify the sound is bit-identical (or at least perceptually identical, given that drift is an ongoing process).
-4. Version your serialization format. Include a `"version": 1` field in the JSON so you can handle format changes in future updates without breaking old patches.
+1. **Use floating-point time accumulation:** Instead of counting integer samples, accumulate elapsed time using `float timer += args.sampleTime`. This gives sub-sample precision and avoids integer quantization. VCV Rack's `dsp::Timer` does exactly this.
+2. **Reset the timer on each clock edge:** The timer accumulates time since the last edge. When a new edge arrives, the accumulated time IS the measured period (in seconds, not samples). Reset the timer and start accumulating again.
+3. **Use double precision for phase accumulation:** The existing code already uses `double phase` (line 32) -- this is good. A `double` has ~15 significant digits, meaning phase error from floating-point accumulation is negligible for any practical session length.
+4. **Correct accumulated phase on each clock edge:** Even with perfect frequency tracking, tiny errors accumulate. On each clock edge, the phase should be exactly at 0.0 (or whatever the reset target is). The correction is the anti-click crossfade from pitfall 1.
 
 **Detection:**
-- Save/reload test: save a patch, reload, compare output waveforms. They should be visually identical on the scope.
-- Randomize all character settings, save, reload, verify character settings match.
-- Edge case: save a patch, update the module to a new version, reload. Old patches must still work.
+- Run the LFO clocked for 10+ minutes and compare output phase to clock phase
+- Measure the phase at each clock edge -- it should not drift in one direction
 
-**Phase mapping:** Address in Phase 1 (module architecture). Design the serialization schema as part of the initial architecture, not as an afterthought.
+**Phase mapping:** Use `dsp::Timer` from the start. This is a one-line architectural decision that prevents the problem entirely.
 
-**Confidence:** HIGH (VCV Rack serialization API is well-documented; this is a common VCV Rack plugin development gotcha)
-
----
-
-### Pitfall 12: Waveform Display Showing Aliased Version
-
-**What goes wrong:** The NanoVG waveform display shows the output waveform after antialiasing (BLEP corrections), but the display path renders the waveform differently from the audio path. Alternatively, the display shows the ideal waveform shape (pre-antialiasing), which doesn't match what users hear. Either way, the display is misleading.
-
-**Why it happens:** The audio path generates samples at 44.1kHz+ with BLEP corrections, FM modulation, and all analog character processing. The display path typically captures a subset of these samples (e.g., one cycle at reduced resolution). If the display samples are captured before BLEP correction, or if the display re-synthesizes the waveform mathematically, it won't match the audio.
-
-**Consequences:** Users see a perfect sawtooth on the display but hear a slightly rounded one (or vice versa). This erodes trust in the display's utility and causes confusion.
-
-**Prevention:**
-1. Capture display data from the FINAL output of `process()`, after all processing (BLEP, analog character, filtering). What the display shows should be exactly what the audio output sends.
-2. Display the actual sample values, not a mathematical re-rendering. Copy a cycle's worth of output samples to the display buffer, then draw those.
-3. For slow LFO rates where a full cycle takes seconds, display the waveform by direct computation (since the waveform evolves too slowly to capture in real-time). Use the same functions the audio path uses, but compute one cycle at representative parameters.
-4. Apply display-appropriate smoothing: for audio-rate signals, use peak-hold or envelope following rather than trying to show individual samples. A rolling min/max per display pixel column produces a clearer visualization than raw sample plotting.
-
-**Detection:**
-- Compare the display visually against an external oscilloscope module (e.g., Submarine scope) patched to the same output. They should show the same waveform.
-- Check that the display updates correctly when parameters change (morph, character, drift).
-- Verify the display at extreme frequencies: at very high frequencies, does it show a useful waveform or meaningless noise?
-
-**Phase mapping:** Phase 3 (display implementation). Get the audio engine right first, then build the display to faithfully represent it.
-
-**Confidence:** MEDIUM (specific to VCV Rack NanoVG implementation patterns; based on common open-source VCV module patterns)
+**Confidence:** HIGH (fundamental digital timing principle)
 
 ---
 
 ## Minor Pitfalls
 
-Mistakes that cause friction or minor quality issues.
+---
+
+### Pitfall 10: Clock Multiplication at High Ratios Producing Inaudible LFO
+
+**What goes wrong:** At x16 multiplication with a 120 BPM clock (2Hz base), the LFO runs at 32Hz -- into the audio range. The waveform is no longer a useful modulation source; it is a low-frequency audio tone. The display becomes a blur. The user may not realize what happened.
+
+**Prevention:** Consider capping the maximum ratio so the resulting frequency stays below 20Hz (the current Rate param maximum), or display a warning when the effective frequency exceeds the sub-audio range. Alternatively, allow it but label it clearly -- some users want audio-rate LFO from clock sync.
+
+**Phase mapping:** Ratio table design phase.
+
+**Confidence:** MEDIUM (design decision, not a technical bug)
 
 ---
 
-### Pitfall 13: DC Offset in Morphed/FM'd Waveforms
+### Pitfall 11: Phase Reset Interfering with Waveform Character Modeling
 
-**What goes wrong:** Waveform morphing between asymmetric shapes (e.g., saw and square at non-50% duty cycle) introduces DC offset that varies with the morph position. FM synthesis also introduces morph-position-dependent DC. DC offset causes speaker cone displacement, wastes headroom, and creates clicks when the signal is gated.
+**What goes wrong:** The saw waveform has a "soft capacitor reset" (AnalogLFO.cpp line 117-123) that smooths the transition at phase 0.0. If the clock sync phase reset forces the phase to exactly 0.0, the soft reset region is entered abruptly, and the character modeling may interact unexpectedly with the crossfade anti-click logic (pitfall 1). Two different smoothing mechanisms fighting over the same phase region can produce unexpected waveform shapes.
 
-**Prevention:**
-1. Apply a DC-blocking filter (1-pole highpass at 5-10Hz) on the module output. This is computationally trivial (~2 multiplies and 2 adds per sample).
-2. For LFO mode, DC blocking must be disabled (LFO signals are supposed to have DC content at very low frequencies). Switch the filter based on operating mode.
-3. Alternatively, mathematically ensure each waveform morph state is DC-free by design. This is elegant but fragile -- any new waveform or modulation path may reintroduce DC.
+**Prevention:** Ensure the anti-click crossfade operates on the final output (after character modeling), not on the raw phase. The character modeling should operate on the new phase position as if it were a normal cycle start. Test all four waveform shapes (sine, triangle, saw, square) with phase reset at various phase positions.
 
-**Phase mapping:** Phase 1 (core output stage). Add the DC blocker early and leave it in.
+**Phase mapping:** During anti-click crossfade implementation. Requires testing with character knob at various settings.
 
-**Confidence:** HIGH
+**Confidence:** HIGH (direct analysis of character modeling code in AnalogLFO.cpp)
 
 ---
 
-### Pitfall 14: Ignoring VCV Rack's Voltage Standards
+### Pitfall 12: Rate Knob Tooltip Showing Wrong Units in Clocked Mode
 
-**What goes wrong:** VCV Rack has established voltage standards: audio signals are +/-5V (10Vpp), CV pitch is 1V/octave with C4=0V, gate/trigger is 0-10V. Modules that deviate from these standards don't interoperate correctly with other modules.
+**What goes wrong:** The Rate knob is configured with `configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz")`. When clocked, the knob represents a division/multiplication ratio, not a frequency. If the tooltip still shows "Rate: 3.50 Hz", users are confused because the actual LFO frequency depends on the clock.
 
-**Prevention:**
-1. Audio output: scale to +/-5V.
-2. V/Oct input: implement standard `dsp::FREQ_C4 * std::pow(2.f, voltage)` conversion (261.626Hz * 2^V).
-3. FM input: standardize the input scaling. VCV convention varies, but most modules use 1V = 1x fundamental frequency for linear FM.
-4. Sync input: trigger on rising edge crossing ~2V threshold (Schmitt trigger with hysteresis recommended, e.g., 0.1V/1.0V thresholds or use `dsp::SchmittTrigger`).
-5. Morph/character CV inputs: 0-10V or +/-5V with attenuverter. Document which standard you use.
+**Prevention:** Override `ParamQuantity::getDisplayValueString()` to show the ratio (e.g., "x4" or "/2") when clocked, and the frequency in Hz when free-running. Update the `configParam` unit string dynamically, or use a custom `ParamQuantity` subclass.
 
-**Phase mapping:** Phase 1 (I/O design). Define voltage standards in a header file and reference them everywhere.
+**Phase mapping:** UI/UX polish phase after core clock sync works.
 
-**Confidence:** HIGH (VCV Rack voltage standards are documented in the official manual)
+**Confidence:** HIGH (straightforward VCV Rack API usage)
 
 ---
 
-### Pitfall 15: Testing Analog Character by Ear Only
+### Pitfall 13: Not Handling the First Clock Pulse Gracefully
 
-**What goes wrong:** Analog character modeling is subjective, and without objective measurements, development becomes an endless cycle of "tweak and listen" that never converges. Different developers on the team (or the same developer on different days) disagree on what sounds "right."
+**What goes wrong:** On the first clock edge after cable connection (or patch load), there is no previous edge to measure a period against. The module does not know the clock tempo. If it resets the phase to 0.0 on this first edge, it has correct phase alignment but runs at the free-running Rate knob frequency until the second edge provides a period measurement. This produces one LFO cycle at the "wrong" speed -- noticeable if the Rate knob frequency and clock tempo differ significantly.
 
-**Prevention:**
-1. Establish quantitative targets: e.g., "at 100% character, THD increases by 0.5-2%", "pitch drift standard deviation is 3 cents over 10 seconds", "HF rolloff is -3dB at 8kHz for a 440Hz fundamental."
-2. Build automated test infrastructure: generate test tones, measure THD, spectral tilt, pitch stability, DC offset. Run these as unit tests.
-3. Create reference recordings from hardware synthesizers (or use published measurements). Compare spectral profiles.
-4. Use a panel of 3-5 listeners for subjective evaluation. Formalize the listening test: "Rate 1-5 on warmth, naturalness, musicality." Average the scores.
-5. Maintain a "golden master" audio file that represents the target sound. Run a perceptual difference test (e.g., PEAQ or simple spectral comparison) against new builds.
+**Prevention:** Accept the one-cycle latency gracefully. On the first clock edge: reset the phase (for alignment) but keep the current frequency. On the second edge: compute the period and switch to clocked frequency. On the third edge: begin EMA smoothing. Document this: "clock sync locks within 2-3 beats" is an acceptable and expected behavior for any clocked module. Do not try to "guess" the tempo from a single pulse.
 
-**Detection:**
-- If development of the analog character feature takes more than 2x the estimated time and is still "not quite right," you need objective metrics.
-- If different team members give contradictory feedback, you need a formalized evaluation process.
+**Phase mapping:** Clock sync initialization logic.
 
-**Phase mapping:** Establish metrics framework in Phase 1 (testing infrastructure). Apply to analog character development in Phase 2-3.
-
-**Confidence:** MEDIUM (testing methodology recommendation; actual quality metrics are project-specific)
+**Confidence:** HIGH (matches behavior of Mutable Instruments Tides and other clocked Eurorack modules)
 
 ---
 
-### Pitfall 16: Not Handling Sample Rate Changes
+### Pitfall 14: Autosave Serialization Overhead for Clock State
 
-**What goes wrong:** VCV Rack allows the user to change the engine sample rate at any time (and provides per-module oversampling settings). If your module pre-computes filter coefficients, lookup tables, or buffer sizes based on the sample rate at construction time, they become invalid after a sample rate change, causing filter instability, aliasing, or crashes.
+**What goes wrong:** VCV Rack autosaves every 15 seconds, calling `dataToJson()`. If clock state variables are serialized unnecessarily (e.g., the raw timer value, smoothed period history, edge count), this adds overhead and the saved state is meaningless on reload because the clock may have changed.
 
-**Prevention:**
-1. Implement `onSampleRateChange()` to recompute all sample-rate-dependent state: filter coefficients, oversampling filter tables, delay line lengths, drift noise filter coefficients.
-2. Read `args.sampleRate` in `process()` or cache it in `onSampleRateChange()` -- do not hardcode 44100.
-3. Test with sample rate changes during playback (44.1k -> 96k -> 48k). Verify no clicks, no filter explosions, no crashes.
-4. Be aware that VCV Rack's per-module oversampling multiplies the effective sample rate seen by your `process()`. If you also implement internal oversampling, the rates compound. Handle this gracefully.
+**Prevention:** Do NOT serialize clock timing state (period measurements, EMA state, timer values). Only serialize the boolean "was clocked" state if needed for UI display purposes on reload. The module should re-acquire clock sync from scratch on patch load, just as it does for drift (OU layers are not serialized per the existing design decision).
 
-**Phase mapping:** Phase 1 (core architecture). Sample rate handling must be wired in from the start.
+**Phase mapping:** Serialization implementation, late in the milestone.
 
-**Confidence:** HIGH (VCV Rack API requirement)
+**Confidence:** HIGH (consistent with existing design decision for OU state)
 
 ---
 
 ## Phase-Specific Warnings
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Core waveform engine | Morph discontinuities (P1), phase precision (P9), DC offset (P13) | Design morph topology carefully with derivative continuity; use double for phase; add DC blocker |
-| Antialiasing | Wrong BLEP (P2), wasted oversampling (P10) | Start with known-correct polyBLEP; verify with spectral analysis before adding oversampling |
-| Display | Thread blocking (P5), misleading display (P12) | Lock-free double buffer from day 1; display final output samples |
-| Through-zero FM | Catastrophic aliasing (P3), sync interaction | Surgical oversampling for FM path; soft-limit extreme indices |
-| Hard sync | Lost antialiasing (P4) | Sub-sample accurate sync with BLEP compensation for sync-induced discontinuities |
-| Analog character | Uncanny valley (P7), bad drift (P8) | Reference recordings; 1/f noise for drift; calibrate in cents; less is more |
-| Plugin infrastructure | Memory in process() (P6), serialization (P11), voltage standards (P14), sample rate (P16) | Enforce coding standards from day 1; serialize all per-instance state; implement onSampleRateChange() |
-| Testing/validation | Testing by ear only (P15) | Build quantitative metrics framework early; automate spectral analysis |
+| Phase Topic | Likely Pitfall | Mitigation | Priority |
+|---|---|---|---|
+| Clock input detection | Pitfall 4 (wrong thresholds), Pitfall 13 (first pulse) | Use `dsp::SchmittTrigger` with `process(x, 0.1f, 1.f)`, handle first-pulse gracefully | CRITICAL |
+| Period measurement | Pitfall 3 (instability), Pitfall 9 (integer counting) | Use `dsp::Timer` (float), EMA smoothing with alpha 0.3-0.5 | CRITICAL |
+| Phase reset | Pitfall 1 (clicks), Pitfall 11 (character interaction) | Crossfade 2-5ms on output, test all waveform shapes | CRITICAL |
+| Drift interaction | Pitfall 2 (drift fighting sync) | Reduce drift authority to 1-2% in clocked mode, or redirect to waveform shape | CRITICAL |
+| Division/multiplication | Pitfall 5 (wrong ratios), Pitfall 10 (audio-rate) | Fixed ratio table, snap quantization | MODERATE |
+| Tempo tracking | Pitfall 6 (overshoot) | Period-adaptive EMA, large-change detection | MODERATE |
+| Cable disconnect | Pitfall 8 (stuck in clocked mode) | Check `isConnected()` every process(), clear clock state | MODERATE |
+| Display | Pitfall 7 (animation glitch) | Clock reset flag, rate-limit rebuilds, show sync indicator | MODERATE |
+| Rate knob UX | Pitfall 5 (ratios), Pitfall 12 (tooltip) | Dual-mode interpretation, dynamic tooltip | LOW |
+| Serialization | Pitfall 14 (overhead) | Do not serialize clock timing state | LOW |
 
 ---
 
-## Priority Ordering
+## Interaction Matrix: Clock Sync vs. Existing Features
 
-If time is constrained, address pitfalls in this order:
+This module's unique challenge is that clock sync must interact cleanly with three existing systems that were designed for free-running operation:
 
-1. **P9 (Phase precision)** -- Trivial to prevent (use double), catastrophic if not caught until late
-2. **P6 (Memory in process)** -- Coding discipline from day 1, hard to retrofit
-3. **P5 (Display threading)** -- Architectural decision that must be made early
-4. **P2 (BLEP implementation)** -- Foundation of audio quality; everything else builds on this
-5. **P1 (Morph discontinuities)** -- Core feature; must be right for the product to work
-6. **P14 (Voltage standards)** -- Define once early, follow everywhere
-7. **P11 (Serialization)** -- Design the schema early, even if implementation is later
-8. **P3 (TZFM aliasing)** -- Can be deferred to VCO phase but must be planned for
-9. **P4 (Hard sync)** -- Same phase as TZFM
-10. **P7/P8 (Analog character/drift)** -- Iterative refinement; start with simple model and improve
+| Existing System | Interaction with Clock Sync | Risk | Mitigation |
+|---|---|---|---|
+| **OU Drift Engine** | Drift modulates frequency, conflicting with clock-derived frequency | HIGH | Reduce drift scope in clocked mode (Pitfall 2) |
+| **Waveform Character** | Character modeling at phase=0.0 interacts with reset crossfade | MEDIUM | Apply crossfade on final output, after character (Pitfall 11) |
+| **Display System** | Phase resets trigger unwanted display rebuilds and dot teleport | MEDIUM | Clock reset flag, animation smoothing (Pitfall 7) |
+| **Phase Accumulator** | Double-precision phase works fine; clock just resets it | LOW | Existing architecture is compatible |
+| **CV Modulation** | CV inputs for morph/character/drift unaffected by clock | LOW | No change needed |
+| **Lock-free Display Buffer** | Double-buffer pattern works fine with clocked updates | LOW | No change needed |
 
 ---
 
-## Sources and Confidence Notes
+## Sources
 
-- Waveform morphing, BLEP, FM, sync, phase precision topics: Based on established DSP literature (Julius O. Smith, "Physical Audio Signal Processing"; Valimaki et al., "Alias-Suppressed Oscillators Based on Differentiated Polynomial Waveforms"; Eli Brandt, "Hard Sync Without Aliasing"; musicdsp.org archives). **HIGH confidence** -- these are mathematically grounded topics that don't change over time.
-- VCV Rack API specifics (threading, serialization, voltage standards, NanoVG): Based on VCV Rack 2 SDK documentation and open-source plugin patterns observed in training data. **MEDIUM-HIGH confidence** -- API may have evolved since training cutoff, but core patterns (lock-free audio/UI communication, JSON serialization, voltage standards) are unlikely to have changed.
-- Analog character modeling recommendations: Based on audio engineering community knowledge and published research on virtual analog synthesis. **MEDIUM confidence** -- subjective quality assessment; specific calibration values (cents of drift, THD percentages) are approximate guidelines, not established standards.
-- NanoVG performance specifics: Based on VCV Rack open-source module patterns. **MEDIUM confidence** -- display performance characteristics depend on GPU hardware and driver specifics that may vary.
+### Official Documentation (HIGH confidence)
+- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) - Schmitt trigger thresholds, clock/reset timing rules, trigger output standards
+- [VCV Rack DSP Manual](https://vcvrack.com/manual/DSP) - Signal processing guidance
+- [VCV Rack API: dsp::TSchmittTrigger](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TSchmittTrigger) - Trigger detection API
+- [VCV Rack API: dsp::TTimer](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TTimer) - Timer accumulation API
+- [VCV Rack API: dsp::PulseGenerator](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1PulseGenerator) - Trigger output API
+- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) - Module serialization, `dataToJson`/`dataFromJson`
 
-**Note:** Web search and Context7 were unavailable for this research session. All findings are based on training data. The DSP fundamentals (pitfalls 1-4, 6, 9-10, 13) are mathematically grounded and highly unlikely to be outdated. VCV Rack-specific pitfalls (5, 11, 14, 16) should be verified against the current VCV Rack 2 SDK documentation. Analog modeling recommendations (7, 8, 15) are inherently subjective and should be validated through listening tests.
+### Community and Technical Discussions (MEDIUM confidence)
+- [VCV Community: Example clock multiplier code](https://community.vcvrack.com/t/example-clock-multiplier-code/20570) - Period measurement patterns
+- [VCV Community: Clock generators BPM accuracy](https://community.vcvrack.com/t/clock-generators-bpm-accuracy/20030) - Timing precision issues
+- [VCV Community: Schmitt trigger help](https://community.vcvrack.com/t/help-schmitt-trigger/14774) - Threshold selection
+- [VCV Community: VCV LFO Clock](https://community.vcvrack.com/t/vcv-lfo-clock/19755) - Rate knob behavior in clocked mode
+- [KVR Audio: Why discontinuities pop](https://www.kvraudio.com/forum/viewtopic.php?t=182555) - Discontinuity artifact theory
+- [JUCE Forum: LFO Clicks problem](https://forum.juce.com/t/lfo-clicks-problem/41475) - Phase reset click solutions
+
+### Module References (MEDIUM confidence)
+- [Mutable Instruments Tides Manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/tides_2018/manual/) - PLL clock tracking, division/multiplication behavior
+- [VCV Fundamental LFO](https://library.vcvrack.com/Fundamental/LFO) - CLK input behavior reference
+- [ModWiggler: LFO with sync and reset](https://www.modwiggler.com/forum/viewtopic.php?t=222452) - Reset discontinuity discussion
+- [ModWiggler: Modules with clock/reset issues](https://www.modwiggler.com/forum/viewtopic.php?t=222946) - Real-world clock sync problems
+- [Learning Modular: Master Clocks and Reset](https://learningmodular.com/master-clocks-reset/) - Clock/reset timing in Eurorack
+
+### Direct Source Analysis (HIGH confidence)
+- `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` - Existing module implementation, drift engine, display system, phase accumulator

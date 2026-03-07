@@ -1,869 +1,606 @@
-# Architecture Patterns
+# Architecture Research: Clock Sync Integration
 
-**Domain:** Analog-modeled VCV Rack oscillator modules (LFO + VCO)
-**Researched:** 2026-02-25
-**Confidence:** HIGH (VCV Rack 2 SDK patterns are well-established; DSP techniques for analog modeling are mature; prior POC validates core approach)
+**Domain:** Clock-synced LFO in VCV Rack 2
+**Researched:** 2026-03-07
+**Confidence:** HIGH (VCV Rack SDK patterns well-documented; clock sync is a solved problem in the module ecosystem; existing codebase is small and well-understood)
 
-## Recommended Architecture
+## Current Architecture Snapshot
 
-### High-Level Overview
+The existing AnalogLFO is a single 538-line file (`src/AnalogLFO.cpp`) containing three components:
 
-```
-                    +---------------------------+
-                    |     Shared Analog Engine   |
-                    |       (AnalogEngine)       |
-                    |                            |
-                    |  +---------+  +---------+  |
-           phase -->|  | Morph   |->| Charac- |  |
-                    |  | Stage   |  | ter     |  |
-                    |  +---------+  | Stage   |  |
-                    |               +---------+  |
-                    |                    |        |
-                    |               +---------+  |
-                    |               | Drift   |  |--> output sample
-                    |               | Stage   |  |--> display buffer
-                    |               +---------+  |
-                    +---------------------------+
-                              ^           ^
-                              |           |
-                    +--------+--+   +-----+-------+
-                    | LFO Module |   | VCO Module  |
-                    | (host)     |   | (host)      |
-                    +------------+   +-------------+
-```
+1. **`AnalogLFO` (Module struct)** -- Phase accumulator, waveform generation, drift engine, display buffer management. All DSP in `process()` at sample rate.
+2. **`WaveformDisplay` (Widget)** -- NanoVG rendering of waveform trace + phase dot with glow effects. Reads from double buffer.
+3. **`AnalogLFOWidget` (ModuleWidget)** -- Panel layout: knobs, jacks, screws, display placement.
 
-The architecture separates concerns into three layers:
-
-1. **Host Module** -- VCV Rack Module subclass that handles I/O, parameter mapping, phase accumulation, and module-specific features (sync, FM, frequency range).
-2. **Analog Engine** -- A standalone C++ class (no VCV Rack dependencies) that takes a phase value and control parameters, and produces a shaped output sample. Shared identically between LFO and VCO.
-3. **Waveform Display** -- A NanoVG-based custom widget that reads a snapshot buffer from the engine and renders a single-cycle waveform with a phase-tracking dot.
-
-### Component Boundaries
-
-| Component | Responsibility | Communicates With | Thread |
-|-----------|---------------|-------------------|--------|
-| `ForgeAnalogLFO` (Module) | Phase accumulation, rate knob, reset/sync, FM input, CV routing, output scaling | AnalogEngine (owns), Display (writes buffer) | Audio thread |
-| `ForgeAnalogVCO` (Module) | Phase accumulation, V/Oct tracking, through-zero FM, hard sync, antialiasing | AnalogEngine (owns), Display (writes buffer) | Audio thread |
-| `AnalogEngine` | Morph stage, character stage, drift stage, display buffer generation | Called by host module | Audio thread (called from process()) |
-| `MorphStage` | Continuous waveform morphing sine-tri-saw-square | Called by AnalogEngine | Audio thread |
-| `CharacterStage` | Crossfade from digital reference to analog reference waveforms | Called by AnalogEngine | Audio thread |
-| `DriftProcessor` | Pitch drift, phase jitter, component spread, DC offset, HF rolloff, pitch slew | Called by AnalogEngine | Audio thread |
-| `WaveformDisplay` (Widget) | NanoVG rendering of single-cycle waveform + phase dot | Reads snapshot buffer from Module | GUI thread |
-| `LFOWidget` / `VCOWidget` | Panel layout, knobs, jacks, screws, display placement | Owns WaveformDisplay, references Module | GUI thread |
-
-### Critical Boundary: Audio Thread vs GUI Thread
-
-VCV Rack runs `Module::process()` on the audio thread and `Widget::draw()` on the GUI thread. These must never share data without proper synchronization. The architecture uses a **lock-free snapshot buffer** pattern:
-
-- Audio thread writes a completed single-cycle waveform buffer (128-256 samples) and the current phase position into a double-buffered structure.
-- GUI thread reads the most recently completed buffer without blocking the audio thread.
-- An `std::atomic<int>` flag indicates which buffer is current.
-
-## Data Flow
-
-### Per-Sample DSP Pipeline
+### Current Data Flow (Per Sample)
 
 ```
-Host Module process():
-  1. Read params + CV inputs
-  2. Compute frequency (host-specific: rate knob for LFO, V/Oct for VCO)
-  3. Apply pitch drift from DriftProcessor (modifies frequency)
-  4. Apply pitch slew from DriftProcessor (smooths frequency changes)
-  5. Advance phase accumulator: phase += freq * sampleTime
-  6. Apply phase jitter from DriftProcessor (modifies phase)
-  7. [VCO only] Handle hard sync (reset phase on sync trigger)
-  8. [VCO only] Apply through-zero FM (add FM directly to phase increment)
-  9. Wrap phase to [0, 1)
-  10. Call engine.process(phase, morphPos, characterPos, driftAmount) -> output
-  11. Scale output to voltage (+/-5V LFO, +/-5V VCO)
-  12. Write to display buffer (every Nth sample or on phase wrap)
-
-AnalogEngine::process(phase, morph, character, drift):
-  1. MorphStage: generate morphed waveform from phase + morph position
-  2. CharacterStage: crossfade between digital morph result and analog reference
-  3. DriftProcessor: apply DC offset, HF rolloff to output
-  4. Write to display snapshot buffer (if phase wrapped this sample)
-  5. Return final output sample
+process():
+  1. Read RATE_PARAM -> freq (Hz)
+  2. Compute deltaPhase = freq * sampleTime
+  3. Read drift params + CV -> drift amount
+  4. If drift > 0: run OU layers, modulate deltaPhase
+  5. phase += deltaPhase; wrap to [0, 1)
+  6. Read morph/character params + CV
+  7. Update display buffer on phase wrap or param change
+  8. computeMorphedWave(phase, morph, character) -> sample
+  9. Output: sample * 5V
 ```
 
-### Display Data Flow
-
-```
-Audio Thread                          GUI Thread
------------                          ----------
-engine.process()
-  -> fills displayBuffer[writeIdx]
-  -> on phase wrap:
-     atomic writeIdx flip            WaveformDisplay::draw()
-                                       -> read displayBuffer[readIdx]
-                                       -> render 128-256 point polyline
-                                       -> draw phase dot at currentPhase
-```
-
-## Detailed Component Designs
-
-### 1. AnalogEngine
+### Current Enum Layout
 
 ```cpp
-// src/dsp/AnalogEngine.hpp
-#pragma once
-#include <cmath>
-#include <array>
-#include <atomic>
-
-struct AnalogEngineParams {
-    float morph;      // 0.0 = sine, 0.33 = tri, 0.67 = saw, 1.0 = square
-    float character;  // 0.0 = digital, 1.0 = full analog reference
-    float drift;      // 0.0 = none, 1.0 = full drift
+enum ParamId {
+    MORPH_PARAM, CHARACTER_PARAM, DRIFT_PARAM, RATE_PARAM,
+    MORPH_ATTEN_PARAM, CHARACTER_ATTEN_PARAM, DRIFT_ATTEN_PARAM,
+    PARAMS_LEN  // = 7
 };
-
-class AnalogEngine {
-public:
-    static constexpr int DISPLAY_SAMPLES = 256;
-
-    // Process a single sample. phase is [0, 1).
-    // Returns output in [-1, +1] range.
-    float process(float phase, const AnalogEngineParams& params, float sampleRate);
-
-    // Get display buffer for GUI thread (lock-free read)
-    const std::array<float, DISPLAY_SAMPLES>& getDisplayBuffer() const;
-    float getDisplayPhase() const;
-
-    // Called once per cycle (on phase wrap) to snapshot the display buffer
-    void updateDisplayBuffer(const AnalogEngineParams& params);
-
-    // Reset all internal state
-    void reset();
-
-private:
-    MorphStage morphStage;
-    CharacterStage characterStage;
-    DriftProcessor driftProcessor;
-
-    // Double-buffered display data
-    std::array<float, DISPLAY_SAMPLES> displayBuffers[2];
-    std::atomic<int> displayWriteIdx{0};
-    std::atomic<float> displayPhase{0.f};
+enum InputId {
+    MORPH_CV_INPUT, DRIFT_CV_INPUT, CHARACTER_CV_INPUT,
+    INPUTS_LEN  // = 3
 };
+enum OutputId { OUTPUT, OUTPUTS_LEN };
+enum LightId  { LIGHTS_LEN };
 ```
 
-**Design rationale:** The engine is a pure DSP class with no VCV Rack dependencies. This makes it testable in isolation, reusable across modules, and potentially portable to other plugin formats later. It takes normalized inputs (phase 0-1, params 0-1) and returns normalized output (-1 to +1). The host module handles all VCV-specific concerns.
-
-### 2. MorphStage -- Continuous Waveform Morphing
-
-The morph knob maps to a 0-1 range divided into three segments:
+### Current Panel Layout (12HP = 60.96mm)
 
 ```
-morph = 0.0        0.33       0.67       1.0
-        |  sine   |  tri     |  saw     |
-        |   <->   |   <->    |   <->    |
-        |   tri   |   saw    |   square |
+y=15-42mm   Waveform display (57x27mm, 2mm side margins)
+y=54mm      MORPH knob (center, RoundBigBlackKnob)
+y=69mm      CHARACTER knob (x=18mm) + DRIFT knob (x=42.96mm)
+y=86mm      RATE knob (x=18mm, RoundBlackKnob)
+            -- empty space at x=42.96, y=86mm --
+y=92mm      Section divider line
+y=96mm      Trimpots: Morph(x=10) Char(x=24) Drift(x=38)
+y=108mm     Jacks: MorphCV(x=10) CharCV(x=24) DriftCV(x=38) OUT(x=52)
 ```
 
-Each transition crossfades between adjacent waveform shapes.
+## Clock Sync Integration Architecture
+
+### System Overview
+
+```
+                          CLK INPUT (new)
+                              |
+                              v
+                   +--------------------+
+                   |  Clock Tracker     | (new component)
+                   |                    |
+                   |  SchmittTrigger    |
+                   |  Period measurement|
+                   |  Period smoothing  |
+                   |  Validity tracking |
+                   +--------+-----------+
+                            |
+                            | clockPeriod (seconds)
+                            | clockValid (bool)
+                            v
+    +--------------------------------------------------+
+    |              process() (modified)                  |
+    |                                                    |
+    |  if (clockValid):                                  |
+    |    freq = divisionRatio / clockPeriod              |
+    |    phase reset on clock edge                       |
+    |  else:                                             |
+    |    freq = RATE_PARAM (existing free-run)           |
+    |                                                    |
+    |  deltaPhase = freq * sampleTime                   |
+    |  ... drift, morph, character unchanged ...         |
+    +--------------------------------------------------+
+                            |
+                            v
+                   +--------------------+
+                   |  WaveformDisplay   | (modified)
+                   |                    |
+                   |  + sync badge      | (new overlay)
+                   |  + division label  | (new overlay)
+                   +--------------------+
+```
+
+### New Components
+
+#### 1. Clock Tracker (inline in AnalogLFO struct)
+
+This is NOT a separate class -- it is a set of member variables and a helper method on the `AnalogLFO` struct. Introducing a separate class for ~30 lines of logic would be over-engineering given the existing monolithic style.
+
+**New member variables:**
 
 ```cpp
-// src/dsp/MorphStage.hpp
-class MorphStage {
-public:
-    // Generate morphed waveform from phase and morph position.
-    // phase: [0, 1), morph: [0, 1]
-    // Returns [-1, +1]
-    float process(float phase, float morph) const;
-
-private:
-    // Individual waveform generators (pure math, no state)
-    static float sine(float phase);
-    static float triangle(float phase);
-    static float saw(float phase);
-    static float square(float phase);
-
-    // Crossfade helper
-    static float crossfade(float a, float b, float mix);
-};
+// Clock tracking state
+rack::dsp::SchmittTrigger clockTrigger;
+float clockPeriod = 0.f;           // Measured period (seconds)
+float clockTimer = 0.f;            // Time since last edge
+float smoothedClockPeriod = 0.f;   // EMA-smoothed period
+bool clockValid = false;           // Have we seen >= 2 edges?
+int clockEdgeCount = 0;            // Edges seen since CLK connected
+bool clockWasConnected = false;    // For detecting disconnect
 ```
 
-**Implementation approach for morphing:**
+**Clock processing logic (called at top of `process()`):**
 
 ```cpp
-float MorphStage::process(float phase, float morph) const {
-    // Scale morph to segment index + fractional position
-    float scaled = morph * 3.f;  // 0 to 3
-    int segment = std::min((int)scaled, 2);
-    float frac = scaled - (float)segment;
+void processClockInput(float sampleTime) {
+    bool clkConnected = inputs[CLK_INPUT].isConnected();
 
-    float a, b;
-    switch (segment) {
-        case 0: a = sine(phase);     b = triangle(phase); break;
-        case 1: a = triangle(phase); b = saw(phase);      break;
-        case 2: a = saw(phase);      b = square(phase);   break;
-    }
-    return crossfade(a, b, frac);
-}
-```
-
-**Why linear crossfade, not equal-power:** For waveform morphing, linear crossfade produces the correct intermediate shapes. Equal-power crossfade would boost the midpoint amplitude, which is wrong here -- we want the waveform shape to smoothly interpolate, not the energy level. The perceptual "dip" that equal-power solves in audio mixing doesn't apply to single-cycle waveshaping.
-
-### 3. CharacterStage -- Analog Reference Modeling
-
-The character knob crossfades between the "digital" waveform (output of MorphStage) and an "analog reference" waveform that models specific classic synth characteristics.
-
-```cpp
-// src/dsp/CharacterStage.hpp
-class CharacterStage {
-public:
-    // Apply analog character to a digital waveform.
-    // digitalSample: output from MorphStage
-    // phase: current phase [0, 1) for generating analog reference
-    // morph: current morph position (determines which analog reference to use)
-    // character: 0.0 = pure digital, 1.0 = full analog reference
-    float process(float digitalSample, float phase, float morph, float character) const;
-
-private:
-    // Analog reference waveform generators
-    // Each models characteristics of specific classic synths
-    float analogSine(float phase) const;      // Slightly clipped, mild even harmonics
-    float analogTriangle(float phase) const;   // Soft corners, slight asymmetry
-    float analogSaw(float phase) const;        // Leaky integrator shape, soft top
-    float analogSquare(float phase) const;     // Soft edges, slight duty cycle offset
-
-    // Morphed analog reference (same morph segmentation as digital)
-    float analogMorphed(float phase, float morph) const;
-};
-```
-
-**Analog reference waveform modeling approach:**
-
-Rather than wavetable lookups, model the analog deviations mathematically. This keeps the character continuous with the morph position and avoids wavetable interpolation artifacts.
-
-- **Analog sine:** Add small 2nd and 3rd harmonic content (~2-5% amplitude), slight positive DC bias. Models transformer and op-amp coloration.
-- **Analog triangle:** Soften the peaks with a tanh-like saturation at the tips, add slight asymmetry (rising slope ~2% faster than falling). Models integrator capacitor non-linearity.
-- **Analog saw:** Apply a one-pole leaky integrator shape: the linear ramp gets slightly exponential. Soften the reset with a brief RC-like transition (~5% of cycle). Models capacitor discharge.
-- **Analog square:** Apply tanh soft-clipping to the transitions (rise/fall time ~3-5% of cycle), add slight duty cycle offset (~1-2%). Models transistor switching speed.
-
-```cpp
-float CharacterStage::process(float digitalSample, float phase,
-                               float morph, float character) const {
-    if (character < 0.001f) return digitalSample;  // fast path
-
-    float analogSample = analogMorphed(phase, morph);
-    return digitalSample + character * (analogSample - digitalSample);
-    // Equivalent to: lerp(digitalSample, analogSample, character)
-}
-```
-
-### 4. DriftProcessor -- Analog Imperfections
-
-The drift knob scales six independent imperfection sources simultaneously. Each source has its own internal state (slow random processes).
-
-```cpp
-// src/dsp/DriftProcessor.hpp
-class DriftProcessor {
-public:
-    struct DriftState {
-        float pitchDrift;       // Slow random pitch wander (Hz offset)
-        float phaseJitter;      // Fast random phase noise (phase offset)
-        float componentSpread;  // Per-instance fixed random offsets (set on init)
-        float dcOffset;         // Slow random DC wander (voltage offset)
-        float hfRolloffFreq;    // Cutoff frequency for output LP filter
-        float pitchSlew;        // Slew rate limit on pitch changes
-    };
-
-    // Initialize component spread (called once on module creation)
-    void initComponentSpread(uint64_t seed);
-
-    // Update drift sources. Call once per sample.
-    // driftAmount: 0.0 = no drift, 1.0 = full drift
-    void update(float driftAmount, float sampleRate);
-
-    // Apply pitch drift to frequency (call before phase accumulation)
-    float applyPitchDrift(float freq) const;
-
-    // Apply pitch slew to frequency (call before phase accumulation)
-    float applyPitchSlew(float freq, float sampleRate);
-
-    // Apply phase jitter to phase (call after phase accumulation)
-    float applyPhaseJitter(float phase) const;
-
-    // Apply DC offset to output (call after waveform generation)
-    float applyDCOffset(float sample) const;
-
-    // Apply HF rolloff to output (call after waveform generation)
-    float applyHFRolloff(float sample, float sampleRate);
-
-    void reset();
-
-private:
-    DriftState state{};
-
-    // Slow random generators (low-frequency noise sources)
-    // Use filtered white noise or Perlin-like approach
-    float pitchLFO = 0.f;       // ~0.1-0.5 Hz random walk
-    float dcLFO = 0.f;          // ~0.05-0.2 Hz random walk
-
-    // One-pole LP filter state for HF rolloff
-    float hfFilterState = 0.f;
-
-    // Pitch slew state
-    float slewedFreq = 0.f;
-
-    // Component spread (fixed per instance)
-    float spreadPitch = 0.f;    // Fixed pitch offset, ~few cents
-    float spreadDuty = 0.f;     // Fixed duty cycle offset
-    float spreadGain = 0.f;     // Fixed gain offset
-
-    // Internal noise source
-    uint32_t noiseState = 12345; // xorshift PRNG
-    float nextRandom();          // Returns [-1, +1]
-
-    // Filtered noise for slow drift
-    float filteredNoise(float input, float& state, float cutoff, float sampleRate);
-};
-```
-
-**Drift source details and scaling:**
-
-| Source | Rate | At drift=0.25 | At drift=0.5 | At drift=1.0 | Implementation |
-|--------|------|--------------|-------------|-------------|----------------|
-| Pitch drift | 0.1-0.5 Hz | +/- 2 cents | +/- 5 cents | +/- 15 cents | Filtered noise -> freq multiplier |
-| Phase jitter | per-sample | +/- 0.0001 | +/- 0.0005 | +/- 0.002 | Filtered noise -> phase offset |
-| Component spread | fixed | small | medium | large | Random seed -> fixed offsets |
-| DC offset | 0.05-0.2 Hz | +/- 5mV | +/- 15mV | +/- 50mV | Filtered noise -> voltage offset |
-| HF rolloff | static | 18 kHz | 14 kHz | 8 kHz | One-pole LP filter cutoff |
-| Pitch slew | on change | 50ms | 100ms | 200ms | One-pole LP on frequency |
-
-**Why xorshift PRNG:** The drift system needs random numbers every sample, but they don't need to be cryptographically strong. A xorshift32 is 3 instructions, cache-friendly, and produces sufficiently random results for perceptual analog drift. The filtered noise generator then shapes the raw random values into the appropriate frequency band.
-
-### 5. WaveformDisplay -- NanoVG Real-Time Rendering
-
-```cpp
-// src/ui/WaveformDisplay.hpp
-#pragma once
-#include <rack.hpp>
-#include <array>
-
-class WaveformDisplay : public rack::widget::TransparentWidget {
-public:
-    // Reference to module for reading display data (may be null in module browser)
-    rack::Module* module = nullptr;
-
-    // Display buffer access (set by widget constructor)
-    // These point into the module's double-buffered display data
-    std::function<const std::array<float, 256>&()> getBuffer;
-    std::function<float()> getPhase;
-
-    // Visual config
-    static constexpr float TRACE_WIDTH = 1.5f;
-    static constexpr float DOT_RADIUS = 3.f;
-
-    // Colors (Forge Audio brand)
-    NVGcolor traceColor = nvgRGBAf(0.91f, 0.66f, 0.22f, 0.9f);   // Amber
-    NVGcolor dotColor = nvgRGBAf(1.f, 0.85f, 0.4f, 1.f);          // Bright amber
-    NVGcolor bgColor = nvgRGBAf(0.08f, 0.08f, 0.14f, 1.f);        // Deep navy
-    NVGcolor gridColor = nvgRGBAf(0.15f, 0.15f, 0.25f, 0.5f);     // Subtle grid
-
-    void draw(const DrawArgs& args) override;
-
-private:
-    void drawBackground(NVGcontext* vg, float w, float h);
-    void drawGrid(NVGcontext* vg, float w, float h);
-    void drawWaveform(NVGcontext* vg, float w, float h,
-                      const std::array<float, 256>& buffer);
-    void drawPhaseDot(NVGcontext* vg, float w, float h,
-                      const std::array<float, 256>& buffer, float phase);
-    void drawPlaceholder(NVGcontext* vg, float w, float h);
-};
-```
-
-**Display rendering approach:**
-
-```cpp
-void WaveformDisplay::draw(const DrawArgs& args) {
-    float w = box.size.x;
-    float h = box.size.y;
-    NVGcontext* vg = args.vg;
-
-    drawBackground(vg, w, h);
-    drawGrid(vg, w, h);
-
-    if (!module || !getBuffer) {
-        drawPlaceholder(vg, w, h);
+    // Handle disconnect: revert to free-run immediately
+    if (!clkConnected) {
+        if (clockWasConnected) {
+            clockValid = false;
+            clockEdgeCount = 0;
+            clockTimer = 0.f;
+            smoothedClockPeriod = 0.f;
+        }
+        clockWasConnected = false;
         return;
     }
+    clockWasConnected = true;
 
-    const auto& buffer = getBuffer();
-    float phase = getPhase();
+    // Accumulate time
+    clockTimer += sampleTime;
 
-    drawWaveform(vg, w, h, buffer);
-    drawPhaseDot(vg, w, h, buffer, phase);
-}
+    // Edge detection (VCV standard: low=0.1V, high=1.0V)
+    float clkVoltage = inputs[CLK_INPUT].getVoltage();
+    if (clockTrigger.process(clkVoltage, 0.1f, 1.f)) {
+        clockEdgeCount++;
 
-void WaveformDisplay::drawWaveform(NVGcontext* vg, float w, float h,
-                                    const std::array<float, 256>& buffer) {
-    float padX = 4.f, padY = 6.f;
-    float plotW = w - 2 * padX;
-    float plotH = h - 2 * padY;
-    float midY = padY + plotH * 0.5f;
+        if (clockEdgeCount >= 2 && clockTimer > 0.001f) {
+            // Valid period measurement
+            clockPeriod = clockTimer;
 
-    nvgBeginPath(vg);
-    for (int i = 0; i < 256; i++) {
-        float x = padX + plotW * (float)i / 255.f;
-        float y = midY - buffer[i] * plotH * 0.45f;  // +/-1 maps to 90% of plot height
-        if (i == 0) nvgMoveTo(vg, x, y);
-        else nvgLineTo(vg, x, y);
+            // EMA smoothing (alpha=0.3 for responsive yet stable tracking)
+            if (smoothedClockPeriod <= 0.f) {
+                smoothedClockPeriod = clockPeriod;  // First valid: snap
+            } else {
+                smoothedClockPeriod += 0.3f * (clockPeriod - smoothedClockPeriod);
+            }
+            clockValid = true;
+        }
+        clockTimer = 0.f;
+
+        // Phase reset on clock edge (snap to 0)
+        phase = 0.0;
     }
-    nvgStrokeColor(vg, traceColor);
-    nvgStrokeWidth(vg, TRACE_WIDTH);
-    nvgStroke(vg);
-}
-
-void WaveformDisplay::drawPhaseDot(NVGcontext* vg, float w, float h,
-                                    const std::array<float, 256>& buffer,
-                                    float phase) {
-    float padX = 4.f, padY = 6.f;
-    float plotW = w - 2 * padX;
-    float plotH = h - 2 * padY;
-    float midY = padY + plotH * 0.5f;
-
-    // Interpolate buffer at current phase position
-    float idx = phase * 255.f;
-    int i0 = (int)idx;
-    int i1 = std::min(i0 + 1, 255);
-    float frac = idx - (float)i0;
-    float val = buffer[i0] + frac * (buffer[i1] - buffer[i0]);
-
-    float x = padX + plotW * phase;
-    float y = midY - val * plotH * 0.45f;
-
-    nvgBeginPath(vg);
-    nvgCircle(vg, x, y, DOT_RADIUS);
-    nvgFillColor(vg, dotColor);
-    nvgFill(vg);
 }
 ```
 
-**Why TransparentWidget, not FramebufferWidget:** The waveform changes continuously (phase dot moves, drift affects shape), so caching via FramebufferWidget provides no benefit -- it would need to be dirtied every frame anyway. `TransparentWidget::draw()` is called every GUI frame (~60Hz), which is exactly what we want. The rendering cost of a 256-point polyline + circle is trivial for NanoVG.
+**Rationale for inline approach:**
+- The existing module is 538 lines with everything in one struct. Clock tracking adds ~50 lines of state and one method. Extracting a class would add indirection without benefit at this scale.
+- If/when a VCO module is built, the clock tracker could be refactored into a shared utility -- but that is a v2.0 concern, not a v1.1 concern.
 
-**Why 256 samples for display buffer:** 256 is enough resolution for a smooth visual curve at typical display sizes (80-120px wide). More points add GPU draw cost without visible improvement. Fewer points create visible faceting on smooth waveforms. 256 also aligns nicely with power-of-2 for index math.
+#### 2. Division/Multiplication Ratio
 
-### 6. Host Module Structure (LFO)
+The RATE knob behavior changes when a clock is connected. Instead of mapping to Hz directly, it maps to a division/multiplication table.
+
+**Approach: Discrete ratio table indexed by knob position.**
 
 ```cpp
-// src/ForgeAnalogLFO.cpp
-struct ForgeAnalogLFO : Module {
-    enum ParamId {
-        RATE_PARAM,
-        MORPH_PARAM,
-        CHARACTER_PARAM,
-        DRIFT_PARAM,
-        PARAMS_LEN
-    };
-    enum InputId {
-        RESET_INPUT,
-        FM_INPUT,
-        MORPH_CV_INPUT,
-        CHARACTER_CV_INPUT,
-        DRIFT_CV_INPUT,
-        INPUTS_LEN
-    };
-    enum OutputId {
-        MAIN_OUTPUT,
-        INV_OUTPUT,
-        OUTPUTS_LEN
-    };
+// Division/multiplication ratios (musical values)
+// Rate knob [0..1] maps to index in this table
+static constexpr int NUM_RATIOS = 13;
+static constexpr float RATIOS[NUM_RATIOS] = {
+    1.f/8, 1.f/6, 1.f/4, 1.f/3, 1.f/2,
+    2.f/3, 1.f,
+    3.f/2, 2.f, 3.f, 4.f, 6.f, 8.f
+};
+// Labels for display
+static const char* RATIO_LABELS[NUM_RATIOS] = {
+    "/8", "/6", "/4", "/3", "/2",
+    "x2/3", "x1",
+    "x3/2", "x2", "x3", "x4", "x6", "x8"
+};
 
-    AnalogEngine engine;
-    float phase = 0.f;
-    float prevPhase = 0.f;
-    dsp::SchmittTrigger resetTrigger;
+int getRatioIndex() {
+    float knob = params[RATE_PARAM].getValue();
+    // Map continuous knob to nearest discrete ratio
+    float normalized = (knob - 0.01f) / (20.f - 0.01f);  // Normalize from Rate range
+    int idx = (int)(normalized * (NUM_RATIOS - 1) + 0.5f);
+    return rack::math::clamp(idx, 0, NUM_RATIOS - 1);
+}
+```
 
-    // Display buffer (double-buffered, lock-free)
-    std::array<float, 256> displayBuffers[2];
-    std::atomic<int> displayReadIdx{0};
-    std::atomic<float> displayPhase{0.f};
+**Why a discrete table instead of continuous scaling:**
+- Musical clock divisions are inherently discrete (1/4, 1/2, x2, x4).
+- Continuous scaling between divisions creates non-musical ratios that fight the clock.
+- Discrete snapping gives predictable, repeatable behavior -- users can reliably dial in "half time" or "double time."
+- The Rate knob's existing range (0.01-20Hz) maps naturally to 13 positions without needing reconfiguration.
 
-    void process(const ProcessArgs& args) override {
-        // 1. Read parameters with CV
-        float morph = clamp(params[MORPH_PARAM].getValue()
-                     + inputs[MORPH_CV_INPUT].getVoltage() / 5.f, 0.f, 1.f);
-        float character = clamp(params[CHARACTER_PARAM].getValue()
-                         + inputs[CHARACTER_CV_INPUT].getVoltage() / 5.f, 0.f, 1.f);
-        float driftAmt = clamp(params[DRIFT_PARAM].getValue()
-                        + inputs[DRIFT_CV_INPUT].getVoltage() / 5.f, 0.f, 1.f);
+**Alternative considered and rejected: Separate division param.** Adding a dedicated switch or encoder would require panel space that does not exist at 12HP without a redesign. Repurposing the Rate knob is the standard Eurorack convention (see: VCV Fundamental LFO, Mutable Instruments Tides).
 
-        // 2. Compute frequency
-        float pitch = params[RATE_PARAM].getValue();
-        pitch += inputs[FM_INPUT].getVoltage();
-        float freq = 2.f * dsp::exp2_taylor5(pitch);
+### Modified Components
 
-        // 3. Apply drift to frequency
-        engine.driftProcessor.update(driftAmt, args.sampleRate);
-        freq = engine.driftProcessor.applyPitchDrift(freq);
-        freq = engine.driftProcessor.applyPitchSlew(freq, args.sampleRate);
-        freq = clamp(freq, 0.001f, 0.5f * args.sampleRate);
+#### 1. `AnalogLFO` struct -- process() Changes
 
-        // 4. Advance phase
-        prevPhase = phase;
-        phase += freq * args.sampleTime;
-        // Apply phase jitter
-        float jitteredPhase = engine.driftProcessor.applyPhaseJitter(phase);
-        phase -= std::floor(phase);  // Wrap clean phase
-        float displayP = jitteredPhase - std::floor(jitteredPhase); // Wrap jittered
+The `process()` method changes in two places:
 
-        // 5. Handle reset
-        if (resetTrigger.process(inputs[RESET_INPUT].getVoltage(), 0.1f, 2.f)) {
-            phase = 0.f;
-            displayP = 0.f;
-        }
+**Frequency computation (lines 218-219 currently):**
 
-        // 6. Generate output through engine
-        AnalogEngineParams engineParams{morph, character, driftAmt};
-        float output = engine.process(displayP, engineParams, args.sampleRate);
+```cpp
+// BEFORE (v1.0):
+float freq = params[RATE_PARAM].getValue();
+freq = std::fmax(freq, 0.001f);
 
-        // 7. Scale and output
-        outputs[MAIN_OUTPUT].setVoltage(5.f * output);
-        outputs[INV_OUTPUT].setVoltage(-5.f * output);
+// AFTER (v1.1):
+processClockInput(args.sampleTime);
+float freq;
+if (clockValid && smoothedClockPeriod > 0.f) {
+    int ratioIdx = getRatioIndex();
+    freq = RATIOS[ratioIdx] / smoothedClockPeriod;
+} else {
+    freq = params[RATE_PARAM].getValue();
+}
+freq = std::fmax(freq, 0.001f);
+```
 
-        // 8. Update display (on phase wrap or periodically)
-        displayPhase.store(displayP, std::memory_order_relaxed);
-        if (prevPhase > phase) { // phase wrapped
-            engine.updateDisplayBuffer(engineParams);
-            int writeIdx = 1 - displayReadIdx.load(std::memory_order_relaxed);
-            displayBuffers[writeIdx] = engine.getDisplayBuffer();
-            displayReadIdx.store(writeIdx, std::memory_order_release);
-        }
-    }
+**Phase reset is handled inside `processClockInput()` (sets `phase = 0.0` on edge).**
 
-    json_t* dataToJson() override {
-        json_t* root = json_object();
-        json_object_set_new(root, "phase", json_real(phase));
-        engine.driftProcessor.toJson(root);  // Save component spread seed
-        return root;
-    }
+Everything after frequency computation -- drift, morph, character, waveform generation, display buffer, output -- remains UNCHANGED.
 
-    void dataFromJson(json_t* root) override {
-        json_t* phaseJ = json_object_get(root, "phase");
-        if (phaseJ) phase = json_real_value(phaseJ);
-        engine.driftProcessor.fromJson(root);
-    }
+#### 2. Enum Extensions
+
+```cpp
+enum InputId {
+    MORPH_CV_INPUT,
+    DRIFT_CV_INPUT,
+    CHARACTER_CV_INPUT,
+    CLK_INPUT,          // NEW
+    INPUTS_LEN          // now = 4
 };
 ```
 
-### 7. Host Module Structure (VCO) -- Key Differences
+No new params, outputs, or lights needed for the core feature.
 
-The VCO host module differs from LFO in these specific ways:
+#### 3. Constructor Changes
 
 ```cpp
-// src/ForgeAnalogVCO.cpp -- key differences from LFO
-struct ForgeAnalogVCO : Module {
-    enum ParamId {
-        FREQ_PARAM,       // Coarse tune (-3 to +3 octaves)
-        FINE_PARAM,       // Fine tune (-100 to +100 cents)
-        MORPH_PARAM,
-        CHARACTER_PARAM,
-        DRIFT_PARAM,
-        FM_AMOUNT_PARAM,  // FM depth attenuverter
-        PARAMS_LEN
-    };
-    enum InputId {
-        VOCT_INPUT,       // 1V/octave pitch tracking
-        FM_INPUT,
-        SYNC_INPUT,       // Hard sync
-        MORPH_CV_INPUT,
-        CHARACTER_CV_INPUT,
-        DRIFT_CV_INPUT,
-        INPUTS_LEN
-    };
+// In AnalogLFO() constructor, add:
+configInput(CLK_INPUT, "Clock");
+```
 
-    // Through-zero FM flag (context menu toggle)
-    bool throughZeroFM = false;
+#### 4. WaveformDisplay -- Sync Indicator Overlay
 
-    // Antialiasing: polyBLEP state
-    float prevPhaseIncrement = 0.f;
+The display adds two visual elements when clocked:
 
-    void process(const ProcessArgs& args) override {
-        // ... param reading same as LFO ...
+1. **Sync badge:** Small "SYNC" text or icon in corner of display
+2. **Division label:** Current ratio (e.g., "x2", "/4") shown in display
 
-        // Pitch: V/Oct standard
-        float pitch = params[FREQ_PARAM].getValue();
-        pitch += params[FINE_PARAM].getValue() / 1200.f; // cents to octaves
-        pitch += inputs[VOCT_INPUT].getVoltage();
-        float freq = dsp::FREQ_C4 * dsp::exp2_taylor5(pitch);
+**Implementation approach:** Read new atomic state from the module:
 
-        // FM
-        float fmInput = inputs[FM_INPUT].getVoltage()
-                       * params[FM_AMOUNT_PARAM].getValue();
+```cpp
+// New atomics in AnalogLFO struct:
+std::atomic<bool> displayClockValid{false};
+std::atomic<int> displayRatioIndex{6};  // Default: x1
 
-        float phaseInc;
-        if (throughZeroFM) {
-            // Through-zero: FM modulates phase increment directly
-            // Allows negative frequencies (phase runs backward)
-            float fmFreq = freq * dsp::exp2_taylor5(fmInput);
-            phaseInc = fmFreq * args.sampleTime;
-            // No clamping -- negative values = backward phase
-        } else {
-            // Linear FM: add FM voltage to frequency
-            freq += fmInput * freq;  // Exponential FM
-            freq = std::fmax(freq, 0.f);  // Prevent negative for non-TZ
-            phaseInc = freq * args.sampleTime;
+// In process(), after clock processing:
+displayClockValid.store(clockValid, std::memory_order_relaxed);
+if (clockValid) {
+    displayRatioIndex.store(getRatioIndex(), std::memory_order_relaxed);
+}
+```
+
+The display reads these atomics and renders text overlays using NanoVG. This follows the existing pattern of `displayPhase` and `displayDrift` atomics for audio-to-GUI transfer.
+
+**NanoVG text rendering note:** The existing display uses only NanoVG drawing primitives (paths, circles, gradients) -- no text rendering. For the sync badge and division label, there are two options:
+
+- **Option A: NanoVG font rendering.** Use `nvgText()` with a loaded font. Requires bundling a font file and calling `nvgCreateFont()`. Standard in VCV Rack modules.
+- **Option B: Path-based text like the SVG panel.** Consistent with existing approach but tedious for runtime text that changes (division labels).
+
+**Recommendation: Option A (NanoVG font).** The division label changes based on knob position, making path-based rendering impractical. Use the built-in VCV Rack font (`asset::system("res/fonts/ShareTechMono-Regular.ttf")`) which is already available and commonly used by other modules for display text.
+
+#### 5. Panel SVG Update
+
+The CLK jack needs a physical location on the panel. Looking at the current layout:
+
+```
+y=86mm: RATE knob at x=18mm -- right side (x=42.96) is EMPTY
+```
+
+**Place the CLK jack at x=42.96, y=86mm** -- directly across from the Rate knob, in the currently empty space. This creates a natural visual association: Rate knob on left, Clock input on right, both at the same vertical position.
+
+The SVG needs:
+- CLK jack hole indicator in the components layer
+- "CLK" label above the jack (at ~y=79mm, matching RATE label style)
+
+Widget addition:
+```cpp
+addInput(createInputCentered<PJ301MPort>(mm2px(Vec(42.96, 86.0)), module, AnalogLFO::CLK_INPUT));
+```
+
+#### 6. Serialization (dataToJson/dataFromJson)
+
+Clock tracking state should NOT be serialized. The clock period is derived from incoming signal -- on patch load, the module will re-acquire the clock within 2 edges (typically <1 second at musical tempos). This matches the existing decision not to serialize OU drift state ("fresh randomness on patch load").
+
+However, the module should serialize **whether it was in clocked mode** so that the Rate knob can display the correct behavior on load. Actually, this is unnecessary -- clocked mode is determined by `inputs[CLK_INPUT].isConnected()`, which VCV Rack handles automatically via cable state in the patch file.
+
+**No serialization changes needed.**
+
+## Data Flow: Clocked vs Free-Run
+
+### Free-Run Mode (CLK disconnected -- existing behavior)
+
+```
+RATE_PARAM -> freq (Hz)
+  |
+  v
+deltaPhase = freq * sampleTime
+  |
+  v
+[drift modulation]
+  |
+  v
+phase += deltaPhase; wrap [0,1)
+  |
+  v
+computeMorphedWave(phase, morph, character) -> output
+```
+
+### Clocked Mode (CLK connected -- new behavior)
+
+```
+CLK_INPUT voltage
+  |
+  v
+SchmittTrigger (0.1V / 1.0V thresholds)
+  |
+  +--> on rising edge:
+  |      measure period since last edge
+  |      smooth via EMA (alpha=0.3)
+  |      reset phase = 0.0
+  |
+  v
+RATE_PARAM -> ratio index -> RATIOS[idx]
+  |
+  v
+freq = RATIOS[idx] / smoothedClockPeriod
+  |
+  v
+deltaPhase = freq * sampleTime
+  |
+  v
+[drift modulation -- same as free-run]
+  |
+  v
+phase += deltaPhase; wrap [0,1)
+  |
+  v
+computeMorphedWave(phase, morph, character) -> output
+```
+
+### Display Data Flow (Modified)
+
+```
+Audio Thread                               GUI Thread
+-----------                               ----------
+processClockInput()
+  -> displayClockValid.store()
+  -> displayRatioIndex.store()             WaveformDisplay::drawLayer()
+                                             -> read displayClockValid
+process()                                    -> if synced: draw badge + ratio label
+  -> displayPhase.store()                    -> read displayBuffer[readIdx]
+  -> displayBuffers[writeIdx] fill           -> render waveform trace
+  -> displayReadIdx.store()                  -> render phase dot
+```
+
+## Architectural Patterns
+
+### Pattern 1: Dual-Mode Parameter (Rate Knob)
+
+**What:** A single knob that means different things depending on module state (CLK connected vs not).
+
+**When to use:** When panel space is constrained and the two modes are mutually exclusive.
+
+**Implementation:**
+
+```cpp
+float freq;
+if (clockValid && smoothedClockPeriod > 0.f) {
+    // Clocked: Rate knob selects division ratio
+    int ratioIdx = getRatioIndex();
+    freq = RATIOS[ratioIdx] / smoothedClockPeriod;
+} else {
+    // Free: Rate knob is direct Hz
+    freq = params[RATE_PARAM].getValue();
+}
+```
+
+**Trade-offs:**
+- Pro: No panel redesign, no new params, backward compatible.
+- Con: The knob's value display in the tooltip will show Hz even in clocked mode. Consider a custom `ParamQuantity` subclass to show the ratio label instead.
+
+### Pattern 2: EMA Period Smoothing
+
+**What:** Exponential moving average on measured clock periods to reject jitter while tracking tempo changes.
+
+**When to use:** Any clock tracking where the input may have timing jitter (common in VCV Rack due to sample-accurate processing and cable delays).
+
+**Implementation:**
+
+```cpp
+// On each clock edge:
+smoothedClockPeriod += alpha * (measuredPeriod - smoothedClockPeriod);
+```
+
+**Alpha selection:**
+- `alpha = 0.3` -- responsive to tempo changes (settles in ~5 edges), smooths single-sample jitter.
+- `alpha = 0.1` -- more stable but slow to track tempo changes. Too sluggish for live tempo automation.
+- `alpha = 0.5` -- too reactive, passes through jitter to frequency.
+
+**Trade-offs:**
+- Pro: Simple, O(1) per edge, no buffer needed.
+- Con: Cannot distinguish intentional tempo change from jitter. Alpha is a compromise.
+
+### Pattern 3: Phase Reset on Clock Edge
+
+**What:** Snap the LFO phase to 0.0 on each clock rising edge, ensuring the waveform aligns with the beat.
+
+**When to use:** Always in clocked mode. This is the defining behavior of a clock-synced LFO -- without phase reset, the LFO frequency would track the clock but phase would drift.
+
+**Implementation:**
+
+```cpp
+if (clockTrigger.process(clkVoltage, 0.1f, 1.f)) {
+    // ... period measurement ...
+    phase = 0.0;
+}
+```
+
+**Trade-offs:**
+- Pro: Perfect beat alignment, predictable modulation timing.
+- Con: At division ratios (e.g., /4), the LFO completes one cycle per 4 clock beats, so phase resets happen mid-cycle on intermediate beats. This causes a visible "snap" in the waveform. **Solution: Only reset phase on the Nth clock edge for /N divisions.**
+
+**Refined approach for divisions:**
+
+```cpp
+int clockBeatCount = 0;  // counts edges within one LFO cycle
+
+if (clockTrigger.process(clkVoltage, 0.1f, 1.f)) {
+    clockBeatCount++;
+    // ... period measurement ...
+
+    int ratioIdx = getRatioIndex();
+    float ratio = RATIOS[ratioIdx];
+
+    if (ratio < 1.f) {
+        // Division: reset only every N beats (e.g., /4 = every 4th beat)
+        int divisor = (int)(1.f / ratio + 0.5f);
+        if (clockBeatCount >= divisor) {
+            phase = 0.0;
+            clockBeatCount = 0;
         }
-
-        // Hard sync
-        if (syncTrigger.process(inputs[SYNC_INPUT].getVoltage(), 0.1f, 2.f)) {
-            phase = 0.f;
-        }
-
-        // Phase accumulation
-        prevPhase = phase;
-        phase += phaseInc;
-        phase -= std::floor(phase);
-
-        // Generate output
-        AnalogEngineParams engineParams{morph, character, driftAmt};
-        float output = engine.process(phase, engineParams, args.sampleRate);
-
-        // Apply polyBLEP antialiasing for audio-rate operation
-        output = applyPolyBLEP(output, phase, phaseInc);
-
-        outputs[MAIN_OUTPUT].setVoltage(5.f * output);
-        outputs[INV_OUTPUT].setVoltage(-5.f * output);
+    } else {
+        // Unity or multiplication: reset every beat
+        phase = 0.0;
+        clockBeatCount = 0;
     }
-};
-```
-
-**Antialiasing strategy for VCO:**
-
-Use **polyBLEP** (polynomial bandlimited step) for the VCO. PolyBLEP works by detecting discontinuities in the waveform (the vertical edges in saw and square waves) and replacing the naive step with a polynomial approximation of the bandlimited step function. This is:
-
-- Computationally cheap (a few multiplies per discontinuity per sample)
-- Compatible with waveform morphing (the morph crossfade naturally blends the polyBLEP contributions)
-- Compatible with FM and sync (polyBLEP adapts to the current phase increment)
-- Well-proven in VCV Rack ecosystem (VCV's own Fundamental VCO uses this approach)
-
-The LFO does not need antialiasing because it operates below audio rate where aliasing is inaudible.
-
-**Through-zero FM implementation:**
-
-Through-zero FM allows the phase increment to go negative, meaning the oscillator runs backward through its cycle. This creates the distinctive clangorous FM timbres. Implementation is straightforward: don't clamp the phase increment to positive values, and ensure the phase wrapping works correctly for negative values (use `phase -= std::floor(phase)` which handles negatives correctly).
-
-**Hard sync implementation:**
-
-On a rising edge of the sync input, reset phase to 0. The polyBLEP antialiasing should account for the sync discontinuity by inserting a polyBLEP correction at the sync point, treating it like a waveform reset.
-
-## File Structure
-
-```
-src/
-  plugin.hpp                    // Plugin declarations
-  plugin.cpp                    // Plugin registration
-
-  dsp/
-    AnalogEngine.hpp            // Engine class declaration
-    AnalogEngine.cpp            // Engine implementation
-    MorphStage.hpp              // Waveform morphing
-    MorphStage.cpp
-    CharacterStage.hpp          // Analog character modeling
-    CharacterStage.cpp
-    DriftProcessor.hpp          // Drift/imperfection system
-    DriftProcessor.cpp
-    PolyBLEP.hpp                // Antialiasing utilities (VCO only)
-
-  ui/
-    WaveformDisplay.hpp         // NanoVG waveform widget
-    WaveformDisplay.cpp
-
-  modules/
-    ForgeAnalogLFO.cpp          // LFO module (host)
-    ForgeAnalogVCO.cpp          // VCO module (host)
-
-res/
-  ForgeAnalogLFO.svg            // LFO panel
-  ForgeAnalogVCO.svg            // VCO panel
-```
-
-**Why this file organization:** The `dsp/` directory contains pure C++ with no VCV Rack dependencies, making it unit-testable and potentially reusable. The `ui/` directory contains VCV Rack widget code. The `modules/` directory contains the VCV Rack Module subclasses that wire everything together. This separation ensures the DSP code can be developed and tested independently from the UI.
-
-## Patterns to Follow
-
-### Pattern 1: Lock-Free Double Buffer for Audio-to-GUI Communication
-
-**What:** Use two buffers and an atomic index to pass data from audio thread to GUI thread without locks.
-
-**When:** Any time the audio thread needs to send data to the GUI for display (waveform shape, phase position, level meters).
-
-**Why:** Mutexes in the audio thread cause priority inversion and audio glitches. Lock-free patterns guarantee the audio thread never blocks.
-
-```cpp
-// Writer (audio thread):
-int writeIdx = 1 - readIdx.load(std::memory_order_relaxed);
-fillBuffer(buffers[writeIdx]);
-readIdx.store(writeIdx, std::memory_order_release);
-
-// Reader (GUI thread):
-int idx = readIdx.load(std::memory_order_acquire);
-renderFrom(buffers[idx]);
-```
-
-### Pattern 2: Normalized Internal Representation
-
-**What:** All engine internals work in normalized ranges: phase [0,1), waveform output [-1,+1], knob positions [0,1].
-
-**When:** Always. The host module handles conversion to/from VCV Rack voltage conventions.
-
-**Why:** Makes the engine reusable, testable, and mathematically clean. Voltage scaling (+/-5V, +/-10V) is a presentation concern, not a DSP concern.
-
-### Pattern 3: Display Buffer Generation on Phase Wrap
-
-**What:** Generate the 256-sample display buffer by evaluating the engine at 256 evenly-spaced phase values (0/256, 1/256, ..., 255/256) when the oscillator's phase wraps from ~1.0 back to ~0.0.
-
-**When:** Once per cycle of the oscillator.
-
-**Why:** This captures the exact current waveform shape (including morph, character, and some drift effects) without adding per-sample cost. For LFO, this updates at the LFO rate (could be every few seconds at low rates). For VCO at audio rate, this updates at the fundamental frequency (hundreds of times per second -- far more than the 60Hz display refresh).
-
-**Handling slow LFO rates:** When the LFO rate is very slow (e.g., 0.01 Hz = 100 second cycle), waiting for a phase wrap would mean the display only updates every 100 seconds. Solution: also regenerate the display buffer whenever a knob changes by more than a small threshold. Use a simple change-detection comparison on the morph/character/drift params.
-
-```cpp
-// In process(), additionally:
-bool paramsChanged = (std::fabs(morph - prevMorph) > 0.005f) ||
-                     (std::fabs(character - prevCharacter) > 0.005f) ||
-                     (std::fabs(driftAmt - prevDrift) > 0.01f);
-if (paramsChanged || phaseWrapped) {
-    regenerateDisplayBuffer(engineParams);
-    prevMorph = morph;
-    prevCharacter = character;
-    prevDrift = driftAmt;
 }
 ```
 
-### Pattern 4: Component Spread via Seed
+### Pattern 4: Lock-Free Atomic Display State
 
-**What:** Each module instance gets a random seed (from VCV Rack's `random::u32()`) that deterministically generates its "component spread" -- fixed deviations that make each instance slightly unique, like real analog circuits.
+**What:** Use `std::atomic` variables to pass simple display state from audio thread to GUI thread without locks.
 
-**When:** On module creation, saved/restored via JSON serialization.
+**Already established in v1.0** with `displayPhase`, `displayDrift`, `displayReadIdx`. Clock sync extends this pattern with `displayClockValid` and `displayRatioIndex`.
 
-**Why:** Real analog oscillators vary unit-to-unit due to component tolerances. By seeding from a random value and persisting it, each module instance has its own "personality" that survives save/load. The drift knob scales how much this personality affects the output.
-
-### Pattern 5: Param Smoothing for Zipper-Free Knob Movement
-
-**What:** Apply one-pole smoothing to knob values before using them in DSP, to prevent audible zipper noise from quantized parameter changes.
-
-**When:** For the morph, character, and drift knobs when used at audio rate (VCO). Less critical for LFO.
-
-```cpp
-// Simple one-pole smoother
-float smoothParam(float target, float& state, float coeff) {
-    state += coeff * (target - state);
-    return state;
-}
-// coeff = 1 - exp(-2*pi * cutoffHz / sampleRate)
-// ~20Hz cutoff gives smooth knob response without sluggishness
-```
+**Guideline:** Only use atomics for small, independently meaningful values. The display buffer uses double-buffering (not atomics on each sample) because it is an array.
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Allocating Memory in process()
+### Anti-Pattern 1: Locking in process()
 
-**What:** Using `new`, `malloc`, `std::vector::push_back`, or any allocating operation inside `Module::process()`.
+**What people do:** Use `std::mutex` to protect shared state between audio and GUI threads.
 
-**Why bad:** Memory allocation can block on a mutex in the allocator, causing audio dropouts. The audio thread must be allocation-free.
+**Why it is wrong:** `process()` runs at sample rate (e.g., 48,000 times/second). Any lock contention causes audio glitches. VCV Rack's threading model makes mutex priority inversion likely.
 
-**Instead:** Pre-allocate all buffers in the constructor. Use fixed-size `std::array` for display buffers. Pre-size any containers.
+**Do this instead:** Lock-free atomics and double buffering, as the existing codebase already does.
 
-### Anti-Pattern 2: Mutex-Based Audio/GUI Synchronization
+### Anti-Pattern 2: Continuous Division Ratios
 
-**What:** Using `std::mutex` to protect data shared between audio and GUI threads.
+**What people do:** Map the Rate knob to a continuous multiplier in clocked mode (e.g., 0.1x to 10x).
 
-**Why bad:** If the GUI thread holds the lock when the audio thread needs it, the audio thread blocks, causing an audible dropout. Priority inversion is the #1 cause of audio glitches in plugin development.
+**Why it is wrong:** Non-integer ratios like 1.37x have no musical meaning and create confusion. The LFO will not align with beats at arbitrary ratios.
 
-**Instead:** Use lock-free double buffering (Pattern 1) or `std::atomic` for simple values.
+**Do this instead:** Snap to a discrete table of musically meaningful ratios (/8, /6, /4, /3, /2, x2/3, x1, x3/2, x2, x3, x4, x6, x8).
 
-### Anti-Pattern 3: Computing Display Buffer Every Sample
+### Anti-Pattern 3: Phase Reset on Every Clock Edge Regardless of Division
 
-**What:** Running the 256-point display buffer generation on every audio sample.
+**What people do:** Always set `phase = 0.0` on every clock edge, even when the LFO is running at 1/4 speed.
 
-**Why bad:** At 48kHz, that's 48000 * 256 = 12.3 million extra waveform evaluations per second. Completely unnecessary since the display only refreshes at 60Hz.
+**Why it is wrong:** At /4, the LFO needs 4 beats to complete one cycle. Resetting every beat means the waveform never gets past the first quarter, producing a truncated saw-like output regardless of morph setting.
 
-**Instead:** Generate display buffer once per cycle (on phase wrap) or on parameter change (Pattern 3).
+**Do this instead:** Count clock edges and only reset when the division count is reached. See Pattern 3 above.
 
-### Anti-Pattern 4: Putting VCV Rack Types in the Engine
+### Anti-Pattern 4: Serializing Clock State
 
-**What:** Including `<rack.hpp>` in the DSP engine classes, or using `rack::dsp::*` utilities inside the engine.
+**What people do:** Save and restore clockPeriod, smoothedClockPeriod, clockValid in the patch file.
 
-**Why bad:** Couples the DSP to the VCV Rack SDK, making it impossible to unit test without the full SDK. Also prevents reuse in other contexts (VST, standalone, etc.).
+**Why it is wrong:** The clock source may have changed tempo while the patch was closed. Restoring stale clock state causes a brief period of wrong frequency until new edges arrive and override it. Worse, if the clock source is removed before loading, the module will appear to be clocked with a ghost tempo.
 
-**Instead:** The engine uses only standard C++ and `<cmath>`. The host module translates between VCV Rack conventions and the engine's normalized interface.
+**Do this instead:** Start fresh on patch load. The clock tracker will acquire valid state within 2 edges (~1 beat). This matches the existing philosophy of not serializing OU drift state.
 
-### Anti-Pattern 5: Using FramebufferWidget for Continuously Animated Displays
+## Integration Points
 
-**What:** Wrapping the waveform display in a `FramebufferWidget` expecting it to cache rendering.
+### Internal Boundaries
 
-**Why bad:** Since the waveform changes every frame (the phase dot moves), the framebuffer would need to be dirtied and re-rendered every frame anyway, adding overhead (render to texture, then render texture) compared to direct drawing.
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| Clock tracker to frequency computation | Member variables (`clockValid`, `smoothedClockPeriod`) | Same struct, same thread, no synchronization needed |
+| Clock tracker to phase accumulator | Direct `phase = 0.0` assignment | Same struct, same thread |
+| Clock tracker to display | `std::atomic<bool>` and `std::atomic<int>` | Audio thread writes, GUI thread reads |
+| Rate knob to ratio selection | `getRatioIndex()` reads `params[RATE_PARAM]` | Same as existing param reads |
 
-**Instead:** Use `TransparentWidget` and draw directly each frame. The 256-point polyline + circle is trivially cheap for NanoVG.
+### VCV Rack SDK Integration
+
+| SDK Component | Usage | Notes |
+|---------------|-------|-------|
+| `dsp::SchmittTrigger` | Edge detection on CLK input | Standard thresholds: low=0.1V, high=1.0V |
+| `inputs[].isConnected()` | Detect CLK cable presence | Determines free-run vs clocked mode |
+| `inputs[].getVoltage()` | Read CLK signal | Standard VCV Rack input reading |
+| `configInput()` | Register CLK input | Called in constructor |
+
+### Backward Compatibility
+
+The module is **fully backward compatible**:
+- No CLK cable connected = identical behavior to v1.0.
+- No new parameters that could break existing patch files.
+- Enum extension adds CLK_INPUT at the end, so existing input indices are unchanged.
+- No serialization changes.
+
+Existing patches saved with v1.0 will load and run identically in v1.1.
+
+## Build Order (Suggested Phase Sequence)
+
+Based on dependency analysis:
+
+### Phase 1: Clock Input Infrastructure
+**Add:** CLK_INPUT enum entry, `configInput()` call, `SchmittTrigger` member, `processClockInput()` method with edge detection and period measurement.
+**Test:** Connect a clock source, verify edges are detected and period is measured (log output or debug display).
+**Why first:** Everything else depends on clock detection working correctly.
+
+### Phase 2: Frequency Computation in Clocked Mode
+**Add:** Ratio table, `getRatioIndex()`, dual-mode frequency selection in `process()`.
+**Test:** Connect clock, verify LFO frequency tracks clock at x1. Turn Rate knob, verify divisions and multiplications.
+**Why second:** Depends on Phase 1 clock detection. This is the core functional change.
+
+### Phase 3: Phase Reset Logic
+**Add:** Phase reset on clock edge with division-aware counting.
+**Test:** Connect clock at slow tempo, verify waveform starts at beginning on beat. Test /4 division -- verify full cycle completes over 4 beats without premature reset.
+**Why third:** Refines Phase 2 behavior. Phase reset is tightly coupled to division logic.
+
+### Phase 4: Display Integration
+**Add:** `displayClockValid` and `displayRatioIndex` atomics, sync badge rendering, division label rendering in `WaveformDisplay`.
+**Test:** Visual verification -- badge appears when clocked, disappears when disconnected. Label shows correct ratio as Rate knob turns.
+**Why fourth:** Pure visual layer, no functional dependency except reading state from Phase 1-3.
+
+### Phase 5: Panel SVG Update
+**Add:** CLK jack hole, "CLK" label at (42.96, 86mm), widget `addInput()` call.
+**Test:** Visual verification in VCV Rack module browser and running module.
+**Why fifth:** Can be done in parallel with Phases 1-4 but listed last because it is trivial and independent.
+
+### Phase 6: Edge Cases and Polish
+**Refine:** Clock disconnect/reconnect behavior, timeout for stale clock (e.g., if no edge for 10s, revert to free-run), Rate knob tooltip in clocked mode (custom ParamQuantity).
+**Test:** Stress testing -- rapid connect/disconnect, tempo changes, extreme divisions, very slow clocks, very fast clocks.
+**Why last:** Polish depends on all prior phases being functionally complete.
 
 ## Scalability Considerations
 
-| Concern | Single instance | 10 instances | 50+ instances |
-|---------|----------------|--------------|---------------|
-| CPU (DSP) | Negligible. Engine is ~50 instructions/sample. | Comfortable. ~500 instr/sample total. | Fine. Analog modeling is lightweight math. |
-| CPU (Display) | Trivial. 256-point polyline at 60fps. | Moderate. 10 displays at 60fps. | Consider reducing display update rate or LOD for off-screen modules. |
-| Memory | ~2KB per display double buffer. Negligible. | ~20KB. Negligible. | ~100KB. Still negligible. |
-| Drift PRNG | One xorshift per sample. Negligible. | 10 xorshifts. Negligible. | 50 xorshifts. Still negligible. |
-
-The architecture has no scalability bottlenecks for realistic usage. The most expensive operation is the NanoVG polyline rendering, which VCV Rack already throttles by only calling draw() on visible widgets.
-
-## Build Order (Dependencies)
-
-The components should be built in this order due to dependencies:
-
-```
-Phase 1: Foundation
-  MorphStage          (no dependencies, pure math)
-  WaveformDisplay     (no dependency on engine -- can show static placeholder)
-
-Phase 2: Engine Core
-  AnalogEngine        (depends on MorphStage)
-  ForgeAnalogLFO      (depends on AnalogEngine, WaveformDisplay)
-  -> Milestone: Working LFO with morph knob and display
-
-Phase 3: Character
-  CharacterStage      (depends on MorphStage for structure)
-  Wire into AnalogEngine
-  -> Milestone: Morph + Character working together
-
-Phase 4: Drift
-  DriftProcessor      (independent, but tested via engine)
-  Wire into AnalogEngine + host modules
-  -> Milestone: Full three-knob LFO complete
-
-Phase 5: VCO
-  PolyBLEP            (independent utility)
-  ForgeAnalogVCO      (depends on AnalogEngine + PolyBLEP)
-  Through-zero FM     (extends VCO)
-  Hard sync           (extends VCO)
-  -> Milestone: Full VCO complete
-```
-
-**Phase ordering rationale:**
-
-- MorphStage first because it is the foundation all other stages build on. It can be tested and heard immediately.
-- WaveformDisplay early because visual feedback accelerates development of all subsequent stages -- you can see what the morph/character/drift is doing.
-- CharacterStage before DriftProcessor because character defines the "target sound" that drift then destabilizes. Building drift first would mean tuning drift parameters without knowing the target.
-- VCO last because it reuses the entire engine and only adds host-level concerns (antialiasing, sync, FM, pitch tracking). The engine is battle-tested from the LFO by this point.
+| Concern | Impact | Mitigation |
+|---------|--------|------------|
+| CPU cost of clock tracking | Negligible: one SchmittTrigger::process() + one float comparison per sample | No concern |
+| Multiple instances with same clock | Each module tracks independently -- no shared state | Correct by design |
+| Very fast clocks (>100 Hz) | Phase reset creates discontinuities in output, may cause clicking if used as audio-rate modulation | Acceptable: LFO is sub-audio by design (max 20Hz native), fast clocks with multipliers would exceed this |
+| Very slow clocks (<0.1 Hz) | Long period between edges means EMA takes many seconds to converge | First edge snaps directly; subsequent edges smooth. Acceptable trade-off |
+| Clock jitter | EMA smoothing handles typical 1-sample jitter | Tested by VCV Rack's cable delay model |
 
 ## Sources
 
-- VCV Rack 2 SDK documentation (vcvrack.com/docs-v2) -- Module/Widget architecture, threading model, NanoVG integration
-- Existing LFO POC at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/src/LFO.cpp` -- validated phase accumulation, waveform generation, reset/FM patterns
-- PROJECT.md at `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/.planning/PROJECT.md` -- requirements, constraints, brand identity
-- polyBLEP antialiasing: Valimaki & Franck, "Polynomial bandlimited step functions for antialiased oscillator waveforms" -- standard technique used by VCV Fundamental modules
-- Lock-free programming patterns for real-time audio: Ross Bencina, "Real-time audio programming 101" -- canonical reference for audio thread safety
-- NanoVG API documentation -- TransparentWidget drawing, path rendering, color handling
+- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- SchmittTrigger thresholds (0.1V/1.0V), trigger duration (1ms), clock/reset timing (HIGH confidence)
+- [VCV Rack API: dsp::TSchmittTrigger](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TSchmittTrigger) -- process() method signature (HIGH confidence)
+- [VCV Rack API: dsp::TTimer](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TTimer) -- Timer utility for debouncing (HIGH confidence)
+- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) -- configInput, dataToJson/dataFromJson patterns (HIGH confidence)
+- [VCV Fundamental LFO](https://library.vcvrack.com/Fundamental/LFO) -- Reference behavior: CLK syncs frequency, FREQ knob becomes multiplier at 1x default (MEDIUM confidence -- behavior observed, source code not inspected)
+- [VCV Community: Clock Dividers discussion](https://community.vcvrack.com/t/clock-dividers-comparison-and-doubts/5940) -- Phase reset behavior at division boundaries (MEDIUM confidence)
+- Existing codebase: `src/AnalogLFO.cpp` -- Direct inspection of current architecture (HIGH confidence)
 
-**Confidence notes:**
-- HIGH confidence on VCV Rack SDK patterns (verified against POC code and official documentation)
-- HIGH confidence on DSP architecture (morph/character/drift pipeline is standard waveshaping practice)
-- HIGH confidence on lock-free display buffer (well-established real-time audio pattern)
-- HIGH confidence on polyBLEP for VCO antialiasing (industry standard, used by VCV Fundamental)
-- MEDIUM confidence on exact analog reference waveform shapes (the mathematical models for CharacterStage will need tuning by ear during implementation -- the architecture supports this but the specific parameter values are empirical)
-- MEDIUM confidence on drift parameter scaling (the ranges in the drift table are reasonable starting points but will need perceptual tuning)
+---
+*Architecture research for: Clock Sync integration into Analog Series LFO (v1.1)*
+*Researched: 2026-03-07*

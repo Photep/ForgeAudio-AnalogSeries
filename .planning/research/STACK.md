@@ -1,256 +1,189 @@
-# Technology Stack
+# Stack Research: Clock Sync Additions
 
-**Project:** Forge Audio - Analog Series (VCV Rack LFO + VCO)
-**Researched:** 2026-02-25
-**Overall confidence:** MEDIUM-HIGH (VCV Rack 2 SDK is well-known and stable; cannot verify latest point releases against live docs)
+**Domain:** VCV Rack LFO clock synchronization (v1.1 milestone)
+**Researched:** 2026-03-07
+**Confidence:** HIGH (all components are VCV Rack SDK built-ins already validated in v1.0; no external dependencies)
 
-## Recommended Stack
+## Scope
 
-### Core Framework
+This document covers ONLY the stack additions and changes needed for clock sync features. The core stack (VCV Rack 2 SDK, C++17, NanoVG, nanosvg, GNU Make/plugin.mk, lock-free double buffer, OU drift engine) is validated and unchanged from v1.0. See v1.0 STACK.md for foundation details.
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| VCV Rack 2 SDK | 2.5.x | Plugin host framework | The only option. VCV Rack modules are compiled C++ plugins against this SDK. The POC already uses it. | HIGH |
-| C++17 | (compiler) | Implementation language | VCV Rack 2 requires C++17. The SDK's Makefile sets `-std=c++17`. Needed for `std::optional`, structured bindings, `if constexpr`, and `<cmath>` constexpr functions. | HIGH |
-| GNU Make + plugin.mk | (SDK bundled) | Build system | VCV Rack's standard build. The SDK ships `plugin.mk` which handles cross-platform compilation, linking against Rack libraries, and dist packaging. Do not fight this with CMake. | HIGH |
+## New SDK Components Needed
 
-### DSP - Waveform Generation
+### Clock Edge Detection
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| `rack::dsp::MinBlepGenerator` | SDK built-in | Antialiased discontinuity correction for VCO | The SDK ships a minBLEP generator in `<dsp/minblep.hpp>`. This is the standard approach used by VCV Fundamental VCO-1 and most serious VCV oscillator modules. PolyBLEP is simpler but minBLEP produces cleaner results at high frequencies. Use minBLEP for the VCO; the LFO does not need antialiasing (sub-audio rates). | HIGH |
-| `rack::dsp::exp2_taylor5()` | SDK built-in | Fast exponential pitch conversion | Already used in the POC. Taylor-series approximation of 2^x, good enough for pitch CV-to-frequency conversion without calling `std::pow()` in the hot path. | HIGH |
-| `rack::dsp::SchmittTrigger` | SDK built-in | Trigger detection for reset/sync | Already used in the POC. Standard VCV trigger detection with configurable hysteresis thresholds. | HIGH |
-| Custom: Crossfade/morph engine | N/A (hand-rolled) | Waveform morphing | No library needed. Linear or equal-power crossfade between adjacent waveform shapes in the morph chain. This is straightforward math: `output = (1-t) * waveA + t * waveB` where t is the fractional morph position between the two nearest waveforms. | HIGH |
-| Custom: Analog reference waveforms | N/A (wavetable + procedural) | Character knob targets | Store short single-cycle reference waveforms (2048 samples) captured/modeled from target synths (Minimoog saw, Roland square, etc.). Crossfade between the mathematical ideal and the reference waveform using the character knob. References can be procedurally generated at init time or loaded from static arrays. | MEDIUM |
-| Custom: Drift engine | N/A (hand-rolled) | Analog imperfection modeling | Combine multiple low-frequency noise sources: slow random walk for pitch drift, faster jitter (sample-and-hold noise), per-instance component spread (set once on init), DC offset wander, first-order lowpass for HF rolloff, pitch slew (lag processor). No external library needed; this is basic DSP. | HIGH |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| `rack::dsp::SchmittTrigger` | SDK built-in | Detect rising edges on CLK input | Already in the SDK and already listed in v1.0 stack (though not yet used in AnalogLFO.cpp). Standard VCV approach for trigger inputs. Uses hysteresis with configurable thresholds -- call `process(voltage, lowThreshold, highThreshold)` which returns `true` on rising edge. Default thresholds (0.f low, 1.f high) match VCV voltage standards. No alternative needed. |
 
-### DSP - Filters and Utilities
+### Clock Period Measurement
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| `rack::dsp::TRCFilter` | SDK built-in | First-order RC lowpass/highpass | Use for HF rolloff in the drift engine and for smoothing CV inputs. Simple, efficient, no external dependency. | HIGH |
-| `rack::dsp::SlewLimiter` | SDK built-in | Pitch slew for drift | Provides asymmetric slew limiting. Use for the pitch slew component of the drift knob. | HIGH |
-| `rack::dsp::ExponentialFilter` | SDK built-in | Parameter smoothing | Use for smoothing knob values to prevent zipper noise when morphing. One-pole exponential smoothing, very cheap. | HIGH |
-| `rack::simd::float_4` | SDK built-in | SIMD operations | VCV Rack ships SSE-based 4-wide float SIMD wrappers. Use for processing 4 waveform shapes in parallel during morph calculations. Not essential for mono but gives headroom. | MEDIUM |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| `rack::dsp::Timer` (TTimer) | SDK built-in | Measure elapsed time between clock edges | Accumulates time via `process(deltaTime)`, read with `getTime()`, clear with `reset()`. Use to measure the period between consecutive CLK rising edges. The SDK provides this specifically for timing measurements. No external timing library needed. |
 
-### Display and UI
+### Period Smoothing
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| NanoVG | SDK bundled (1.x) | Waveform display rendering | VCV Rack bundles NanoVG and exposes it through widget draw methods. All custom drawing (waveform trace, phase dot, background) uses NanoVG calls in `drawLayer()`. This is the only option for custom graphics in VCV Rack. | HIGH |
-| `rack::widget::FramebufferWidget` | SDK built-in | Cached display rendering | Wrap the waveform display in a FramebufferWidget so it only re-renders when the waveform actually changes (dirty flag), not every frame. Critical for performance -- raw NanoVG redraws every frame are expensive. | HIGH |
-| `rack::LightWidget` / `rack::ModuleLightWidget` | SDK built-in | Phase indicator dot | The phase-tracking dot can be implemented as a custom LightWidget positioned over the display, or drawn directly in the NanoVG path. Drawing directly in NanoVG is simpler and avoids widget hierarchy complexity. | HIGH |
-| SVG panel via `rack::app::SvgPanel` | SDK built-in | Module faceplate | Standard VCV approach: SVG file in `res/` loaded as the panel background. POC already uses `createPanel()`. SVG must avoid filters, CSS, gradients with transforms, and text (convert to paths). nanosvg renderer is limited. | HIGH |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| `rack::dsp::ExponentialFilter` | SDK built-in | Smooth measured clock periods for stability | One-pole exponential moving average. Apply to raw period measurements to reject jitter and produce stable tempo tracking. Already listed in v1.0 stack for parameter smoothing -- same utility, new application. Set lambda to balance responsiveness vs. stability (0.1-0.3 range for clock tracking). |
 
-### Testing and Development
+### Display Sync Indicator
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| VCV Rack (application) | 2.5.x | Live testing environment | Run the plugin inside VCV Rack itself. Connect a scope module (e.g., Fundamental Scope) to visually verify waveforms. Connect a spectrum analyzer for aliasing checks. This IS the test harness. | HIGH |
-| Fundamental Scope | (bundled) | Waveform verification | Free, ships with VCV Rack. Use to verify output waveform shapes match expectations. | HIGH |
-| Bogaudio Analyzer-XL | Latest | Spectrum analysis | Free module, excellent FFT spectrum analyzer. Use to verify antialiasing quality by checking for aliased harmonics above Nyquist. Essential for VCO validation. | HIGH |
-| Address Sanitizer (ASan) | Compiler built-in | Memory safety | Add `-fsanitize=address` to CXXFLAGS during development. Catches buffer overflows, use-after-free. Remove for release builds. | HIGH |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| NanoVG (already bundled) | SDK bundled | Render sync badge and division label in display | Already used for the waveform display. Add sync indicator drawing to the existing `WaveformDisplay::drawLayer()`. NanoVG text rendering (`nvgText`) for division labels, simple geometry for a sync badge. No new dependency. |
 
-### Project Structure
+### Panel Update
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Plugin entry | `src/plugin.cpp` / `src/plugin.hpp` | Model registration, plugin instance |
-| LFO module | `src/AnalogLFO.cpp` | LFO Module + Widget classes |
-| VCO module | `src/AnalogVCO.cpp` | VCO Module + Widget classes |
-| Shared DSP | `src/dsp/MorphEngine.hpp` | Waveform morph + crossfade logic |
-| Shared DSP | `src/dsp/CharacterEngine.hpp` | Analog reference waveform crossfade |
-| Shared DSP | `src/dsp/DriftEngine.hpp` | All drift/imperfection components |
-| Shared DSP | `src/dsp/AntiAlias.hpp` | MinBLEP wrapper for VCO |
-| Display | `src/widgets/WaveformDisplay.hpp` | NanoVG waveform display widget |
-| Reference data | `src/dsp/ReferenceWaveforms.hpp` | Static arrays or procedural generators for character targets |
-| Panels | `res/AnalogLFO.svg`, `res/AnalogVCO.svg` | SVG faceplates |
-| Metadata | `plugin.json` | Plugin and module metadata |
-| Build | `Makefile` | Standard VCV plugin.mk include |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| SVG panel (nanosvg, already used) | SDK bundled | Add CLK jack hole to the panel SVG | Same approach as v1.0. Edit `res/AnalogLFO.svg` to add the CLK input jack position. No new technology. |
 
-## Alternatives Considered
+## Components NOT Needed
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Antialiasing | minBLEP (`MinBlepGenerator`) | PolyBLEP (polynomial bandlimited step) | PolyBLEP is simpler to implement (just a polynomial correction near discontinuities) but has worse high-frequency performance. At high VCO pitches (C6+), polyBLEP lets through audible aliasing that minBLEP suppresses. Since this is a quality-focused analog modeling project, use minBLEP. |
-| Antialiasing | minBLEP | Oversampling (2x-4x) | Oversampling works but costs 2-4x CPU per sample. VCV Rack already runs at audio sample rates (44.1-192kHz); adding oversampling on top is expensive and unnecessary when minBLEP handles the problem at the discontinuity level. Reserve oversampling for nonlinear waveshaping if needed later. |
-| Morph approach | Linear crossfade between adjacent shapes | Wavetable with interpolation | A wavetable approach (storing the full morph continuum as frames) wastes memory and adds complexity for something that is trivially computed as a weighted blend. Four base waveforms with three crossfade regions is simple, correct, and CPU-cheap. |
-| Character approach | Single-cycle reference + crossfade | Full circuit modeling (SPICE-derived) | Full circuit modeling of a Minimoog oscillator is a research project, not a module feature. Single-cycle waveform references captured from or modeled after real synths (asymmetric saw, rounded square, etc.) crossed with the ideal waveform delivers 90% of the character for 1% of the complexity. |
-| Drift noise | Multiple independent noise sources | Perlin noise | Perlin noise has a specific spectral character that does not match real analog drift. Real oscillator drift comes from multiple independent sources (thermal, component aging, power supply ripple) at different time scales. Combining separate random walks at different rates is more authentic and easier to tune. |
-| Build system | GNU Make (plugin.mk) | CMake | VCV Rack's ecosystem assumes Make. The SDK ships plugin.mk. Every tutorial uses Make. Using CMake would require replicating all the SDK build logic and would confuse anyone familiar with VCV development. Do not fight the ecosystem. |
-| Display caching | FramebufferWidget with dirty flag | Raw draw every frame | Drawing a full waveform path via NanoVG every frame (60fps) is expensive. FramebufferWidget renders to a texture and only redraws when marked dirty. Update the dirty flag when morph/character/drift values change beyond a threshold. The phase dot can be drawn in a lightweight overlay layer that does update every frame (it is just one circle). |
-| SIMD | `rack::simd::float_4` for morph math | No SIMD | SIMD is not strictly necessary for mono operation, but computing 4 waveform values simultaneously (sine, tri, saw, square) and then selecting/blending is a natural fit for 4-wide SIMD. The SDK provides it free. Use it where it naturally fits but do not force it. |
-| UI framework | NanoVG (SDK-bundled) | Dear ImGui / custom OpenGL | VCV Rack does not expose raw OpenGL to plugins. All rendering goes through NanoVG via the widget draw system. There is no alternative. |
-| External DSP library | None (SDK built-ins + hand-rolled) | FAUST, Maximilian, STK | Adding external DSP libraries to a VCV Rack plugin is possible but creates build complexity, increases binary size, and the SDK already provides everything needed for this scope. The DSP here (oscillators, filters, noise) is simple enough to implement directly. FAUST would be overkill. |
+These were considered and explicitly rejected:
 
-## Key Implementation Notes
+| Technology | Why NOT Needed |
+|------------|----------------|
+| `rack::dsp::ClockDivider` | This is a sample-counting utility for reducing process callback frequency (e.g., update lights every 256 samples). It does NOT implement musical clock division. Our clock division is ratio-based frequency math: `lfoFreq = clockFreq * ratio`. Do not confuse these. |
+| PLL (phase-locked loop) | Overkill for LFO clock sync. PLLs are for continuous phase tracking with proportional-integral correction. Our use case is simpler: measure clock period, derive frequency, reset phase on edge. A PLL adds complexity (loop filter tuning, lock detection, acquisition time) without benefit for a module that receives clean digital triggers. |
+| External clock/tempo libraries | No such thing exists in the VCV Rack ecosystem. Clock tracking is always hand-rolled from SchmittTrigger + Timer. The algorithm is ~20 lines of code. |
+| `rack::dsp::SlewLimiter` for period smoothing | ExponentialFilter is more appropriate. SlewLimiter has asymmetric rate limiting which can cause the tracked period to lag behind tempo changes. ExponentialFilter provides symmetric exponential smoothing that converges correctly. |
+| `dsp::PulseGenerator` | Would be needed if we were generating clock output triggers. We are only receiving clock input. Not needed for this milestone. |
+| JSON serialization (`dataToJson`/`dataFromJson`) | Clock state is transient -- period measurement, timer accumulator, and sync status should NOT be serialized. On patch load, the module starts in free-running mode and re-acquires clock automatically when edges arrive. This matches the existing design decision of not serializing OU drift state ("fresh randomness on patch load"). |
+| `std::thread` or async | All clock tracking runs in the `process()` callback. Period measurement and frequency calculation are trivial arithmetic -- no async needed. |
+| Additional C++ standard library features | Everything needed is already in `<cmath>`, `<atomic>`, `<array>`. No new includes required beyond what v1.0 already uses. |
 
-### MinBLEP Usage Pattern (VCO)
+## Integration Points with Existing Code
+
+### New Enum Members
+
+Add to existing enums in `AnalogLFO`:
 
 ```cpp
-// In the VCO's process() method:
-// 1. Detect discontinuities (saw reset, square transition)
-// 2. Insert minBLEP correction at the exact fractional sample position
-// 3. Add the minBLEP buffer to the output
-
-dsp::MinBlepGenerator<16, 16, float> minBlep; // 16-zero, 16-oversample
-
-void process(const ProcessArgs& args) override {
-    float deltaPhase = freq * args.sampleTime;
-    phase += deltaPhase;
-
-    // Saw: detect wrap-around
-    if (phase >= 1.f) {
-        phase -= 1.f;
-        float fractional = phase / deltaPhase; // where in sample the reset occurred
-        minBlep.insertDiscontinuity(fractional, -2.f); // saw drops by 2.0
-    }
-
-    float saw = 2.f * phase - 1.f;
-    saw += minBlep.process(); // apply correction
-}
-```
-
-### NanoVG Display Pattern
-
-```cpp
-struct WaveformDisplay : TransparentWidget {
-    // Draw in layer 1 (above panel, below lights)
-    void drawLayer(const DrawArgs& args, int layer) override {
-        if (layer != 1) return;
-        if (!module) return;
-
-        NVGcontext* vg = args.vg;
-
-        // Background
-        nvgBeginPath(vg);
-        nvgRect(vg, 0, 0, box.size.x, box.size.y);
-        nvgFillColor(vg, nvgRGB(0x0d, 0x0d, 0x1a));
-        nvgFill(vg);
-
-        // Waveform trace
-        nvgBeginPath(vg);
-        nvgStrokeColor(vg, nvgRGB(0xe8, 0xa8, 0x38)); // forge amber
-        nvgStrokeWidth(vg, 1.5f);
-
-        for (int i = 0; i < DISPLAY_POINTS; i++) {
-            float t = (float)i / (DISPLAY_POINTS - 1);
-            float y = computeWaveformAtPhase(t); // evaluate morph+character at phase t
-            float px = t * box.size.x;
-            float py = (1.f - y) * 0.5f * box.size.y; // map [-1,1] to pixel Y
-            if (i == 0) nvgMoveTo(vg, px, py);
-            else nvgLineTo(vg, px, py);
-        }
-        nvgStroke(vg);
-
-        // Phase dot (updates every frame)
-        float dotPhase = module->phase;
-        float dotY = computeWaveformAtPhase(dotPhase);
-        nvgBeginPath(vg);
-        nvgCircle(vg, dotPhase * box.size.x, (1.f - dotY) * 0.5f * box.size.y, 3.f);
-        nvgFillColor(vg, nvgRGB(0xff, 0xff, 0xff));
-        nvgFill(vg);
-    }
+// In InputId enum -- add CLK input
+enum InputId {
+    MORPH_CV_INPUT,
+    DRIFT_CV_INPUT,
+    CHARACTER_CV_INPUT,
+    CLK_INPUT,          // NEW
+    INPUTS_LEN
 };
 ```
 
-### FramebufferWidget Caching Strategy
+### New Member Variables
+
+Add to `AnalogLFO` struct (no new headers needed):
 
 ```cpp
-// The waveform shape only changes when morph, character, or drift values change.
-// The phase dot changes every frame.
-// Solution: Split into two layers:
-//   1. WaveformTraceWidget inside FramebufferWidget (cached, redraws on param change)
-//   2. PhaseDotWidget as lightweight overlay (redraws every frame, just one circle)
-
-struct CachedWaveformDisplay : FramebufferWidget {
-    WaveformTraceWidget* trace;
-
-    void step() override {
-        // Check if params changed enough to warrant redraw
-        if (module && paramsChanged()) {
-            dirty = true; // triggers NanoVG re-render to texture
-        }
-        FramebufferWidget::step();
-    }
-};
+// Clock sync state
+dsp::SchmittTrigger clockTrigger;    // Edge detection on CLK input
+dsp::Timer clockTimer;               // Period measurement
+float clockPeriod = 0.f;             // Smoothed period (seconds)
+float rawClockPeriod = 0.f;          // Last measured raw period
+bool clockSynced = false;            // Whether we have valid clock data
+int clockEdgeCount = 0;              // Edges received (for acquisition)
+std::atomic<bool> displaySynced{false};  // Lock-free sync status for display
+std::atomic<float> displayDivision{1.f}; // Lock-free division ratio for display
 ```
 
-## Do NOT Use
+### Rate Knob Dual-Mode
 
-| Technology | Why Not |
-|------------|---------|
-| CMake | Fights the VCV Rack build ecosystem. plugin.mk handles everything. |
-| External DSP libraries (FAUST, STK, Maximilian) | Adds build complexity for DSP that is straightforward to implement with SDK built-ins. |
-| Oversampling for antialiasing | CPU cost is 2-4x. MinBLEP achieves the same result at the discontinuity level for negligible cost. |
-| `std::thread` or async operations | VCV Rack's `process()` is single-threaded per module. All DSP must complete synchronously within one sample period. Threading creates race conditions with the audio thread. |
-| Dynamic memory allocation in process() | No `new`, `malloc`, `std::vector::push_back` in the audio callback. Allocate everything at init time. |
-| `std::sin()` in VCO hot path | Too slow for audio-rate per-sample calls. Use a polynomial approximation or lookup table for sine in the VCO. The SDK's waveform generation examples use Bhaskara or parabolic approximations. For LFO rates, `std::sin()` is fine. |
-| Raw OpenGL calls | VCV Rack does not expose OpenGL to plugins. All rendering is through NanoVG. |
-| Third-party UI frameworks | VCV Rack has its own widget system. ImGui, etc. cannot be injected. |
-| C++20 or later | VCV Rack 2 SDK targets C++17. Using C++20 features will break builds on some platforms/compilers supported by the SDK. |
-| Wavetable files (.wav, .wt) | For the character references, compile waveforms as static arrays in header files. Avoids file I/O, path resolution, missing file errors, and distribution issues. A 2048-sample float array is 8KB -- trivial. |
+The existing Rate knob (`RATE_PARAM`, range 0.01-20 Hz) must switch behavior:
 
-## Installation / Project Setup
+- **Free mode** (no CLK cable): Current behavior, direct frequency in Hz
+- **Sync mode** (CLK connected): Rate knob becomes a division/multiplication selector
 
-```bash
-# Clone or set up project structure
-mkdir -p "Analog Series/src/dsp"
-mkdir -p "Analog Series/src/widgets"
-mkdir -p "Analog Series/res"
+The knob range does NOT need to change. The interpretation changes based on `inputs[CLK_INPUT].isConnected()`. This is a standard VCV pattern used by the Fundamental LFO.
 
-# Ensure Rack SDK is available (already at ../Rack-SDK from POC)
-# The Makefile references RACK_DIR ?= ../Rack-SDK
+### Phase Reset Integration
 
-# Build
-cd "Analog Series"
-make
+Phase reset on clock edge integrates directly with the existing `phase` accumulator (already `double` precision). On a clock edge in sync mode, set `phase = 0.0` to align the LFO to the beat. This is a one-line operation in the process callback.
 
-# Install for testing (creates symlink in Rack plugins directory)
-make install
+### Display Integration
 
-# Clean build
-make clean
+The existing `WaveformDisplay` reads module state via atomics. Add two new atomics (`displaySynced`, `displayDivision`) following the same lock-free pattern used for `displayPhase` and `displayDrift`. The display draws a small sync badge and division text when `displaySynced` is true.
+
+## Clock Division/Multiplication Ratios
+
+Standard musical ratios to support via the Rate knob in sync mode:
+
+| Ratio | Meaning | LFO Cycles per Clock |
+|-------|---------|---------------------|
+| /8 | 8x slower than clock | 0.125 |
+| /4 | 4x slower | 0.25 |
+| /3 | 3x slower | 0.333 |
+| /2 | 2x slower | 0.5 |
+| x1 | Match clock | 1.0 |
+| x2 | 2x faster | 2.0 |
+| x3 | 3x faster | 3.0 |
+| x4 | 4x faster | 4.0 |
+| x8 | 8x faster | 8.0 |
+
+Map the Rate knob's continuous range to snap or smoothly select between these ratios. The knob's center position should map to x1 (match clock).
+
+## Algorithm Summary: Clock Period Tracking
+
+The core algorithm for period measurement is straightforward using SDK primitives:
+
+```
+On each process() call:
+  1. clockTimer.process(args.sampleTime)     // accumulate time
+  2. if clockTrigger.process(clkVoltage):    // rising edge detected
+       rawPeriod = clockTimer.getTime()
+       clockTimer.reset()
+       if rawPeriod is reasonable (0.01s to 30s):
+         smooth clockPeriod toward rawPeriod (ExponentialFilter)
+         clockSynced = true
+         clockEdgeCount++
+         reset phase to 0.0                  // beat alignment
+  3. if clockTimer.getTime() > timeout:       // clock lost
+       clockSynced = false
+       fall back to free-running mode
 ```
 
-### Makefile (minimal, based on POC)
+This is ~20 lines in the process callback. No libraries, no complexity.
 
-```makefile
-RACK_DIR ?= ../Rack-SDK
+## Period Smoothing Strategy
 
-# Development: enable sanitizers
-ifdef DEV
-CXXFLAGS += -fsanitize=address -fno-omit-frame-pointer
-LDFLAGS += -fsanitize=address
-endif
+Use `dsp::ExponentialFilter` with a lambda around 0.1-0.2 for clock period smoothing:
 
-SOURCES += $(wildcard src/*.cpp)
+- **Lambda 0.1**: Heavy smoothing. Stable but slow to respond to tempo changes. Takes ~10 edges to converge. Good for live performance where tempo is mostly stable.
+- **Lambda 0.2**: Moderate smoothing. Responds within ~5 edges. Good default.
+- **Lambda 0.5**: Light smoothing. Responds in 2-3 edges but more jittery. Good for rapid tempo changes.
 
-DISTRIBUTABLES += res
-DISTRIBUTABLES += $(wildcard LICENSE*)
-DISTRIBUTABLES += $(wildcard presets)
+Recommendation: Start at 0.15, tune during development. The first 2-3 edges after CLK connection should use the raw period directly (no smoothing) to minimize acquisition time.
 
-include $(RACK_DIR)/plugin.mk
-```
+## Clock Timeout
 
-## Version Verification Status
+If no clock edge arrives within 2x the last measured period (or a fixed maximum like 4 seconds if no period established), consider the clock lost and revert to free-running mode. This handles:
+- CLK cable disconnected
+- Upstream clock module stopped
+- Upstream clock module deleted
 
-| Component | Stated Version | Verified Against | Notes |
-|-----------|---------------|------------------|-------|
-| VCV Rack 2 SDK | 2.5.x | Training data only | Cannot verify latest point release. The 2.x API has been stable since 2022. MEDIUM confidence on exact version. |
-| NanoVG | 1.x (bundled) | Training data only | Bundled with Rack, not independently versioned for plugins. API is stable. HIGH confidence on API. |
-| MinBlepGenerator | SDK built-in | POC SDK headers (not accessible) | Well-established in Rack SDK since 2.0. HIGH confidence on existence and API. |
-| C++17 | Compiler std | POC Makefile | Confirmed by standard VCV Rack build. HIGH confidence. |
-| plugin.mk | SDK built-in | POC Makefile confirmed | Directly verified from POC. HIGH confidence. |
+## Version Compatibility
+
+No version concerns. All components (`SchmittTrigger`, `Timer`, `ExponentialFilter`) have been stable in the VCV Rack 2 SDK since 2.0.0. The current project targets SDK 2.5.x. No breaking changes in these APIs between 2.0 and 2.5.
+
+## Build Changes
+
+None. No new source files, no new dependencies, no Makefile changes. All new code goes into the existing `src/AnalogLFO.cpp`. The only file-system change is updating `res/AnalogLFO.svg` to add the CLK jack position.
 
 ## Sources
 
-- VCV Rack 2 Plugin Development Tutorial: https://vcvrack.com/manual/PluginDevelopmentTutorial (training data, not live-fetched)
-- VCV Rack 2 SDK source: https://github.com/VCVRack/Rack (training data)
-- VCV Fundamental VCO source (minBLEP reference): https://github.com/VCVRack/Fundamental/blob/v2/src/VCO.cpp (training data)
-- Existing POC at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` (directly verified)
-- NanoVG documentation: https://github.com/memononen/nanovg (training data)
-- Eli Fieldsteel, "The Art of VA Filter Design" and Valimaki et al. on polyBLEP/minBLEP (academic, training data)
+- [VCV Rack API: TSchmittTrigger](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TSchmittTrigger) -- trigger detection API
+- [VCV Rack API: TTimer](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TTimer) -- time measurement API
+- [VCV Rack API: ClockDivider](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1ClockDivider) -- sample-counting utility (NOT musical clock division)
+- [VCV Rack API: PulseGenerator](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1PulseGenerator) -- trigger output generation (not needed)
+- [VCV Rack API: dsp namespace](https://vcvrack.com/docs-v2/namespacerack_1_1dsp) -- full DSP utilities listing
+- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- trigger levels (10V, 1ms), gate thresholds, cable delay (1-sample)
+- [VCV Rack DSP Manual](https://vcvrack.com/manual/DSP) -- general DSP guidance
+- [VCV Community: Clock Multiplier Code](https://community.vcvrack.com/t/example-clock-multiplier-code/20570) -- community discussion on clock multiplication approaches
+- [VCV Community: TTimer Usage](https://community.vcvrack.com/t/ttimer-understand-how-to-use-it/20987) -- practical Timer usage patterns
+- [VCV Fundamental LFO](https://library.vcvrack.com/Fundamental/LFO) -- reference: CLK input synchronizes frequency, FREQ knob becomes multiplier
+- Existing codebase: `src/AnalogLFO.cpp` (directly verified, 537 lines)
 
-**Verification note:** WebSearch, WebFetch, and Bash tools were unavailable during this research session. All SDK-specific claims are based on training data knowledge of VCV Rack 2, cross-referenced with the existing POC code which confirms the build system, SDK structure, and core DSP utilities. Exact latest SDK version numbers should be verified before starting development.
+---
+*Stack research for: Forge Audio Analog Series v1.1 Clock Sync*
+*Researched: 2026-03-07*
