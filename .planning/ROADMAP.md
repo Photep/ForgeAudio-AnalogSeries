@@ -90,10 +90,11 @@ Plans:
   1. Drift knob at zero produces perfectly stable output; increasing drift introduces progressively more pitch variation with audible multi-timescale movement (slow wander plus faster jitter)
   2. Drift CV input modulates drift amount when patched from an external source
   3. The complete three-knob engine works together: morph selects shape, character adds analog tone, drift adds instability, and the display reflects all three in real time
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md -- Drift DSP engine: OU process, CV input, panel layout update, dot instability (DRFT-01, DRFT-02)
+- [ ] 05-02-PLAN.md -- Visual verification of drift and complete three-knob engine in VCV Rack (DRFT-01, DRFT-02)
 
 ## Progress
 
@@ -107,4 +108,4 @@ Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 | 2. Waveform Engine | 2/2 | Complete    | 2026-02-25 |
 | 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
 | 4. Analog Character | 1/2 | In progress | - |
-| 5. Drift Engine | 0/TBD | Not started | - |
+| 5. Drift Engine | 0/2 | Not started | - |
