@@ -505,16 +505,14 @@ struct AnalogLFOWidget : ModuleWidget {
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(18.0, 69.0)), module, AnalogLFO::CHARACTER_PARAM));
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(42.96, 69.0)), module, AnalogLFO::DRIFT_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(18.0, 86.0)), module, AnalogLFO::RATE_PARAM));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(9.0, 104.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
-
-		// Inputs
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(18.0, 104.0)), module, AnalogLFO::MORPH_CV_INPUT));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(27.0, 104.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(36.0, 104.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(46.0, 104.0)), module, AnalogLFO::DRIFT_CV_INPUT));
-
-		// Outputs
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(55.0, 104.0)), module, AnalogLFO::OUTPUT));
+		// Bottom row: grouped pairs [MATrim MCV] [CATrim CCV] [DATrim DCV] [OUT]
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(7.0, 104.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(14.0, 104.0)), module, AnalogLFO::MORPH_CV_INPUT));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(21.0, 104.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(28.0, 104.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(35.0, 104.0)), module, AnalogLFO::DRIFT_ATTEN_PARAM));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(42.0, 104.0)), module, AnalogLFO::DRIFT_CV_INPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(54.0, 104.0)), module, AnalogLFO::OUTPUT));
 	}
 };
 
