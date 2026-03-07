@@ -46,11 +46,11 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
   3. If the clock signal stops, the module automatically reverts to free-running mode within a few seconds
   4. Sudden tempo jumps (e.g., cable hot-swap) do not cause wild frequency spikes -- outliers are filtered
   5. The first clock pulse resets phase but does not attempt to set frequency (waits for second edge)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
+- [ ] 07-01-PLAN.md — Implement CLK input, clock state machine, and period tracking DSP
+- [ ] 07-02-PLAN.md — Verify clock tracking in VCV Rack with real clock source
 
 ### Phase 8: Frequency Override and Ratio Table
 **Goal**: The Rate knob seamlessly switches between free-running Hz and musical clock divisions/multiplications
@@ -110,7 +110,7 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 4. Analog Character | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 5. Drift Engine | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 6. Polish & Cleanup | v1.0 | 2/2 | Complete | 2026-03-07 |
-| 7. Clock Input and Period Tracking | v1.1 | 0/? | Not started | - |
+| 7. Clock Input and Period Tracking | v1.1 | 0/2 | Planning | - |
 | 8. Frequency Override and Ratio Table | v1.1 | 0/? | Not started | - |
 | 9. Phase Reset and Drift Integration | v1.1 | 0/? | Not started | - |
 | 10. Display and Panel | v1.1 | 0/? | Not started | - |
