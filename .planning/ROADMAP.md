@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Waveform Engine** - Four-shape morph oscillator with rate control and bipolar output
 - [x] **Phase 3: Waveform Display** - Real-time single-cycle waveform visualization with phase-tracking dot (completed 2026-02-26)
 - [x] **Phase 4: Analog Character** - Character knob crossfading from digital perfection to classic synth references per shape
-- [ ] **Phase 5: Drift Engine** - Layered analog imperfections via Ornstein-Uhlenbeck pitch drift
+- [x] **Phase 5: Drift Engine** - Layered analog imperfections via Ornstein-Uhlenbeck pitch drift
 
 ## Phase Details
 
@@ -94,7 +94,7 @@ Plans:
 
 Plans:
 - [x] 05-01-PLAN.md -- Drift DSP engine: OU process, CV input, panel layout update, dot instability (DRFT-01, DRFT-02)
-- [ ] 05-02-PLAN.md -- Visual verification of drift and complete three-knob engine in VCV Rack (DRFT-01, DRFT-02)
+- [x] 05-02-PLAN.md -- Visual verification of drift and complete three-knob engine in VCV Rack (DRFT-01, DRFT-02)
 
 ## Progress
 
@@ -108,4 +108,4 @@ Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 | 2. Waveform Engine | 2/2 | Complete    | 2026-02-25 |
 | 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
 | 4. Analog Character | 2/2 | Complete | 2026-03-07 |
-| 5. Drift Engine | 1/2 | In Progress | - |
+| 5. Drift Engine | 2/2 | Complete | 2026-03-07 |
