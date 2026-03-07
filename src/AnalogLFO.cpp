@@ -50,6 +50,7 @@ struct AnalogLFO : Module {
 	std::array<float, DISPLAY_SAMPLES> displayBuffers[2] = {};
 	std::atomic<int> displayReadIdx{0};
 	std::atomic<float> displayPhase{0.f};
+	std::atomic<float> displayDrift{0.f};   // Combined CV-modulated drift level for display
 
 	// Display update tracking
 	float prevDisplayMorph = -1.f;
@@ -225,6 +226,7 @@ struct AnalogLFO : Module {
 		float driftAtten = params[DRIFT_ATTEN_PARAM].getValue();
 		float driftCV = inputs[DRIFT_CV_INPUT].getVoltage();
 		float drift = rack::math::clamp(driftKnob + driftAtten * driftCV / 10.f, 0.f, 1.f);
+		displayDrift.store(drift, std::memory_order_relaxed);
 
 		if (drift >= 0.001f) {
 			// Lazy init sqrtSampleTime (edge case before onSampleRateChange fires)
@@ -375,7 +377,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		float dotRadius = box.size.y * 0.03f;
 
 		// Read drift level for visual instability
-		float driftLevel = module ? module->params[AnalogLFO::DRIFT_PARAM].getValue() : 0.f;
+		float driftLevel = module ? module->displayDrift.load(std::memory_order_relaxed) : 0.f;
 
 		// Movement detection and breathe
 		float movement = std::fabs(phase - prevFramePhase);
@@ -395,7 +397,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 			// Drift instability: trail Y jitter
 			if (driftLevel > 0.01f) {
-				float jitterAmount = driftLevel * 0.3f;
+				float jitterAmount = driftLevel * 1.5f;
 				float trailJitter = jitterAmount * std::sin(breathePhase * 3.7f + (float)i * 1.3f);
 				ty += trailJitter;
 			}
@@ -412,7 +414,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		// Glow halo with drift instability
 		float x = phaseToX(phase);
 		float y = valueToY(interpolateBuffer(buffer, phase));
-		float haloJitter = 1.f + driftLevel * 0.15f * std::sin(breathePhase * 2.3f);
+		float haloJitter = 1.f + driftLevel * 0.75f * std::sin(breathePhase * 2.3f);
 		float haloRadius = dotRadius * 3.f * haloJitter;
 		NVGpaint halo = nvgRadialGradient(vg, x, y, 0.f, haloRadius,
 			nvgRGBAf(1.f, 0.9f, 0.5f, 0.3f * dimFactor * breatheFactor),
@@ -505,14 +507,15 @@ struct AnalogLFOWidget : ModuleWidget {
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(18.0, 69.0)), module, AnalogLFO::CHARACTER_PARAM));
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(42.96, 69.0)), module, AnalogLFO::DRIFT_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(18.0, 86.0)), module, AnalogLFO::RATE_PARAM));
-		// Bottom row: grouped pairs [MATrim MCV] [CATrim CCV] [DATrim DCV] [OUT]
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(7.0, 104.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(14.0, 104.0)), module, AnalogLFO::MORPH_CV_INPUT));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(21.0, 104.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(28.0, 104.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(35.0, 104.0)), module, AnalogLFO::DRIFT_ATTEN_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(42.0, 104.0)), module, AnalogLFO::DRIFT_CV_INPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(54.0, 104.0)), module, AnalogLFO::OUTPUT));
+		// Bottom section: Trimpots (upper row at y=96mm)
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(10.0, 96.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(24.0, 96.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(38.0, 96.0)), module, AnalogLFO::DRIFT_ATTEN_PARAM));
+		// Bottom section: Jacks (lower row at y=108mm)
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.0, 108.0)), module, AnalogLFO::MORPH_CV_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(24.0, 108.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(38.0, 108.0)), module, AnalogLFO::DRIFT_CV_INPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.0, 108.0)), module, AnalogLFO::OUTPUT));
 	}
 };
 
