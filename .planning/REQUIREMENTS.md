@@ -9,12 +9,12 @@ Requirements for clock sync release. Each maps to roadmap phases.
 
 ### Clock Input
 
-- [ ] **CLK-01**: LFO accepts clock trigger input via CLK jack
-- [ ] **CLK-02**: Edge detection uses SchmittTrigger with VCV standard thresholds (0.1V/1.0V)
-- [ ] **CLK-03**: Clock period measured with float timer and EMA smoothing (alpha ~0.3)
-- [ ] **CLK-04**: Clock-loss timeout (3x smoothed period) reverts to free-running mode
-- [ ] **CLK-05**: Outlier rejection filters tempo jumps exceeding 3x current period
-- [ ] **CLK-06**: First clock pulse resets phase without setting frequency (waits for second edge)
+- [x] **CLK-01**: LFO accepts clock trigger input via CLK jack
+- [x] **CLK-02**: Edge detection uses SchmittTrigger with VCV standard thresholds (0.1V/1.0V)
+- [x] **CLK-03**: Clock period measured with float timer and EMA smoothing (alpha ~0.3)
+- [x] **CLK-04**: Clock-loss timeout (3x smoothed period) reverts to free-running mode
+- [x] **CLK-05**: Outlier rejection filters tempo jumps exceeding 3x current period
+- [x] **CLK-06**: First clock pulse resets phase without setting frequency (waits for second edge)
 
 ### Rate & Ratios
 
@@ -66,12 +66,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLK-01 | Phase 7 | Pending |
-| CLK-02 | Phase 7 | Pending |
-| CLK-03 | Phase 7 | Pending |
-| CLK-04 | Phase 7 | Pending |
-| CLK-05 | Phase 7 | Pending |
-| CLK-06 | Phase 7 | Pending |
+| CLK-01 | Phase 7 | Complete |
+| CLK-02 | Phase 7 | Complete |
+| CLK-03 | Phase 7 | Complete |
+| CLK-04 | Phase 7 | Complete |
+| CLK-05 | Phase 7 | Complete |
+| CLK-06 | Phase 7 | Complete |
 | RATE-01 | Phase 8 | Pending |
 | RATE-02 | Phase 8 | Pending |
 | RATE-03 | Phase 8 | Pending |
