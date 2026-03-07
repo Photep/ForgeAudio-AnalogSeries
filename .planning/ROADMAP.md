@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Plugin Scaffold and Panel** - Buildable VCV Rack 2 plugin with branded SVG panel and module registration
 - [x] **Phase 2: Waveform Engine** - Four-shape morph oscillator with rate control and bipolar output
 - [x] **Phase 3: Waveform Display** - Real-time single-cycle waveform visualization with phase-tracking dot (completed 2026-02-26)
-- [ ] **Phase 4: Analog Character** - Character knob crossfading from digital perfection to classic synth references per shape
+- [x] **Phase 4: Analog Character** - Character knob crossfading from digital perfection to classic synth references per shape
 - [ ] **Phase 5: Drift Engine** - Layered analog imperfections via Ornstein-Uhlenbeck pitch drift
 
 ## Phase Details
@@ -80,7 +80,7 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md -- Character DSP engine: per-shape analog models, CV input, panel updates (CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-06, CHAR-07)
-- [ ] 04-02-PLAN.md -- Visual verification of character in VCV Rack (CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-07)
+- [x] 04-02-PLAN.md -- Visual verification of character in VCV Rack (CHAR-01, CHAR-02, CHAR-03, CHAR-04, CHAR-05, CHAR-07)
 
 ### Phase 5: Drift Engine
 **Goal**: Users can add authentic analog instability that makes the oscillator sound alive and unique
@@ -93,7 +93,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- Drift DSP engine: OU process, CV input, panel layout update, dot instability (DRFT-01, DRFT-02)
+- [x] 05-01-PLAN.md -- Drift DSP engine: OU process, CV input, panel layout update, dot instability (DRFT-01, DRFT-02)
 - [ ] 05-02-PLAN.md -- Visual verification of drift and complete three-knob engine in VCV Rack (DRFT-01, DRFT-02)
 
 ## Progress
@@ -107,5 +107,5 @@ Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 | 1. Plugin Scaffold and Panel | 2/2 | Complete    | 2026-02-25 |
 | 2. Waveform Engine | 2/2 | Complete    | 2026-02-25 |
 | 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
-| 4. Analog Character | 1/2 | In progress | - |
-| 5. Drift Engine | 0/2 | Not started | - |
+| 4. Analog Character | 2/2 | Complete | 2026-03-07 |
+| 5. Drift Engine | 1/2 | In Progress | - |

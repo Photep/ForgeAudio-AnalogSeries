@@ -23,8 +23,8 @@
 
 ### Drift
 
-- [ ] **DRFT-01**: Drift knob controls pitch drift via multi-timescale Ornstein-Uhlenbeck process (layered random walks at 0.05Hz, 0.2Hz, 0.8Hz, ~2Hz)
-- [ ] **DRFT-02**: Drift CV input modulates drift amount
+- [x] **DRFT-01**: Drift knob controls pitch drift via multi-timescale Ornstein-Uhlenbeck process (layered random walks at 0.05Hz, 0.2Hz, 0.8Hz, ~2Hz)
+- [x] **DRFT-02**: Drift CV input modulates drift amount
 
 ### Display
 
@@ -119,8 +119,8 @@
 | CHAR-05 | Phase 4 | Complete |
 | CHAR-06 | Phase 4 | Complete (deferred to VCO) |
 | CHAR-07 | Phase 4 | Complete |
-| DRFT-01 | Phase 5 | Pending |
-| DRFT-02 | Phase 5 | Pending |
+| DRFT-01 | Phase 5 | Complete |
+| DRFT-02 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 23 total
