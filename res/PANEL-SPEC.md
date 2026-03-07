@@ -28,8 +28,8 @@ The SVG must declare `width="60.96mm"`, `height="128.5mm"`, and `viewBox="0 0 60
 | Panel Border | `#2d2d4a` | Inset border stroke (0.3mm width, 0.15mm inset) |
 | Forge Amber | `#e8a838` | Accent stripes, decorative lines, display border |
 | Display Dark | `#0d0d1a` | Waveform display background |
-| Muted Lavender | `#8888aa` | Brand text ("FORGE AUDIO"), jack labels |
-| Light Lavender-Gray | `#c0c0d0` | Control labels (MORPH, CHARACTER, DRIFT, RATE, OCTAVE) |
+| Muted Lavender | `#8888aa` | Brand text ("FORGE AUDIO"), input jack labels (MCV, CCV, DCV) |
+| Light Lavender-Gray | `#c0c0d0` | Control labels (MORPH, CHARACTER, DRIFT, RATE) |
 | Bright White-Gray | `#e0e0e0` | Module name text ("ANALOG LFO") |
 
 ---
@@ -46,10 +46,11 @@ The panel follows a diamond hierarchy: the most important control (Morph) is lar
 | Morph knob zone | 43 - 62 | 19 | "MORPH" label at y=43.5, primary Morph knob (largest) centered at y=54.0 |
 | Character/Drift zone | 60 - 76 | 16 | Labels at y=60.5, medium knobs flanking center at y=69.0 |
 | Rate/Octave zone | 79 - 92 | 13 | Smaller utility knobs, labels above |
-| Section divider | 94 | -- | Amber decorative line (0.15mm, 50% opacity) |
-| Jack labels | 97 | -- | MCV, CCV, DCV, OUT labels |
-| Jack row | 100 - 108 | 8 | 2 Trimpots (Morph/Character CV Atten) + 4 jacks in bottom row |
-| Bottom brand + accent | 109 - 128.5 | 19.5 | "FORGE AUDIO" brand text, amber stripe (1mm) |
+| Section divider | 92 | -- | Amber decorative line (0.15mm, 50% opacity) |
+| Trimpot row | 93 - 99 | 6 | 3 Trimpots at y=96.0 (Morph/Character/Drift CV Atten) |
+| CV/Output labels | 104 | -- | MCV, CCV, DCV, OUT labels above jacks |
+| Jack row | 104 - 112 | 8 | 3 CV input jacks + 1 output jack at y=108.0, connection lines from trimpots |
+| Bottom brand + accent | 113 - 128.5 | 15.5 | "FORGE AUDIO" brand text, amber stripe (1mm) |
 
 ---
 
@@ -63,12 +64,13 @@ All coordinates are center positions in millimeters. Diameter is the physical wi
 | Character | RoundLargeBlackKnob | 18.0 | 69.0 | 12.19 | Param |
 | Drift | RoundLargeBlackKnob | 42.96 | 69.0 | 12.19 | Param |
 | Rate | RoundBlackKnob | 18.0 | 86.0 | 9.60 | Param |
-| Morph CV Atten | Trimpot | 9.0 | 104.0 | 6.05 | Param |
-| Morph CV | PJ301MPort | 18.0 | 104.0 | 8.03 | Input |
-| Character CV Atten | Trimpot | 27.0 | 104.0 | 6.05 | Param |
-| Character CV | PJ301MPort | 36.0 | 104.0 | 8.03 | Input |
-| Drift CV | PJ301MPort | 46.0 | 104.0 | 8.03 | Input |
-| Output | PJ301MPort | 55.0 | 104.0 | 8.03 | Output |
+| Morph CV Atten | Trimpot | 10.0 | 96.0 | 6.05 | Param |
+| Character CV Atten | Trimpot | 24.0 | 96.0 | 6.05 | Param |
+| Drift CV Atten | Trimpot | 38.0 | 96.0 | 6.05 | Param |
+| Morph CV | PJ301MPort | 10.0 | 108.0 | 8.03 | Input |
+| Character CV | PJ301MPort | 24.0 | 108.0 | 8.03 | Input |
+| Drift CV | PJ301MPort | 38.0 | 108.0 | 8.03 | Input |
+| Output | PJ301MPort | 52.0 | 108.0 | 8.03 | Output |
 
 **Knob size hierarchy:**
 - RoundBigBlackKnob: 15.24mm diameter (primary control)
@@ -76,7 +78,7 @@ All coordinates are center positions in millimeters. Diameter is the physical wi
 - RoundBlackKnob: 9.60mm diameter (utility controls)
 - Trimpot: 6.05mm diameter (attenuator)
 
-**Bottom row layout:** All at Y=104.0mm. Six components distributed across the panel width with ~9mm center-to-center spacing: Morph CV Atten Trimpot (x=9), Morph CV jack (x=18), Character CV Atten Trimpot (x=27), Character CV jack (x=36), Drift CV jack (x=46), Output jack (x=55). The Trimpots (6.05mm) and jacks (8.03mm) fit comfortably within the 60.96mm panel width.
+**Bottom section layout (two-row convention):** Trimpots at Y=96.0mm (upper row), jacks at Y=108.0mm (lower row). Four columns at X = 10, 24, 38, 52mm give ~14mm center-to-center spacing. Each trimpot sits directly above its associated CV jack at the same X coordinate. The output jack occupies the rightmost column (x=52) with no trimpot above it. Amber connection lines (0.2mm, 40% opacity) visually link each trimpot to its jack. An amber accent ring around the output jack distinguishes it from the input jacks.
 
 ---
 
