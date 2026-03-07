@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-03-06T08:45:56Z"
-last_activity: 2026-03-06 -- Phase 4 Plan 1 complete (analog character DSP engine)
+stopped_at: Completed 04-02-PLAN.md (verification checkpoint)
+last_updated: "2026-03-07T00:00:00Z"
+last_activity: 2026-03-07 -- Phase 4 Plan 2 complete (human verification with bug fixes)
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 8
-  completed_plans: 7
-  percent: 70
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 4 in progress - Analog Character (1 of 2 plans complete)
+**Current focus:** Phase 4 complete - Analog Character (2 of 2 plans complete, pending verification)
 
 ## Current Position
 
-Phase: 4 of 5 (Analog Character) -- IN PROGRESS
+Phase: 4 of 5 (Analog Character) -- PLANS COMPLETE, PENDING VERIFICATION
 Plan: 2 of 2 in current phase
-Status: Plan 1 complete (DSP engine) -- ready for Plan 2 (visual verification)
-Last activity: 2026-03-06 -- Phase 4 Plan 1 complete (analog character DSP engine)
+Status: All plans complete -- awaiting phase goal verification
+Last activity: 2026-03-07 -- Phase 4 Plan 2 complete (human verification with bug fixes)
 
-Progress: [#######░░░] 70%
+Progress: [########░░] 80%
 
 ## Performance Metrics
 
@@ -46,10 +46,10 @@ Progress: [#######░░░] 70%
 | 01-plugin-scaffold-and-panel | 2 | 10 min | 5 min |
 | 02-waveform-engine | 2 | 18 min | 9 min |
 | 03-waveform-display | 2 | 3 min | 1.5 min |
-| 04-analog-character | 1 | 4 min | 4 min |
+| 04-analog-character | 2 | 16 min | 8 min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 15min, 2min, 1min, 4min
+- Last 5 plans: 15min, 2min, 1min, 4min, 12min
 - Trend: fast and consistent
 
 *Updated after each plan completion*
@@ -84,6 +84,10 @@ Recent decisions affecting current work:
 - Progressive x^2 curve: character at 0.5 = 25% effect, rewards exploration across full knob range
 - Morph bleed (IO-03) deferred to v2 -- adds complexity for a subtle effect at LFO rates
 - Bottom row redistributed to 6 components at ~9mm spacing: MATrim(9), MCV(18), CATrim(27), CCV(36), DCV(46), OUT(55)
+- Triangle phase alignment: analog triangle must fall +1→-1 then rise -1→+1 (matching digital orientation)
+- Square crossfade pattern: blend digital→analog via c to prevent snap at character threshold
+- Character deformation amounts: research values (2-3%) too subtle; increased to 8-50% for perceptibility
+- Display update rate limit: 30fps for parameter-driven updates; phase wrap always immediate
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T08:45:56Z
-Stopped at: Completed 04-01-PLAN.md
-Resume file: .planning/phases/04-analog-character/04-02-PLAN.md
+Last session: 2026-03-07T00:00:00Z
+Stopped at: Completed 04-02-PLAN.md (verification checkpoint)
+Resume file: Phase 4 awaiting goal verification

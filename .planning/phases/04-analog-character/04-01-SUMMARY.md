@@ -74,7 +74,7 @@ Each task was committed atomically:
 1. **Task 1: Add Character CV panel infrastructure** - `8d3e37b` (feat)
 2. **Task 2: Implement per-shape analog character DSP with CV and display** - `ef1ed36` (feat)
 
-**Plan metadata:** TBD (docs: complete plan)
+**Plan metadata:** `473e5fc` (docs: complete plan)
 
 ## Files Created/Modified
 - `src/AnalogLFO.cpp` - CHARACTER_ATTEN_PARAM + CHARACTER_CV_INPUT enums, four per-shape compute functions, Character CV processing, characterChanged display trigger, progressiveCurve helper
