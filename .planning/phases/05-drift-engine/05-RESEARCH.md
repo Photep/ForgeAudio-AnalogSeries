@@ -8,7 +8,7 @@
 
 Phase 5 implements pitch drift via a multi-timescale Ornstein-Uhlenbeck (OU) process that modulates the phase accumulation rate. The OU process is a mean-reverting stochastic process, ideal for modeling analog oscillator thermal drift: it produces smooth, bounded random wander rather than unbounded random walks. By layering four OU processes at different timescales (0.05Hz, 0.2Hz, 0.8Hz, ~2Hz), we achieve the characteristic multi-timescale instability of real analog oscillators where slow thermal drift coexists with faster component-level jitter.
 
-The implementation is straightforward: each OU layer maintains a single float state variable updated via the Euler-Maruyama discretization. VCV Rack provides `rack::random::Xoroshiro128Plus` which can be instantiated per-module with unique seeding from the module's `id` field, ensuring independent drift per instance. The existing codebase already declares `DRIFT_PARAM`, `DRIFT_CV_INPUT`, and has the `progressiveCurve()` function ready for reuse. The primary new additions are: `DRIFT_ATTEN_PARAM` in the enum, four OU state variables, per-module RNG, drift CV processing, and the panel SVG update for the new trimpot.
+The implementation is straightforward: each OU layer maintains a single float state variable updated via the Euler-Maruyama discretization. VCV Rack provides `rack::random::Xoroshiro128Plus` which can be instantiated per-module with unique seeding from `std::random_device`, ensuring independent drift per instance. The existing codebase already declares `DRIFT_PARAM`, `DRIFT_CV_INPUT`, and has the `progressiveCurve()` function ready for reuse. The primary new additions are: `DRIFT_ATTEN_PARAM` in the enum, four OU state variables, per-module RNG, drift CV processing, and the panel SVG update for the new trimpot.
 
 **Primary recommendation:** Use four independent OU processes with per-layer theta (mean reversion rate) and sigma (noise amplitude), combined additively, scaled by `progressiveCurve(drift)`, applied as a multiplicative factor on `deltaPhase`. Seed a per-module Xoroshiro128Plus from `std::random_device` in the constructor.
 
@@ -80,24 +80,38 @@ None -- discussion stayed within phase scope
 | std::normal_distribution | Manual Box-Muller | std::normal_distribution is cleaner and caches the second variate; manual Box-Muller is what rack::random::normal() already does |
 | Euler-Maruyama OU update | Exact OU sampling formula | Euler-Maruyama is simpler and sufficient at audio sample rates; exact formula uses exp() per-sample which is more expensive |
 
+**API verification:** The VCV Rack SDK header `random.hpp` (verified from local SDK at `../Rack-SDK/include/random.hpp`) documents the exact usage pattern for per-module RNG:
+
+```cpp
+// From VCV Rack SDK random.hpp comments:
+std::random_device rd;
+random::Xoroshiro128Plus rng(rd(), rd());
+std::normal_distribution<> normal(0.0, 1.0);
+double r = normal(rng);
+```
+
+The `Xoroshiro128Plus` struct satisfies the C++ `UniformRandomBitGenerator` concept (has `result_type`, `operator()`, `min()`, `max()`), so it works directly with `std::normal_distribution`.
+
 ## Architecture Patterns
 
 ### Integration Points in Existing Code
 
 ```
-src/AnalogLFO.cpp
-  Line 14: ParamId enum -- ADD DRIFT_ATTEN_PARAM before PARAMS_LEN
-  Line 30: Module state  -- ADD OU state variables, per-module RNG
-  Line 44: progressiveCurve() -- REUSE for drift knob mapping
-  Line 172: process()     -- ADD drift CV processing, OU update, deltaPhase modulation
-  Line 198: TODO comment  -- REMOVE (no driftChanged trigger needed)
-  Line 309-353: drawPhaseDot() -- MODIFY for subtle dot instability at high drift
-  Line 404+: Widget constructor -- ADD drift attenuator trimpot, RESPACE bottom row
+src/AnalogLFO.cpp (current line numbers verified 2026-03-07)
+  Line 7-14:  ParamId enum -- ADD DRIFT_ATTEN_PARAM before PARAMS_LEN
+  Line 30:    Module state  -- ADD OU state variables, per-module RNG, sqrtSampleTime cache
+  Line 44:    progressiveCurve() -- REUSE for drift knob mapping
+  Line 157:   Constructor   -- ADD DRIFT_ATTEN_PARAM config, RNG seeding, sqrtSampleTime init
+  Line 172:   process()     -- ADD drift CV processing, OU update BEFORE phase accumulation
+  Line 178:   deltaPhase    -- MODIFY to apply drift modulation before phase += deltaPhase
+  Line 198:   TODO comment  -- REMOVE (no driftChanged trigger needed)
+  Line 309:   drawPhaseDot() -- MODIFY for subtle dot instability at high drift
+  Line 404+:  Widget constructor -- ADD drift attenuator trimpot, RESPACE bottom row
 
 res/AnalogLFO.svg
-  Bottom row labels   -- ADD "DATrim" label (or reposition existing labels)
-  Component positions -- RESPACE 7 components
-  Components layer    -- ADD drift attenuator trimpot reference
+  Bottom row labels   -- ADD "DCV" label with paired trimpot
+  Component positions -- RESPACE 7 components in grouped pairs
+  Components layer    -- ADD drift attenuator trimpot reference circle
 ```
 
 ### Pattern 1: Ornstein-Uhlenbeck Discrete-Time Update (Euler-Maruyama)
@@ -181,6 +195,8 @@ rng.seed(rd(), rd());  // Two 32-bit seeds from hardware entropy
 
 **What:** Drift modulates the phase accumulation rate, not the waveform shape.
 
+**Critical ordering:** Drift processing MUST occur BEFORE `phase += deltaPhase` (currently at line 179). The current code computes deltaPhase at line 178 then immediately accumulates at line 179. Drift modulates deltaPhase between these two steps.
+
 ```cpp
 // BEFORE phase accumulation:
 double deltaPhase = (double)freq * (double)args.sampleTime;
@@ -198,12 +214,32 @@ if (drift >= 0.001f) {
 phase += deltaPhase;
 ```
 
+### Pattern 6: sqrtSampleTime Caching
+
+**What:** Cache `sqrt(sampleTime)` to avoid recomputing every sample.
+
+```cpp
+// In struct AnalogLFO:
+float sqrtSampleTime = 0.f;
+
+// In constructor:
+// Will be set properly by onSampleRateChange which fires on Module add
+
+// Override:
+void onSampleRateChange(const SampleRateChangeEvent& e) override {
+    sqrtSampleTime = std::sqrt(e.sampleTime);
+}
+```
+
+**Note:** `onSampleRateChange()` is called when the Module is added to the Engine (per SDK docs), so this covers initialization. As a safety measure, also check/compute lazily in process() if sqrtSampleTime is still 0.
+
 ### Anti-Patterns to Avoid
 - **Modulating waveform shape with drift:** Drift is a pitch phenomenon, not a shape change. The display trace should NOT change with drift (per user decision).
 - **Using global rack::random:** Two modules with identical settings would share the same random stream and drift identically. Per-module RNG is required.
 - **Saving/restoring OU state:** Real analog synths don't resume their drift state. Fresh randomness on patch load is more authentic (per user decision).
 - **Computing OU when drift is zero:** Must skip entirely for zero CPU overhead (per user decision).
 - **Using exp() per-sample for exact OU:** Euler-Maruyama is accurate enough at 44.1kHz+ sample rates and avoids expensive transcendentals.
+- **Drift processing after phase accumulation:** deltaPhase must be modulated BEFORE `phase += deltaPhase`.
 
 ## Don't Hand-Roll
 
@@ -233,20 +269,38 @@ phase += deltaPhase;
 ### Pitfall 3: sqrt(dt) Precomputation
 **What goes wrong:** Computing `std::sqrt(args.sampleTime)` every sample is wasteful.
 **Why it happens:** `sqrt(dt)` is constant as long as sample rate doesn't change.
-**How to avoid:** Compute `sqrtSampleTime` once and cache it. Update in `onSampleRateChange()` or compute once per process block. Since sample rate changes are rare, caching in a member variable updated on first use or rate change is clean.
+**How to avoid:** Compute `sqrtSampleTime` once in `onSampleRateChange()`. The SDK guarantees this callback fires when the Module is added to the Engine, so it covers initialization.
 **Warning signs:** Unnecessary CPU usage in process() hotpath.
 
 ### Pitfall 4: Bottom Row Component Spacing
 **What goes wrong:** 7 components in 57mm usable width creates tight spacing; components overlap or look cramped.
-**Why it happens:** Panel is 60.96mm (12HP), minus ~2mm margins each side = ~57mm usable. Trimpot diameter ~6mm, PJ301MPort diameter ~8mm. Seven components at equal spacing = ~8.14mm center-to-center, which is tight but feasible since trimpots are smaller than jacks.
-**How to avoid:** Use grouped pairs with tighter within-pair spacing (~7mm trimpot-to-jack) and slightly wider between-pair gaps (~9mm). The OUTPUT jack at the end gets its own space.
-**Warning signs:** Components visually overlapping, labels unreadable.
+**Why it happens:** Panel is 60.96mm (12HP), minus ~2mm margins each side = ~57mm usable. Trimpot diameter ~6mm, PJ301MPort diameter ~8mm.
+**How to avoid:** Use grouped pairs with tighter within-pair spacing (~7-8mm trimpot-to-jack) and slightly wider between-pair gaps. The current layout has 6 components at: MATrim(9), MCV(18), CATrim(27), CCV(36), DCV(46), OUT(55). Adding the Drift Atten trimpot requires respacing all 7 components. Recommended grouped-pair layout:
+
+```
+Current (6 components):  MATrim(9)  MCV(18)  CATrim(27)  CCV(36)  DCV(46)  OUT(55)
+Proposed (7 components): MATrim(7)  MCV(14)  CATrim(21)  CCV(28)  DATrim(35) DCV(42) OUT(54)
+   Within-pair gap: ~7mm (trimpot to its jack)
+   Between-pair gap: ~7mm (jack to next trimpot)
+   Final gap to OUT: ~12mm (more breathing room for output jack)
+```
+**Warning signs:** Components visually overlapping, labels unreadable, trimpots too close to jacks.
 
 ### Pitfall 5: Display Dot Instability Overdone
 **What goes wrong:** Too much visual instability makes the display look broken rather than subtly alive.
 **Why it happens:** Applying drift value directly to visual parameters without attenuation.
-**How to avoid:** Keep the instability very subtle -- small glow radius variation or slight trail position jitter, scaled so it's barely noticeable at mid-drift and only clearly visible at full drift.
+**How to avoid:** Keep the instability very subtle -- small glow radius variation or slight trail position jitter, scaled so it's barely noticeable at mid-drift and only clearly visible at full drift. Read the raw knob param value (no threading concerns, already done for other params).
 **Warning signs:** Dot appears to jump erratically rather than gently wobble.
+
+### Pitfall 6: Drift-Phase Ordering Bug
+**What goes wrong:** If drift modulation is applied after `phase += deltaPhase`, the drift has no effect on the current sample's phase position.
+**Why it happens:** The current code computes deltaPhase (line 178) and immediately accumulates (line 179) with no gap. Easy to place drift code after the accumulation by mistake.
+**How to avoid:** Restructure: compute deltaPhase, apply drift modulation, THEN accumulate. The drift CV processing can go after morph/character CV processing, but the OU update and deltaPhase multiplication MUST precede `phase += deltaPhase`.
+
+### Pitfall 7: Bottom Row SVG Label Updates
+**What goes wrong:** The SVG labels remain at old positions while widget code uses new positions, causing visual misalignment.
+**Why it happens:** SVG label positions and widget code positions must be updated in sync, but they are in different files.
+**How to avoid:** Update both res/AnalogLFO.svg labels AND src/AnalogLFO.cpp widget positions in the same task. Verify label x-coordinates match their corresponding component x-coordinates.
 
 ## Code Examples
 
@@ -314,12 +368,11 @@ void process(const ProcessArgs& args) override {
 
     if (drift >= 0.001f) {
         float driftAmount = progressiveCurve(drift);
-        float dt = args.sampleTime;
         float combinedOU = 0.f;
 
         for (int i = 0; i < NUM_OU_LAYERS; i++) {
             float noise = normalDist(rng);
-            ouLayers[i].state += ouLayers[i].theta * (0.f - ouLayers[i].state) * dt
+            ouLayers[i].state += ouLayers[i].theta * (0.f - ouLayers[i].state) * args.sampleTime
                                + ouLayers[i].sigma * sqrtSampleTime * noise;
             combinedOU += ouLayers[i].state * ouLayers[i].weight;
         }
@@ -338,9 +391,12 @@ void process(const ProcessArgs& args) override {
 
 ### Per-Module RNG Initialization
 ```cpp
-// In struct AnalogLFO:
+// In struct AnalogLFO (add after existing member variables):
 rack::random::Xoroshiro128Plus rng;
 std::normal_distribution<float> normalDist{0.f, 1.f};
+float sqrtSampleTime = 0.f;
+static constexpr int NUM_OU_LAYERS = 4;
+OULayer ouLayers[NUM_OU_LAYERS];
 
 // In constructor:
 AnalogLFO() {
@@ -349,12 +405,23 @@ AnalogLFO() {
     // Seed per-module RNG from hardware entropy
     std::random_device rd;
     rng.seed(rd(), rd());
+
+    // Initialize OU layers
+    ouLayers[0] = {0.f, 2.f * (float)M_PI * 0.05f, 0.793f, 0.50f};
+    ouLayers[1] = {0.f, 2.f * (float)M_PI * 0.2f,  1.586f, 0.25f};
+    ouLayers[2] = {0.f, 2.f * (float)M_PI * 0.8f,  3.170f, 0.15f};
+    ouLayers[3] = {0.f, 2.f * (float)M_PI * 2.0f,  5.013f, 0.10f};
+}
+
+// Sample rate change handler:
+void onSampleRateChange(const SampleRateChangeEvent& e) override {
+    sqrtSampleTime = std::sqrt(e.sampleTime);
 }
 ```
 
 ### Drift Attenuator Param Configuration
 ```cpp
-// In ParamId enum:
+// In ParamId enum (add before PARAMS_LEN at current line 14):
 DRIFT_ATTEN_PARAM,  // Add before PARAMS_LEN
 // PARAMS_LEN now becomes 7
 
@@ -364,26 +431,24 @@ configParam(DRIFT_ATTEN_PARAM, 0.f, 1.f, 0.f, "Drift CV", "%", 0.f, 100.f);
 
 ### Bottom Row Layout (7 Components, Claude's Discretion)
 ```cpp
-// Panel usable width: ~57mm (margins 2mm each side of 60.96mm panel)
-// Grouped pairs with tight pair spacing, wider gaps between pairs:
+// Panel usable width: ~57mm (margins ~3mm each side of 60.96mm panel)
+// Grouped pairs: [Trimpot Jack] [Trimpot Jack] [Trimpot Jack] [Jack]
 //
-// [MATrim(7) MCV(15)] [CATrim(23) CCV(31)] [DATrim(39) DCV(47)] [OUT(55)]
+// Recommended positions (mm):
+// MATrim(7)  MCV(14)  CATrim(21)  CCV(28)  DATrim(35)  DCV(42)  OUT(54)
 //
-// Within pair: ~8mm center-to-center (trimpot ~6mm + jack ~8mm, no overlap)
-// Between pairs: ~8mm gap
-// Final OUT: ~8mm from DCV
-//
-// Alternative tighter spacing:
-// [MATrim(6) MCV(14)] [CATrim(22) CCV(30)] [DATrim(38) DCV(46)] [OUT(55)]
+// Within-pair: 7mm center-to-center (trimpot 6mm + small gap + jack 8mm fits without overlap)
+// Between-pairs: 7mm (14->21, 28->35)
+// OUT offset: 12mm from DCV for breathing room
 
-// Widget constructor additions:
+// Widget constructor:
 addParam(createParamCentered<Trimpot>(mm2px(Vec(7.0, 104.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
-addInput(createInputCentered<PJ301MPort>(mm2px(Vec(15.0, 104.0)), module, AnalogLFO::MORPH_CV_INPUT));
-addParam(createParamCentered<Trimpot>(mm2px(Vec(23.0, 104.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
-addInput(createInputCentered<PJ301MPort>(mm2px(Vec(31.0, 104.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
-addParam(createParamCentered<Trimpot>(mm2px(Vec(39.0, 104.0)), module, AnalogLFO::DRIFT_ATTEN_PARAM));
-addInput(createInputCentered<PJ301MPort>(mm2px(Vec(47.0, 104.0)), module, AnalogLFO::DRIFT_CV_INPUT));
-addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(55.0, 104.0)), module, AnalogLFO::OUTPUT));
+addInput(createInputCentered<PJ301MPort>(mm2px(Vec(14.0, 104.0)), module, AnalogLFO::MORPH_CV_INPUT));
+addParam(createParamCentered<Trimpot>(mm2px(Vec(21.0, 104.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
+addInput(createInputCentered<PJ301MPort>(mm2px(Vec(28.0, 104.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
+addParam(createParamCentered<Trimpot>(mm2px(Vec(35.0, 104.0)), module, AnalogLFO::DRIFT_ATTEN_PARAM));
+addInput(createInputCentered<PJ301MPort>(mm2px(Vec(42.0, 104.0)), module, AnalogLFO::DRIFT_CV_INPUT));
+addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(54.0, 104.0)), module, AnalogLFO::OUTPUT));
 ```
 
 ### Subtle Dot Instability Visual (Claude's Discretion)
@@ -396,7 +461,7 @@ addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(55.0, 104.0)), module, Anal
 float driftLevel = 0.f;
 if (module) {
     driftLevel = module->params[AnalogLFO::DRIFT_PARAM].getValue();
-    // Could also read actual combined drift amount for more accuracy
+    // Read raw knob value -- simple, no threading concerns
 }
 
 // Trail jitter: add small random offset to trail Y positions
@@ -412,6 +477,83 @@ if (driftLevel > 0.01f) {
 float haloJitter = 1.f + driftLevel * 0.15f * std::sin(breathePhase * 2.3f);
 float haloRadius = dotRadius * 3.f * haloJitter;
 ```
+
+## Validation Architecture
+
+### Test Framework
+| Property | Value |
+|----------|-------|
+| Framework | Manual verification + build compilation (no automated test framework exists) |
+| Config file | None -- no test infrastructure in project |
+| Quick run command | `make -C "/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series" -j4` |
+| Full suite command | `make -C "/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series" clean && make -C "/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series" -j4` |
+
+### Test Strategy
+
+This is a VCV Rack plugin compiled as a dynamic library (`plugin.dylib`). There is no automated test harness. Verification relies on:
+
+1. **Compilation verification** -- the plugin compiles without errors or warnings
+2. **Static code analysis** -- verify code patterns match established conventions by inspection
+3. **Runtime verification** -- load in VCV Rack and test behavior manually
+
+### Phase Requirements Test Map
+
+| Req ID | Behavior | Test Type | Verification Method | Measurable Criteria |
+|--------|----------|-----------|--------------------|--------------------|
+| DRFT-01a | Drift at zero produces stable output | Static analysis | Inspect process(): verify `if (drift < 0.001f)` guard skips all OU code, no deltaPhase modification | Guard present, no OU update when drift < 0.001f |
+| DRFT-01b | Drift knob at non-zero values modulates pitch | Static analysis + compilation | Verify OU layers update, combinedOU scales deltaPhase multiplicatively | `deltaPhase *= (1.0 + driftScale * combinedOU)` present before `phase += deltaPhase` |
+| DRFT-01c | Four OU layers at correct frequencies | Static analysis | Verify theta values: 2*pi*0.05, 2*pi*0.2, 2*pi*0.8, 2*pi*2.0 | Four layers with correct theta constants |
+| DRFT-01d | Progressive x^2 curve for drift knob | Static analysis | Verify `progressiveCurve(drift)` used for scaling | Call to progressiveCurve() on drift value |
+| DRFT-01e | Per-module unique RNG | Static analysis | Verify per-module Xoroshiro128Plus with std::random_device seed | Member variable rng, seeded in constructor with rd() |
+| DRFT-01f | Drift modulates pitch, not shape | Static analysis | Verify drift modifies deltaPhase only, not any waveform computation input | No drift variable passed to computeMorphedWave/computeSine/etc. |
+| DRFT-01g | OU state not saved/restored | Static analysis | Verify no dataToJson/dataFromJson for OU state | No serialization of ouLayers state or rng state |
+| DRFT-01h | sqrtSampleTime cached | Static analysis | Verify computed in onSampleRateChange, not per-sample | Member variable updated in callback, used in process() |
+| DRFT-02a | Drift CV input processes correctly | Static analysis | Verify CV pattern: `clamp(knob + atten * voltage / 10.f, 0.f, 1.f)` | Pattern matches Morph/Character CV processing exactly |
+| DRFT-02b | DRIFT_ATTEN_PARAM exists and configured | Static analysis + compilation | Verify enum entry, configParam call, widget placement | Param in enum, configured 0-1 range default 0, trimpot widget added |
+| DRFT-02c | Attenuator defaults to 0 | Static analysis | Verify `configParam(DRIFT_ATTEN_PARAM, 0.f, 1.f, 0.f, ...)` | Fourth argument is 0.f |
+
+### Integration Verification (Cross-Requirement)
+
+| Scenario | What to Verify | Method |
+|----------|---------------|--------|
+| Three-knob engine integration | Morph + Character + Drift all active simultaneously produce valid output | Code review: drift modifies deltaPhase independently of morph/character waveform processing |
+| Display reflects drift | Phase dot speed varies with drift (not waveform trace) | Code review: displayPhase still stores raw phase (modulated by drift), no display buffer recompute on drift change |
+| TODO removal | Line 198 TODO comment removed | Code review: grep for "TODO Phase 5" returns nothing |
+| Panel layout | 7 bottom-row components with correct positions | SVG inspection + widget constructor review |
+| Zero-overhead bypass | No RNG calls, no OU updates, no multiplication when drift=0 | Code review: all OU logic inside `if (drift >= 0.001f)` block |
+
+### Edge Cases to Verify
+
+| Edge Case | Expected Behavior | Verification |
+|-----------|-------------------|-------------|
+| Drift knob = 0, no CV | deltaPhase unmodified, zero CPU overhead | Guard check `drift < 0.001f` returns early |
+| Drift knob = 0, CV at +10V, atten = 1.0 | drift = clamp(0 + 1.0 * 10/10, 0, 1) = 1.0, full drift active | CV processing before guard check |
+| Drift knob = 1.0, CV at -10V, atten = 1.0 | drift = clamp(1 - 1.0, 0, 1) = 0.0, bypass | Clamp prevents negative |
+| Drift knob = 1.0, no CV connected | Full drift, ~7.5% frequency deviation | OU layers active, scaling correct |
+| Module added fresh | RNG seeded, OU states = 0, sqrtSampleTime set via onSampleRateChange | Constructor seeds RNG, onSampleRateChange fires on add |
+| Sample rate change mid-patch | sqrtSampleTime updates, OU continues with new dt | onSampleRateChange updates cache |
+| Two identical modules | Different drift patterns (independent RNG) | Per-module rng member, seeded independently |
+| Very low LFO rate (0.01Hz) | Drift still applies, phase still advances | deltaPhase is tiny but non-zero; drift multiplicative factor still works |
+
+### Build Verification Command
+
+```bash
+# Quick build (verifies compilation, links, no warnings):
+make -C "/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series" -j4 2>&1
+
+# Clean rebuild:
+make -C "/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series" clean && \
+make -C "/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series" -j4 2>&1
+```
+
+### Sampling Rate
+- **Per task commit:** `make -j4` (compilation check)
+- **Per wave merge:** Clean rebuild + manual code review against test map
+- **Phase gate:** All static analysis checks pass, clean compilation, full code review before `/gsd:verify-work`
+
+### Wave 0 Gaps
+- No test framework infrastructure needed -- this project uses compilation + static analysis + manual runtime verification (consistent with phases 1-4)
+- All verification is code-review-based due to the nature of VCV Rack plugin development (no headless test runner available without full VCV Rack engine)
 
 ## State of the Art
 
@@ -429,43 +571,44 @@ float haloRadius = dotRadius * 3.f * haloJitter;
 1. **Optimal drift scaling factor**
    - What we know: User specified 5-10% of base frequency at full drift. 7.5% center is recommended.
    - What's unclear: Whether 7.5% sounds right at all LFO rates (0.01-20Hz). At very low rates, 7.5% pitch variation may be imperceptible; at high rates it may be too obvious.
-   - Recommendation: Start with 7.5%, verify by ear. The scaling factor is a single constant that's easy to tune during verification.
+   - Recommendation: Start with 0.075f scaling constant. This is a single constant that's trivially tunable during verification.
 
-2. **sqrt(dt) caching strategy**
-   - What we know: Computing sqrt(sampleTime) per-sample is wasteful.
-   - What's unclear: Whether to use onSampleRateChange() callback or lazy initialization.
-   - Recommendation: Compute in constructor and update in onSampleRateChange(). Simple and correct.
-
-3. **Display drift level communication**
+2. **Display drift level communication**
    - What we know: The display widget needs to read the drift level for dot instability visual.
    - What's unclear: Whether to read the raw knob value, the CV-processed value, or the actual OU output.
    - Recommendation: Read the raw drift knob param value (simple, no threading concerns, good enough for visual scaling). The display already reads params directly for other purposes.
 
+3. **Bottom row exact spacing verification**
+   - What we know: 7 components need to fit in ~57mm with grouped-pair layout.
+   - What's unclear: Whether the proposed 7mm within-pair / 7mm between-pair spacing looks visually balanced in practice.
+   - Recommendation: Use the proposed spacing (7/14/21/28/35/42/54) as starting point. Component sizes (Trimpot ~6mm, PJ301MPort ~8mm) leave adequate clearance at 7mm centers. May need minor adjustment after visual inspection.
+
 ## Sources
 
 ### Primary (HIGH confidence)
-- VCV Rack SDK 2.6.6 headers: `random.hpp`, `engine/Module.hpp` -- verified Xoroshiro128Plus API, Module::id field, normal distribution pattern
-- VCV Rack API docs (vcvrack.com/docs-v2) -- rack::random namespace, Xoroshiro128Plus struct
+- VCV Rack SDK 2.6.6 `random.hpp` (local file: `../Rack-SDK/include/random.hpp`) -- verified Xoroshiro128Plus API: `seed(uint64_t, uint64_t)`, `operator()()`, `min()`, `max()`, `result_type = uint64_t`. SDK comments show exact usage pattern with `std::normal_distribution`.
+- VCV Rack SDK 2.6.6 `engine/Module.hpp` (local file: `../Rack-SDK/include/engine/Module.hpp`) -- verified `SampleRateChangeEvent{sampleRate, sampleTime}`, `onSampleRateChange()` "Called when Module is added to Engine".
+- Source code `src/AnalogLFO.cpp` -- verified current line numbers, enum layout, existing patterns, integration points (all line numbers checked 2026-03-07).
 - NESTML OU noise tutorial (nestml.readthedocs.io) -- exact OU discrete-time update formula verified
 - FSU C++ OU implementation (people.sc.fsu.edu) -- Euler-Maruyama formula: `dx = theta*(mu-x)*dt + sigma*dW`
 
 ### Secondary (MEDIUM confidence)
 - VCV Community discussion on rack::random usage -- per-module RNG best practice confirmed by multiple developers
-- KVR Audio forum on emulating pitch drift -- leaky integrator approach confirmed as standard
 - VCV Rack Fundamental VCO -- uses leaky integrator of gaussian noise (equivalent to single OU process)
 
 ### Tertiary (LOW confidence)
-- Component dimensions (Trimpot ~6mm, PJ301MPort ~8mm) -- from general knowledge, not verified against SVG sources in this session
+- Component dimensions (Trimpot ~6mm, PJ301MPort ~8mm) -- from general knowledge, not verified against exact SVG component definitions
 
 ## Metadata
 
 **Confidence breakdown:**
-- Standard stack: HIGH - VCV Rack SDK headers directly verified, API confirmed
+- Standard stack: HIGH - VCV Rack SDK headers directly verified from local installation
 - Architecture (OU process): HIGH - mathematical foundation well-established, discrete-time formula verified from multiple sources
-- Architecture (bottom row layout): MEDIUM - component dimensions from general knowledge; spacing needs visual verification
+- Architecture (bottom row layout): MEDIUM - component dimensions from general knowledge; spacing needs visual verification after implementation
 - OU parameters: MEDIUM - mathematically derived but audio perception needs tuning by ear
-- Pitfalls: HIGH - based on OU process mathematics and established VCV Rack patterns
+- Pitfalls: HIGH - based on OU process mathematics, verified SDK API, and established VCV Rack patterns
 - Display visual: MEDIUM - approach is sound but exact visual parameters need tuning
+- Validation: HIGH - verification approach consistent with phases 1-4 (no test framework, compilation + code review)
 
 **Research date:** 2026-03-07
 **Valid until:** 2026-04-07 (stable domain -- OU process math and VCV Rack SDK are mature)
