@@ -19,6 +19,7 @@ struct AnalogLFO : Module {
 		MORPH_CV_INPUT,
 		DRIFT_CV_INPUT,
 		CHARACTER_CV_INPUT,
+		CLK_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
@@ -28,6 +29,9 @@ struct AnalogLFO : Module {
 	enum LightId {
 		LIGHTS_LEN
 	};
+
+	// Clock tracking state machine
+	enum ClockState { FREE = 0, ACQUIRING = 1, LOCKED = 2 };
 
 	double phase = 0.0;
 
@@ -57,6 +61,16 @@ struct AnalogLFO : Module {
 	float prevDisplayCharacter = -1.f;
 	double prevPhaseForDisplay = 0.0;
 	float displayUpdateTimer = 0.f;
+
+	// Clock tracking members
+	dsp::SchmittTrigger clockTrigger;
+	dsp::Timer clockTimer;
+	float smoothedPeriod = 0.f;
+	float lastSmoothedPeriod = 0.f;
+	int clockEdgeCount = 0;
+	ClockState clockState = FREE;
+	bool prevClkConnected = false;
+	std::atomic<int> displayClockState{0};
 
 	float progressiveCurve(float character) {
 		return character * character;  // x^2: subtle first half, aggressive second half
@@ -187,6 +201,7 @@ struct AnalogLFO : Module {
 		configInput(MORPH_CV_INPUT, "Morph CV");
 		configInput(DRIFT_CV_INPUT, "Drift CV");
 		configInput(CHARACTER_CV_INPUT, "Character CV");
+		configInput(CLK_INPUT, "Clock");
 		configOutput(OUTPUT, "LFO");
 		updateDisplayBuffer(0.f, 0.f);
 
@@ -522,6 +537,7 @@ struct AnalogLFOWidget : ModuleWidget {
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(18.0, 69.0)), module, AnalogLFO::CHARACTER_PARAM));
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(42.96, 69.0)), module, AnalogLFO::DRIFT_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(18.0, 86.0)), module, AnalogLFO::RATE_PARAM));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(42.96, 86.0)), module, AnalogLFO::CLK_INPUT));
 		// Bottom section: Trimpots (upper row at y=96mm)
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(10.0, 96.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(24.0, 96.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
