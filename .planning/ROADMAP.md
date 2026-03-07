@@ -44,7 +44,7 @@ Plans:
   1. Morph knob continuously sweeps Sine to Triangle to Saw to Square with musically valid intermediate shapes (no clicks or discontinuities during sweep)
   2. Rate knob controls LFO frequency across the full sub-audio range (approximately 0.01Hz to 20Hz)
   3. Morph CV input modulates morph position when patched from an external source
-  4. Module produces bipolar +/-5V output and inverted output simultaneously from the output jacks
+  4. Module produces bipolar +/-5V output from a single output jack (inverted output removed by design decision)
   5. Phase accumulator uses double precision (verified: no LFO stall below 0.01Hz)
 **Plans**: 2 plans
 
@@ -107,7 +107,11 @@ Plans:
   2. Drift dot instability visual is perceptible at high drift levels (trail jitter and halo variation)
   3. Dot instability visual responds to CV-modulated drift value, not just knob position
   4. Bottom row panel layout uses consistent design language
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md -- Drift visual tuning, bottom row restructure, SVG panel update, documentation fixes
+- [ ] 06-02-PLAN.md -- Visual verification of all Phase 6 changes in VCV Rack
 
 ## Progress
 
@@ -122,4 +126,4 @@ Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 | 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
 | 4. Analog Character | 2/2 | Complete | 2026-03-07 |
 | 5. Drift Engine | 2/2 | Complete | 2026-03-07 |
-| 6. Polish & Cleanup | 0/? | Planned | -- |
+| 6. Polish & Cleanup | 0/2 | Planned | -- |
