@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-07T03:59:01.080Z"
-last_activity: 2026-03-07 -- Phase 5 Plan 2 complete (drift and three-knob engine verified in VCV Rack)
+status: complete
+stopped_at: Phase 6 Plan 2 complete (all phases done)
+last_updated: "2026-03-07T07:13:06.752Z"
+last_activity: 2026-03-07 -- Phase 6 Plan 2 complete (all polish changes visually verified in VCV Rack)
 progress:
   total_phases: 6
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
+  completed_phases: 6
+  total_plans: 12
+  completed_plans: 12
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 5 complete - Drift Engine (2 of 2 plans complete)
+**Current focus:** Phase 6 complete - All phases complete, milestone v1.0 done
 
 ## Current Position
 
-Phase: 5 of 5 (Drift Engine) -- COMPLETE
+Phase: 6 of 6 (Polish & Cleanup) -- COMPLETE
 Plan: 2 of 2 in current phase
-Status: All phases complete -- three-knob analog engine fully implemented and user-verified
-Last activity: 2026-03-07 -- Phase 5 Plan 2 complete (drift and three-knob engine verified in VCV Rack)
+Status: All phases complete -- v1.0 milestone fully implemented, polished, and user-verified
+Last activity: 2026-03-07 -- Phase 6 Plan 2 complete (all polish changes visually verified in VCV Rack)
 
 Progress: [##########] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 4.9 min
-- Total execution time: 0.82 hours
+- Total plans completed: 12
+- Average duration: 4.8 min
+- Total execution time: 0.97 hours
 
 **By Phase:**
 
@@ -48,9 +48,10 @@ Progress: [##########] 100%
 | 03-waveform-display | 2 | 3 min | 1.5 min |
 | 04-analog-character | 2 | 16 min | 8 min |
 | 05-drift-engine | 2 | 10 min | 5 min |
+| 06-polish-and-cleanup | 2 | 7 min | 3.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 1min, 4min, 12min, 7min, 3min
+- Last 5 plans: 12min, 7min, 3min, 4min, 3min
 - Trend: fast and consistent
 
 *Updated after each plan completion*
@@ -97,6 +98,11 @@ Recent decisions affecting current work:
 - No OU state serialization: fresh randomness on each patch load (authentic analog behavior)
 - Panel bottom row design language: functional but non-standard grouping, approved for v1, refinement deferred
 - Drift dot instability visual: too subtle at current parameters, accepted for v1, tuning deferred
+- 5x amplification for drift visuals (trail jitter 0.3->1.5, halo 0.15->0.75) -- approved by user
+- displayDrift atomic replaces direct param read for CV responsiveness
+- Two-row layout: trimpots y=96, jacks y=108, 4 columns at x=10/24/38/52
+- Amber OUT label and accent ring for output distinction
+- All Phase 6 visual changes approved as-is after VCV Rack verification
 
 ### Pending Todos
 
@@ -108,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T03:59:01.077Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-polish-and-cleanup/06-CONTEXT.md
+Last session: 2026-03-07T06:12:28Z
+Stopped at: Completed 06-02-PLAN.md -- all phases complete, v1.0 milestone done
+Resume file: .planning/phases/06-polish-and-cleanup/06-02-SUMMARY.md

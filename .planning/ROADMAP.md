@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Waveform Display** - Real-time single-cycle waveform visualization with phase-tracking dot (completed 2026-02-26)
 - [x] **Phase 4: Analog Character** - Character knob crossfading from digital perfection to classic synth references per shape
 - [x] **Phase 5: Drift Engine** - Layered analog imperfections via Ornstein-Uhlenbeck pitch drift
-- [ ] **Phase 6: Polish & Cleanup** - Tech debt closure: documentation fixes, drift visual tuning, panel refinement
+- [x] **Phase 6: Polish & Cleanup** - Tech debt closure: documentation fixes, drift visual tuning, panel refinement
 
 ## Phase Details
 
@@ -110,8 +110,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- Drift visual tuning, bottom row restructure, SVG panel update, documentation fixes
-- [ ] 06-02-PLAN.md -- Visual verification of all Phase 6 changes in VCV Rack
+- [x] 06-01-PLAN.md -- Drift visual tuning, bottom row restructure, SVG panel update, documentation fixes
+- [x] 06-02-PLAN.md -- Visual verification of all Phase 6 changes in VCV Rack
 
 ## Progress
 
@@ -126,4 +126,4 @@ Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 | 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
 | 4. Analog Character | 2/2 | Complete | 2026-03-07 |
 | 5. Drift Engine | 2/2 | Complete | 2026-03-07 |
-| 6. Polish & Cleanup | 0/2 | Planned | -- |
+| 6. Polish & Cleanup | 2/2 | Complete | 2026-03-07 |
