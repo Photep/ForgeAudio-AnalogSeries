@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: milestone
-status: verifying
-stopped_at: Completed 06-02-PLAN.md -- all phases complete, v1.0 milestone done
-last_updated: "2026-03-07T07:17:21.208Z"
-last_activity: 2026-03-07 -- Phase 6 Plan 2 complete (all polish changes visually verified in VCV Rack)
+milestone_name: Analog Series LFO
+status: complete
+stopped_at: v1.0 milestone archived
+last_updated: "2026-03-07T08:20:00.000Z"
+last_activity: 2026-03-07 -- v1.0 milestone completed and archived
 progress:
   total_phases: 6
   completed_phases: 6
@@ -18,19 +18,15 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-25)
+See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 6 complete - All phases complete, milestone v1.0 done
+**Current focus:** v1.0 shipped — planning next milestone
 
 ## Current Position
 
-Phase: 6 of 6 (Polish & Cleanup) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: All phases complete -- v1.0 milestone fully implemented, polished, and user-verified
-Last activity: 2026-03-07 -- Phase 6 Plan 2 complete (all polish changes visually verified in VCV Rack)
-
-Progress: [##########] 100%
+Milestone v1.0 complete and archived.
+All 6 phases, 12 plans shipped.
 
 ## Performance Metrics
 
@@ -50,10 +46,6 @@ Progress: [##########] 100%
 | 05-drift-engine | 2 | 10 min | 5 min |
 | 06-polish-and-cleanup | 2 | 7 min | 3.5 min |
 
-**Recent Trend:**
-- Last 5 plans: 12min, 7min, 3min, 4min, 3min
-- Trend: fast and consistent
-
 *Updated after each plan completion*
 
 ## Accumulated Context
@@ -61,59 +53,17 @@ Progress: [##########] 100%
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- LFO-first strategy: LFO validates entire three-knob engine at sub-audio rates before VCO adds audio-rate complexity
-- Character before drift: Character defines the sound target; drift destabilizes it
-- Used default RACK_DIR ?= ../Rack-SDK to avoid GNU Make space-in-path issues
-- Declared complete enum set (5 params, 2 inputs, 2 outputs) upfront so widget positions are fixed for all future phases
-- Reused POC letter library for Forge Audio brand consistency across plugins
-- Moved Morph knob center from y=52.0 to y=54.0 after visual verification showed label readability issues
-- Adjusted MORPH/CHARACTER/DRIFT label Y positions for better label-to-knob association
-- Linear rate 0.01-20Hz with default 0.7Hz -- raw param value IS frequency in Hz
-- Morph CV attenuator defaults to 0 (no CV effect until user turns up)
-- Bottom row redesigned: Trimpot x=9, MCV x=21, DCV x=35, OUT x=51
-- Saw flipped to falling ramp to eliminate morph crossfade amplitude dip (matches Minimoog/SH-101/Juno convention)
-- Tri-to-saw peak asymmetry accepted as inherent to linear crossfading (not a defect)
-- WaveformDisplay as TransparentWidget in same .cpp file (standard VCV Rack single-file pattern)
-- All display rendering on layer 1 for self-illumination (visible at any room brightness)
-- Four-pass glow rendering for amber trace bloom (widths 6/4/2.5/1.5, alphas 0.04/0.08/0.15/0.85)
-- Display size 57x35mm at (2,15) -- 27% panel height, matching CONTEXT.md 25-35% guideline
-- Display height reduced from 35mm to 27mm to prevent occlusion of Morph knob (visual verification feedback)
-- Display position kept at (2, 15) -- only height changed, not origin
-- Removed Phase 4 (Pitch Controls) -- octave/semitone not meaningful for sub-audio LFO. OCTAVE_PARAM removed from code/SVG. Phases renumbered: Character=4, Drift=5
-- Characterize-then-morph ordering: analog deformation applied per-shape before morph crossfade for coherent transitions
-- Progressive x^2 curve: character at 0.5 = 25% effect, rewards exploration across full knob range
-- Morph bleed (IO-03) deferred to v2 -- adds complexity for a subtle effect at LFO rates
-- Bottom row redistributed to 6 components at ~9mm spacing: MATrim(9), MCV(18), CATrim(27), CCV(36), DCV(46), OUT(55)
-- Triangle phase alignment: analog triangle must fall +1→-1 then rise -1→+1 (matching digital orientation)
-- Square crossfade pattern: blend digital→analog via c to prevent snap at character threshold
-- Character deformation amounts: research values (2-3%) too subtle; increased to 8-50% for perceptibility
-- Display update rate limit: 30fps for parameter-driven updates; phase wrap always immediate
-- Four-layer OU drift at 0.05/0.2/0.8/2Hz with weights 50/25/15/10% for musical pitch instability
-- 7.5% max frequency deviation at full drift with progressive x^2 curve
-- Per-module Xoroshiro128Plus RNG seeded from std::random_device (independent drift per instance)
-- Bottom row respaced to 7 grouped-pair components: MATrim(7) MCV(14) CATrim(21) CCV(28) DATrim(35) DCV(42) OUT(54)
-- Drift CV attenuator defaults to 0 (consistent with Morph/Character CV pattern)
-- No OU state serialization: fresh randomness on each patch load (authentic analog behavior)
-- Panel bottom row design language: functional but non-standard grouping, approved for v1, refinement deferred
-- Drift dot instability visual: too subtle at current parameters, accepted for v1, tuning deferred
-- 5x amplification for drift visuals (trail jitter 0.3->1.5, halo 0.15->0.75) -- approved by user
-- displayDrift atomic replaces direct param read for CV responsiveness
-- Two-row layout: trimpots y=96, jacks y=108, 4 columns at x=10/24/38/52
-- Amber OUT label and accent ring for output distinction
-- All Phase 6 visual changes approved as-is after VCV Rack verification
+Full v1.0 decision log archived with milestone.
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
-None yet.
+None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T06:12:28Z
-Stopped at: Completed 06-02-PLAN.md -- all phases complete, v1.0 milestone done
-Resume file: .planning/phases/06-polish-and-cleanup/06-02-SUMMARY.md
+Last session: 2026-03-07
+Stopped at: v1.0 milestone archived

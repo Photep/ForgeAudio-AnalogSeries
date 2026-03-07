@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A pair of VCV Rack modules (LFO and VCO) that model the sound and behavior of classic analog synthesizer oscillators. Each module features three core controls: a continuous waveform morph knob, an analog character knob that crossfades between mathematically perfect digital waveforms and modeled classic synth references, and a drift knob that introduces authentic analog imperfections. A real-time waveform display shows the exact output shape with a phase-tracking indicator.
+A VCV Rack 2 module series featuring analog-modeled oscillators. The first module is a sub-audio LFO built around a three-knob analog engine (morph, character, drift) with real-time waveform display. Each knob controls an independent axis: waveform shape selection, classic synth character modeling, and analog instability — all visible in real time on the display.
 
 ## Core Value
 
@@ -12,72 +12,86 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Continuous waveform morph: Sine → Triangle → Saw → Square — v1.0
+- ✓ Analog character knob: crossfade from digital perfection to classic analog references (Minimoog saw, Roland square, Moog/Prophet triangle, analog sine) — v1.0
+- ✓ Drift knob: multi-timescale Ornstein-Uhlenbeck pitch drift — v1.0
+- ✓ Real-time single-cycle waveform display with phase-tracking dot — v1.0
+- ✓ Display reflects all three knobs (morph, character, drift) in real time — v1.0
+- ✓ Bipolar ±5V morphed output (inverted output removed by design) — v1.0
+- ✓ CV inputs for all three main knobs (morph, character, drift) — v1.0
+- ✓ 12HP panel with Forge Audio brand identity — v1.0
+- ✓ SVG panel structured for designer handoff — v1.0
+- ✓ LFO rate control covering sub-audio range (0.01-20Hz) — v1.0
+- ✓ Lock-free double buffer for audio-to-display transfer — v1.0
 
 ### Active
 
-- [ ] Continuous waveform morph: Sine → Triangle → Saw → Square
-- [ ] Analog character knob: crossfade from digital perfection to classic analog reference waveforms
-- [ ] Drift knob: pitch drift, phase jitter, component spread, DC offset drift, HF rolloff, pitch slew
-- [ ] Real-time single-cycle waveform display with phase-tracking dot
-- [ ] Display reflects all three knobs (morph, character, drift) in real time
-- [ ] Morphed output and inverted morphed output
-- [ ] CV inputs for all three main knobs (morph, character, drift)
-- [ ] Tracking error modeling (toggleable via right-click context menu)
-- [ ] 14-16HP panel with Forge Audio brand identity
-- [ ] SVG panel built for designer handoff (template files, documented coordinates)
-- [ ] LFO module: rate control covering sub-audio LFO range
-- [ ] LFO module: reset/sync input
-- [ ] LFO module: FM input
-- [ ] VCO module: V/Oct pitch input with standard 1V/octave tracking
-- [ ] VCO module: FM input
-- [ ] VCO module: through-zero FM option
-- [ ] VCO module: hard sync input
-- [ ] VCO module: shape CV input (controls morph position)
-- [ ] VCO module: phase distortion
-- [ ] Antialiasing strategy for audio-rate VCO (research determines approach)
-- [ ] Waveform bleed modeling (research determines approach)
-- [ ] Classic analog reference waveforms per shape (research determines targets — e.g., Minimoog saw, Roland square)
+- [ ] LFO: Reset/sync input
+- [ ] LFO: FM input
+- [ ] LFO: Phase jitter, DC offset drift, pitch slew, component spread
+- [ ] LFO: Waveform bleed in morph transitions
+- [ ] VCO module: V/Oct pitch input with 1V/octave tracking
+- [ ] VCO module: FM input and through-zero FM
+- [ ] VCO module: Hard sync input
+- [ ] VCO module: Morph-aware polyBLEP antialiasing
+- [ ] VCO module: Phase distortion
+- [ ] VCO module: Tracking error modeling (right-click toggle)
+- [ ] VCO module: Coarse/fine tune controls
+- [ ] VCO module: Oversampling option (Off/2x/4x)
 
 ### Out of Scope
 
-- Individual waveform outputs — single morphed output keeps the design focused
-- Built-in effects (chorus, reverb) — these are oscillator modules, not voices
-- Polyphonic operation — mono oscillators for v1
-- Final production panel artwork — placeholder branding, designer will create final SVG
+- Individual waveform outputs — single morphed output IS the design concept
+- Polyphonic operation — 16x CPU cost, complicates drift and display
+- Built-in effects (chorus, reverb) — oscillators oscillate, effects process
+- Wavetable mode — different paradigm, dilutes analog identity
+- Named synth presets — undercuts hands-on tweaking, invites trademark issues
+- MIDI input / quantization — upstream module responsibilities
+- Amplitude envelope — oscillators oscillate, envelopes shape
+- Scope / spectrum analyzer — display is shape preview, not measurement tool
+- Individually exposed drift params — one drift knob with curated proportions
+- Built-in sub-oscillator — panel complexity, dilutes three-knob focus
+- Octave snap / semitone selector — not meaningful for sub-audio LFO rates
 
 ## Context
 
-- **Prior work:** Proof-of-concept LFO built at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` — 71-line C++ module with exponential pitch scaling, four simultaneous waveform outputs (sine/tri/saw/square), FM input, reset input, Schmitt trigger sync. Clean digital implementation with no analog modeling.
-- **Brand identity established:** Deep navy (#1a1a2e) background, forge amber (#e8a838) accents, muted lavender labels, bright white-gray text. Professional Eurorack aesthetic.
-- **VCV Rack 2 SDK:** Standard plugin architecture — Module class with process() callback, ModuleWidget with SVG panel, mm2px coordinate system.
-- **Build system:** Standard VCV Rack Makefile with plugin.mk, no external DSP dependencies.
-- **Waveform display inspiration:** Arturia Pigments LFO display — single-cycle view with real-time shape updates. Amber trace on dark navy, bright dot riding the waveform to show current phase position.
-- **Release strategy:** LFO module first (v1), VCO module second (v2). LFO is familiar territory; VCO adds complexity with audio-rate antialiasing, pitch tracking, sync, and through-zero FM.
+**Current state:** v1.0 LFO shipped. 552 lines of C++, 12HP panel, fully functional three-knob analog engine.
+**Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
+**Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
+**Brand identity:** Deep navy (#1a1a2e), forge amber (#e8a838), muted lavender labels, white-gray text.
+**Prior work:** POC LFO at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` — clean digital implementation, no analog modeling.
+**Release strategy:** LFO first (v1.0 shipped), VCO module next (v2.0). LFO validates the three-knob engine; VCO adds audio-rate complexity.
 
 ## Constraints
 
 - **Platform:** VCV Rack 2 SDK, C++17, cross-platform (Mac/Windows/Linux)
-- **Panel rendering:** SVG via nanosvg — limited subset of SVG features (no filters, no CSS, text as paths)
+- **Panel rendering:** SVG via nanosvg — limited subset (no filters, no CSS, text as paths)
 - **Real-time:** All DSP in process() callback at sample rate — no allocation, no blocking
-- **Display:** VCV Rack's `LightWidget` / `FramebufferWidget` / custom draw via NanoVG — must be efficient enough to not drop frames
-- **Panel size:** 14-16HP (70.96–81.28mm width) × 128.5mm height
-- **Designer handoff:** SVG panel must be structured for easy redesign — clear layers, documented coordinates, template files
+- **Display:** NanoVG on FramebufferWidget — must not drop frames
+- **Panel size:** 12HP (60.96mm) × 128.5mm height
+- **Designer handoff:** SVG panel structured for easy redesign
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Three-knob analog engine (morph, character, drift) | Separates waveform selection, tonal shaping, and imperfection modeling into independent axes | — Pending |
-| Morph order: Sine → Tri → Saw → Square | Smooth shapes to sharp edges — natural progression of harmonic content | — Pending |
-| Character knob targets specific classic synths | More authentic than generic "warmth" — research identifies Minimoog, Roland, etc. as reference targets | — Pending |
-| Drift knob bundles all analog imperfections | Single control for pitch drift, jitter, component spread, DC offset, HF rolloff, pitch slew | — Pending |
-| Tracking error as right-click toggle | Authentic but potentially frustrating — users can opt in without cluttering the panel | — Pending |
-| Single morphed output + inverted | Keeps panel focused on the three character controls rather than individual waveform jacks | — Pending |
-| Real-time waveform display | Visual feedback makes the three knobs intuitive — see the character changes as you dial them | — Pending |
-| LFO first, VCO second | LFO is familiar territory from POC; VCO adds audio-rate complexity (aliasing, tracking, sync) | — Pending |
-| 14-16HP panels | Room for three knobs, CV inputs, display, and outputs with visual breathing room | — Pending |
-| Placeholder branding for designer handoff | Use existing Forge Audio identity now, hire designer for production artwork later | — Pending |
+| Three-knob analog engine (morph, character, drift) | Separates waveform selection, tonal shaping, and imperfection modeling into independent axes | ✓ Good — clean separation, each knob has clear purpose |
+| Morph order: Sine → Tri → Saw → Square | Smooth shapes to sharp edges — natural progression of harmonic content | ✓ Good — intuitive knob sweep |
+| Character targets specific classic synths | More authentic than generic "warmth" — Minimoog, Roland, Moog/Prophet as references | ✓ Good — recognizable character per shape |
+| Drift bundles all analog imperfections | Single control for pitch drift scaling everything in curated proportions | ✓ Good — simple UX, sounds alive |
+| Single morphed output (no INV) | Keeps panel focused on three character controls | ✓ Good — cleaner panel, no user confusion |
+| Real-time waveform display | Visual feedback makes three knobs intuitive | ✓ Good — users see character changes as they dial |
+| LFO first, VCO second | LFO validates engine at sub-audio rates before VCO adds complexity | ✓ Good — clean foundation |
+| 12HP panel | Room for three knobs, CV inputs, display, and outputs | ✓ Good — balanced density |
+| Falling saw ramp | Matches Minimoog/SH-101/Juno convention, eliminates morph crossfade amplitude dip | ✓ Good — solved morph artifact |
+| Characterize-then-morph ordering | Analog deformation per-shape before morph crossfade for coherent transitions | ✓ Good — clean morphing |
+| Progressive x² character curve | Character at 0.5 = 25% effect, rewards exploration | ✓ Good — subtle to aggressive range |
+| Four-layer OU drift (0.05/0.2/0.8/2Hz) | Musical multi-timescale pitch instability | ✓ Good — natural analog feel |
+| Per-module Xoroshiro128Plus RNG | Independent drift per instance, no shared state | ✓ Good — each module unique |
+| No OU state serialization | Fresh randomness on patch load — authentic analog behavior | ✓ Good — matches real hardware |
+| Lock-free double buffer for display | No mutexes in audio thread | ✓ Good — zero audio impact |
+| displayDrift atomic for CV-responsive visuals | Drift visuals respond to CV, not just knob position | ✓ Good — visual accuracy |
+| Two-row bottom layout (trimpots above jacks) | Standard Eurorack convention, clean grouping | ✓ Good — improved readability |
 
 ---
-*Last updated: 2025-02-25 after initialization*
+*Last updated: 2026-03-07 after v1.0 milestone*
