@@ -41,7 +41,7 @@
 ### Output
 
 - [x] **OUT-01**: Bipolar ±5V morphed waveform output
-- [x] **OUT-02**: Inverted morphed waveform output
+- [x] **OUT-02**: Inverted output removed by design decision (single output simplifies panel and display)
 
 ### Panel & Infrastructure
 

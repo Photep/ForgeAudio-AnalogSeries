@@ -17,6 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Waveform Display** - Real-time single-cycle waveform visualization with phase-tracking dot (completed 2026-02-26)
 - [x] **Phase 4: Analog Character** - Character knob crossfading from digital perfection to classic synth references per shape
 - [x] **Phase 5: Drift Engine** - Layered analog imperfections via Ornstein-Uhlenbeck pitch drift
+- [ ] **Phase 6: Polish & Cleanup** - Tech debt closure: documentation fixes, drift visual tuning, panel refinement
 
 ## Phase Details
 
@@ -96,10 +97,22 @@ Plans:
 - [x] 05-01-PLAN.md -- Drift DSP engine: OU process, CV input, panel layout update, dot instability (DRFT-01, DRFT-02)
 - [x] 05-02-PLAN.md -- Visual verification of drift and complete three-knob engine in VCV Rack (DRFT-01, DRFT-02)
 
+### Phase 6: Polish & Cleanup
+**Goal**: Close tech debt from milestone audit — fix stale documentation, tune drift visuals, refine panel design language
+**Depends on**: Phase 5
+**Requirements**: None (tech debt closure — all requirements already satisfied)
+**Gap Closure**: Closes 4 tech debt items from v1.0 audit
+**Success Criteria** (what must be TRUE):
+  1. OUT-02 description in REQUIREMENTS.md accurately reflects the design decision (INV output removed)
+  2. Drift dot instability visual is perceptible at high drift levels (trail jitter and halo variation)
+  3. Dot instability visual responds to CV-modulated drift value, not just knob position
+  4. Bottom row panel layout uses consistent design language
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 
 | Phase | Plans Complete | Status | Completed |
@@ -109,3 +122,4 @@ Note: Phases 3 and 4 both depend on Phase 2 but not on each other.
 | 3. Waveform Display | 2/2 | Complete    | 2026-02-26 |
 | 4. Analog Character | 2/2 | Complete | 2026-03-07 |
 | 5. Drift Engine | 2/2 | Complete | 2026-03-07 |
+| 6. Polish & Cleanup | 0/? | Planned | -- |
