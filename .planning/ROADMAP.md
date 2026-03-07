@@ -61,11 +61,10 @@ Plans:
   2. With CLK connected, the Rate knob snaps to 15 discrete musical ratios from /16 to x16
   3. Sweeping the Rate knob while clocked steps through ratios with no intermediate values -- the LFO frequency jumps cleanly between divisions
   4. Hovering over the Rate knob shows the current ratio label (e.g., "x4 (synced)") in the tooltip when clocked
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md — Implement ratio table, frequency override, and custom RateParamQuantity tooltip
 
 ### Phase 9: Phase Reset and Drift Integration
 **Goal**: The LFO stays locked to the beat with inaudible phase resets and musically appropriate drift behavior
@@ -111,6 +110,6 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 5. Drift Engine | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 6. Polish & Cleanup | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 7. Clock Input and Period Tracking | v1.1 | 2/2 | Complete | 2026-03-07 |
-| 8. Frequency Override and Ratio Table | v1.1 | 0/? | Not started | - |
+| 8. Frequency Override and Ratio Table | v1.1 | 0/1 | Not started | - |
 | 9. Phase Reset and Drift Integration | v1.1 | 0/? | Not started | - |
 | 10. Display and Panel | v1.1 | 0/? | Not started | - |
