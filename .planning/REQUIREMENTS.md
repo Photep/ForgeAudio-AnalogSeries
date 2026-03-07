@@ -32,6 +32,7 @@ Requirements for clock sync release. Each maps to roadmap phases.
 - [ ] **DISP-03**: Display shows current division ratio label
 - [ ] **DISP-04**: Drift authority reduced in clocked mode (~2% vs 7.5% free-running)
 - [ ] **DISP-05**: Smooth frequency slew during clock-to-free and free-to-clock transitions
+- [ ] **DISP-06**: Display shows BPM calculated from clock source and the currently selected rate divider
 
 ## Future Requirements
 
@@ -65,29 +66,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLK-01 | — | Pending |
-| CLK-02 | — | Pending |
-| CLK-03 | — | Pending |
-| CLK-04 | — | Pending |
-| CLK-05 | — | Pending |
-| CLK-06 | — | Pending |
-| RATE-01 | — | Pending |
-| RATE-02 | — | Pending |
-| RATE-03 | — | Pending |
-| RATE-04 | — | Pending |
-| RATE-05 | — | Pending |
-| RATE-06 | — | Pending |
-| DISP-01 | — | Pending |
-| DISP-02 | — | Pending |
-| DISP-03 | — | Pending |
-| DISP-04 | — | Pending |
-| DISP-05 | — | Pending |
+| CLK-01 | Phase 7 | Pending |
+| CLK-02 | Phase 7 | Pending |
+| CLK-03 | Phase 7 | Pending |
+| CLK-04 | Phase 7 | Pending |
+| CLK-05 | Phase 7 | Pending |
+| CLK-06 | Phase 7 | Pending |
+| RATE-01 | Phase 8 | Pending |
+| RATE-02 | Phase 8 | Pending |
+| RATE-03 | Phase 8 | Pending |
+| RATE-04 | Phase 9 | Pending |
+| RATE-05 | Phase 9 | Pending |
+| RATE-06 | Phase 8 | Pending |
+| DISP-01 | Phase 10 | Pending |
+| DISP-02 | Phase 10 | Pending |
+| DISP-03 | Phase 10 | Pending |
+| DISP-04 | Phase 9 | Pending |
+| DISP-05 | Phase 9 | Pending |
+| DISP-06 | Phase 10 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17
+- v1.1 requirements: 18 total
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-07*
-*Last updated: 2026-03-07 after initial definition*
+*Last updated: 2026-03-07 after roadmap creation*
