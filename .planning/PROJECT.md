@@ -4,6 +4,17 @@
 
 A VCV Rack 2 module series featuring analog-modeled oscillators. The first module is a sub-audio LFO built around a three-knob analog engine (morph, character, drift) with real-time waveform display. Each knob controls an independent axis: waveform shape selection, classic synth character modeling, and analog instability — all visible in real time on the display.
 
+## Current Milestone: v1.1 Clock Sync
+
+**Goal:** Add clock-synced operation to the LFO — a CLK input that tracks incoming tempo and converts the Rate knob into a clock divider/multiplier, fully backward compatible.
+
+**Target features:**
+- CLK trigger input with edge detection and period measurement
+- Dual-mode Rate knob (free frequency / clock division)
+- Phase reset on clock edge for beat alignment
+- Display sync indicator
+- Panel update with CLK jack
+
 ## Core Value
 
 The three-knob analog engine — morph, character, drift — that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback showing exactly what's happening.
@@ -26,7 +37,14 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ### Active
 
-- [ ] LFO: Reset/sync input
+- [ ] LFO: CLK trigger input with edge detection and period tracking
+- [ ] LFO: Dual-mode Rate knob (free frequency when unclocked, division/multiplication when clocked)
+- [ ] LFO: Phase reset on clock edge for beat-aligned waveforms
+- [ ] LFO: Clock period smoothing over multiple edges for stability
+- [ ] LFO: Display sync badge and division label when clocked
+- [ ] LFO: Panel SVG updated with CLK jack
+
+**Deferred (future milestones):**
 - [ ] LFO: FM input
 - [ ] LFO: Phase jitter, DC offset drift, pitch slew, component spread
 - [ ] LFO: Waveform bleed in morph transitions
@@ -94,4 +112,4 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Two-row bottom layout (trimpots above jacks) | Standard Eurorack convention, clean grouping | ✓ Good — improved readability |
 
 ---
-*Last updated: 2026-03-07 after v1.0 milestone*
+*Last updated: 2026-03-07 after v1.1 milestone started*
