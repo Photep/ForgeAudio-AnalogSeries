@@ -29,7 +29,7 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
 
 **Milestone Goal:** Add clock-synced operation to the LFO -- a CLK input that tracks incoming tempo and converts the Rate knob into a clock divider/multiplier, fully backward compatible.
 
-- [ ] **Phase 7: Clock Input and Period Tracking** - Detect clock edges, measure period, handle loss/outliers
+- [x] **Phase 7: Clock Input and Period Tracking** - Detect clock edges, measure period, handle loss/outliers (completed 2026-03-07)
 - [ ] **Phase 8: Frequency Override and Ratio Table** - Dual-mode Rate knob with 15 snapped musical ratios
 - [ ] **Phase 9: Phase Reset and Drift Integration** - Beat-aligned phase reset with anti-click crossfade and drift scaling
 - [ ] **Phase 10: Display and Panel** - Sync badge, ratio label, and CLK jack on panel SVG
@@ -49,8 +49,8 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Implement CLK input, clock state machine, and period tracking DSP
-- [ ] 07-02-PLAN.md — Verify clock tracking in VCV Rack with real clock source
+- [x] 07-01-PLAN.md — Implement CLK input, clock state machine, and period tracking DSP
+- [x] 07-02-PLAN.md — Verify clock tracking in VCV Rack with real clock source
 
 ### Phase 8: Frequency Override and Ratio Table
 **Goal**: The Rate knob seamlessly switches between free-running Hz and musical clock divisions/multiplications
@@ -110,7 +110,7 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 4. Analog Character | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 5. Drift Engine | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 6. Polish & Cleanup | v1.0 | 2/2 | Complete | 2026-03-07 |
-| 7. Clock Input and Period Tracking | v1.1 | 0/2 | Planning | - |
+| 7. Clock Input and Period Tracking | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 8. Frequency Override and Ratio Table | v1.1 | 0/? | Not started | - |
 | 9. Phase Reset and Drift Integration | v1.1 | 0/? | Not started | - |
 | 10. Display and Panel | v1.1 | 0/? | Not started | - |
