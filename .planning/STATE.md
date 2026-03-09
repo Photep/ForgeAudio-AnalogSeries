@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Clock Sync
-status: completed
-stopped_at: Phase 8 context gathered
-last_updated: "2026-03-07T10:05:13.594Z"
-last_activity: 2026-03-07 -- Completed 07-02 clock tracking verification (Phase 7 complete)
+status: in-progress
+stopped_at: Completed 08-01 frequency override and ratio table (Phase 8 complete)
+last_updated: "2026-03-09T23:02:40.185Z"
+last_activity: 2026-03-10 -- Completed 08-01 frequency override and ratio table (Phase 8 complete)
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** v1.1 Clock Sync -- Phase 7: Clock Input and Period Tracking
+**Current focus:** v1.1 Clock Sync -- Phase 8: Frequency Override and Ratio Table
 
 ## Current Position
 
-Phase: 7 of 10 (Clock Input and Period Tracking) -- first of 4 phases in v1.1
-Plan: 2 of 2 complete
+Phase: 8 of 10 (Frequency Override and Ratio Table) -- second of 4 phases in v1.1
+Plan: 1 of 1 complete
 Status: Phase Complete
-Last activity: 2026-03-07 -- Completed 07-02 clock tracking verification (Phase 7 complete)
+Last activity: 2026-03-10 -- Completed 08-01 frequency override and ratio table (Phase 8 complete)
 
 Progress: [██████████] 100%
 
@@ -49,6 +49,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 Full v1.0 decision log archived with milestone.
 - [Phase 07]: 4 edges for ACQUIRING->LOCKED (76% EMA convergence); fast-track checks ACQUIRING at edge 2 with remembered period
 - [Phase 07]: All six CLK requirements verified through hands-on VCV Rack testing -- no code changes needed
+- [Phase 08]: Used getScaledValue() for 0-1 normalized knob position; ratio index runtime-derived, not serialized
+- [Phase 08]: No hysteresis/slew/crossfade -- pure nearest-snap with instant jump (Phase 9 layers smoothing)
 
 ### Pending Todos
 
@@ -60,5 +62,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T10:05:13.592Z
-Stopped at: Phase 8 context gathered
+Last session: 2026-03-09T21:58:41Z
+Stopped at: Completed 08-01 frequency override and ratio table (Phase 8 complete)

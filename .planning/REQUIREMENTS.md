@@ -18,12 +18,12 @@ Requirements for clock sync release. Each maps to roadmap phases.
 
 ### Rate & Ratios
 
-- [ ] **RATE-01**: Rate knob sets frequency directly when CLK is disconnected (identical to v1.0)
-- [ ] **RATE-02**: Rate knob selects clock division/multiplication ratio when CLK is connected
-- [ ] **RATE-03**: 15 discrete snapped ratios: /16, /8, /6, /4, /3, /2, /1.5, x1, x1.5, x2, x3, x4, x6, x8, x16
+- [x] **RATE-01**: Rate knob sets frequency directly when CLK is disconnected (identical to v1.0)
+- [x] **RATE-02**: Rate knob selects clock division/multiplication ratio when CLK is connected
+- [x] **RATE-03**: 15 discrete snapped ratios: /16, /8, /6, /4, /3, /2, /1.5, x1, x1.5, x2, x3, x4, x6, x8, x16
 - [ ] **RATE-04**: Phase resets to 0 on clock edge, with division-aware counting for /N ratios
 - [ ] **RATE-05**: Anti-click crossfade (2-5ms cosine) on output after phase reset
-- [ ] **RATE-06**: Custom ParamQuantity tooltip shows ratio label (e.g., "x4 (synced)") in clocked mode
+- [x] **RATE-06**: Custom ParamQuantity tooltip shows ratio label (e.g., "x4 (synced)") in clocked mode
 
 ### Display & Panel
 
@@ -72,12 +72,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLK-04 | Phase 7 | Complete |
 | CLK-05 | Phase 7 | Complete |
 | CLK-06 | Phase 7 | Complete |
-| RATE-01 | Phase 8 | Pending |
-| RATE-02 | Phase 8 | Pending |
-| RATE-03 | Phase 8 | Pending |
+| RATE-01 | Phase 8 | Complete |
+| RATE-02 | Phase 8 | Complete |
+| RATE-03 | Phase 8 | Complete |
 | RATE-04 | Phase 9 | Pending |
 | RATE-05 | Phase 9 | Pending |
-| RATE-06 | Phase 8 | Pending |
+| RATE-06 | Phase 8 | Complete |
 | DISP-01 | Phase 10 | Pending |
 | DISP-02 | Phase 10 | Pending |
 | DISP-03 | Phase 10 | Pending |
