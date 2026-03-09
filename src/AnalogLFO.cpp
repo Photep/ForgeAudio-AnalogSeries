@@ -33,6 +33,31 @@ struct AnalogLFO : Module {
 	// Clock tracking state machine
 	enum ClockState { FREE = 0, ACQUIRING = 1, LOCKED = 2 };
 
+	// 15 musical ratios as frequency multipliers relative to clock frequency
+	static constexpr float RATIO_TABLE[15] = {
+		1.f/16.f,   // /16  = 0.0625
+		1.f/8.f,    // /8   = 0.125
+		1.f/6.f,    // /6   = 0.166667
+		1.f/4.f,    // /4   = 0.25
+		1.f/3.f,    // /3   = 0.333333
+		1.f/2.f,    // /2   = 0.5
+		2.f/3.f,    // /1.5 = 0.666667
+		1.f,        // x1   = 1.0
+		3.f/2.f,    // x1.5 = 1.5
+		2.f,        // x2   = 2.0
+		3.f,        // x3   = 3.0
+		4.f,        // x4   = 4.0
+		6.f,        // x6   = 6.0
+		8.f,        // x8   = 8.0
+		16.f        // x16  = 16.0
+	};
+
+	static constexpr const char* RATIO_LABELS[15] = {
+		"/16", "/8", "/6", "/4", "/3", "/2", "/1.5",
+		"x1",
+		"x1.5", "x2", "x3", "x4", "x6", "x8", "x16"
+	};
+
 	double phase = 0.0;
 
 	// Drift engine: multi-timescale Ornstein-Uhlenbeck process
@@ -71,6 +96,32 @@ struct AnalogLFO : Module {
 	ClockState clockState = FREE;
 	bool prevClkConnected = false;
 	std::atomic<int> displayClockState{0};
+	std::atomic<int> displayRatioIndex{-1};  // -1 = free-running, 0-14 = ratio index
+
+	struct RateParamQuantity : ParamQuantity {
+		std::string getDisplayValueString() override {
+			AnalogLFO* lfo = static_cast<AnalogLFO*>(module);
+			if (!lfo) return ParamQuantity::getDisplayValueString();
+
+			int ratioIdx = lfo->displayRatioIndex.load(std::memory_order_relaxed);
+			if (ratioIdx < 0) {
+				return ParamQuantity::getDisplayValueString();
+			}
+
+			return std::string(RATIO_LABELS[ratioIdx]);
+		}
+
+		std::string getUnit() override {
+			AnalogLFO* lfo = static_cast<AnalogLFO*>(module);
+			if (!lfo) return ParamQuantity::getUnit();
+
+			int ratioIdx = lfo->displayRatioIndex.load(std::memory_order_relaxed);
+			if (ratioIdx < 0) {
+				return " Hz";
+			}
+			return " (synced)";
+		}
+	};
 
 	float progressiveCurve(float character) {
 		return character * character;  // x^2: subtle first half, aggressive second half
@@ -290,7 +341,7 @@ struct AnalogLFO : Module {
 		configParam(MORPH_PARAM, 0.f, 1.f, 0.f, "Morph");
 		configParam(CHARACTER_PARAM, 0.f, 1.f, 0.f, "Character");
 		configParam(DRIFT_PARAM, 0.f, 1.f, 0.f, "Drift");
-		configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz");
+		configParam<RateParamQuantity>(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz");
 		configParam(MORPH_ATTEN_PARAM, 0.f, 1.f, 1.f, "Morph CV", "%", 0.f, 100.f);
 		configParam(CHARACTER_ATTEN_PARAM, 0.f, 1.f, 1.f, "Character CV", "%", 0.f, 100.f);
 		configParam(DRIFT_ATTEN_PARAM, 0.f, 1.f, 1.f, "Drift CV", "%", 0.f, 100.f);
@@ -328,9 +379,25 @@ struct AnalogLFO : Module {
 		// Clock detection (Phase 7)
 		processClockInput(args.sampleTime);
 
-		// Rate (linear Hz, direct value)
-		float freq = params[RATE_PARAM].getValue();
-		freq = std::fmax(freq, 0.001f);  // safety floor
+		// Rate: dual-mode frequency calculation
+		float freq;
+		int ratioIdx = -1;
+
+		if ((clockState == ACQUIRING || clockState == LOCKED) && smoothedPeriod > 0.f) {
+			// Clocked mode: derive frequency from clock period and ratio
+			float knobNormalized = paramQuantities[RATE_PARAM]->getScaledValue();
+			ratioIdx = (int)std::round(knobNormalized * 14.f);
+			ratioIdx = rack::math::clamp(ratioIdx, 0, 14);
+			float clockFreq = 1.f / smoothedPeriod;
+			freq = clockFreq * RATIO_TABLE[ratioIdx];
+		} else {
+			// Free-running mode: direct Hz from knob (identical to v1.0)
+			freq = params[RATE_PARAM].getValue();
+		}
+		freq = std::fmax(freq, 0.001f);
+
+		// Update display atomic for tooltip/display use
+		displayRatioIndex.store(ratioIdx, std::memory_order_relaxed);
 
 		// Phase accumulation (double precision to prevent stall at low frequencies)
 		double deltaPhase = (double)freq * (double)args.sampleTime;
