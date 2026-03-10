@@ -64,7 +64,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 08-01-PLAN.md — Implement ratio table, frequency override, and custom RateParamQuantity tooltip
+- [x] 08-01-PLAN.md — Implement ratio table, frequency override, and custom RateParamQuantity tooltip
 
 ### Phase 9: Phase Reset and Drift Integration
 **Goal**: The LFO stays locked to the beat with inaudible phase resets and musically appropriate drift behavior
@@ -75,11 +75,10 @@ Plans:
   2. Phase resets produce no audible clicks when the LFO modulates a filter cutoff or VCA -- the crossfade is transparent
   3. With the Drift knob turned up in clocked mode, the LFO has subtle analog wobble but does not accumulate enough phase error to cause clicks at the next reset
   4. Connecting or disconnecting the CLK cable produces a smooth frequency transition with no audible jump
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 09-01: TBD
-- [ ] 09-02: TBD
+- [ ] 09-01-PLAN.md — Implement division-aware phase reset, anti-click crossfade, drift scaling, and frequency slew
 
 ### Phase 10: Display and Panel
 **Goal**: The user can see at a glance whether the LFO is clock-synced and at what ratio
@@ -110,6 +109,6 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 5. Drift Engine | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 6. Polish & Cleanup | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 7. Clock Input and Period Tracking | v1.1 | 2/2 | Complete | 2026-03-07 |
-| 8. Frequency Override and Ratio Table | v1.1 | 0/1 | Not started | - |
-| 9. Phase Reset and Drift Integration | v1.1 | 0/? | Not started | - |
+| 8. Frequency Override and Ratio Table | v1.1 | 1/1 | Complete | 2026-03-10 |
+| 9. Phase Reset and Drift Integration | v1.1 | 0/1 | Not started | - |
 | 10. Display and Panel | v1.1 | 0/? | Not started | - |
