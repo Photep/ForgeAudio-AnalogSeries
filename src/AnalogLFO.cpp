@@ -98,6 +98,15 @@ struct AnalogLFO : Module {
 	std::atomic<int> displayClockState{0};
 	std::atomic<int> displayRatioIndex{-1};  // -1 = free-running, 0-14 = ratio index
 
+	// Phase 9: division-aware phase reset and anti-click crossfade
+	int clockBeatCount = 0;          // counts clock edges within one LFO cycle
+	int prevRatioIdx = -1;           // tracks ratio changes to reset beat counter
+	float crossfadeFrom = 0.f;      // output value captured at moment of phase reset
+	float crossfadeProgress = 1.f;  // 0.0 = just reset, 1.0 = crossfade complete
+	float crossfadeDuration = 0.003f; // 3ms default
+	float lastOutputVoltage = 0.f;  // previous frame's output for crossfade capture
+	dsp::TExponentialFilter<float> freqSlew; // frequency smoother for mode transitions
+
 	struct RateParamQuantity : ParamQuantity {
 		std::string getDisplayValueString() override {
 			AnalogLFO* lfo = static_cast<AnalogLFO*>(module);
@@ -251,6 +260,7 @@ struct AnalogLFO : Module {
 				}
 				clockState = FREE;
 				clockEdgeCount = 0;
+				clockBeatCount = 0;
 				clockTimer.reset();
 				smoothedPeriod = 0.f;
 				displayClockState.store(FREE, std::memory_order_relaxed);
@@ -270,6 +280,7 @@ struct AnalogLFO : Module {
 				lastSmoothedPeriod = smoothedPeriod;
 				clockState = FREE;
 				clockEdgeCount = 0;
+				clockBeatCount = 0;
 				smoothedPeriod = 0.f;
 				clockTimer.reset();
 				displayClockState.store(FREE, std::memory_order_relaxed);
@@ -283,12 +294,13 @@ struct AnalogLFO : Module {
 			clockTimer.reset();
 			clockEdgeCount++;
 
-			// Phase reset on every edge (hard reset per CONTEXT.md)
-			phase = 0.0;
-
 			if (clockEdgeCount == 1) {
-				// First edge: enter ACQUIRING, no period measurement possible
+				// First edge: always reset phase and enter ACQUIRING
 				clockState = ACQUIRING;
+				clockBeatCount = 0;
+				crossfadeFrom = lastOutputVoltage;
+				crossfadeProgress = 0.f;
+				phase = 0.0;
 				displayClockState.store(ACQUIRING, std::memory_order_relaxed);
 			}
 			else if (rawPeriod > 0.001f) {
@@ -314,7 +326,6 @@ struct AnalogLFO : Module {
 						smoothedPeriod += 0.3f * (rawPeriod - smoothedPeriod);
 						clockState = LOCKED;
 						displayClockState.store(LOCKED, std::memory_order_relaxed);
-						return;
 					}
 				}
 
@@ -331,6 +342,37 @@ struct AnalogLFO : Module {
 					displayClockState.store(LOCKED, std::memory_order_relaxed);
 				} else if (clockState == ACQUIRING) {
 					displayClockState.store(ACQUIRING, std::memory_order_relaxed);
+				}
+
+				// Division-aware phase reset (RATE-04)
+				clockBeatCount++;
+
+				// Determine current ratio for division check
+				int currentRatioIdx = -1;
+				if ((clockState == ACQUIRING || clockState == LOCKED) && smoothedPeriod > 0.f) {
+					float knobNormalized = paramQuantities[RATE_PARAM]->getScaledValue();
+					currentRatioIdx = (int)std::round(knobNormalized * 14.f);
+					currentRatioIdx = rack::math::clamp(currentRatioIdx, 0, 14);
+				}
+
+				// Reset beat counter if ratio changed
+				if (currentRatioIdx != prevRatioIdx && prevRatioIdx >= 0) {
+					clockBeatCount = 1;  // This edge counts as beat 1 of new ratio
+				}
+				prevRatioIdx = currentRatioIdx;
+
+				bool shouldReset = true;
+				if (currentRatioIdx >= 0 && RATIO_TABLE[currentRatioIdx] < 1.f) {
+					int divisor = (int)std::round(1.f / RATIO_TABLE[currentRatioIdx]);
+					shouldReset = (clockBeatCount >= divisor);
+				}
+
+				if (shouldReset) {
+					// Capture pre-reset output for crossfade (RATE-05)
+					crossfadeFrom = lastOutputVoltage;
+					crossfadeProgress = 0.f;
+					phase = 0.0;
+					clockBeatCount = 0;
 				}
 			}
 		}
@@ -351,6 +393,10 @@ struct AnalogLFO : Module {
 		configInput(CLK_INPUT, "Clock");
 		configOutput(OUTPUT, "LFO");
 		updateDisplayBuffer(0.f, 0.f);
+
+		// Phase 9: frequency slew for smooth mode transitions (DISP-05)
+		freqSlew.setLambda(20.f);  // 50ms time constant (lambda = 1/tau = 1/0.05 = 20)
+		freqSlew.out = 0.7f;       // matches default Rate param value
 
 		// Per-module unique RNG seed
 		std::random_device rd;
@@ -380,20 +426,25 @@ struct AnalogLFO : Module {
 		processClockInput(args.sampleTime);
 
 		// Rate: dual-mode frequency calculation
-		float freq;
+		float targetFreq;
 		int ratioIdx = -1;
+		bool isClocked = (clockState == ACQUIRING || clockState == LOCKED) && smoothedPeriod > 0.f;
 
-		if ((clockState == ACQUIRING || clockState == LOCKED) && smoothedPeriod > 0.f) {
+		if (isClocked) {
 			// Clocked mode: derive frequency from clock period and ratio
 			float knobNormalized = paramQuantities[RATE_PARAM]->getScaledValue();
 			ratioIdx = (int)std::round(knobNormalized * 14.f);
 			ratioIdx = rack::math::clamp(ratioIdx, 0, 14);
 			float clockFreq = 1.f / smoothedPeriod;
-			freq = clockFreq * RATIO_TABLE[ratioIdx];
+			targetFreq = clockFreq * RATIO_TABLE[ratioIdx];
 		} else {
 			// Free-running mode: direct Hz from knob (identical to v1.0)
-			freq = params[RATE_PARAM].getValue();
+			targetFreq = params[RATE_PARAM].getValue();
 		}
+		targetFreq = std::fmax(targetFreq, 0.001f);
+
+		// Frequency slew for smooth mode transitions (DISP-05)
+		float freq = freqSlew.process(args.sampleTime, targetFreq);
 		freq = std::fmax(freq, 0.001f);
 
 		// Update display atomic for tooltip/display use
@@ -421,7 +472,9 @@ struct AnalogLFO : Module {
 				                   + ouLayers[i].sigma * sqrtSampleTime * noise;
 				combinedOU += ouLayers[i].state * ouLayers[i].weight;
 			}
-			float driftScale = driftAmount * 0.075f;  // 7.5% max frequency deviation
+			// Reduced drift authority in clocked mode (DISP-04)
+			float maxDrift = isClocked ? 0.02f : 0.075f;
+			float driftScale = driftAmount * maxDrift;
 			deltaPhase *= (1.0 + (double)(driftScale * combinedOU));
 		}
 
@@ -462,9 +515,24 @@ struct AnalogLFO : Module {
 		// Waveform generation
 		float p = (float)phase;
 		float sample = computeMorphedWave(p, morph, character);
+		float outputVoltage = 5.f * sample;
+
+		// Anti-click crossfade on phase reset (RATE-05)
+		if (crossfadeProgress < 1.f) {
+			crossfadeProgress += args.sampleTime / crossfadeDuration;
+			if (crossfadeProgress >= 1.f) {
+				crossfadeProgress = 1.f;
+			} else {
+				float mix = 0.5f - 0.5f * std::cos((float)M_PI * crossfadeProgress);
+				outputVoltage = crossfadeFrom + mix * (outputVoltage - crossfadeFrom);
+			}
+		}
+
+		// Store for next frame's crossfade capture
+		lastOutputVoltage = outputVoltage;
 
 		// Bipolar +/-5V output
-		outputs[OUTPUT].setVoltage(5.f * sample);
+		outputs[OUTPUT].setVoltage(outputVoltage);
 	}
 };
 
