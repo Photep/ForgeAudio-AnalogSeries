@@ -21,8 +21,8 @@ Requirements for clock sync release. Each maps to roadmap phases.
 - [x] **RATE-01**: Rate knob sets frequency directly when CLK is disconnected (identical to v1.0)
 - [x] **RATE-02**: Rate knob selects clock division/multiplication ratio when CLK is connected
 - [x] **RATE-03**: 15 discrete snapped ratios: /16, /8, /6, /4, /3, /2, /1.5, x1, x1.5, x2, x3, x4, x6, x8, x16
-- [ ] **RATE-04**: Phase resets to 0 on clock edge, with division-aware counting for /N ratios
-- [ ] **RATE-05**: Anti-click crossfade (2-5ms cosine) on output after phase reset
+- [x] **RATE-04**: Phase resets to 0 on clock edge, with division-aware counting for /N ratios
+- [x] **RATE-05**: Anti-click crossfade (2-5ms cosine) on output after phase reset
 - [x] **RATE-06**: Custom ParamQuantity tooltip shows ratio label (e.g., "x4 (synced)") in clocked mode
 
 ### Display & Panel
@@ -30,8 +30,8 @@ Requirements for clock sync release. Each maps to roadmap phases.
 - [ ] **DISP-01**: Panel SVG updated with CLK jack and label
 - [ ] **DISP-02**: Waveform display shows "SYNC" badge when clocked
 - [ ] **DISP-03**: Display shows current division ratio label
-- [ ] **DISP-04**: Drift authority reduced in clocked mode (~2% vs 7.5% free-running)
-- [ ] **DISP-05**: Smooth frequency slew during clock-to-free and free-to-clock transitions
+- [x] **DISP-04**: Drift authority reduced in clocked mode (~2% vs 7.5% free-running)
+- [x] **DISP-05**: Smooth frequency slew during clock-to-free and free-to-clock transitions
 - [ ] **DISP-06**: Display shows BPM calculated from clock source and the currently selected rate divider
 
 ## Future Requirements
@@ -75,14 +75,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RATE-01 | Phase 8 | Complete |
 | RATE-02 | Phase 8 | Complete |
 | RATE-03 | Phase 8 | Complete |
-| RATE-04 | Phase 9 | Pending |
-| RATE-05 | Phase 9 | Pending |
+| RATE-04 | Phase 9 | Complete |
+| RATE-05 | Phase 9 | Complete |
 | RATE-06 | Phase 8 | Complete |
 | DISP-01 | Phase 10 | Pending |
 | DISP-02 | Phase 10 | Pending |
 | DISP-03 | Phase 10 | Pending |
-| DISP-04 | Phase 9 | Pending |
-| DISP-05 | Phase 9 | Pending |
+| DISP-04 | Phase 9 | Complete |
+| DISP-05 | Phase 9 | Complete |
 | DISP-06 | Phase 10 | Pending |
 
 **Coverage:**

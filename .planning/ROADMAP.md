@@ -78,7 +78,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 09-01-PLAN.md — Implement division-aware phase reset, anti-click crossfade, drift scaling, and frequency slew
+- [x] 09-01-PLAN.md — Implement division-aware phase reset, anti-click crossfade, drift scaling, and frequency slew
 
 ### Phase 10: Display and Panel
 **Goal**: The user can see at a glance whether the LFO is clock-synced and at what ratio
@@ -110,5 +110,5 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 6. Polish & Cleanup | v1.0 | 2/2 | Complete | 2026-03-07 |
 | 7. Clock Input and Period Tracking | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 8. Frequency Override and Ratio Table | v1.1 | 1/1 | Complete | 2026-03-10 |
-| 9. Phase Reset and Drift Integration | v1.1 | 0/1 | Not started | - |
+| 9. Phase Reset and Drift Integration | v1.1 | 1/1 | Complete | 2026-03-11 |
 | 10. Display and Panel | v1.1 | 0/? | Not started | - |
