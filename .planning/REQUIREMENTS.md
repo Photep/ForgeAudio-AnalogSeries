@@ -27,12 +27,12 @@ Requirements for clock sync release. Each maps to roadmap phases.
 
 ### Display & Panel
 
-- [ ] **DISP-01**: Panel SVG updated with CLK jack and label
-- [ ] **DISP-02**: Waveform display shows "SYNC" badge when clocked
-- [ ] **DISP-03**: Display shows current division ratio label
+- [x] **DISP-01**: Panel SVG updated with CLK jack and label
+- [x] **DISP-02**: Waveform display shows "SYNC" badge when clocked
+- [x] **DISP-03**: Display shows current division ratio label
 - [x] **DISP-04**: Drift authority reduced in clocked mode (~2% vs 7.5% free-running)
 - [x] **DISP-05**: Smooth frequency slew during clock-to-free and free-to-clock transitions
-- [ ] **DISP-06**: Display shows BPM calculated from clock source and the currently selected rate divider
+- [x] **DISP-06**: Display shows BPM calculated from clock source and the currently selected rate divider
 
 ## Future Requirements
 
@@ -78,12 +78,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RATE-04 | Phase 9 | Complete |
 | RATE-05 | Phase 9 | Complete |
 | RATE-06 | Phase 8 | Complete |
-| DISP-01 | Phase 10 | Pending |
-| DISP-02 | Phase 10 | Pending |
-| DISP-03 | Phase 10 | Pending |
+| DISP-01 | Phase 10 | Complete |
+| DISP-02 | Phase 10 | Complete |
+| DISP-03 | Phase 10 | Complete |
 | DISP-04 | Phase 9 | Complete |
 | DISP-05 | Phase 9 | Complete |
-| DISP-06 | Phase 10 | Pending |
+| DISP-06 | Phase 10 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 18 total
