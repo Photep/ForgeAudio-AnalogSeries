@@ -32,7 +32,7 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
 - [x] **Phase 7: Clock Input and Period Tracking** - Detect clock edges, measure period, handle loss/outliers (completed 2026-03-07)
 - [ ] **Phase 8: Frequency Override and Ratio Table** - Dual-mode Rate knob with 15 snapped musical ratios
 - [ ] **Phase 9: Phase Reset and Drift Integration** - Beat-aligned phase reset with anti-click crossfade and drift scaling
-- [ ] **Phase 10: Display and Panel** - Sync badge, ratio label, and CLK jack on panel SVG
+- [x] **Phase 10: Display and Panel** - Sync badge, ratio label, and CLK jack on panel SVG (completed 2026-03-13)
 
 ## Phase Details
 
@@ -92,8 +92,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 10-01-PLAN.md — Add NanoVG text overlays (SYNC badge, ratio label, BPM readout, Hz readout) and CLK panel label
-- [ ] 10-02-PLAN.md — Verify display overlays and panel label in VCV Rack
+- [x] 10-01-PLAN.md — Add NanoVG text overlays (SYNC badge, ratio label, BPM readout, Hz readout) and CLK panel label
+- [x] 10-02-PLAN.md — Verify display overlays and panel label in VCV Rack
 
 ## Progress
 
@@ -111,4 +111,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 7. Clock Input and Period Tracking | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 8. Frequency Override and Ratio Table | v1.1 | 1/1 | Complete | 2026-03-10 |
 | 9. Phase Reset and Drift Integration | v1.1 | 1/1 | Complete | 2026-03-11 |
-| 10. Display and Panel | 1/2 | In Progress|  | - |
+| 10. Display and Panel | v1.1 | 2/2 | Complete | 2026-03-13 |
