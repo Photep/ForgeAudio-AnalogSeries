@@ -97,6 +97,7 @@ struct AnalogLFO : Module {
 	bool prevClkConnected = false;
 	std::atomic<int> displayClockState{0};
 	std::atomic<int> displayRatioIndex{-1};  // -1 = free-running, 0-14 = ratio index
+	std::atomic<float> displaySmoothedPeriod{0.f};
 
 	// Phase 9: division-aware phase reset and anti-click crossfade
 	int clockBeatCount = 0;          // counts clock edges within one LFO cycle
@@ -447,8 +448,9 @@ struct AnalogLFO : Module {
 		float freq = freqSlew.process(args.sampleTime, targetFreq);
 		freq = std::fmax(freq, 0.001f);
 
-		// Update display atomic for tooltip/display use
+		// Update display atomics for tooltip/display use
 		displayRatioIndex.store(ratioIdx, std::memory_order_relaxed);
+		displaySmoothedPeriod.store(smoothedPeriod, std::memory_order_relaxed);
 
 		// Phase accumulation (double precision to prevent stall at low frequencies)
 		double deltaPhase = (double)freq * (double)args.sampleTime;
@@ -543,10 +545,34 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	float breathePhase = 0.f;
 	float prevFramePhase = 0.f;
 
+	// Fade animation state for text overlays (200ms transitions)
+	float syncFadeAlpha = 0.f;
+	float ratioFadeAlpha = 0.f;
+	float bpmFadeAlpha = 0.f;
+	float hzFadeAlpha = 1.f;  // starts visible (free-running mode default)
+
 	void step() override {
 		// Advance breathe animation (~0.8Hz cycle)
 		breathePhase += 2.f * (float)M_PI * 0.8f / 60.f;
 		if (breathePhase > 2.f * (float)M_PI) breathePhase -= 2.f * (float)M_PI;
+
+		// Advance fade timers for text overlays (200ms transitions)
+		if (module) {
+			int clockState = module->displayClockState.load(std::memory_order_relaxed);
+			float fadeSpeed = 1.f / (0.2f * 60.f);  // 200ms at ~60fps
+
+			bool showClocked = (clockState != 0);  // ACQUIRING or LOCKED
+			float syncTarget = showClocked ? 1.f : 0.f;
+			float ratioTarget = showClocked ? 1.f : 0.f;
+			float bpmTarget = showClocked ? 1.f : 0.f;
+			float hzTarget = showClocked ? 0.f : 1.f;
+
+			syncFadeAlpha += rack::math::clamp(syncTarget - syncFadeAlpha, -fadeSpeed, fadeSpeed);
+			ratioFadeAlpha += rack::math::clamp(ratioTarget - ratioFadeAlpha, -fadeSpeed, fadeSpeed);
+			bpmFadeAlpha += rack::math::clamp(bpmTarget - bpmFadeAlpha, -fadeSpeed, fadeSpeed);
+			hzFadeAlpha += rack::math::clamp(hzTarget - hzFadeAlpha, -fadeSpeed, fadeSpeed);
+		}
+
 		TransparentWidget::step();
 	}
 
@@ -695,6 +721,82 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgFill(vg);
 	}
 
+	void drawGlowText(NVGcontext* vg, int fontHandle, float x, float y,
+	                  const char* text, float fontSize, int align, float alpha) {
+		nvgFontFaceId(vg, fontHandle);
+		nvgFontSize(vg, fontSize);
+		nvgTextAlign(vg, align);
+
+		// Pass 1: Glow (blurred, lower alpha)
+		nvgFontBlur(vg, 3.0f);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha * 0.4f));
+		nvgText(vg, x, y, text, NULL);
+
+		// Pass 2: Sharp text on top
+		nvgFontBlur(vg, 0.0f);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha));
+		nvgText(vg, x, y, text, NULL);
+	}
+
+	void drawTextOverlays(NVGcontext* vg) {
+		std::shared_ptr<Font> font = APP->window->loadFont(
+			asset::system("res/fonts/ShareTechMono-Regular.ttf"));
+		if (!font) return;
+
+		float margin = 4.f;
+		float fontSize = 10.f;
+
+		int clockState = module->displayClockState.load(std::memory_order_relaxed);
+		int ratioIdx = module->displayRatioIndex.load(std::memory_order_relaxed);
+
+		// Hz readout (free-running mode, top-left)
+		if (hzFadeAlpha > 0.001f) {
+			float rate = module->params[AnalogLFO::RATE_PARAM].getValue();
+			std::string hzText = rack::string::f("%.2f Hz", rate);
+			drawGlowText(vg, font->handle, margin, margin + fontSize,
+			             hzText.c_str(), fontSize,
+			             NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, hzFadeAlpha);
+		}
+
+		// Ratio label (clocked mode, top-left)
+		if (ratioFadeAlpha > 0.001f && ratioIdx >= 0) {
+			drawGlowText(vg, font->handle, margin, margin + fontSize,
+			             AnalogLFO::RATIO_LABELS[ratioIdx], fontSize,
+			             NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, ratioFadeAlpha);
+		}
+
+		// SYNC badge (clocked mode, top-right)
+		if (syncFadeAlpha > 0.001f) {
+			float effectiveAlpha = syncFadeAlpha;
+			if (clockState == AnalogLFO::ACQUIRING) {
+				// Blink at ~2Hz: breathePhase runs at 0.8Hz, scale by 2.5
+				float blink = 0.5f + 0.5f * std::sin(breathePhase * 2.5f);
+				effectiveAlpha *= blink;
+			}
+			drawGlowText(vg, font->handle, box.size.x - margin, margin + fontSize,
+			             "SYNC", fontSize,
+			             NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, effectiveAlpha);
+		}
+
+		// BPM readout (clocked mode, bottom-right)
+		if (bpmFadeAlpha > 0.001f && ratioIdx >= 0) {
+			float period = module->displaySmoothedPeriod.load(std::memory_order_relaxed);
+			if (period > 0.f) {
+				float effectiveBPM = 60.f / period * AnalogLFO::RATIO_TABLE[ratioIdx];
+				std::string bpmText;
+				if (effectiveBPM < 1.f) {
+					bpmText = rack::string::f("%.1f BPM", effectiveBPM);
+				} else {
+					bpmText = rack::string::f("%d BPM", (int)std::round(effectiveBPM));
+				}
+				drawGlowText(vg, font->handle, box.size.x - margin,
+				             box.size.y - margin,
+				             bpmText.c_str(), fontSize,
+				             NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, bpmFadeAlpha);
+			}
+		}
+	}
+
 	void drawPlaceholder(NVGcontext* vg) {
 		// Static sine wave for module browser thumbnail
 		nvgBeginPath(vg);
@@ -733,6 +835,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 				drawWaveformTrace(vg, buffer, dimFactor);
 				drawPhaseDot(vg, buffer, phase, dimFactor);
+				drawTextOverlays(vg);
 			} else {
 				drawPlaceholder(vg);
 			}
