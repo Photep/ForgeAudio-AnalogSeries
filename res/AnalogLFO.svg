@@ -169,6 +169,18 @@
   </g>
 
 
+  <!-- ==================== "CLK" LABEL ==================== -->
+  <!-- scale=0.35, cap height ~1.75mm, centered at x=42.96mm, y=78.6mm (above CLK jack) -->
+  <!-- C=3 L=3 K=3, spacing 0.5 => total 10 units -->
+  <!-- Scaled: 10*0.35 = 3.5, startX = 42.96 - 3.5/2 = 41.21 -->
+  <g transform="translate(41.21, 78.6) scale(0.35)">
+    <!-- C -->
+    <path fill="#8888aa" d="M0.6,0 L3,0 L3,0.9 L0.9,0.9 L0.9,4.1 L3,4.1 L3,5 L0.6,5 L0,4.4 L0,0.6 Z"/>
+    <!-- L at x=3.5 -->
+    <path fill="#8888aa" d="M3.5,0 L4.4,0 L4.4,4.1 L6.5,4.1 L6.5,5 L3.5,5 Z"/>
+    <!-- K at x=7.0 -->
+    <path fill="#8888aa" d="M7,0 L7.9,0 L7.9,2 L9.4,0 L10.5,0 L8.6,2.3 L10.5,5 L9.4,5 L7.9,3 L7.9,5 L7,5 Z"/>
+  </g>
 
 
   <!-- ==================== SECTION DIVIDER ==================== -->
@@ -308,6 +320,7 @@
       <circle cx="24.0" cy="96.0" r="3.03" fill="#ff0000"/>    <!-- Character CV Atten: Trimpot -->
       <circle cx="38.0" cy="96.0" r="3.03" fill="#ff0000"/>    <!-- Drift CV Atten: Trimpot -->
       <!-- Inputs (green circles) -->
+      <circle cx="42.96" cy="86.0" r="4.0" fill="#00ff00"/>    <!-- CLK Input -->
       <circle cx="10.0" cy="108.0" r="4.0" fill="#00ff00"/>    <!-- Morph CV -->
       <circle cx="24.0" cy="108.0" r="4.0" fill="#00ff00"/>    <!-- Character CV -->
       <circle cx="38.0" cy="108.0" r="4.0" fill="#00ff00"/>    <!-- Drift CV -->
