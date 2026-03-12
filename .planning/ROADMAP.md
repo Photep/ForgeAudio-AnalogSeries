@@ -89,11 +89,11 @@ Plans:
   2. The waveform display shows a "SYNC" badge when a clock is connected and tracking
   3. The display shows the current division/multiplication ratio label (e.g., "/4", "x2") updating in real time as the Rate knob is turned
   4. The display shows the BPM calculated from the clock source and the currently selected rate divider
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 10-01: TBD
-- [ ] 10-02: TBD
+- [ ] 10-01-PLAN.md — Add NanoVG text overlays (SYNC badge, ratio label, BPM readout, Hz readout) and CLK panel label
+- [ ] 10-02-PLAN.md — Verify display overlays and panel label in VCV Rack
 
 ## Progress
 
@@ -111,4 +111,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 7. Clock Input and Period Tracking | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 8. Frequency Override and Ratio Table | v1.1 | 1/1 | Complete | 2026-03-10 |
 | 9. Phase Reset and Drift Integration | v1.1 | 1/1 | Complete | 2026-03-11 |
-| 10. Display and Panel | v1.1 | 0/? | Not started | - |
+| 10. Display and Panel | v1.1 | 0/2 | Not started | - |
