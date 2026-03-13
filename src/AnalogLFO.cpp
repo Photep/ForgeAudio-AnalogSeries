@@ -738,6 +738,55 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgText(vg, x, y, text, NULL);
 	}
 
+	void drawPillText(NVGcontext* vg, int fontHandle, float x, float y,
+	                  const char* text, float fontSize, int align, float alpha) {
+		// Set font state for measurement (must match drawing state)
+		nvgFontFaceId(vg, fontHandle);
+		nvgFontSize(vg, fontSize);
+		nvgTextAlign(vg, align);
+
+		// Measure text bounds
+		float bounds[4]; // [xmin, ymin, xmax, ymax]
+		nvgTextBounds(vg, x, y, text, NULL, bounds);
+
+		// Pill dimensions with padding
+		float pad = 4.f;
+		float feather = 3.f;
+		float cornerRadius = 3.f;
+		float px = bounds[0] - pad;
+		float py = bounds[1] - pad;
+		float pw = (bounds[2] - bounds[0]) + 2.f * pad;
+		float ph = (bounds[3] - bounds[1]) + 2.f * pad;
+
+		// Draw feathered pill background using box gradient
+		// Inner color: dark navy at 80% opacity scaled by alpha
+		// Outer color: fade to transparent for soft edges
+		NVGpaint pillPaint = nvgBoxGradient(vg,
+			px, py, pw, ph,
+			cornerRadius, feather,
+			nvgRGBAf(0.102f, 0.102f, 0.180f, 0.80f * alpha),
+			nvgRGBAf(0.102f, 0.102f, 0.180f, 0.0f));
+		nvgBeginPath(vg);
+		// Path must be larger than gradient bounds by feather distance
+		// to prevent clipping of feathered edges
+		nvgRoundedRect(vg, px - feather, py - feather,
+		               pw + 2.f * feather, ph + 2.f * feather,
+		               cornerRadius + feather);
+		nvgFillPaint(vg, pillPaint);
+		nvgFill(vg);
+
+		// Draw 2-pass glow text on top of pill
+		// Pass 1: Glow (blurred, lower alpha)
+		nvgFontBlur(vg, 3.0f);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha * 0.4f));
+		nvgText(vg, x, y, text, NULL);
+
+		// Pass 2: Sharp text on top
+		nvgFontBlur(vg, 0.0f);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha));
+		nvgText(vg, x, y, text, NULL);
+	}
+
 	void drawTextOverlays(NVGcontext* vg) {
 		std::shared_ptr<Font> font = APP->window->loadFont(
 			asset::system("res/fonts/ShareTechMono-Regular.ttf"));
@@ -753,14 +802,14 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		if (hzFadeAlpha > 0.001f) {
 			float rate = module->params[AnalogLFO::RATE_PARAM].getValue();
 			std::string hzText = rack::string::f("%.2f Hz", rate);
-			drawGlowText(vg, font->handle, margin, margin + fontSize,
+			drawPillText(vg, font->handle, margin, margin + fontSize,
 			             hzText.c_str(), fontSize,
 			             NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, hzFadeAlpha);
 		}
 
 		// Ratio label (clocked mode, top-left)
 		if (ratioFadeAlpha > 0.001f && ratioIdx >= 0) {
-			drawGlowText(vg, font->handle, margin, margin + fontSize,
+			drawPillText(vg, font->handle, margin, margin + fontSize,
 			             AnalogLFO::RATIO_LABELS[ratioIdx], fontSize,
 			             NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, ratioFadeAlpha);
 		}
@@ -773,7 +822,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 				float blink = 0.5f + 0.5f * std::sin(breathePhase * 2.5f);
 				effectiveAlpha *= blink;
 			}
-			drawGlowText(vg, font->handle, box.size.x - margin, margin + fontSize,
+			drawPillText(vg, font->handle, box.size.x - margin, margin + fontSize,
 			             "SYNC", fontSize,
 			             NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, effectiveAlpha);
 		}
@@ -789,7 +838,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 				} else {
 					bpmText = rack::string::f("%d BPM", (int)std::round(effectiveBPM));
 				}
-				drawGlowText(vg, font->handle, box.size.x - margin,
+				drawPillText(vg, font->handle, box.size.x - margin,
 				             box.size.y - margin,
 				             bpmText.c_str(), fontSize,
 				             NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, bpmFadeAlpha);
