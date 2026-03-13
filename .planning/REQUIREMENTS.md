@@ -9,8 +9,8 @@ Requirements for v1.2 Deep Analog milestone. Each maps to roadmap phases.
 
 ### Display
 
-- [ ] **DISP-01**: Display text overlays (SYNC badge, ratio, BPM, Hz) readable over waveform in all brightness/color scenarios via soft-edged pill backgrounds
-- [ ] **DISP-02**: Incoming clock BPM displayed alongside effective (ratio-adjusted) BPM when clocked
+- [x] **DISP-01**: Display text overlays (SYNC badge, ratio, BPM, Hz) readable over waveform in all brightness/color scenarios via soft-edged pill backgrounds
+- [x] **DISP-02**: Incoming clock BPM displayed alongside effective (ratio-adjusted) BPM when clocked
 
 ### Modulation
 
@@ -75,8 +75,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DISP-01 | Phase 11 | Pending |
-| DISP-02 | Phase 11 | Pending |
+| DISP-01 | Phase 11 | Complete |
+| DISP-02 | Phase 11 | Complete |
 | MOD-01 | Phase 13 | Pending |
 | MOD-02 | Phase 13 | Pending |
 | MOD-03 | Phase 12 | Pending |
