@@ -1,366 +1,528 @@
-# Domain Pitfalls: Clock Sync for Analog Series LFO
+# Pitfalls Research: v1.2 Deep Analog Features
 
-**Domain:** Adding clock synchronization to an existing analog-modeled VCV Rack LFO module
-**Researched:** 2026-03-07
-**Overall Confidence:** MEDIUM-HIGH (VCV Rack voltage standards verified via official docs; DSP patterns from established engineering practice; drift/clock interaction analysis based on direct source code review of existing AnalogLFO.cpp)
+**Domain:** Adding FM modulation, expanded analog imperfections, waveform bleed, separate RESET jack, phase offset, swing/shuffle, and display polish to an existing 890-line VCV Rack LFO module
+**Researched:** 2026-03-13
+**Confidence:** HIGH (based on direct source code analysis of AnalogLFO.cpp, VCV Rack voltage standards, established DSP engineering practice, and v1.0/v1.1 retrospective lessons)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, audible artifacts, or architectural dead-ends.
+Mistakes that cause rewrites, audible artifacts, or architectural dead-ends. These MUST be addressed in the phase that introduces the relevant feature.
 
 ---
 
-### Pitfall 1: Phase Reset Discontinuity (Clicks and Pops)
+### Pitfall 1: FM Input Driving Phase Accumulator to Negative Frequency
 
-**What goes wrong:** When a clock edge arrives and the LFO phase is hard-reset to 0.0, the output voltage jumps instantaneously from wherever the waveform currently is to the waveform value at phase 0.0. For a sine wave at phase 0.7, that is a jump from approximately -3.1V to 0V. For a falling saw at phase 0.3, that is a jump from +2V to +5V. This produces a broadband impulse -- an audible click or pop -- identical to a needle drop on vinyl.
+**What goes wrong:** The FM input adds or subtracts from the LFO's frequency. With a bipolar FM signal (e.g., another LFO outputting +/-5V), the modulated frequency can go negative. The current phase accumulator (`double phase` at line 61) only handles forward phase progression (`phase += deltaPhase; if (phase >= 1.0) phase -= 1.0`). A negative `deltaPhase` makes `phase` go below 0.0, and the wrap logic never catches it. The phase becomes a large negative number that grows without bound, and the waveform functions (which expect phase in [0, 1)) produce garbage output -- NaN, infinity, or wild oscillations.
 
-**Why it happens:** The existing `AnalogLFO::process()` uses a continuous phase accumulator (`double phase`) that wraps smoothly at 1.0. Clock sync introduces a forced discontinuity: the phase must snap to 0.0 on each clock edge to maintain beat alignment. The larger the phase error at the moment of reset, the larger the output voltage discontinuity.
+**Why it happens:** At LFO rates, FM modulation can easily push the frequency through zero. An LFO running at 0.5 Hz with a +/-5V FM input scaled to +/-2 Hz/V will see its frequency range from -1.5 Hz to +2.5 Hz. Unlike audio-rate VCOs where the carrier frequency is typically high enough to stay positive, sub-audio LFOs have very low base frequencies that are trivially driven negative.
 
-**Consequences:** Audible clicks on every clock pulse, especially noticeable when the LFO modulates a filter cutoff or VCA gain. At slow clock rates (e.g., 1 beat per 2 seconds), the click stands alone and is very obvious. Users will perceive the module as broken. If the LFO is modulating pitch, each click is a transient tuning spike.
+**How to avoid:**
+1. **Clamp the modulated frequency to a small positive minimum:** After computing `targetFreq + fmOffset`, clamp to `max(result, 0.001f)`. This prevents negative frequency without through-zero capability. This is the correct approach for an LFO -- through-zero FM produces reversed waveforms that are disorienting as modulation sources rather than musically useful.
+2. **Add bidirectional phase wrapping:** Change the phase accumulator to handle both directions: `if (phase >= 1.0) phase -= 1.0; if (phase < 0.0) phase += 1.0;`. This is needed even with clamping as a safety net against floating-point edge cases.
+3. **Choose exponential FM, not linear FM:** Exponential FM (multiply frequency by 2^(V/N)) can never produce negative frequencies because 2^x is always positive. For an LFO where users want vibrato-like modulation of another LFO's rate, exponential FM is more musically intuitive. Linear FM is better suited for audio-rate harmonic FM synthesis, which is not this module's purpose.
+4. **Scale the FM input conservatively:** A reasonable default is 1 octave per 5V (so +5V doubles frequency, -5V halves it) for exponential, or a more restrained linear range with an attenuverter. Do NOT use 1V/oct scaling -- that is for VCOs, not LFOs.
 
-**Prevention:**
-1. **Short crossfade on reset:** When a clock edge triggers a phase reset, do not snap `phase = 0.0` immediately. Instead, capture the current output value and crossfade from it to the new waveform value over 2-5ms (roughly 100-220 samples at 44.1kHz). A cosine crossfade (`0.5 - 0.5 * cos(pi * t / fadeTime)`) avoids corners that produce their own clicks.
-2. **Reset at natural zero-crossing:** If the waveform is within a few percent of phase 0.0 or 1.0 when the clock arrives, snap directly (the discontinuity is small enough to be inaudible). Only engage the crossfade when the phase error exceeds a threshold (e.g., >5% of cycle).
-3. **Separate the phase reset from the output reset:** Update `phase = 0.0` immediately for timing accuracy, but apply a short slew on the output side. This keeps the internal phase accumulator sample-accurate for downstream timing while hiding the artifact.
-4. **Test with the LFO modulating a resonant filter:** Clicks are most audible through a resonant filter because the impulse excites the filter's resonance, producing a "ping" on every clock pulse.
+**Warning signs:**
+- Output voltage goes to NaN or clips to +/-inf
+- Display shows a flat line or glitchy waveform when FM is patched
+- Phase value in debugger is negative or > 1.0
+- Waveform output sounds like DC or noise instead of modulated LFO
 
-**Detection (warning signs):**
-- Audible tick/click synchronized with clock input
-- Waveform display shows visible vertical jump at clock edge
-- Spectral analysis shows broadband energy spikes at clock rate
+**Phase to address:** FM input implementation (first phase that touches frequency modulation)
 
-**Phase mapping:** Address in the first implementation phase of clock sync. The phase reset mechanism is the foundation -- if this clicks, nothing else matters.
-
-**Confidence:** HIGH (fundamental DSP principle; verified by KVR Audio forum discussions on discontinuity artifacts and JUCE forum LFO click threads)
-
----
-
-### Pitfall 2: Drift Engine Fighting Clock Sync
-
-**What goes wrong:** The existing OU (Ornstein-Uhlenbeck) drift engine modifies `deltaPhase` before phase accumulation (line 244 of AnalogLFO.cpp: `deltaPhase *= (1.0 + (double)(driftScale * combinedOU))`). When clock sync is active, the LFO frequency is derived from the measured clock period, not from the Rate knob. If drift continues to modulate `deltaPhase`, it pulls the LFO frequency away from the clock-derived frequency, causing the phase to accumulate error between clock edges. On the next clock edge, the phase error is larger, requiring a bigger reset correction, which produces a bigger click. At high drift levels, the LFO could be as much as 7.5% off-frequency (the current `driftScale` maximum), meaning the phase at clock arrival could be off by 7.5% of a full cycle per period.
-
-**Why it happens:** The drift engine was designed for free-running operation where cumulative phase error is musically desirable (it IS the drift). But in clocked mode, phase error is a defect, not a feature. The two systems have contradictory goals: drift wants to wander, clock sync wants to lock.
-
-**Consequences:** Phase reset clicks proportional to drift amount. At Drift=1.0 with slow clock rates, the click becomes a pronounced "thump" as the phase can be 7.5% off (0.375V discontinuity on a +/-5V output). Users who want "clocked LFO with analog character" -- a very reasonable use case -- get punished with artifacts. They must choose between clock sync and drift, which defeats the module's value proposition.
-
-**Prevention:**
-1. **Reduce drift authority in clocked mode:** When clocked, scale drift contribution down significantly. A 1-2% frequency deviation is enough to add subtle analog feel without accumulating large phase errors between clock edges. Use `driftScale = driftAmount * 0.02f` in clocked mode vs the current `0.075f` in free mode.
-2. **Apply drift to waveform shape, not frequency:** In clocked mode, redirect drift energy to subtle waveform deformation (character perturbation, tiny duty cycle wobble) rather than frequency deviation. The user gets analog feel without timing drift.
-3. **Phase correction with slew:** On each clock edge, measure the accumulated phase error, then apply a gradual correction over the next ~10% of the cycle rather than an instant snap. This distributes the correction energy over time, hiding it as a subtle speed change rather than a click.
-4. **Document the interaction:** Make it clear in tooltips or documentation that Drift in clocked mode affects waveform character rather than timing. Users coming from hardware analog synths will understand -- real clocked LFOs also have less drift than free-running ones.
-
-**Detection:**
-- Increase Drift to maximum, enable clock, listen for periodic clicks
-- Watch the waveform display: visible "jerk" at phase reset means drift accumulated too much error
-- Compare the display at Drift=0 clocked vs Drift=1 clocked
-
-**Phase mapping:** Must be designed alongside the clock sync engine, not as an afterthought. The drift behavior in clocked mode is an architectural decision.
-
-**Confidence:** HIGH (direct analysis of existing source code at `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` lines 230-245)
+**Confidence:** HIGH (direct analysis of phase accumulator at AnalogLFO.cpp line 483-484; negative frequency is a well-documented FM synthesis issue)
 
 ---
 
-### Pitfall 3: Clock Period Measurement Instability
+### Pitfall 2: FM Modulation Interacting Badly with Clock Sync
 
-**What goes wrong:** Measuring the time between clock edges by counting samples seems simple but has multiple failure modes: (1) the first clock pulse has no previous edge, so no period can be computed; (2) tempo changes (the user adjusts BPM upstream) cause a sudden period change that, if applied instantly, produces a frequency jump; (3) irregular clock sources (swing, shuffle, humanized clocks) produce alternating long/short periods; (4) very slow clocks (e.g., 1 beat per 8 seconds) mean the LFO runs at a guessed frequency for a very long time before getting corrected.
+**What goes wrong:** When the LFO is clock-synced, its frequency is derived from the measured clock period and the selected ratio (`clockFreq * RATIO_TABLE[ratioIdx]` at line 440). If an FM input ALSO modifies the frequency, the FM signal fights the clock sync: the LFO runs slightly faster or slower than the clock dictates, accumulating phase error between clock edges. On the next clock edge, the phase is wrong, requiring a larger crossfade correction. At high FM depths, the LFO could be a full cycle ahead or behind, producing a dramatic waveform discontinuity that even the 3ms crossfade cannot hide.
 
-**Why it happens:** A single period measurement between two edges is inherently noisy. Real-world clock sources in VCV Rack include hand-turned knobs, CV-controlled BPM, swung/shuffled clocks, and MIDI clocks with jitter. Taking a single inter-edge interval as truth produces jittery LFO frequency.
+**Why it happens:** Clock sync and FM modulation are fundamentally at odds. Clock sync says "your frequency is exactly X." FM modulation says "your frequency is X plus this offset." The phase accumulator faithfully integrates both, producing a frequency that is neither what the clock wants nor what FM alone would produce. The existing drift authority scaling (2% in clocked mode, line 478) was designed for this exact problem but only covers the OU drift engine, not an FM input.
 
-**Consequences:** LFO frequency wobbles visibly on the display. At slow tempos, the LFO may run at wildly wrong speeds for seconds. With swung clocks, the LFO alternates between two different speeds every beat, producing an unpleasant "breathing" artifact rather than the intended smooth modulation.
+**How to avoid:**
+1. **Scale FM depth down in clocked mode:** Apply the same philosophy as drift authority. In clocked mode, FM modulation should be limited to a small percentage of the clock-derived frequency (e.g., 5-10% maximum deviation). This gives subtle frequency wobble without destroying sync alignment.
+2. **Apply FM to waveform phase offset instead of frequency:** In clocked mode, use the FM signal to modulate the phase offset rather than the frequency. This produces a similar sonic effect (the waveform shape changes over time) without accumulating phase error. The phase offset is corrected on each clock reset, so no error builds up.
+3. **Document the interaction clearly:** In free-running mode, FM has full authority. In clocked mode, FM authority is reduced. Users should understand this tradeoff.
+4. **Consider an FM mode switch:** Right-click menu option: "FM Mode: Frequency / Phase" where Phase mode redirects FM to phase offset, useful in clocked scenarios.
 
-**Prevention:**
-1. **Exponential moving average (EMA) of period:** Smooth the measured period using `smoothedPeriod = alpha * newPeriod + (1 - alpha) * smoothedPeriod`. An alpha of 0.3-0.5 balances responsiveness with stability. This requires at least 2-3 clock pulses before the estimate is usable.
-2. **Outlier rejection:** If a new period measurement differs from the smoothed period by more than 50%, treat it as a tempo change rather than noise. Apply it immediately but flag the system to expect further changes (tempo is ramping).
-3. **First-pulse handling:** On the first clock edge, do not attempt to set the LFO frequency. Simply record the timestamp. On the second edge, compute the first period but treat it as preliminary. On the third edge, you have two measurements and can begin smoothing. Before the second edge arrives, keep the LFO running at its current Rate knob frequency.
-4. **Timeout detection:** If no clock edge arrives for more than 2x the last measured period, consider the clock stopped. Either revert to free-running mode or hold the last known frequency. Do not let the timer overflow or accumulate indefinitely.
-5. **Display the measured BPM/period:** Show the user what the module thinks the tempo is. This makes debugging easy and builds trust.
+**Warning signs:**
+- Clock-synced LFO with FM input produces periodic clicks at clock rate
+- Phase error at clock edges increases with FM depth
+- Waveform display shows visible "jerk" at clock edges when FM is active
+- The crossfade from lastOutputVoltage (line 523-531) engages on every clock edge with large amplitude
 
-**Detection:**
-- Patch a slightly irregular clock (e.g., a clock with swing) and observe LFO frequency stability
-- Change upstream BPM abruptly and watch for frequency overshoot
-- Remove the clock cable and verify the module recovers gracefully
+**Phase to address:** FM input implementation, with clocked-mode interaction tested immediately
 
-**Phase mapping:** Core clock sync implementation phase. Period measurement is the foundation that everything else (division, multiplication, display) depends on.
-
-**Confidence:** HIGH (established digital clock recovery principle; community reports of jitter issues with VCV Rack clocks)
+**Confidence:** HIGH (direct analysis of clock sync + frequency pipeline in AnalogLFO.cpp lines 429-481; this is the same class of problem as Pitfall 2 in v1.1 PITFALLS.md, now with FM instead of drift)
 
 ---
 
-### Pitfall 4: Wrong Schmitt Trigger Thresholds Breaking Interoperability
+### Pitfall 3: RESET Jack and CLK Jack Firing Simultaneously (1ms Blanking Violation)
 
-**What goes wrong:** Using non-standard trigger thresholds means the module fails to detect clock pulses from certain sources, or falsely triggers on noise. VCV Rack has an official voltage standard: Schmitt trigger with low threshold ~0.1V and high threshold ~1-2V. Modules that deviate from this (e.g., using 2.5V threshold for "cleaner" detection) will miss triggers from modules outputting weak pulses, or modules using 5V gates instead of 10V triggers.
+**What goes wrong:** VCV Rack has a well-documented timing issue: cables introduce 1-sample delay. When a user patches the same trigger source to both CLK and RESET (or uses a clock module that outputs both), the two signals arrive 1 sample apart. Without blanking, the module processes both triggers: the CLK edge fires `processClockInput()` which resets phase AND updates period measurement, then 1 sample later the RESET edge fires and resets phase again. Two resets in 2 samples produces a double-click artifact and corrupts the period measurement (the measured period is 1 sample instead of the real clock period).
 
-**Why it happens:** Developers assume all triggers are clean 0-10V pulses and use a simple comparator instead of a Schmitt trigger. Or they implement hysteresis but pick thresholds that don't match the ecosystem. The VCV Rack Voltage Standards page explicitly warns about the Gibbs phenomenon: bandlimited trigger sources (e.g., a VCO square wave used as a clock) produce ringing around transitions that causes false retriggering without proper hysteresis.
+**Why it happens:** The existing code has only one trigger input (CLK) and one `dsp::SchmittTrigger` instance (line 91). Adding a separate RESET jack introduces a second trigger input that must coordinate with the first. The VCV Rack Voltage Standards explicitly state: "Modules with CLOCK and RESET inputs should ignore CLOCK triggers up to 1 ms after receiving a RESET trigger." The inverse is also important: the RESET should probably not corrupt clock period measurement.
 
-**Consequences:** Module works in testing with one clock source but fails with others. Users report "clock sync doesn't work" with specific module combinations. Extremely frustrating to debug because the developer's test setup works fine.
+**How to avoid:**
+1. **Implement 1ms post-RESET blanking for CLK:** After a RESET trigger is detected, set a timer. Ignore CLK triggers during this window. Use `dsp::Timer` for the blanking period, consistent with the existing `clockTimer` pattern.
+2. **RESET should only reset phase, not affect clock tracking:** The RESET jack should set `phase = 0.0` and trigger the crossfade, but should NOT reset `clockEdgeCount`, `smoothedPeriod`, or `clockState`. The clock tracker should continue tracking independently. The RESET jack is for creative phase alignment; CLK is for tempo tracking.
+3. **Handle the reverse case too:** If CLK arrives first and RESET arrives 1 sample later (the more common cable-delay scenario), the CLK has already advanced the beat counter and reset phase. The RESET then tries to reset phase again when it is already near 0.0. This is harmless (tiny crossfade from near-0 to 0) but wasteful. Detect that phase is already near 0.0 and skip the crossfade.
+4. **Use separate SchmittTrigger instances:** `dsp::SchmittTrigger clockTrigger` (already exists) and `dsp::SchmittTrigger resetTrigger` (new). Each processes its own input independently.
 
-**Prevention:**
-1. **Use `dsp::SchmittTrigger` from the VCV Rack SDK.** Call `schmittTrigger.process(input, 0.1f, 1.f)` exactly as documented in the Voltage Standards. Do not roll your own.
-2. **Test with multiple clock sources:** VCV Fundamental CLKD, Impromptu CLOCKED, Bogaudio CLKD, a raw square wave from a VCO, and an attenuated trigger (3V amplitude). If any of these fail, the thresholds are wrong.
-3. **Handle the clock-after-reset timing rule:** VCV Rack standard says modules with CLOCK and RESET inputs should ignore CLOCK triggers up to 1ms after a RESET trigger. This prevents the 1-sample cable delay from causing clock and reset to be processed in the wrong order. Use `dsp::Timer` to track the post-reset blanking window.
+**Warning signs:**
+- Double click on some clock edges but not others (depends on cable routing order)
+- Period measurement jumps to near-zero then recovers (1-sample period)
+- Works fine with CLK only, but adding RESET cable causes erratic behavior
+- Clock state machine jumps between states unexpectedly
 
-**Detection:**
-- Clock sync works with some modules but not others
-- Occasional double-triggers (two resets per clock pulse) from bandlimited clock sources
-- Module triggers on noise when no clock is connected but the input jack has crosstalk
+**Phase to address:** RESET jack implementation phase
 
-**Phase mapping:** First thing to implement in clock input handling. Get this wrong and nothing else can be tested reliably.
+**Confidence:** HIGH (verified against VCV Rack Voltage Standards 1ms blanking rule; direct analysis of processClockInput() at lines 253-379)
 
-**Confidence:** HIGH (verified against official VCV Rack Voltage Standards documentation)
+---
+
+### Pitfall 4: DC Offset Drift Accumulating Through Downstream Modules
+
+**What goes wrong:** Adding a DC offset drift imperfection means the LFO output no longer centers precisely at 0V. If the offset drifts to +0.5V over the OU timescale (several seconds), the output swings from -4.5V to +5.5V instead of the normal -5V to +5V. This exceeds the +/-5V bipolar standard. More critically, if the LFO modulates a VCA or filter cutoff, the slow DC drift becomes an unwanted slow modulation on top of the intended LFO shape. At high drift amounts, the DC offset drift is indistinguishable from the existing frequency drift in its audible effect, diluting the module's character range.
+
+**Why it happens:** Real analog oscillators have DC offset from op-amp input bias currents and capacitor leakage. Modeling this is authentic. But unlike a physical synth where downstream stages have coupling capacitors that block DC, VCV Rack is DC-coupled throughout. A 0.5V DC offset on an LFO output propagates unchanged to every downstream module.
+
+**How to avoid:**
+1. **Bound the DC offset tightly:** Limit DC offset drift to +/-0.1V maximum (2% of 5V range). This is perceptible on an oscilloscope/display but musically subtle. Real analog LFOs typically have offsets in the 10-50mV range after trimming.
+2. **Apply offset before the 5V scaling, not after:** Add the offset to the normalized [-1, +1] waveform sample, then scale by 5V. This keeps the math clean and bounds predictable: a 0.02 normalized offset becomes 0.1V at the output.
+3. **Use a separate OU layer for DC offset:** Do NOT reuse the existing pitch drift OU layers. DC offset drift should be a very slow, small-amplitude process (e.g., 0.02 Hz center frequency, low sigma). It should feel like the oscillator's zero point wandering, not like the pitch wandering.
+4. **Make DC offset part of the Drift knob scaling:** DC offset should scale to zero when Drift=0 and reach maximum at Drift=1, consistent with other imperfections. The existing `progressiveCurve()` (x-squared) is appropriate here.
+5. **Consider a DC blocker option:** A right-click menu toggle "DC-coupled output (authentic) / AC-coupled output (clean)" with a very gentle high-pass filter (~0.1 Hz) for users who want the visual character but not the DC offset in their signal chain.
+
+**Warning signs:**
+- LFO output exceeds +/-5V range (visible in scope module)
+- Downstream VCA or filter has a slow "breathing" modulation on top of the LFO pattern
+- Display waveform appears shifted vertically when drift is active
+
+**Phase to address:** Expanded analog imperfections phase
+
+**Confidence:** MEDIUM-HIGH (well-understood analog behavior; the specific bound of 0.1V is a design judgment based on LFO use cases and VCV Rack DC-coupled signal path)
+
+---
+
+### Pitfall 5: Phase Offset + Phase Reset = Wrong Cycle Start Point
+
+**What goes wrong:** A phase offset knob adds a fixed offset to the phase before waveform computation, so the LFO starts at a different point in its cycle (e.g., 90 degrees offset means starting at the sine peak instead of zero-crossing). When a clock edge or RESET trigger fires, the phase snaps to 0.0. But with a 90-degree offset, the user expects the reset to go to the OFFSET position (the peak), not to 0.0 (the zero-crossing). If the reset ignores the offset, the offset knob's behavior is inconsistent: it shifts the waveform visually and sonically during free-running, but has no effect at the reset point.
+
+**Why it happens:** The phase offset can be implemented in two places: (a) added to the phase accumulator itself, or (b) added when computing the waveform from the phase. If implemented as (a), reset sets `phase = 0.0` which discards the offset. If implemented as (b), reset sets `phase = 0.0` but the waveform is computed at `phase + offset`, which correctly starts at the offset position. The difference is subtle but the user experience is dramatically different.
+
+**How to avoid:**
+1. **Apply phase offset at waveform computation, not at phase accumulation:** Keep the phase accumulator clean (0.0 to 1.0, reset to 0.0). Apply the offset when sampling the waveform: `float p = fmod((float)phase + offset, 1.0f)`. This means the reset point is always phase=0.0 internally, but the waveform shape starts at the offset position. This is what users expect.
+2. **Update the display buffer with the offset applied:** The display shows one cycle of the waveform. With a phase offset, the display should show the waveform starting at the offset position, not at the default start. Otherwise the display contradicts the audio output.
+3. **Handle CV modulation of phase offset carefully:** If phase offset is CV-modulatable, rapid changes cause the effective waveform to shift in real time. This is musically useful (phase modulation) but visually confusing if the display tries to track it. Rate-limit display updates for phase offset changes, consistent with the existing morph/character 30fps limiting (line 508).
+4. **Phase offset + clock sync should produce quadrature-like behavior:** With CLK synced and 25% phase offset, the user gets a sine LFO that leads the beat by a quarter cycle. This is a very common and useful patch. Make sure it works correctly.
+
+**Warning signs:**
+- Phase offset has no effect at the moment of reset (waveform always starts at same point)
+- Display waveform and audio output disagree about starting position
+- Phase offset CV modulation at audio rates causes display to flicker or glitch
+- Phase offset interacts with the morph position unexpectedly (e.g., offset applied before morph crossfade changes the morph blending)
+
+**Phase to address:** Phase offset implementation phase
+
+**Confidence:** HIGH (well-understood quadrature LFO design pattern; direct analysis of phase accumulator and waveform computation pipeline)
+
+---
+
+### Pitfall 6: Swing/Shuffle Timing Errors from Naive Implementation
+
+**What goes wrong:** Swing/shuffle alternates the timing of even and odd beats. A 66% swing means the first half of each beat pair takes 66% of the time, the second half takes 34%. Naive implementations make one of three mistakes: (1) applying swing to the LFO's frequency instead of its phase progression, which changes the waveform shape rather than the timing; (2) applying swing at the wrong subdivision level (e.g., swinging quarter notes instead of eighth notes); (3) accumulating timing error across beats because the swing ratio is not exactly compensated.
+
+**Why it happens:** Swing is conceptually simple ("delay the offbeats") but implementing it in a phase accumulator is tricky. The LFO does not operate on discrete beats -- it has a continuous phase. Swing must be implemented as a nonlinear phase mapping: the phase accumulator advances at a constant rate, but the effective phase used for waveform computation is warped so that the first half of each beat takes more time and the second half takes less (or vice versa).
+
+**How to avoid:**
+1. **Implement swing as a phase warp function:** Given a linear phase `p` in [0, 1), compute a swung phase `p_swing`:
+   - Split each cycle into two halves (beats)
+   - First half [0, 0.5): map to [0, swing_ratio) in the warped output
+   - Second half [0.5, 1.0): map to [swing_ratio, 1.0) in the warped output
+   - At 50% swing (no swing): identity mapping
+   - At 66% swing: first half takes 66% of the cycle time, second half takes 34%
+   - The warp must be continuous and monotonic to avoid waveform artifacts
+2. **Apply swing AFTER the phase accumulator, BEFORE waveform computation:** `float swungPhase = applySwing(phase, swingAmount); float sample = computeMorphedWave(swungPhase, morph, character);`. This keeps the phase accumulator clean and clock-resettable.
+3. **Swing only makes sense in clocked mode:** In free-running mode, swing has no musical meaning (there are no beats to swing against). Gray out or disable the swing control when not clocked. Applying swing to a free-running LFO produces an asymmetric waveform that could confuse users.
+4. **Use the right subdivision:** Swing typically operates on pairs of beats at the level of the selected division. If the LFO is set to x1 (one cycle per clock beat), swing alternates the halves of each cycle. If the LFO is at /2 (one cycle per two beats), swing alternates at the beat level within each half of the LFO cycle. This needs careful thought about what "swing" means at different clock ratios.
+5. **The phase warp should be smooth at the transition points:** A piecewise-linear warp produces a waveform speed change at the 50% and 100% phase points. For musically smooth swing, consider a sinusoidal warp that eases in and out. However, many classic drum machines use piecewise-linear swing (the TR-909 delays even 16th notes by fixed amounts), so a linear warp is also authentic.
+
+**Warning signs:**
+- Swing changes the waveform shape instead of the timing (saw wave looks different with swing)
+- Accumulated timing error: after many beats, the LFO drifts out of phase with the clock
+- Swing at 50% is not identical to no swing (identity mapping failure)
+- Waveform has a visible discontinuity at the swing transition point
+
+**Phase to address:** Swing/shuffle implementation phase
+
+**Confidence:** MEDIUM-HIGH (swing implementation is well-documented for sequencers; applying it to a continuous phase accumulator for an LFO is less commonly discussed, requiring adaptation of the TR-909/MPC swing model)
 
 ---
 
 ## Moderate Pitfalls
 
----
-
-### Pitfall 5: Clock Division/Multiplication Producing Wrong Ratios
-
-**What goes wrong:** The Rate knob in clocked mode should select division/multiplication ratios (x1, x2, x4, /2, /4, etc.). Common implementation mistakes: (1) allowing continuous ratios that produce non-musical subdivisions; (2) implementing multiplication by outputting phase-advanced clocks instead of adjusting the LFO frequency; (3) getting the direction backwards (x2 should mean the LFO completes 2 cycles per clock period, not half a cycle).
-
-**Why it happens:** In free-running mode, the Rate knob is continuous (0.01-20Hz). Reusing this continuous range in clocked mode produces values like "x1.37" which has no musical meaning. The knob needs to snap to discrete ratios in clocked mode.
-
-**Consequences:** LFO never quite lines up with the beat. Divisions feel "off" to musicians. Non-standard ratios confuse users who expect x1, x2, x4, /2, /3, /4 etc.
-
-**Prevention:**
-1. **Define a fixed ratio table:** Common useful ratios: /16, /8, /4, /3, /2, x1, x2, x3, x4, x8, x16. Map the 0-1 knob range to indices into this table with equal-width zones.
-2. **Snap the knob position to detent-like zones:** Apply quantization to the knob value before looking up the ratio. Display the current ratio (e.g., "x4" or "/2") on the display or in the tooltip.
-3. **Dual-mode Rate knob:** The existing `configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz")` needs different range, labels, and tooltip formatting in clocked mode. Use `paramQuantity->displayMultiplier` or override the display string dynamically.
-4. **Test triplet ratios:** /3 and x3 are musically important but easy to accidentally omit from the ratio table.
-
-**Detection:**
-- LFO completes cycle at unexpected times relative to clock
-- Display shows non-integer ratio
-- Users report confusion about what the Rate knob does in clocked mode
-
-**Phase mapping:** Part of the Rate knob dual-mode implementation phase.
-
-**Confidence:** MEDIUM-HIGH (based on study of existing clocked LFO behaviors in Mutable Instruments Tides and VCV Fundamental LFO documentation)
+Mistakes that cause user confusion, subtle bugs, or require iteration but not architectural rework.
 
 ---
 
-### Pitfall 6: Tempo Change Causing Frequency Overshoot or Oscillation
+### Pitfall 7: Component Spread Having No Audible Effect at LFO Rates
 
-**What goes wrong:** When upstream tempo changes (e.g., user rotates the BPM knob on a clock module), the measured period changes. If the LFO frequency tracks the measured period with too little smoothing, it jerks to the new tempo. If it smooths too much, it takes many beats to catch up. The worst case: the EMA smoothing constant is tuned for one tempo range but oscillates at another. For example, alpha=0.5 is stable at 120 BPM but at 30 BPM (2-second periods), each measurement has massive weight and the frequency ping-pongs.
+**What goes wrong:** "Component spread" models per-component tolerances in analog circuits -- slightly different resistor values produce slightly different gain, cutoff, or bias in each voice of a polysynth. This is a well-established modeling technique for polyphonic audio-rate VCOs. But this module is monophonic and sub-audio. There is only one LFO, so there is no "per-voice" variation to model. And at LFO rates (0.01-20 Hz), the spectral effects of component tolerances are inaudible -- the output is used as CV, not listened to directly.
 
-**Why it happens:** Exponential smoothing with a fixed alpha treats fast and slow tempos identically in terms of samples-between-updates, but the musical expectation differs. At 120 BPM, you get 2 period measurements per second -- plenty of data. At 30 BPM, you get 0.5 per second -- each measurement dominates.
+**Why it happens:** Component spread is on the v1.2 feature list because it sounds authentic and is a standard analog modeling feature. The conceptual error is importing a polyphonic audio-rate technique into a monophonic sub-audio context without adapting it.
 
-**Consequences:** At slow tempos, the LFO visibly lurches when tempo changes. At fast tempos, the smoothing makes tempo tracking feel sluggish. Users perceive the module as "laggy" or "twitchy" depending on the tempo.
+**How to avoid:**
+1. **Reinterpret "component spread" for a monophonic LFO:** Instead of per-voice variation, model per-instance variation. Each time the module is instantiated, randomize subtle parameters: slight duty cycle offset for square waves, small gain asymmetry for triangle, tiny phase offset for the OU drift layers. This gives each module instance a unique "personality" beyond just drift.
+2. **Make the effect visible, not just audible:** Since this is an LFO with a waveform display, component spread effects should be visible on the display. A tiny duty cycle asymmetry (e.g., 52% instead of 50%) is visible on the square wave display and creates real waveform differences.
+3. **Tie component spread to the existing Character knob:** The Character knob already models analog deformations. Component spread could add a random per-instance offset to the character deformation amounts, making each module's character response slightly different. At Character=0 (fully digital), component spread has no effect. At Character=1 (fully analog), each module sounds/looks slightly different.
+4. **Do NOT add a separate Component Spread knob:** It would be a fourth knob axis that users cannot easily distinguish from Character or Drift. Instead, make it an implicit per-instance randomization that is always active (like real component tolerances).
 
-**Prevention:**
-1. **Use period-adaptive smoothing:** Scale alpha based on the number of measurements received recently. Start with alpha=0.7 for the first few measurements at a new tempo, then reduce to alpha=0.3 for steady-state tracking.
-2. **Detect large tempo changes explicitly:** If the new period differs from the smoothed period by more than 25%, treat it as an intentional tempo change. Apply the new period with high weight (alpha=0.8) rather than the steady-state alpha.
-3. **Rate-limit frequency changes:** Apply a slew to the LFO frequency itself (not just the period measurement). A 50ms slew on the frequency prevents audible jumps while tracking tempo changes within a few beats.
-4. **Test with BPM automation:** Patch a CV source into the clock module's BPM input and sweep from 60 to 240 BPM. The LFO should track smoothly without overshoot.
+**Warning signs:**
+- Users cannot tell the difference between Drift and Component Spread
+- The feature has no visible effect on the waveform display
+- A/B comparison of two module instances shows identical behavior
 
-**Detection:**
-- Visible frequency jump in display when tempo changes
-- LFO takes more than 3 beats to lock to new tempo
-- Oscillating frequency visible in output when tempo is changing
+**Phase to address:** Expanded analog imperfections phase (can be folded into existing Character system)
 
-**Phase mapping:** Refinement phase after basic clock sync works. Get the basic period measurement working first, then tune the smoothing behavior.
-
-**Confidence:** MEDIUM (EMA smoothing is standard, but optimal alpha values require empirical tuning specific to this module's use cases)
+**Confidence:** MEDIUM (this is primarily a design/UX risk, not a technical one; the v1.0 retrospective noted that character deformation amplitudes needed 3-5x increase for LFO-rate perceptibility)
 
 ---
 
-### Pitfall 7: Display Not Updating Correctly in Clocked Mode
+### Pitfall 8: Pitch Slew Creating Unintended Portamento on Rate Changes
 
-**What goes wrong:** The existing display update logic relies on phase wrapping (`phase < prevPhaseForDisplay`) to trigger waveform buffer redraws (line 266). In clocked mode, phase wrapping behavior changes: phase resets to 0.0 on clock edges (which triggers the wrap detection) but the LFO may also wrap naturally between clock edges if the division ratio is >1. Additionally, the phase-tracking dot and comet trail animations assume smooth continuous phase progression. A hard phase reset makes the dot teleport to the start, breaking the smooth animation.
+**What goes wrong:** "Pitch slew" models the finite slew rate of analog oscillator tuning circuits -- when voltage changes, the frequency does not jump instantly but glides. The module already has a frequency slew filter (`dsp::TExponentialFilter<float> freqSlew` at line 109, lambda=20 corresponding to 50ms time constant) used for smooth clock mode transitions. Adding a separate "pitch slew" analog imperfection on top of this creates a double-slew: the mode transition slew AND the imperfection slew both slow down frequency changes. Rapid Rate knob turns feel sluggish. Worse, if the pitch slew is always active (not just during analog character modeling), it affects the module's responsiveness in a way that feels like a bug.
 
-**Why it happens:** The display code was designed for free-running operation with continuous, monotonic phase progression. Clock sync introduces discontinuities that violate the `phase < prevPhaseForDisplay` assumption -- any phase reset looks like a wrap, and multiple wraps per clock period (for multiplied ratios) produce excessive buffer rebuilds.
+**Why it happens:** The existing `freqSlew` was designed for one specific purpose (smooth clock/free mode transitions) and has a carefully tuned time constant. Adding a second slew process in the same signal path compounds the smoothing. The two slews have different purposes and should not stack.
 
-**Consequences:** Display flickers or redraws too frequently at high multiplication ratios. Dot animation glitches visibly on phase resets. Users see a "jump" in the animation that makes the module feel janky, even if the audio output is clean (thanks to crossfading). The display undermines confidence in the clock sync feature.
+**How to avoid:**
+1. **Apply pitch slew to the OU drift output, not to the main frequency:** Pitch slew should model the lag in analog frequency modulation (drift arrives gradually, not instantaneously). Apply a small lag filter to `combinedOU` before it modulates `deltaPhase`. This affects only the drift character, not the module's responsiveness.
+2. **Gate pitch slew on the Drift knob:** Pitch slew should scale with the Drift knob. At Drift=0, no slew. At Drift=1, maximum slew on the drift output. This keeps it coupled with the analog character system.
+3. **Use a MUCH smaller time constant than the mode transition slew:** The existing freqSlew uses 50ms for mode transitions. Pitch slew for analog character should be 2-5ms -- just enough to round off sharp drift changes without being perceptible as lag.
+4. **Do NOT apply pitch slew to Rate knob changes or clock-derived frequency:** Users expect immediate response when they turn the Rate knob or change the clock tempo. Pitch slew is for modeling internal component behavior, not for user-facing controls.
 
-**Prevention:**
-1. **Add a "clock reset" flag:** When a clock edge triggers a phase reset, set a flag that the display code can check. The display can then animate the dot smoothly back to the start (or skip the trail for that frame) instead of showing a teleport.
-2. **Rate-limit display rebuilds in multiplied mode:** At x8 multiplication, the phase wraps 8 times per clock period. The display does not need to rebuild the waveform buffer 8 times per beat. Add a minimum interval between wrap-triggered rebuilds (e.g., 100ms).
-3. **Show a clock sync indicator:** Add a small visual badge (e.g., a "CLK" label or a dot that blinks on each clock edge) so users know the module is tracking. This sets the expectation that behavior is different from free-running mode.
-4. **Display the division ratio:** Show "x4" or "/2" on the display or in the Rate knob tooltip. This gives immediate feedback about what the Rate knob is doing in clocked mode.
+**Warning signs:**
+- Rate knob feels sluggish or laggy
+- Clock tempo changes take noticeably longer to track
+- Frequency "overshoots" after rapid rate changes (two slews in series can create oscillation if time constants interact poorly)
 
-**Detection:**
-- Visual glitch when clock edge arrives (dot jumps, trail breaks)
-- Display appears to flicker at high multiplication ratios
-- Waveform buffer rebuilds visible as brief rendering stutter
+**Phase to address:** Expanded analog imperfections phase
 
-**Phase mapping:** Display updates come after core clock sync is working. But plan the display changes during the design phase to avoid retrofitting.
-
-**Confidence:** HIGH (direct analysis of existing display code in AnalogLFO.cpp lines 265-279 and 376-447)
+**Confidence:** HIGH (direct analysis of existing freqSlew filter at line 109; established signal processing principle about cascaded filters)
 
 ---
 
-### Pitfall 8: Cable Disconnection Not Reverting to Free-Running Mode
+### Pitfall 9: Phase Jitter Breaking Clock Sync Phase Alignment
 
-**What goes wrong:** When the user unplugs the CLK cable, the module should seamlessly revert to free-running mode using the Rate knob value. Common mistakes: (1) the module keeps running at the last clocked frequency indefinitely; (2) the module stops outputting because it is waiting for a clock edge that will never come; (3) the transition from clocked to free-running produces a frequency jump because the Rate knob was in "division ratio" mode and the raw value no longer maps to a sensible frequency.
+**What goes wrong:** Phase jitter adds random sample-to-sample variation to the phase position, modeling capacitor noise and thermal jitter in analog oscillator timing circuits. But the existing clock sync system resets phase to exactly 0.0 on clock edges (line 304, 375). If phase jitter is active, the phase is perturbed away from 0.0 immediately after reset. After one full clock period, the phase has accumulated both the intended LFO cycle AND the cumulative jitter. If the jitter is not zero-mean per cycle, it causes systematic phase error that compounds the crossfade amplitude on reset.
 
-**Why it happens:** The module checks `inputs[CLK_INPUT].isConnected()` but only on clock edges, not every sample. Or the module stores a "clocked mode" state that is not cleared when the cable is removed. Or the Rate knob parameter range was remapped for division mode and the unmapped value is now wrong.
+**Why it happens:** Phase jitter is typically modeled as `phase += deltaPhase + jitter * random()`. If the jitter term has any bias (even from floating-point rounding), it accumulates over hundreds of samples per clock period. At 44100 Hz sample rate and 120 BPM, there are 22050 samples per beat -- 22050 tiny jitter additions.
 
-**Consequences:** Module appears to "freeze" or "break" when CLK cable is removed. Users must restart the module or re-patch to recover. This is especially frustrating during a performance.
+**How to avoid:**
+1. **Apply phase jitter to waveform lookup, not to the accumulator:** Instead of `phase += deltaPhase + jitter`, use `float jitteredPhase = phase + jitter * random()` only when computing the waveform. The clean phase accumulator remains unperturbed, so clock sync alignment is preserved.
+2. **Reduce jitter authority in clocked mode:** Same pattern as drift authority (line 478). In clocked mode, phase jitter should be minimal to preserve beat alignment.
+3. **Ensure jitter is truly zero-mean:** Use a symmetric distribution (the existing `normalDist{0.f, 1.f}` is fine) and verify there is no bias from clamping or scaling.
+4. **Scale jitter amplitude relative to frequency:** At very low LFO rates (0.01 Hz), each sample advances the phase by a tiny amount. Phase jitter that is meaningful at 1 Hz would be enormous relative to the phase increment at 0.01 Hz. Scale jitter proportional to `deltaPhase` to maintain consistent perceptual effect across the frequency range.
 
-**Prevention:**
-1. **Check `isConnected()` every process() call:** It is cheap (a pointer check) and authoritative. When the CLK input transitions from connected to disconnected, immediately enter free-running mode.
-2. **Keep the Rate knob parameter range unchanged:** Do not modify `paramQuantity->minValue/maxValue` when switching modes. Instead, interpret the same 0.01-20Hz range differently: in free mode it is a direct frequency; in clocked mode it maps to the ratio table. This means the knob position is always valid in both modes.
-3. **Smooth the frequency transition:** When switching from clocked to free-running (or vice versa), apply a short frequency slew (50-100ms) to avoid an abrupt frequency change. The LFO might be running at 2Hz (clocked x2 at 60 BPM) and the Rate knob says 0.7Hz -- a direct switch would be audible.
-4. **Clear clock state on disconnect:** Reset `smoothedPeriod`, `clockEdgeCount`, and any EMA state when the cable is removed. Stale clock data should not influence behavior when the cable is reconnected later.
-5. **Serialize the mode state?** Probably not. When a patch loads and the CLK cable is connected, the module should detect the first two clock edges and lock on. Saving clock period to JSON is fragile because the upstream clock may have changed. The OU drift state is already not serialized (by design, line 109 of PROJECT.md) -- treat clock state the same way.
+**Warning signs:**
+- Clock-synced LFO gradually drifts despite being synced (visible in display: phase at clock edge is not near 0.0)
+- Jitter effect varies wildly with LFO rate (too subtle at high rates, too extreme at low rates)
+- Phase accumulator grows unbounded due to jitter accumulation
 
-**Detection:**
-- Unplug CLK cable and verify LFO immediately returns to Rate knob frequency
-- Replug CLK cable and verify clock sync re-engages within 2-3 beats
-- Save/load patch with CLK connected and verify module re-syncs on load
+**Phase to address:** Expanded analog imperfections phase
 
-**Phase mapping:** Must be handled in the core clock sync implementation. Backward compatibility (no CLK = unchanged behavior) is a hard requirement per PROJECT.md.
-
-**Confidence:** HIGH (standard VCV Rack module design pattern; `isConnected()` behavior well-documented)
+**Confidence:** HIGH (fundamental numerical analysis of accumulator bias; the zero-mean requirement is a standard DSP principle)
 
 ---
 
-### Pitfall 9: Accumulating Timing Error from Integer Sample Counting
+### Pitfall 10: Waveform Bleed Producing Amplitude Spikes During Morph Transitions
 
-**What goes wrong:** Counting samples between clock edges using an integer counter introduces quantization error. At 44100Hz sample rate and 120 BPM (0.5s period), the period is exactly 22050 samples -- no error. But at 130 BPM (0.4615s period), the true period is 20353.846... samples. Rounding to 20354 or 20353 introduces a 0.005% error per beat. Over a long session (hundreds of beats), this accumulates as phase drift between the LFO and the clock.
+**What goes wrong:** "Waveform bleed" means adjacent waveforms partially leak through during morph transitions, modeling the imperfect isolation of analog waveshapers. The current morph system (lines 225-242) is a clean linear crossfade between adjacent waveforms (`sine + frac * (tri - sine)`). Adding bleed means the non-adjacent waveform ALSO contributes: when morphing from sine to triangle, a small amount of saw leaks through. If the bleed coefficients are not amplitude-compensated, the sum of three contributions can exceed [-1, +1], producing output spikes above +/-5V.
 
-**Why it happens:** Sample counting is inherently integer-quantized. The error is small per beat but cumulative. At musical tempos, the error is typically sub-millisecond per beat, but over 1000 beats (about 8 minutes at 120 BPM) it can reach several milliseconds -- enough to be noticeable as a slight "drift" in the sync.
+**Why it happens:** Linear crossfade between two signals maintains the amplitude range (convex combination). Adding a third signal without reducing the others breaks this property. `0.7 * sine + 0.3 * tri + 0.1 * saw` sums to coefficients of 1.1, which means the peak output can be 110% of normal.
 
-**Consequences:** LFO slowly drifts out of phase with the clock over long sessions. Phase reset on each clock edge corrects this, but the correction becomes a periodic click (pitfall 1) if the accumulated error is large enough.
+**How to avoid:**
+1. **Normalize the bleed coefficients:** Ensure all waveform contribution weights sum to 1.0. If the crossfade position gives weights [0.7, 0.3] and bleed adds 0.05 from the next neighbor, renormalize: [0.7/1.05, 0.3/1.05, 0.05/1.05] = [0.667, 0.286, 0.048].
+2. **Keep bleed amounts very small:** 3-8% bleed is enough to break the "digital perfection" of the crossfade without being obvious. At these levels, amplitude overshoot is negligible even without perfect normalization.
+3. **Tie bleed to the Character knob, not a separate control:** At Character=0 (fully digital), morph transitions are perfect crossfades (current behavior). At Character>0, adjacent waveforms bleed through proportionally. This keeps the three-knob design clean and avoids a fourth axis of control.
+4. **Apply the output clamp after bleed:** The existing output path does `5.f * sample` (line 520). Add a soft clamp or let the natural [-1, 1] normalization prevent overshoot. The final output should never exceed +/-5V.
 
-**Prevention:**
-1. **Use floating-point time accumulation:** Instead of counting integer samples, accumulate elapsed time using `float timer += args.sampleTime`. This gives sub-sample precision and avoids integer quantization. VCV Rack's `dsp::Timer` does exactly this.
-2. **Reset the timer on each clock edge:** The timer accumulates time since the last edge. When a new edge arrives, the accumulated time IS the measured period (in seconds, not samples). Reset the timer and start accumulating again.
-3. **Use double precision for phase accumulation:** The existing code already uses `double phase` (line 32) -- this is good. A `double` has ~15 significant digits, meaning phase error from floating-point accumulation is negligible for any practical session length.
-4. **Correct accumulated phase on each clock edge:** Even with perfect frequency tracking, tiny errors accumulate. On each clock edge, the phase should be exactly at 0.0 (or whatever the reset target is). The correction is the anti-click crossfade from pitfall 1.
+**Warning signs:**
+- Output exceeds +/-5V at specific morph positions (visible in scope module)
+- Morph sweep produces a brief volume bump at crossfade center points
+- Display waveform appears "thicker" or "noisier" during morph transitions
 
-**Detection:**
-- Run the LFO clocked for 10+ minutes and compare output phase to clock phase
-- Measure the phase at each clock edge -- it should not drift in one direction
+**Phase to address:** Waveform bleed implementation phase
 
-**Phase mapping:** Use `dsp::Timer` from the start. This is a one-line architectural decision that prevents the problem entirely.
+**Confidence:** HIGH (linear algebra of convex combinations; direct analysis of morph crossfade at lines 225-242)
 
-**Confidence:** HIGH (fundamental digital timing principle)
+---
+
+### Pitfall 11: Display Text Overlays Unreadable Over Bright Waveform Peaks
+
+**What goes wrong:** The current display renders text overlays (Hz readout, SYNC badge, ratio label, BPM) using two-pass glow text (lines 724-738): a blurred amber glow pass followed by a sharp amber text pass. When the waveform trace passes directly behind the text, the amber-on-amber colors make the text unreadable. This is the known issue mentioned in the milestone context ("dark pill background didn't work"). The problem is that a simple dark rectangle behind the text clips against the waveform glow and looks like an ugly black box on the otherwise elegant display.
+
+**Why it happens:** The four-pass waveform glow (lines 627-648) uses the same amber color family as the text. Where the waveform peak overlaps the text position, there is no contrast. The existing approach of drawing text "on top" does not help when both elements are the same hue. A solid dark background rectangle works technically but breaks the visual design.
+
+**How to avoid:**
+1. **Use a soft-edged rounded rectangle with alpha gradient:** Instead of a hard-edged "pill" background, use `nvgBoxGradient()` to create a rounded rectangle that fades from opaque center (alpha 0.85) to transparent edge (alpha 0.0) over ~4px. This creates a halo effect that dims the waveform behind the text without a visible box edge. The background color should match the display background (`nvgRGBAf(0.051f, 0.051f, 0.102f, 0.85f)` from line 604).
+2. **Draw text backgrounds AFTER the waveform but BEFORE the text:** The render order must be: background fill, waveform trace, text background halos, text glow passes. The current code draws the waveform before text overlays (line 837-838), which is correct -- just insert the background halo between them.
+3. **Size the background to the text bounding box plus padding:** Use `nvgTextBounds()` to measure each text string, then inflate by 3-4px on each side for the background rectangle. This adapts to different text lengths ("0.70 Hz" vs "SYNC" vs "/16").
+4. **Consider contrasting text color:** Instead of amber text over amber waveform, use white or bright cream (`nvgRGBAf(1.0f, 0.95f, 0.85f, alpha)`) for the text with a dark halo. This provides contrast regardless of what is behind the text.
+5. **Test with all waveform shapes at all morph positions:** The waveform peak position varies with morph: sine peaks at 25% horizontal position (phase 0.25 maps to display y-top), saw peaks at the left edge, square is tall everywhere. Each text position will overlap with waveform peaks at different morph settings.
+
+**Warning signs:**
+- Text disappears when waveform peak passes behind it
+- Background rectangle has visible hard edges that break the display aesthetic
+- Background rectangle clips the waveform glow, creating a "hole" effect
+- Text readability varies depending on morph knob position
+
+**Phase to address:** Display polish phase (first phase of v1.2, as it is a known issue from v1.1)
+
+**Confidence:** HIGH (direct analysis of NanoVG rendering code at lines 601-847; the box gradient technique is standard NanoVG usage)
+
+---
+
+### Pitfall 12: Incoming Clock BPM Display Conflicting with Effective BPM
+
+**What goes wrong:** The v1.2 feature list includes "Display incoming clock BPM alongside effective BPM." The current display shows effective BPM in the bottom-right (lines 782-797). Adding a second BPM number creates ambiguity: which BPM is which? Users glancing at the display see "120 BPM" and "30 BPM" -- is 120 the incoming clock and 30 the effective LFO rate at /4, or vice versa? Without clear labeling, this is confusing rather than informative.
+
+**Why it happens:** The display area is small (57mm x 27mm). Two BPM numbers plus SYNC badge plus ratio label crowd the display. Label text at 10px font is barely readable at Rack's default zoom level.
+
+**How to avoid:**
+1. **Use different formatting to distinguish the two values:** Show incoming clock BPM with a clock icon or "CLK:" prefix, and effective LFO BPM as the main readout. Example: top-right shows "CLK 120" in a dimmer/smaller font, bottom-right shows the effective BPM prominently.
+2. **Only show incoming clock BPM when it differs from effective BPM:** At x1 ratio, incoming and effective BPM are identical -- showing both is redundant. Only display the incoming clock BPM when the ratio is not x1.
+3. **Consider replacing effective BPM with incoming clock BPM:** The ratio label (e.g., "/4") already tells the user the relationship. Showing "CLK 120" + "/4" is equivalent to showing "30 BPM" but more informative because the user can mentally compute any relationship.
+4. **Use the existing atomic bridge pattern for the new display data:** Add `std::atomic<float> displayIncomingClockBPM` alongside `displaySmoothedPeriod`. The display thread reads it with relaxed ordering, consistent with the established pattern (5 atomics already exist).
+
+**Warning signs:**
+- Users confused about which BPM number is which
+- Display feels cluttered or text overlaps
+- Numbers update at different rates (incoming BPM updates only on clock edges; effective BPM updates continuously)
+
+**Phase to address:** Display polish phase
+
+**Confidence:** HIGH (UX design issue; display area constraints are well-known from v1.0/v1.1 implementation)
 
 ---
 
 ## Minor Pitfalls
 
----
-
-### Pitfall 10: Clock Multiplication at High Ratios Producing Inaudible LFO
-
-**What goes wrong:** At x16 multiplication with a 120 BPM clock (2Hz base), the LFO runs at 32Hz -- into the audio range. The waveform is no longer a useful modulation source; it is a low-frequency audio tone. The display becomes a blur. The user may not realize what happened.
-
-**Prevention:** Consider capping the maximum ratio so the resulting frequency stays below 20Hz (the current Rate param maximum), or display a warning when the effective frequency exceeds the sub-audio range. Alternatively, allow it but label it clearly -- some users want audio-rate LFO from clock sync.
-
-**Phase mapping:** Ratio table design phase.
-
-**Confidence:** MEDIUM (design decision, not a technical bug)
+Issues that are easy to fix if caught early but annoying if discovered late.
 
 ---
 
-### Pitfall 11: Phase Reset Interfering with Waveform Character Modeling
+### Pitfall 13: OU Drift Layers Sharing State Between Old and New Imperfections
 
-**What goes wrong:** The saw waveform has a "soft capacitor reset" (AnalogLFO.cpp line 117-123) that smooths the transition at phase 0.0. If the clock sync phase reset forces the phase to exactly 0.0, the soft reset region is entered abruptly, and the character modeling may interact unexpectedly with the crossfade anti-click logic (pitfall 1). Two different smoothing mechanisms fighting over the same phase region can produce unexpected waveform shapes.
+**What goes wrong:** The existing four OU layers (lines 63-76) produce multi-timescale drift for pitch modulation. Adding DC offset drift, phase jitter, and pitch slew requires additional random processes. If these new processes reuse the existing OU layers (to save CPU), they become correlated: DC offset and pitch drift would wander in the same direction at the same time, producing a "breathing" effect that sounds artificial rather than random.
 
-**Prevention:** Ensure the anti-click crossfade operates on the final output (after character modeling), not on the raw phase. The character modeling should operate on the new phase position as if it were a normal cycle start. Test all four waveform shapes (sine, triangle, saw, square) with phase reset at various phase positions.
+**How to avoid:** Create separate OU instances (or separate RNG draws) for each imperfection type. The CPU cost of additional OU layers is negligible (a few multiplies per sample). The existing `rng` instance (line 71) can be shared since `normalDist(rng)` produces independent draws regardless of calling order.
 
-**Phase mapping:** During anti-click crossfade implementation. Requires testing with character knob at various settings.
+**Phase to address:** Expanded analog imperfections phase
 
-**Confidence:** HIGH (direct analysis of character modeling code in AnalogLFO.cpp)
-
----
-
-### Pitfall 12: Rate Knob Tooltip Showing Wrong Units in Clocked Mode
-
-**What goes wrong:** The Rate knob is configured with `configParam(RATE_PARAM, 0.01f, 20.f, 0.7f, "Rate", " Hz")`. When clocked, the knob represents a division/multiplication ratio, not a frequency. If the tooltip still shows "Rate: 3.50 Hz", users are confused because the actual LFO frequency depends on the clock.
-
-**Prevention:** Override `ParamQuantity::getDisplayValueString()` to show the ratio (e.g., "x4" or "/2") when clocked, and the frequency in Hz when free-running. Update the `configParam` unit string dynamically, or use a custom `ParamQuantity` subclass.
-
-**Phase mapping:** UI/UX polish phase after core clock sync works.
-
-**Confidence:** HIGH (straightforward VCV Rack API usage)
+**Confidence:** HIGH (statistical independence requirement; direct analysis of OU engine at lines 63-76)
 
 ---
 
-### Pitfall 13: Not Handling the First Clock Pulse Gracefully
+### Pitfall 14: Phase Offset CV Creating FM-like Artifacts at Audio Rates
 
-**What goes wrong:** On the first clock edge after cable connection (or patch load), there is no previous edge to measure a period against. The module does not know the clock tempo. If it resets the phase to 0.0 on this first edge, it has correct phase alignment but runs at the free-running Rate knob frequency until the second edge provides a period measurement. This produces one LFO cycle at the "wrong" speed -- noticeable if the Rate knob frequency and clock tempo differ significantly.
+**What goes wrong:** Phase offset with CV input allows real-time modulation of the phase offset. If a fast CV source (e.g., an audio-rate VCO) is patched to the phase offset CV, the effect is phase modulation -- mathematically equivalent to FM synthesis. At audio-rate modulation, the LFO output contains sidebands that extend well beyond its normal frequency range, producing unexpected spectral content. The display update logic (rate-limited to 30fps for parameter changes, line 508) cannot track audio-rate phase offset changes, so the display becomes misleading.
 
-**Prevention:** Accept the one-cycle latency gracefully. On the first clock edge: reset the phase (for alignment) but keep the current frequency. On the second edge: compute the period and switch to clocked frequency. On the third edge: begin EMA smoothing. Document this: "clock sync locks within 2-3 beats" is an acceptable and expected behavior for any clocked module. Do not try to "guess" the tempo from a single pulse.
+**How to avoid:**
+1. **Slew-limit the phase offset CV:** Apply a low-pass filter to the phase offset CV input with a cutoff around 20-50 Hz. This preserves musically useful slow modulation while preventing unintended audio-rate phase modulation.
+2. **Or embrace it as a feature:** Some users may want phase modulation. If so, document it clearly and accept that the display will not track fast modulation. Add a note in the tooltip: "Phase Offset - CV modulation at audio rates produces phase modulation effects."
+3. **Use the same attenuverter pattern as other CV inputs:** The existing morph/character/drift CVs use `knob + atten * cv / 5.0f`. Apply the same pattern for phase offset CV.
 
-**Phase mapping:** Clock sync initialization logic.
+**Phase to address:** Phase offset implementation phase
 
-**Confidence:** HIGH (matches behavior of Mutable Instruments Tides and other clocked Eurorack modules)
-
----
-
-### Pitfall 14: Autosave Serialization Overhead for Clock State
-
-**What goes wrong:** VCV Rack autosaves every 15 seconds, calling `dataToJson()`. If clock state variables are serialized unnecessarily (e.g., the raw timer value, smoothed period history, edge count), this adds overhead and the saved state is meaningless on reload because the clock may have changed.
-
-**Prevention:** Do NOT serialize clock timing state (period measurements, EMA state, timer values). Only serialize the boolean "was clocked" state if needed for UI display purposes on reload. The module should re-acquire clock sync from scratch on patch load, just as it does for drift (OU layers are not serialized per the existing design decision).
-
-**Phase mapping:** Serialization implementation, late in the milestone.
-
-**Confidence:** HIGH (consistent with existing design decision for OU state)
+**Confidence:** MEDIUM (depends on design intent -- is audio-rate phase modulation desired or not?)
 
 ---
 
-## Phase-Specific Warnings
+### Pitfall 15: Panel Space Exhaustion at 12HP
 
-| Phase Topic | Likely Pitfall | Mitigation | Priority |
-|---|---|---|---|
-| Clock input detection | Pitfall 4 (wrong thresholds), Pitfall 13 (first pulse) | Use `dsp::SchmittTrigger` with `process(x, 0.1f, 1.f)`, handle first-pulse gracefully | CRITICAL |
-| Period measurement | Pitfall 3 (instability), Pitfall 9 (integer counting) | Use `dsp::Timer` (float), EMA smoothing with alpha 0.3-0.5 | CRITICAL |
-| Phase reset | Pitfall 1 (clicks), Pitfall 11 (character interaction) | Crossfade 2-5ms on output, test all waveform shapes | CRITICAL |
-| Drift interaction | Pitfall 2 (drift fighting sync) | Reduce drift authority to 1-2% in clocked mode, or redirect to waveform shape | CRITICAL |
-| Division/multiplication | Pitfall 5 (wrong ratios), Pitfall 10 (audio-rate) | Fixed ratio table, snap quantization | MODERATE |
-| Tempo tracking | Pitfall 6 (overshoot) | Period-adaptive EMA, large-change detection | MODERATE |
-| Cable disconnect | Pitfall 8 (stuck in clocked mode) | Check `isConnected()` every process(), clear clock state | MODERATE |
-| Display | Pitfall 7 (animation glitch) | Clock reset flag, rate-limit rebuilds, show sync indicator | MODERATE |
-| Rate knob UX | Pitfall 5 (ratios), Pitfall 12 (tooltip) | Dual-mode interpretation, dynamic tooltip | LOW |
-| Serialization | Pitfall 14 (overhead) | Do not serialize clock timing state | LOW |
+**What goes wrong:** v1.2 adds: FM input jack, RESET jack, phase offset knob, phase offset CV jack, swing control, and potentially swing CV. That is 2-3 new knobs and 2-3 new jacks on an already-populated 12HP panel. The current layout has the bottom section fully occupied (3 trimpots at y=96mm, 3 CV jacks + 1 output at y=108mm). There is no room for new jacks without either removing something, going to a larger panel, or making the panel uncomfortably dense.
+
+**How to avoid:**
+1. **Inventory all new controls before panel design:** List every knob, jack, trimpot, and switch needed for v1.2. Plan the panel layout holistically, not incrementally. The v1.0 retrospective specifically flagged: "Panel layout should be designed for final component count, not incrementally expanded."
+2. **Consider expanding to 14HP or 16HP:** Two extra HP provides significant additional space. The display can be wider, the bottom section can accommodate a third row, and the module does not feel cramped.
+3. **Multiplex controls:** Phase offset and swing could share a single knob with a mode switch, or be implemented as right-click menu options with CV-only control (no panel knob). FM depth could be an attenuverter on the FM jack rather than a separate knob.
+4. **Prioritize by user interaction frequency:** FM input and RESET jacks are frequently patched (need panel jacks). Phase offset and swing are "set and forget" parameters (can be right-click menu or small trimpots). FM depth attenuverter is essential for usability.
+
+**Warning signs:**
+- Controls too close together for comfortable use (minimum 7mm center-to-center for knobs)
+- Panel redesign required after features are implemented (wasted effort)
+- Labels overlap or become unreadable at standard zoom
+
+**Phase to address:** Panel planning phase (before any implementation)
+
+**Confidence:** HIGH (12HP constraints are well-known from v1.0/v1.1; v1.0 retrospective lesson about panel layout planning)
 
 ---
 
-## Interaction Matrix: Clock Sync vs. Existing Features
+## Technical Debt Patterns
 
-This module's unique challenge is that clock sync must interact cleanly with three existing systems that were designed for free-running operation:
+Shortcuts that seem reasonable but create long-term problems.
 
-| Existing System | Interaction with Clock Sync | Risk | Mitigation |
-|---|---|---|---|
-| **OU Drift Engine** | Drift modulates frequency, conflicting with clock-derived frequency | HIGH | Reduce drift scope in clocked mode (Pitfall 2) |
-| **Waveform Character** | Character modeling at phase=0.0 interacts with reset crossfade | MEDIUM | Apply crossfade on final output, after character (Pitfall 11) |
-| **Display System** | Phase resets trigger unwanted display rebuilds and dot teleport | MEDIUM | Clock reset flag, animation smoothing (Pitfall 7) |
-| **Phase Accumulator** | Double-precision phase works fine; clock just resets it | LOW | Existing architecture is compatible |
-| **CV Modulation** | CV inputs for morph/character/drift unaffected by clock | LOW | No change needed |
-| **Lock-free Display Buffer** | Double-buffer pattern works fine with clocked updates | LOW | No change needed |
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Reusing OU layers for new imperfections | Less code, lower CPU | Correlated artifacts sound artificial | Never -- independent RNG is cheap |
+| Applying all imperfections to phase accumulator | Simple implementation | Pollutes phase for clock sync, display, and reset | Only for pitch drift (existing); other imperfections on waveform output |
+| Hardcoding swing to 8th-note subdivision | Simple swing implementation | Wrong for triplet and non-standard ratios | Acceptable for MVP, but design for extensibility |
+| Skipping display background for text | Faster rendering | Text unreadable over waveform peaks | Never -- this is the known v1.1 issue |
+| Adding FM, RESET, and phase offset to the existing process() function | No refactoring needed | 890 lines becoming 1200+ lines in a single function | Acceptable for v1.2 but plan refactoring for v2.0 |
+
+---
+
+## Feature Interaction Matrix
+
+The highest-risk aspect of v1.2 is feature interactions. Each new feature interacts with every existing feature. This matrix identifies the dangerous combinations.
+
+| New Feature | + Clock Sync | + Drift Engine | + Character | + Display | + Other New Features |
+|-------------|-------------|----------------|-------------|-----------|---------------------|
+| **FM Input** | CRITICAL: FM fights clock-derived frequency (Pitfall 2) | MODERATE: FM + drift both modulate frequency, effects compound | LOW: independent | LOW: no display impact | FM + Phase Offset = phase modulation (Pitfall 14) |
+| **Phase Jitter** | HIGH: jitter accumulates between clock resets (Pitfall 9) | MODERATE: jitter + drift = too much instability at high settings | LOW: independent | LOW: jitter too fast for display | Jitter + Swing = uneven timing feels random not groovy |
+| **DC Offset Drift** | LOW: DC doesn't affect timing | LOW: independent OU process | LOW: independent | MODERATE: waveform shifts vertically on display | DC offset + waveform bleed = offset bleeds between shapes |
+| **Pitch Slew** | LOW: if applied to drift only | HIGH: double-slew with freqSlew (Pitfall 8) | LOW: independent | LOW: no display impact | Pitch slew + FM = FM response feels sluggish |
+| **Waveform Bleed** | LOW: no timing impact | LOW: independent | MODERATE: bleed amounts interact with character deformations | MODERATE: display should show bleed effect | Bleed + Phase Offset = bleed visible at different cycle position |
+| **RESET Jack** | CRITICAL: 1ms blanking required (Pitfall 3) | LOW: reset doesn't affect drift | LOW: character crossfade on reset (existing) | LOW: display handles reset (existing) | RESET + Phase Offset = reset target (Pitfall 5) |
+| **Phase Offset** | MODERATE: offset affects reset target (Pitfall 5) | LOW: independent | LOW: independent | MODERATE: display must reflect offset | Phase Offset + FM = PM synthesis (Pitfall 14) |
+| **Swing/Shuffle** | CRITICAL: only meaningful when clocked | LOW: independent | LOW: independent | MODERATE: display should show timing warp | Swing + Phase Reset = swing resets with phase (correct) |
+
+**Most dangerous combinations (must be tested together):**
+1. FM + Clock Sync (Pitfall 2) -- frequency authority conflict
+2. RESET + CLK + 1ms blanking (Pitfall 3) -- timing coordination
+3. Phase Offset + RESET (Pitfall 5) -- reset target ambiguity
+4. Phase Jitter + Clock Sync (Pitfall 9) -- accumulator drift
+5. Pitch Slew + existing freqSlew (Pitfall 8) -- cascaded smoothing
+6. FM + Phase Offset at audio rate (Pitfall 14) -- unintended PM synthesis
+
+---
+
+## Performance Traps
+
+Patterns that work in testing but fail under real-world load.
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Per-sample OU computation for all imperfections | CPU usage spikes with multiple imperfections at high sample rates | Subsample OU layers (e.g., update every 4-8 samples) for slow processes like DC offset drift | At 192kHz with 8+ OU layers active, per-module CPU exceeds 1% |
+| Display buffer rebuild for phase offset changes | Display stutters when phase offset CV is modulated | Rate-limit display rebuilds to 30fps for all parameter changes (existing pattern) | With audio-rate phase offset CV, rebuild triggers on every sample if not rate-limited |
+| Additional atomic stores for new display data | Cache line contention between audio and GUI threads | Keep all atomics in the same cache line (64 bytes) or separate into dedicated cache lines | With 8+ atomics written per sample, false sharing between threads becomes measurable |
+| Swing phase warp computation per sample | Unnecessary computation in free-running mode | Gate swing computation on `isClocked` flag; skip entirely when swing=50% or unclocked | Always active swing computation at 192kHz wastes CPU in the common case |
+
+---
+
+## UX Pitfalls
+
+Common user experience mistakes when adding these features.
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| Swing control active in free-running mode | User turns swing knob, nothing perceptible happens, thinks module is broken | Disable/gray-out swing when not clocked; show "CLK required" in tooltip |
+| FM depth too sensitive (0-10V = huge range) | Any FM source produces extreme modulation; unusable without external attenuation | Built-in FM attenuverter knob; default range of +/-1 octave per 5V |
+| Phase offset in degrees | Most Eurorack users think in "0-360" but VCV knobs are 0-1 | Label in degrees (0-360) or percentage (0-100%); internally use [0, 1) |
+| Too many new controls at once | Users overwhelmed by 3-4 new knobs + jacks; can't tell what each does | Introduce in logical groups; FM first, then phase offset, then swing |
+| RESET jack behavior unclear | User expects RESET to restart the module from scratch vs. just phase reset | Tooltip: "Phase Reset -- resets LFO to cycle start without affecting clock tracking" |
+| Component spread invisible | User enables drift, sees nothing different from v1.1 | Ensure at least one visible change on display (e.g., slight duty cycle asymmetry on square wave) |
+
+---
+
+## "Looks Done But Isn't" Checklist
+
+Things that appear complete but are missing critical pieces.
+
+- [ ] **FM Input:** Often missing negative frequency protection -- verify with -5V static FM input at 0.1 Hz base rate
+- [ ] **FM Input:** Often missing clocked-mode authority scaling -- verify FM + clock sync does not produce clicks
+- [ ] **RESET Jack:** Often missing 1ms blanking -- verify with CLK and RESET from same source through different cable paths
+- [ ] **RESET Jack:** Often missing interaction with division counter -- verify RESET does not corrupt `clockBeatCount`
+- [ ] **Phase Offset:** Often missing display update -- verify display waveform starts at offset position, not phase 0
+- [ ] **Phase Offset:** Often missing reset interaction -- verify clock reset goes to offset position, not phase 0
+- [ ] **Swing:** Often missing identity at 50% -- verify swing=50% produces identical output to swing disabled
+- [ ] **Swing:** Often missing clocked-only gating -- verify swing has no effect in free-running mode
+- [ ] **DC Offset Drift:** Often missing output range check -- verify output stays within +/-5V with all imperfections maxed
+- [ ] **Phase Jitter:** Often missing rate scaling -- verify jitter effect is consistent at 0.01 Hz and 10 Hz
+- [ ] **Waveform Bleed:** Often missing coefficient normalization -- verify output does not exceed +/-5V at morph midpoints
+- [ ] **Display Text:** Often missing dynamic background sizing -- verify text readable with all waveform shapes at all morph positions
+- [ ] **Incoming BPM:** Often missing labeling -- verify user can distinguish incoming clock BPM from effective LFO BPM
+
+---
+
+## Recovery Strategies
+
+When pitfalls occur despite prevention, how to recover.
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| FM negative frequency (P1) | LOW | Add bidirectional phase wrap + frequency clamp; 2 lines of code |
+| FM + clock sync conflict (P2) | MEDIUM | Add authority scaling; requires testing all ratio/FM combinations |
+| RESET + CLK blanking (P3) | MEDIUM | Add timer and blanking logic; requires careful testing with multiple clock sources |
+| DC offset exceeding range (P4) | LOW | Add output clamp or reduce offset bounds; 1-2 lines |
+| Phase offset reset target (P5) | LOW | Move offset application from accumulator to waveform lookup; small refactor |
+| Swing timing errors (P6) | MEDIUM | Rewrite swing as phase warp function; requires rethinking if implemented as frequency modulation |
+| Display text readability (P11) | LOW | Add nvgBoxGradient background; purely additive change to render code |
+| Panel space (P15) | HIGH | Panel redesign affects SVG, widget positions, and visual balance; best caught before implementation |
+
+---
+
+## Pitfall-to-Phase Mapping
+
+How roadmap phases should address these pitfalls.
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| P1: FM negative frequency | FM input implementation | Patch -5V DC to FM input at 0.1Hz rate; output must not produce NaN or DC |
+| P2: FM + clock sync | FM input implementation | Patch LFO to FM input while clock-synced; listen for clicks at clock rate |
+| P3: RESET + CLK blanking | RESET jack implementation | Patch same trigger to both CLK and RESET; verify single reset per trigger |
+| P4: DC offset range | Analog imperfections phase | Set drift=1, run for 60 seconds, verify output stays within +/-5.2V |
+| P5: Phase offset + reset | Phase offset implementation | Set 90-degree offset, send clock; verify waveform starts at peak not zero |
+| P6: Swing timing | Swing implementation | Set swing=50%, verify identical output to swing disabled (null test) |
+| P7: Component spread perceptibility | Analog imperfections phase | Instantiate two modules, set character=1; verify visible difference on display |
+| P8: Pitch slew + freqSlew | Analog imperfections phase | Rapidly turn Rate knob with drift=1; verify no perceptible lag vs drift=0 |
+| P9: Phase jitter + clock | Analog imperfections phase | Run jitter + clock sync for 5 minutes; verify phase at clock edges stays near 0.0 |
+| P10: Waveform bleed amplitude | Waveform bleed implementation | Sweep morph 0-1 with character=1; verify output peak never exceeds 5.1V |
+| P11: Display text readability | Display polish phase | Set morph to each shape; verify text readable at every morph position |
+| P12: Dual BPM display | Display polish phase | Set ratio to /4 with 120 BPM clock; verify both BPM values are distinguishable |
+| P13: OU independence | Analog imperfections phase | Log DC offset and pitch drift over 60s; verify correlation coefficient < 0.3 |
+| P14: Phase offset audio rate | Phase offset implementation | Patch audio-rate VCO to phase offset CV; verify no crashes, accept PM behavior |
+| P15: Panel space | Panel planning (before implementation) | Mock up panel SVG with all v1.2 controls; verify 7mm minimum spacing |
 
 ---
 
 ## Sources
 
 ### Official Documentation (HIGH confidence)
-- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) - Schmitt trigger thresholds, clock/reset timing rules, trigger output standards
-- [VCV Rack DSP Manual](https://vcvrack.com/manual/DSP) - Signal processing guidance
-- [VCV Rack API: dsp::TSchmittTrigger](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TSchmittTrigger) - Trigger detection API
-- [VCV Rack API: dsp::TTimer](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TTimer) - Timer accumulation API
-- [VCV Rack API: dsp::PulseGenerator](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1PulseGenerator) - Trigger output API
-- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) - Module serialization, `dataToJson`/`dataFromJson`
+- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- 1ms blanking rule, Schmitt trigger thresholds, trigger/gate voltage levels
+- [VCV Rack DSP Manual](https://vcvrack.com/manual/DSP) -- Signal processing guidance
+- [NanoVG GitHub](https://github.com/memononen/nanovg) -- nvgBoxGradient, nvgTextBounds API reference
 
 ### Community and Technical Discussions (MEDIUM confidence)
-- [VCV Community: Example clock multiplier code](https://community.vcvrack.com/t/example-clock-multiplier-code/20570) - Period measurement patterns
-- [VCV Community: Clock generators BPM accuracy](https://community.vcvrack.com/t/clock-generators-bpm-accuracy/20030) - Timing precision issues
-- [VCV Community: Schmitt trigger help](https://community.vcvrack.com/t/help-schmitt-trigger/14774) - Threshold selection
-- [VCV Community: VCV LFO Clock](https://community.vcvrack.com/t/vcv-lfo-clock/19755) - Rate knob behavior in clocked mode
-- [KVR Audio: Why discontinuities pop](https://www.kvraudio.com/forum/viewtopic.php?t=182555) - Discontinuity artifact theory
-- [JUCE Forum: LFO Clicks problem](https://forum.juce.com/t/lfo-clicks-problem/41475) - Phase reset click solutions
+- [KVR Audio: Implementing swing/shuffle](https://www.kvraudio.com/forum/viewtopic.php?t=261858) -- Phase warp approach for swing timing
+- [KVR Audio: Analog Modeling - what is being modeled](https://www.kvraudio.com/forum/viewtopic.php?t=368351) -- Component tolerance modeling approaches
+- [KVR Audio: DC removal high-pass corner frequency](https://www.kvraudio.com/forum/viewtopic.php?t=535852) -- DC offset handling in synthesizers
+- [ModWiggler: Adding swing to clock](https://modwiggler.com/forum/viewtopic.php?t=174713) -- Eurorack swing implementation patterns
+- [VCV Community: Reset sequencers one step off](https://community.vcvrack.com/t/reset-sequencers-are-one-step-off/12898) -- 1ms blanking rule real-world implications
+- [VCV Community: Advanced NanoVG custom label](https://community.vcvrack.com/t/advanced-nanovg-custom-label/6769?page=2) -- NanoVG text rendering in VCV Rack
+- [Learning Modular: FM types explained](https://learningmodular.com/understanding-the-differences-between-exponential-linear-and-through-zero-fm/) -- Exponential vs linear vs through-zero FM
+- [Frap Tools: Exponential FM](https://frap.tools/frequency-modulation-part-1-exponential-fm/) -- FM implementation at different frequency ranges
 
 ### Module References (MEDIUM confidence)
-- [Mutable Instruments Tides Manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/tides_2018/manual/) - PLL clock tracking, division/multiplication behavior
-- [VCV Fundamental LFO](https://library.vcvrack.com/Fundamental/LFO) - CLK input behavior reference
-- [ModWiggler: LFO with sync and reset](https://www.modwiggler.com/forum/viewtopic.php?t=222452) - Reset discontinuity discussion
-- [ModWiggler: Modules with clock/reset issues](https://www.modwiggler.com/forum/viewtopic.php?t=222946) - Real-world clock sync problems
-- [Learning Modular: Master Clocks and Reset](https://learningmodular.com/master-clocks-reset/) - Clock/reset timing in Eurorack
+- [Cherry Audio Quadrature VLFO](https://store.cherryaudio.com/modules/quadrature-vlfo) -- Phase offset knob behavior reference
+- [New Systems Instruments Quad LFO](https://nsinstruments.com/modules/qlfo.html) -- Quadrature phase offset implementation
+- [Noise Engineering: Clocks](https://noiseengineering.us/blogs/loquelic-literitas-the-blog/clocks-don-t-have-to-be-boring/) -- Clock and swing in Eurorack context
 
 ### Direct Source Analysis (HIGH confidence)
-- `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` - Existing module implementation, drift engine, display system, phase accumulator
+- `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` -- 890 lines: phase accumulator, OU drift, clock sync, waveform engine, display system
+- `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/.planning/PROJECT.md` -- Feature list, constraints, key decisions
+- `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/.planning/RETROSPECTIVE.md` -- Lessons from v1.0 and v1.1
+
+### Analog Synthesis References (MEDIUM confidence)
+- [North Coast Synthesis: DC coupling](https://northcoastsynthesis.com/news/more-about-dc-coupling/) -- DC offset behavior in analog signal chains
+- [Wikipedia: Analog modeling synthesizer](https://en.wikipedia.org/wiki/Analog_modeling_synthesizer) -- Component tolerance modeling overview
+- TR-909 swing specification: delays even 16th notes by 2/96 to 12/96 of a beat (6 shuffle settings)
+
+---
+*Pitfalls research for: v1.2 Deep Analog features*
+*Researched: 2026-03-13*

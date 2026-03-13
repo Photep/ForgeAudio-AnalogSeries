@@ -1,606 +1,755 @@
-# Architecture Research: Clock Sync Integration
+# Architecture Research: v1.2 Deep Analog Integration
 
-**Domain:** Clock-synced LFO in VCV Rack 2
-**Researched:** 2026-03-07
-**Confidence:** HIGH (VCV Rack SDK patterns well-documented; clock sync is a solved problem in the module ecosystem; existing codebase is small and well-understood)
+**Domain:** Deep analog character expansion for VCV Rack LFO
+**Researched:** 2026-03-13
+**Confidence:** HIGH (existing codebase thoroughly analyzed; integration points are well-defined; all features are DSP fundamentals with established implementation patterns)
 
-## Current Architecture Snapshot
+## Current Architecture Snapshot (Post v1.1)
 
-The existing AnalogLFO is a single 538-line file (`src/AnalogLFO.cpp`) containing three components:
+The AnalogLFO is an 890-line single-file module (`src/AnalogLFO.cpp`) with three structs:
 
-1. **`AnalogLFO` (Module struct)** -- Phase accumulator, waveform generation, drift engine, display buffer management. All DSP in `process()` at sample rate.
-2. **`WaveformDisplay` (Widget)** -- NanoVG rendering of waveform trace + phase dot with glow effects. Reads from double buffer.
-3. **`AnalogLFOWidget` (ModuleWidget)** -- Panel layout: knobs, jacks, screws, display placement.
+1. **`AnalogLFO` (Module)** -- Phase accumulator, waveform engine, character engine, drift engine, clock tracker, display buffer management. All DSP in `process()`.
+2. **`WaveformDisplay` (TransparentWidget)** -- NanoVG rendering of waveform trace, phase dot, text overlays (SYNC, ratio, BPM, Hz). Reads lock-free display state.
+3. **`AnalogLFOWidget` (ModuleWidget)** -- Panel layout with knobs, jacks, screws, display.
 
 ### Current Data Flow (Per Sample)
 
 ```
 process():
-  1. Read RATE_PARAM -> freq (Hz)
-  2. Compute deltaPhase = freq * sampleTime
-  3. Read drift params + CV -> drift amount
-  4. If drift > 0: run OU layers, modulate deltaPhase
-  5. phase += deltaPhase; wrap to [0, 1)
-  6. Read morph/character params + CV
-  7. Update display buffer on phase wrap or param change
-  8. computeMorphedWave(phase, morph, character) -> sample
-  9. Output: sample * 5V
+  1. processClockInput(sampleTime)          // clock edge detection, period EMA, phase reset
+  2. Compute targetFreq (clocked or free)
+  3. Apply frequency slew (freqSlew)
+  4. deltaPhase = freq * sampleTime         // double precision
+  5. Read drift params + CV -> drift amount
+  6. If drift > 0: run 4 OU layers, modulate deltaPhase
+  7. phase += deltaPhase; wrap [0, 1)
+  8. Read morph/character params + CV
+  9. Update display buffer on wrap or param change
+  10. computeMorphedWave(phase, morph, character) -> sample
+  11. Apply crossfade if recent phase reset
+  12. Output: sample * 5V
 ```
 
 ### Current Enum Layout
 
 ```cpp
-enum ParamId {
+enum ParamId {    // 7 params
     MORPH_PARAM, CHARACTER_PARAM, DRIFT_PARAM, RATE_PARAM,
-    MORPH_ATTEN_PARAM, CHARACTER_ATTEN_PARAM, DRIFT_ATTEN_PARAM,
-    PARAMS_LEN  // = 7
+    MORPH_ATTEN_PARAM, CHARACTER_ATTEN_PARAM, DRIFT_ATTEN_PARAM
 };
-enum InputId {
-    MORPH_CV_INPUT, DRIFT_CV_INPUT, CHARACTER_CV_INPUT,
-    INPUTS_LEN  // = 3
+enum InputId {    // 4 inputs
+    MORPH_CV_INPUT, DRIFT_CV_INPUT, CHARACTER_CV_INPUT, CLK_INPUT
 };
-enum OutputId { OUTPUT, OUTPUTS_LEN };
-enum LightId  { LIGHTS_LEN };
+enum OutputId { OUTPUT };   // 1 output
 ```
 
 ### Current Panel Layout (12HP = 60.96mm)
 
 ```
-y=15-42mm   Waveform display (57x27mm, 2mm side margins)
+y=15-42mm   Waveform display (57x27mm)
 y=54mm      MORPH knob (center, RoundBigBlackKnob)
-y=69mm      CHARACTER knob (x=18mm) + DRIFT knob (x=42.96mm)
-y=86mm      RATE knob (x=18mm, RoundBlackKnob)
-            -- empty space at x=42.96, y=86mm --
-y=92mm      Section divider line
+y=69mm      CHARACTER (x=18mm) + DRIFT (x=42.96mm) knobs
+y=86mm      RATE knob (x=18mm) + CLK jack (x=42.96mm)
 y=96mm      Trimpots: Morph(x=10) Char(x=24) Drift(x=38)
 y=108mm     Jacks: MorphCV(x=10) CharCV(x=24) DriftCV(x=38) OUT(x=52)
 ```
 
-## Clock Sync Integration Architecture
+---
 
-### System Overview
+## v1.2 Feature Integration Analysis
 
-```
-                          CLK INPUT (new)
-                              |
-                              v
-                   +--------------------+
-                   |  Clock Tracker     | (new component)
-                   |                    |
-                   |  SchmittTrigger    |
-                   |  Period measurement|
-                   |  Period smoothing  |
-                   |  Validity tracking |
-                   +--------+-----------+
-                            |
-                            | clockPeriod (seconds)
-                            | clockValid (bool)
-                            v
-    +--------------------------------------------------+
-    |              process() (modified)                  |
-    |                                                    |
-    |  if (clockValid):                                  |
-    |    freq = divisionRatio / clockPeriod              |
-    |    phase reset on clock edge                       |
-    |  else:                                             |
-    |    freq = RATE_PARAM (existing free-run)           |
-    |                                                    |
-    |  deltaPhase = freq * sampleTime                   |
-    |  ... drift, morph, character unchanged ...         |
-    +--------------------------------------------------+
-                            |
-                            v
-                   +--------------------+
-                   |  WaveformDisplay   | (modified)
-                   |                    |
-                   |  + sync badge      | (new overlay)
-                   |  + division label  | (new overlay)
-                   +--------------------+
-```
+### Feature 1: FM Input Jack
 
-### New Components
+**What it does:** Allows external CV to modulate the LFO frequency. An FM input voltage shifts frequency exponentially (1V/oct standard) or linearly, scaled by an attenuator.
 
-#### 1. Clock Tracker (inline in AnalogLFO struct)
+**Integration point:** Between frequency computation (step 2-3) and deltaPhase calculation (step 4).
 
-This is NOT a separate class -- it is a set of member variables and a helper method on the `AnalogLFO` struct. Introducing a separate class for ~30 lines of logic would be over-engineering given the existing monolithic style.
+**Architecture decision: Exponential FM** because the LFO already operates with a linear Hz parameter that maps to deltaPhase linearly. Exponential FM means the input voltage is added to a pitch representation before converting to frequency, which gives musically useful scaling (1V = double frequency, consistent with VCV standards). This is the approach used by the VCV Fundamental LFO.
 
-**New member variables:**
+**Implementation:**
 
 ```cpp
-// Clock tracking state
-rack::dsp::SchmittTrigger clockTrigger;
-float clockPeriod = 0.f;           // Measured period (seconds)
-float clockTimer = 0.f;            // Time since last edge
-float smoothedClockPeriod = 0.f;   // EMA-smoothed period
-bool clockValid = false;           // Have we seen >= 2 edges?
-int clockEdgeCount = 0;            // Edges seen since CLK connected
-bool clockWasConnected = false;    // For detecting disconnect
+// After targetFreq is computed, before deltaPhase:
+float fmInput = inputs[FM_INPUT].getVoltage();
+float fmAtten = params[FM_ATTEN_PARAM].getValue();  // -1.0 to 1.0 (attenuverter)
+float fmAmount = fmInput * fmAtten;
+
+// Convert targetFreq to pitch space, add FM, convert back
+// pitch = log2(freq / baseFreq), but simpler: just scale freq exponentially
+float fmFreq = targetFreq * std::pow(2.f, fmAmount);
+fmFreq = rack::math::clamp(fmFreq, 0.001f, 100.f);  // safety clamp
+float freq = freqSlew.process(args.sampleTime, fmFreq);
 ```
 
-**Clock processing logic (called at top of `process()`):**
+**New components:**
+- `FM_INPUT` enum entry
+- `FM_ATTEN_PARAM` enum entry (attenuverter, -1 to 1)
+- FM jack on panel
+- FM attenuverter trimpot on panel
+
+**Modified components:**
+- `process()`: insert FM calculation between targetFreq and deltaPhase
+- Constructor: `configInput(FM_INPUT, "FM")`, `configParam(FM_ATTEN_PARAM, ...)`
+- Widget: add FM jack and trimpot
+
+**Panel placement consideration:** The FM jack is functionally related to Rate/CLK (frequency control group). It should go near RATE knob. The current layout has RATE at (18, 86) and CLK at (42.96, 86). FM input could go at (52, 96) with its trimpot at (52, 96) -- but this conflicts with the existing trimpot row. **Alternative:** Add FM jack to the bottom jack row. See Panel Layout section below.
+
+**Real-time safety:** `std::pow(2.f, x)` is safe for audio thread. No allocation. For performance, could use `rack::dsp::exp2_taylor5()` approximation if profiling shows need, but at LFO rates (process() is cheap overall) exact `pow` is fine.
+
+**Interaction with clock mode:** FM should apply in BOTH free and clocked modes. In clocked mode, FM modulates around the clock-derived frequency, creating tempo-synced frequency wobble -- a musically useful effect.
+
+---
+
+### Feature 2: Expanded Analog Imperfections
+
+Four new imperfection types that complement the existing drift engine. The key architectural principle: **all four are controlled by the existing Drift knob** via curated proportions, not individual controls (matches the "No individually exposed drift params" out-of-scope decision).
+
+#### 2a. Phase Jitter
+
+**What it does:** Adds random per-sample noise to the phase readout, simulating timing instability in analog oscillator circuits. Unlike drift (which modulates frequency/deltaPhase), jitter modulates the phase value used for waveform lookup.
+
+**Integration point:** Between phase accumulation (step 7) and waveform generation (step 10). Applied to the phase value passed to `computeMorphedWave()`, NOT to the accumulator itself (to prevent jitter from accumulating into permanent phase error).
 
 ```cpp
-void processClockInput(float sampleTime) {
-    bool clkConnected = inputs[CLK_INPUT].isConnected();
-
-    // Handle disconnect: revert to free-run immediately
-    if (!clkConnected) {
-        if (clockWasConnected) {
-            clockValid = false;
-            clockEdgeCount = 0;
-            clockTimer = 0.f;
-            smoothedClockPeriod = 0.f;
-        }
-        clockWasConnected = false;
-        return;
-    }
-    clockWasConnected = true;
-
-    // Accumulate time
-    clockTimer += sampleTime;
-
-    // Edge detection (VCV standard: low=0.1V, high=1.0V)
-    float clkVoltage = inputs[CLK_INPUT].getVoltage();
-    if (clockTrigger.process(clkVoltage, 0.1f, 1.f)) {
-        clockEdgeCount++;
-
-        if (clockEdgeCount >= 2 && clockTimer > 0.001f) {
-            // Valid period measurement
-            clockPeriod = clockTimer;
-
-            // EMA smoothing (alpha=0.3 for responsive yet stable tracking)
-            if (smoothedClockPeriod <= 0.f) {
-                smoothedClockPeriod = clockPeriod;  // First valid: snap
-            } else {
-                smoothedClockPeriod += 0.3f * (clockPeriod - smoothedClockPeriod);
-            }
-            clockValid = true;
-        }
-        clockTimer = 0.f;
-
-        // Phase reset on clock edge (snap to 0)
-        phase = 0.0;
-    }
+// After phase accumulation, before waveform generation:
+float p = (float)phase;
+if (drift >= 0.001f) {
+    float jitterAmount = driftAmount * 0.003f;  // max 0.3% of cycle at full drift
+    float jitterNoise = normalDist(rng);
+    p += jitterAmount * jitterNoise;
+    p = p - std::floor(p);  // wrap to [0, 1)
 }
+float sample = computeMorphedWave(p, morph, character);
 ```
 
-**Rationale for inline approach:**
-- The existing module is 538 lines with everything in one struct. Clock tracking adds ~50 lines of state and one method. Extracting a class would add indirection without benefit at this scale.
-- If/when a VCO module is built, the clock tracker could be refactored into a shared utility -- but that is a v2.0 concern, not a v1.1 concern.
+**Why not modulate deltaPhase:** Drift already modulates deltaPhase via the OU process. Phase jitter is a different phenomenon -- it is uncorrelated per-sample noise on the phase readout, not a frequency modulation. Adding it to deltaPhase would make it indistinguishable from the existing OU drift.
 
-#### 2. Division/Multiplication Ratio
+**New components:** None (uses existing RNG and normalDist).
 
-The RATE knob behavior changes when a clock is connected. Instead of mapping to Hz directly, it maps to a division/multiplication table.
+**Modified components:** `process()` -- add jitter calculation between phase accumulation and waveform generation.
 
-**Approach: Discrete ratio table indexed by knob position.**
+#### 2b. DC Offset Drift
 
-```cpp
-// Division/multiplication ratios (musical values)
-// Rate knob [0..1] maps to index in this table
-static constexpr int NUM_RATIOS = 13;
-static constexpr float RATIOS[NUM_RATIOS] = {
-    1.f/8, 1.f/6, 1.f/4, 1.f/3, 1.f/2,
-    2.f/3, 1.f,
-    3.f/2, 2.f, 3.f, 4.f, 6.f, 8.f
-};
-// Labels for display
-static const char* RATIO_LABELS[NUM_RATIOS] = {
-    "/8", "/6", "/4", "/3", "/2",
-    "x2/3", "x1",
-    "x3/2", "x2", "x3", "x4", "x6", "x8"
-};
+**What it does:** Adds a slowly wandering DC offset to the output, simulating capacitor leakage and op-amp offset voltage in analog circuits. Real analog oscillators rarely sit at perfect 0V center.
 
-int getRatioIndex() {
-    float knob = params[RATE_PARAM].getValue();
-    // Map continuous knob to nearest discrete ratio
-    float normalized = (knob - 0.01f) / (20.f - 0.01f);  // Normalize from Rate range
-    int idx = (int)(normalized * (NUM_RATIOS - 1) + 0.5f);
-    return rack::math::clamp(idx, 0, NUM_RATIOS - 1);
-}
-```
-
-**Why a discrete table instead of continuous scaling:**
-- Musical clock divisions are inherently discrete (1/4, 1/2, x2, x4).
-- Continuous scaling between divisions creates non-musical ratios that fight the clock.
-- Discrete snapping gives predictable, repeatable behavior -- users can reliably dial in "half time" or "double time."
-- The Rate knob's existing range (0.01-20Hz) maps naturally to 13 positions without needing reconfiguration.
-
-**Alternative considered and rejected: Separate division param.** Adding a dedicated switch or encoder would require panel space that does not exist at 12HP without a redesign. Repurposing the Rate knob is the standard Eurorack convention (see: VCV Fundamental LFO, Mutable Instruments Tides).
-
-### Modified Components
-
-#### 1. `AnalogLFO` struct -- process() Changes
-
-The `process()` method changes in two places:
-
-**Frequency computation (lines 218-219 currently):**
+**Integration point:** After waveform generation (step 10), before output scaling. A slow random process (separate OU layer or reuse of existing slow OU layer) adds a small voltage offset.
 
 ```cpp
-// BEFORE (v1.0):
-float freq = params[RATE_PARAM].getValue();
-freq = std::fmax(freq, 0.001f);
-
-// AFTER (v1.1):
-processClockInput(args.sampleTime);
-float freq;
-if (clockValid && smoothedClockPeriod > 0.f) {
-    int ratioIdx = getRatioIndex();
-    freq = RATIOS[ratioIdx] / smoothedClockPeriod;
+// After sample = computeMorphedWave(...):
+if (drift >= 0.001f) {
+    // Reuse the slowest OU layer (0.05Hz) as DC drift source
+    float dcOffset = driftAmount * 0.04f * ouLayers[0].state;  // max ~200mV offset
+    outputVoltage = 5.f * sample + dcOffset;
 } else {
-    freq = params[RATE_PARAM].getValue();
-}
-freq = std::fmax(freq, 0.001f);
-```
-
-**Phase reset is handled inside `processClockInput()` (sets `phase = 0.0` on edge).**
-
-Everything after frequency computation -- drift, morph, character, waveform generation, display buffer, output -- remains UNCHANGED.
-
-#### 2. Enum Extensions
-
-```cpp
-enum InputId {
-    MORPH_CV_INPUT,
-    DRIFT_CV_INPUT,
-    CHARACTER_CV_INPUT,
-    CLK_INPUT,          // NEW
-    INPUTS_LEN          // now = 4
-};
-```
-
-No new params, outputs, or lights needed for the core feature.
-
-#### 3. Constructor Changes
-
-```cpp
-// In AnalogLFO() constructor, add:
-configInput(CLK_INPUT, "Clock");
-```
-
-#### 4. WaveformDisplay -- Sync Indicator Overlay
-
-The display adds two visual elements when clocked:
-
-1. **Sync badge:** Small "SYNC" text or icon in corner of display
-2. **Division label:** Current ratio (e.g., "x2", "/4") shown in display
-
-**Implementation approach:** Read new atomic state from the module:
-
-```cpp
-// New atomics in AnalogLFO struct:
-std::atomic<bool> displayClockValid{false};
-std::atomic<int> displayRatioIndex{6};  // Default: x1
-
-// In process(), after clock processing:
-displayClockValid.store(clockValid, std::memory_order_relaxed);
-if (clockValid) {
-    displayRatioIndex.store(getRatioIndex(), std::memory_order_relaxed);
+    outputVoltage = 5.f * sample;
 }
 ```
 
-The display reads these atomics and renders text overlays using NanoVG. This follows the existing pattern of `displayPhase` and `displayDrift` atomics for audio-to-GUI transfer.
+**Why reuse OU layer 0:** The slowest OU layer (0.05Hz wander) has exactly the right character for DC drift -- very slow, continuous wandering. Creating a separate OU process would be redundant. The layer's state is already computed in the drift section; we just read it again with a different scaling factor.
 
-**NanoVG text rendering note:** The existing display uses only NanoVG drawing primitives (paths, circles, gradients) -- no text rendering. For the sync badge and division label, there are two options:
+**New components:** None.
 
-- **Option A: NanoVG font rendering.** Use `nvgText()` with a loaded font. Requires bundling a font file and calling `nvgCreateFont()`. Standard in VCV Rack modules.
-- **Option B: Path-based text like the SVG panel.** Consistent with existing approach but tedious for runtime text that changes (division labels).
+**Modified components:** `process()` -- modify output voltage computation.
 
-**Recommendation: Option A (NanoVG font).** The division label changes based on knob position, making path-based rendering impractical. Use the built-in VCV Rack font (`asset::system("res/fonts/ShareTechMono-Regular.ttf")`) which is already available and commonly used by other modules for display text.
+#### 2c. Pitch Slew (Rate Limiting)
 
-#### 5. Panel SVG Update
+**What it does:** Applies a gentle slew/lag to frequency changes, simulating the thermal inertia of analog oscillator cores. When you turn the Rate knob, the frequency does not change instantly but glides toward the new value.
 
-The CLK jack needs a physical location on the panel. Looking at the current layout:
+**Integration point:** This is already partially implemented via `freqSlew` (TExponentialFilter with lambda=20). The v1.2 enhancement ties slew rate to the Drift knob: higher drift = more slew = more "analog" response to frequency changes.
 
-```
-y=86mm: RATE knob at x=18mm -- right side (x=42.96) is EMPTY
-```
-
-**Place the CLK jack at x=42.96, y=86mm** -- directly across from the Rate knob, in the currently empty space. This creates a natural visual association: Rate knob on left, Clock input on right, both at the same vertical position.
-
-The SVG needs:
-- CLK jack hole indicator in the components layer
-- "CLK" label above the jack (at ~y=79mm, matching RATE label style)
-
-Widget addition:
 ```cpp
-addInput(createInputCentered<PJ301MPort>(mm2px(Vec(42.96, 86.0)), module, AnalogLFO::CLK_INPUT));
+// Modify the existing freqSlew lambda based on drift:
+float slewLambda = 20.f;  // base: 50ms (existing)
+if (drift >= 0.001f) {
+    // At full drift, slow down to lambda=5 (~200ms slew)
+    slewLambda = 20.f - driftAmount * 15.f;
+    slewLambda = std::fmax(slewLambda, 5.f);
+}
+freqSlew.setLambda(slewLambda);
+float freq = freqSlew.process(args.sampleTime, targetFreq);
 ```
 
-#### 6. Serialization (dataToJson/dataFromJson)
+**New components:** None.
 
-Clock tracking state should NOT be serialized. The clock period is derived from incoming signal -- on patch load, the module will re-acquire the clock within 2 edges (typically <1 second at musical tempos). This matches the existing decision not to serialize OU drift state ("fresh randomness on patch load").
+**Modified components:** `process()` -- make freqSlew lambda drift-dependent.
 
-However, the module should serialize **whether it was in clocked mode** so that the Rate knob can display the correct behavior on load. Actually, this is unnecessary -- clocked mode is determined by `inputs[CLK_INPUT].isConnected()`, which VCV Rack handles automatically via cable state in the patch file.
+#### 2d. Component Spread
 
-**No serialization changes needed.**
+**What it does:** Simulates manufacturing tolerance in analog components by applying unique per-instance offsets to character parameters. Two modules with identical knob settings will produce subtly different waveforms, just like two units of the same analog synth.
 
-## Data Flow: Clocked vs Free-Run
+**Integration point:** In the constructor (one-time initialization), generate per-instance random offsets. Apply these in `process()` when reading morph, character, and rate parameters.
 
-### Free-Run Mode (CLK disconnected -- existing behavior)
+```cpp
+// In AnalogLFO struct:
+float componentSpread[3] = {};  // morph, character, rate offsets
 
-```
-RATE_PARAM -> freq (Hz)
-  |
-  v
-deltaPhase = freq * sampleTime
-  |
-  v
-[drift modulation]
-  |
-  v
-phase += deltaPhase; wrap [0,1)
-  |
-  v
-computeMorphedWave(phase, morph, character) -> output
+// In constructor:
+componentSpread[0] = normalDist(rng) * 0.02f;  // +/- 2% morph offset
+componentSpread[1] = normalDist(rng) * 0.03f;  // +/- 3% character offset
+componentSpread[2] = normalDist(rng) * 0.01f;  // +/- 1% rate offset
+
+// In process(), when reading params:
+float morph = rack::math::clamp(morphKnob + morphAtten * morphCV / 5.f
+              + componentSpread[0] * drift, 0.f, 1.f);
 ```
 
-### Clocked Mode (CLK connected -- new behavior)
+**Scaling with Drift knob:** Component spread is multiplied by the drift amount. At drift=0 (digital), there is zero component spread. At drift=1 (full analog), the offsets are fully applied. This keeps the "drift=0 means pristine digital" contract.
 
-```
-CLK_INPUT voltage
-  |
-  v
-SchmittTrigger (0.1V / 1.0V thresholds)
-  |
-  +--> on rising edge:
-  |      measure period since last edge
-  |      smooth via EMA (alpha=0.3)
-  |      reset phase = 0.0
-  |
-  v
-RATE_PARAM -> ratio index -> RATIOS[idx]
-  |
-  v
-freq = RATIOS[idx] / smoothedClockPeriod
-  |
-  v
-deltaPhase = freq * sampleTime
-  |
-  v
-[drift modulation -- same as free-run]
-  |
-  v
-phase += deltaPhase; wrap [0,1)
-  |
-  v
-computeMorphedWave(phase, morph, character) -> output
+**Serialization:** Component spread values should NOT be serialized. They regenerate on module creation, giving each instance unique character. This matches the existing OU state non-serialization philosophy.
+
+**New components:** `componentSpread[3]` array.
+
+**Modified components:** Constructor (generate spreads), `process()` (apply spreads).
+
+---
+
+### Feature 3: Waveform Bleed in Morph Transitions
+
+**What it does:** In real analog crossfader circuits, adjacent waveforms bleed slightly into the output even when not selected, due to imperfect switching and capacitive coupling. At morph=0.0 (pure sine), a tiny amount of triangle is audible. At morph=0.33 (pure triangle), traces of sine and saw are present.
+
+**Integration point:** Inside `computeMorphedWave()` (step 10 of the pipeline). The existing linear crossfade between adjacent pairs becomes a wider crossfade where non-selected waveforms contribute a small amount.
+
+**Current morph implementation:**
+```cpp
+float scaled = morph * 3.f;
+int segment = std::min((int)scaled, 2);
+float frac = scaled - (float)segment;
+// Only two adjacent waveforms contribute at any point
 ```
 
-### Display Data Flow (Modified)
+**Modified implementation with bleed:**
+```cpp
+float computeMorphedWave(float phase, float morph, float character, float bleedAmount) {
+    float sine = computeSine(phase, character);
+    float tri  = computeTriangle(phase, character);
+    float saw  = computeSaw(phase, character);
+    float sqr  = computeSquare(phase, character);
+
+    float scaled = morph * 3.f;
+    int segment = std::min((int)scaled, 2);
+    float frac = scaled - (float)segment;
+
+    // Standard crossfade (existing behavior)
+    float primary;
+    switch (segment) {
+        case 0: primary = sine + frac * (tri - sine); break;
+        case 1: primary = tri  + frac * (saw - tri);  break;
+        case 2: primary = saw  + frac * (sqr - saw);  break;
+        default: primary = sqr; break;
+    }
+
+    if (bleedAmount < 0.001f) return primary;
+
+    // Bleed: non-adjacent waveforms contribute a small amount
+    // Weight falls off with distance from morph position
+    float waves[4] = { sine, tri, saw, sqr };
+    float bleed = 0.f;
+    for (int i = 0; i < 4; i++) {
+        float pos = (float)i / 3.f;  // normalized position of this waveform
+        float dist = std::fabs(morph - pos);
+        if (dist < 0.001f) continue;  // skip the primary contributor
+        // Inverse-distance bleed, capped at bleedAmount
+        float weight = bleedAmount * std::fmax(0.f, 1.f - dist * 3.f);
+        bleed += weight * waves[i];
+    }
+    return primary * (1.f - bleedAmount * 0.5f) + bleed;
+}
+```
+
+**Bleed amount source:** Tied to the Character knob (not Drift). Character already models analog circuit imperfections per-waveform; bleed is a natural extension of analog crossfader circuitry.
+
+```cpp
+float bleedAmount = progressiveCurve(character) * 0.08f;  // max 8% bleed
+```
+
+**Performance note:** All four waveforms are already computed in `computeMorphedWave()`. The bleed calculation adds a loop of 4 iterations with simple arithmetic -- negligible cost.
+
+**Display buffer impact:** `updateDisplayBuffer()` also calls `computeMorphedWave()`. It must pass the bleed amount too. Since `updateDisplayBuffer` is called with morph and character, this is straightforward.
+
+**New components:** None.
+
+**Modified components:**
+- `computeMorphedWave()` -- add bleed parameter and calculation
+- `updateDisplayBuffer()` -- pass bleed amount through
+- `process()` -- compute bleedAmount from character, pass to computeMorphedWave
+
+---
+
+### Feature 4: Separate RESET Jack
+
+**What it does:** Provides a trigger input that resets the LFO phase to 0 (or to the phase offset value), independent of the CLK input. In v1.1, phase reset is tied to clock edges. A separate RESET jack allows manual/sequencer-driven phase resets without affecting clock tracking.
+
+**Integration point:** Inside `process()`, after `processClockInput()` but before phase accumulation. Uses the same anti-click crossfade mechanism as clock-driven resets.
+
+**Implementation:**
+
+```cpp
+// New member:
+dsp::SchmittTrigger resetTrigger;
+
+// In process(), after processClockInput():
+if (inputs[RESET_INPUT].isConnected()) {
+    float resetVoltage = inputs[RESET_INPUT].getVoltage();
+    if (resetTrigger.process(resetVoltage, 0.1f, 1.0f)) {
+        crossfadeFrom = lastOutputVoltage;
+        crossfadeProgress = 0.f;
+        phase = 0.0;  // or phase = phaseOffset if phase offset is implemented
+        clockBeatCount = 0;  // reset division counter too
+    }
+}
+```
+
+**Interaction with CLK:** Both CLK and RESET can trigger phase resets independently. CLK continues to measure period and drive frequency in clocked mode. RESET only resets phase -- it does not affect clock tracking state (clockState, smoothedPeriod, etc.). This is the standard Eurorack convention (VCV Fundamental LFO has separate CLK and RESET inputs).
+
+**Interaction with division counting:** When RESET fires, the division beat counter (`clockBeatCount`) resets to 0. This ensures the LFO re-aligns with the clock after a manual reset, starting a fresh division cycle on the next clock edge.
+
+**New components:**
+- `RESET_INPUT` enum entry
+- `dsp::SchmittTrigger resetTrigger` member
+- RESET jack on panel
+
+**Modified components:**
+- `process()` -- add reset processing after clock processing
+- Constructor: `configInput(RESET_INPUT, "Reset")`
+- Widget: add RESET jack
+
+---
+
+### Feature 5: Phase Offset Knob/CV
+
+**What it does:** Adds a constant offset to the phase used for waveform generation. At offset=0, the waveform starts at the beginning. At offset=0.5, it starts halfway through. CV-modulatable for animated phase shifting.
+
+**Integration point:** Between phase accumulation (step 7) and waveform generation (step 10). Applied to the phase readout, NOT the accumulator (same principle as phase jitter).
+
+```cpp
+// New params:
+// PHASE_OFFSET_PARAM: 0.0 to 1.0 (knob)
+// PHASE_OFFSET_ATTEN_PARAM: attenuator trimpot
+// PHASE_OFFSET_CV_INPUT: CV input
+
+// In process(), after phase accumulation:
+float phaseOffsetKnob = params[PHASE_OFFSET_PARAM].getValue();
+float phaseOffsetAtten = params[PHASE_OFFSET_ATTEN_PARAM].getValue();
+float phaseOffsetCV = inputs[PHASE_OFFSET_CV_INPUT].getVoltage();
+float phaseOffset = phaseOffsetKnob + phaseOffsetAtten * phaseOffsetCV / 10.f;
+// Note: /10.f because 0-10V unipolar maps to 0-1 cycle offset
+
+float p = (float)phase + phaseOffset;
+p = p - std::floor(p);  // wrap to [0, 1)
+
+// Apply jitter (if drift enabled)
+// ... then pass p to computeMorphedWave(p, morph, character, bleedAmount)
+```
+
+**Why divide by 10 (not 5):** Phase offset is a unipolar 0-1 parameter (fraction of a cycle). A 0-10V unipolar CV should sweep the full cycle. Using /5 would mean a bipolar +/-5V signal sweeps 0-2 cycles, which wraps and works but is less intuitive for the common case of unipolar CV.
+
+**Interaction with RESET:** When RESET triggers, phase resets to 0.0. The phase offset is added downstream, so after a reset, the output waveform starts at the offset position. This is correct behavior -- a module with phase offset 0.25 and a reset will always restart at the 90-degree point of the waveform.
+
+**Display impact:** The display buffer shows one cycle of the waveform without phase offset applied (it is a shape preview, not a real-time phase-accurate view). The phase dot position should reflect the offset: `displayPhase.store(p, ...)` where `p` includes the offset. This way the dot shows where in the waveform the output currently sits.
+
+**New components:**
+- `PHASE_OFFSET_PARAM` enum entry
+- `PHASE_OFFSET_ATTEN_PARAM` enum entry (optional -- panel space dependent)
+- `PHASE_OFFSET_CV_INPUT` enum entry
+- Phase offset knob and CV jack on panel
+
+**Modified components:**
+- `process()` -- add phase offset calculation between accumulation and waveform generation
+- Constructor: config new params/inputs
+
+---
+
+### Feature 6: Swing/Shuffle Control
+
+**What it does:** In clocked mode, alternately shortens and lengthens consecutive half-cycles, creating a swing/shuffle feel. At 50% swing = straight time. At 66% swing = classic triplet shuffle (the "standard" swing feel). At 75% swing = heavy dotted-eighth swing.
+
+**Integration point:** Modifies the phase accumulation rate on alternate half-cycles. The swing control changes deltaPhase dynamically based on which half of the LFO cycle is active.
+
+**Algorithm:**
+
+Swing is defined as the percentage of a beat pair occupied by the first beat. At 50%, both beats are equal (straight). At 66%, the first beat takes 2/3 of the time and the second takes 1/3 (triplet feel).
+
+For an LFO, one "cycle" is the unit. Swing alternates the speed during the first half (phase 0 to 0.5) vs second half (phase 0.5 to 1.0):
+
+```cpp
+// New param:
+// SWING_PARAM: 50 to 75 (percentage), default 50
+
+// In process(), after computing freq but before deltaPhase:
+float swingParam = params[SWING_PARAM].getValue();  // 50.0 to 75.0
+if (isClocked && swingParam > 50.5f) {
+    float swingRatio = swingParam / 100.f;  // 0.5 to 0.75
+    // In first half of cycle, slow down; in second half, speed up
+    // So that first half takes swingRatio of the total period
+    // and second half takes (1-swingRatio)
+    bool inFirstHalf = (phase < 0.5);
+    float speedMultiplier;
+    if (inFirstHalf) {
+        speedMultiplier = 0.5f / swingRatio;      // < 1.0, slows down
+    } else {
+        speedMultiplier = 0.5f / (1.f - swingRatio);  // > 1.0, speeds up
+    }
+    deltaPhase *= (double)speedMultiplier;
+}
+```
+
+**At 66% swing:** First half: speedMultiplier = 0.5/0.66 = 0.757 (slower). Second half: speedMultiplier = 0.5/0.34 = 1.47 (faster). The output waveform spends more time in the first half, creating the "lazy" feel of swing.
+
+**Clocked-only:** Swing only makes musical sense in clocked mode. In free-running mode, the swing parameter should be ignored (or displayed as inactive). The total period remains unchanged -- swing redistributes time within the cycle without changing the overall frequency.
+
+**Interaction with division ratios:** Swing applies per LFO cycle regardless of division ratio. At /4 (one LFO cycle per 4 clock beats), the swing creates an uneven distribution of the LFO's first vs second half across the 4-beat span. This is musically correct -- the LFO output has a "swung" shape in time.
+
+**Interaction with phase offset:** Phase offset shifts where in the cycle the LFO reads its waveform. Swing changes the speed of phase advancement through the cycle. These are independent and compose correctly. However, the `inFirstHalf` test should use the raw `phase` (before offset), because swing is about temporal distribution of the cycle, not about where the output reads.
+
+**New components:**
+- `SWING_PARAM` enum entry (50-75 range)
+- Swing knob on panel (small knob, only active in clocked mode)
+
+**Modified components:**
+- `process()` -- add swing speed modulation after freq computation, before phase accumulation
+
+---
+
+### Feature 7: Display Text Overlay Readability
+
+**What it does:** Adds semi-transparent HUD backgrounds behind text overlays so they remain readable when the waveform trace passes behind them.
+
+**Integration point:** In `WaveformDisplay::drawTextOverlays()`, render a rounded rect background behind each text element before drawing the text.
+
+```cpp
+void drawTextBackground(NVGcontext* vg, float x, float y,
+                        const char* text, float fontSize, int align, float alpha) {
+    // Measure text bounds
+    float bounds[4];
+    nvgTextBounds(vg, x, y, text, NULL, bounds);
+    float pad = 2.f;
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, bounds[0] - pad, bounds[1] - pad,
+                   bounds[2] - bounds[0] + 2*pad, bounds[3] - bounds[1] + 2*pad, 2.f);
+    nvgFillColor(vg, nvgRGBAf(0.051f, 0.051f, 0.102f, alpha * 0.7f));
+    nvgFill(vg);
+}
+```
+
+**Modified components:**
+- `drawGlowText()` or `drawTextOverlays()` -- add background rect before text rendering
+
+**No new DSP components.** Pure display change.
+
+---
+
+### Feature 8: Incoming Clock BPM Display
+
+**What it does:** Shows the raw incoming clock BPM alongside the effective (ratio-adjusted) BPM. Currently only effective BPM is shown.
+
+**Integration point:** In `WaveformDisplay::drawTextOverlays()`, add a second BPM readout.
+
+```cpp
+// In drawTextOverlays(), after effective BPM:
+if (bpmFadeAlpha > 0.001f) {
+    float period = module->displaySmoothedPeriod.load(std::memory_order_relaxed);
+    if (period > 0.f) {
+        float clockBPM = 60.f / period;
+        std::string clockBpmText = rack::string::f("%d", (int)std::round(clockBPM));
+        // Draw at bottom-left: "CLK: 120"
+        drawGlowText(vg, font->handle, margin, box.size.y - margin,
+                     clockBpmText.c_str(), fontSize,
+                     NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, bpmFadeAlpha);
+    }
+}
+```
+
+**No new atomics needed:** `displaySmoothedPeriod` already exists and stores the raw clock period.
+
+**Modified components:**
+- `drawTextOverlays()` -- add clock BPM text rendering
+
+---
+
+## Revised Data Flow (v1.2)
+
+```
+process():
+  1.  processClockInput(sampleTime)            // clock edges, period EMA
+  2.  Process RESET input                       // NEW: independent phase reset
+  3.  Compute targetFreq (clocked or free)
+  4.  Apply FM modulation to targetFreq         // NEW: exponential FM
+  5.  Apply drift-dependent pitch slew          // MODIFIED: variable slew rate
+  6.  Compute swing speed multiplier            // NEW: clocked-mode only
+  7.  deltaPhase = freq * sampleTime * swing
+  8.  Apply drift: OU layers modulate deltaPhase
+  9.  phase += deltaPhase; wrap [0, 1)
+  10. Compute phase offset                      // NEW: knob + CV
+  11. Apply phase jitter                        // NEW: per-sample noise on readout
+  12. p = phase + phaseOffset + jitter; wrap
+  13. Read morph/character params + CV
+  14. Apply component spread to params          // NEW: per-instance offsets
+  15. Compute bleed amount from character        // NEW
+  16. computeMorphedWave(p, morph, character, bleed)  // MODIFIED signature
+  17. Apply DC offset drift                     // NEW: slow wander on output
+  18. Apply crossfade if recent phase reset
+  19. Output voltage
+```
+
+### Display Data Flow (v1.2 Additions)
 
 ```
 Audio Thread                               GUI Thread
 -----------                               ----------
-processClockInput()
-  -> displayClockValid.store()
-  -> displayRatioIndex.store()             WaveformDisplay::drawLayer()
-                                             -> read displayClockValid
-process()                                    -> if synced: draw badge + ratio label
-  -> displayPhase.store()                    -> read displayBuffer[readIdx]
-  -> displayBuffers[writeIdx] fill           -> render waveform trace
-  -> displayReadIdx.store()                  -> render phase dot
+process()                                  WaveformDisplay::drawLayer()
+  -> displayPhase.store(p)                   // p now includes offset
+                                             -> drawTextBackground() before text  // NEW
+                                             -> draw clock BPM text               // NEW
 ```
 
-## Architectural Patterns
+No new atomics needed for v1.2. All new features either use existing atomics or are internal to the audio thread (jitter, bleed, FM, swing, DC offset, component spread, pitch slew). The display already has all the state it needs.
 
-### Pattern 1: Dual-Mode Parameter (Rate Knob)
+---
 
-**What:** A single knob that means different things depending on module state (CLK connected vs not).
+## Component Boundaries
 
-**When to use:** When panel space is constrained and the two modes are mutually exclusive.
+| Component | Responsibility | v1.2 Changes |
+|-----------|---------------|--------------|
+| Phase accumulator | `phase += deltaPhase` with wrap | Swing modulates deltaPhase; reset jack adds second reset source |
+| Frequency computation | Rate knob or clock-derived freq | FM input added; pitch slew made drift-dependent |
+| Drift engine (OU layers) | Frequency modulation via OU process | DC offset drift reuses OU layer 0 output; no new OU layers needed |
+| Waveform engine | `computeMorphedWave()` | Bleed parameter added; phase jitter applied before lookup |
+| Character engine | Per-shape analog deformation | Component spread adds per-instance parameter offsets |
+| Clock tracker | Edge detection, period EMA, phase reset | Unchanged; RESET jack is separate from CLK logic |
+| Display bridge (atomics) | Lock-free audio-to-GUI state | displayPhase now includes phase offset; text backgrounds added |
+| Display renderer | NanoVG waveform + overlays | HUD backgrounds, clock BPM readout added |
 
-**Implementation:**
+---
+
+## Panel Layout Considerations
+
+v1.2 adds significant new panel components:
+- **FM jack** (input)
+- **FM attenuverter trimpot**
+- **RESET jack** (input)
+- **PHASE OFFSET knob** (with CV input and trimpot)
+- **SWING knob** (small, clocked-mode only)
+
+The current 12HP panel is moderately populated. Options:
+
+### Option A: Stay at 12HP (recommended)
+
+Rearrange bottom section to accommodate new components. The current bottom section has 4 trimpots and 4 jacks in two rows. Adding FM and Phase Offset CV inputs plus a RESET jack requires careful layout.
+
+Proposed layout:
+```
+y=15-42mm   Waveform display (57x27mm) -- unchanged
+y=54mm      MORPH knob (center) -- unchanged
+y=69mm      CHARACTER (x=18) + DRIFT (x=42.96) -- unchanged
+y=80mm      RATE (x=10) + PHASE OFFSET (x=30, small) + SWING (x=50, small)
+y=90mm      CLK (x=10) + RST (x=25) + FM (x=40) + OUT (x=52)
+y=100mm     Trimpots: Morph(x=8) Char(x=20) Drift(x=32) FM(x=44) PhOff(x=56)
+y=112mm     CVs: MorphCV(x=8) CharCV(x=20) DriftCV(x=32) FMCV(x=44) PhOffCV(x=56)
+```
+
+This is tight but achievable at 12HP. The SWING knob does not need a CV input (it is a performance control, not a modulation target -- and adding CV would require yet another jack).
+
+### Option B: Expand to 14HP
+
+More breathing room, but breaks existing patch layouts and panel SVG. Not recommended unless 12HP proves too cramped after prototyping.
+
+**Recommendation: Start with Option A at 12HP.** The panel can be iterated during visual verification. If it is too cramped, the FM attenuverter trimpot could be removed (fixed-depth FM is simpler but less flexible) or Phase Offset CV could be deferred.
+
+---
+
+## Patterns to Follow
+
+### Pattern 1: Phase Readout Modification (not Accumulator Modification)
+
+**What:** Features that affect where the waveform is "read" (phase offset, jitter) modify a local copy of the phase, not the accumulator itself.
+
+**Why:** The accumulator is the single source of truth for cycle timing. Modifying it with transient effects (jitter) would cause permanent phase error accumulation. Phase offset is a constant shift in reading position, not a change in oscillation rate.
 
 ```cpp
-float freq;
-if (clockValid && smoothedClockPeriod > 0.f) {
-    // Clocked: Rate knob selects division ratio
-    int ratioIdx = getRatioIndex();
-    freq = RATIOS[ratioIdx] / smoothedClockPeriod;
-} else {
-    // Free: Rate knob is direct Hz
-    freq = params[RATE_PARAM].getValue();
-}
+// CORRECT: modify readout phase
+float p = (float)phase;           // copy from accumulator
+p += phaseOffset + jitter;        // modify copy
+p = p - std::floor(p);            // wrap
+sample = computeMorphedWave(p, ...);
+
+// WRONG: modify accumulator
+phase += jitter;  // jitter accumulates! phase drifts permanently
 ```
 
-**Trade-offs:**
-- Pro: No panel redesign, no new params, backward compatible.
-- Con: The knob's value display in the tooltip will show Hz even in clocked mode. Consider a custom `ParamQuantity` subclass to show the ratio label instead.
+### Pattern 2: Drift-Scaled Imperfections
 
-### Pattern 2: EMA Period Smoothing
+**What:** New analog imperfections (jitter, DC offset, pitch slew, component spread) all scale with the Drift knob value.
 
-**What:** Exponential moving average on measured clock periods to reject jitter while tracking tempo changes.
-
-**When to use:** Any clock tracking where the input may have timing jitter (common in VCV Rack due to sample-accurate processing and cable delays).
-
-**Implementation:**
+**Why:** The Drift knob is the established "analog-ness" axis. Drift=0 must always produce pristine digital output. Adding imperfections that ignore the Drift knob would break this contract.
 
 ```cpp
-// On each clock edge:
-smoothedClockPeriod += alpha * (measuredPeriod - smoothedClockPeriod);
+float driftAmount = progressiveCurve(drift);  // 0 to 1, x^2 curve
+float jitter = driftAmount * 0.003f * noise;     // scales with drift
+float dcDrift = driftAmount * 0.04f * ouState;    // scales with drift
+float slewMod = driftAmount * 15.f;               // scales with drift
+float spread = componentSpread[i] * drift;        // scales with drift (linear, not curved)
 ```
 
-**Alpha selection:**
-- `alpha = 0.3` -- responsive to tempo changes (settles in ~5 edges), smooths single-sample jitter.
-- `alpha = 0.1` -- more stable but slow to track tempo changes. Too sluggish for live tempo automation.
-- `alpha = 0.5` -- too reactive, passes through jitter to frequency.
+### Pattern 3: Reuse Existing OU Layers for New Effects
 
-**Trade-offs:**
-- Pro: Simple, O(1) per edge, no buffer needed.
-- Con: Cannot distinguish intentional tempo change from jitter. Alpha is a compromise.
+**What:** DC offset drift reuses the existing OU layer 0 state rather than creating a new random process.
 
-### Pattern 3: Phase Reset on Clock Edge
+**Why:** OU layer 0 (0.05Hz slow wander) has the right temporal character for DC drift. Adding a fifth OU layer would increase per-sample CPU cost. Reading the existing state a second time with a different scaling factor costs nothing.
 
-**What:** Snap the LFO phase to 0.0 on each clock rising edge, ensuring the waveform aligns with the beat.
+### Pattern 4: Swing as Phase Rate Modulation
 
-**When to use:** Always in clocked mode. This is the defining behavior of a clock-synced LFO -- without phase reset, the LFO frequency would track the clock but phase would drift.
+**What:** Swing modifies deltaPhase, not the waveform shape. The same waveform is produced but with uneven temporal distribution.
 
-**Implementation:**
+**Why:** Swing is a timing effect, not a waveshaping effect. The waveform should look the same when plotted against phase -- only the time spent at each phase point changes.
 
-```cpp
-if (clockTrigger.process(clkVoltage, 0.1f, 1.f)) {
-    // ... period measurement ...
-    phase = 0.0;
-}
-```
-
-**Trade-offs:**
-- Pro: Perfect beat alignment, predictable modulation timing.
-- Con: At division ratios (e.g., /4), the LFO completes one cycle per 4 clock beats, so phase resets happen mid-cycle on intermediate beats. This causes a visible "snap" in the waveform. **Solution: Only reset phase on the Nth clock edge for /N divisions.**
-
-**Refined approach for divisions:**
-
-```cpp
-int clockBeatCount = 0;  // counts edges within one LFO cycle
-
-if (clockTrigger.process(clkVoltage, 0.1f, 1.f)) {
-    clockBeatCount++;
-    // ... period measurement ...
-
-    int ratioIdx = getRatioIndex();
-    float ratio = RATIOS[ratioIdx];
-
-    if (ratio < 1.f) {
-        // Division: reset only every N beats (e.g., /4 = every 4th beat)
-        int divisor = (int)(1.f / ratio + 0.5f);
-        if (clockBeatCount >= divisor) {
-            phase = 0.0;
-            clockBeatCount = 0;
-        }
-    } else {
-        // Unity or multiplication: reset every beat
-        phase = 0.0;
-        clockBeatCount = 0;
-    }
-}
-```
-
-### Pattern 4: Lock-Free Atomic Display State
-
-**What:** Use `std::atomic` variables to pass simple display state from audio thread to GUI thread without locks.
-
-**Already established in v1.0** with `displayPhase`, `displayDrift`, `displayReadIdx`. Clock sync extends this pattern with `displayClockValid` and `displayRatioIndex`.
-
-**Guideline:** Only use atomics for small, independently meaningful values. The display buffer uses double-buffering (not atomics on each sample) because it is an array.
+---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Locking in process()
+### Anti-Pattern 1: FM on the Phase Accumulator Directly
 
-**What people do:** Use `std::mutex` to protect shared state between audio and GUI threads.
+**What people do:** Add FM voltage directly to `deltaPhase` without converting to proper frequency scaling.
 
-**Why it is wrong:** `process()` runs at sample rate (e.g., 48,000 times/second). Any lock contention causes audio glitches. VCV Rack's threading model makes mutex priority inversion likely.
+**Why it is wrong:** At LFO rates, linear FM causes the output frequency to go negative when the modulation exceeds the base frequency, producing phase reversal. Exponential FM (multiply frequency by `pow(2, fmVoltage)`) keeps frequency positive and gives musically useful scaling.
 
-**Do this instead:** Lock-free atomics and double buffering, as the existing codebase already does.
+**Do this instead:** Convert FM voltage to a frequency multiplier via `pow(2, fmAmount)` and multiply the base frequency.
 
-### Anti-Pattern 2: Continuous Division Ratios
+### Anti-Pattern 2: Applying Phase Offset to the Accumulator
 
-**What people do:** Map the Rate knob to a continuous multiplier in clocked mode (e.g., 0.1x to 10x).
+**What people do:** `phase += phaseOffset` in the accumulator, then try to subtract it back out for cycle counting.
 
-**Why it is wrong:** Non-integer ratios like 1.37x have no musical meaning and create confusion. The LFO will not align with beats at arbitrary ratios.
+**Why it is wrong:** The accumulator must wrap at 1.0 to mark cycle boundaries. Adding a constant offset shifts when wrapping occurs, breaking beat counting, display phase tracking, and division-aware reset logic.
 
-**Do this instead:** Snap to a discrete table of musically meaningful ratios (/8, /6, /4, /3, /2, x2/3, x1, x3/2, x2, x3, x4, x6, x8).
+**Do this instead:** Keep the accumulator clean. Apply offset to a local readout copy.
 
-### Anti-Pattern 3: Phase Reset on Every Clock Edge Regardless of Division
+### Anti-Pattern 3: Separate Controls for Each Imperfection
 
-**What people do:** Always set `phase = 0.0` on every clock edge, even when the LFO is running at 1/4 speed.
+**What people do:** Add individual knobs for jitter amount, DC offset amount, slew time, component spread.
 
-**Why it is wrong:** At /4, the LFO needs 4 beats to complete one cycle. Resetting every beat means the waveform never gets past the first quarter, producing a truncated saw-like output regardless of morph setting.
+**Why it is wrong for this module:** The three-knob design (morph, character, drift) IS the identity. Adding 4 more knobs for imperfections destroys panel simplicity and creates option paralysis.
 
-**Do this instead:** Count clock edges and only reset when the division count is reached. See Pattern 3 above.
+**Do this instead:** Tie all imperfections to the Drift knob with curated proportions. Power users can modulate Drift via CV for dynamic control over all imperfections simultaneously.
 
-### Anti-Pattern 4: Serializing Clock State
+### Anti-Pattern 4: Swing in Free-Running Mode
 
-**What people do:** Save and restore clockPeriod, smoothedClockPeriod, clockValid in the patch file.
+**What people do:** Apply swing even when there is no clock reference.
 
-**Why it is wrong:** The clock source may have changed tempo while the patch was closed. Restoring stale clock state causes a brief period of wrong frequency until new edges arrive and override it. Worse, if the clock source is removed before loading, the module will appear to be clocked with a ghost tempo.
+**Why it is wrong:** Without a clock, "swing" has no musical meaning. A free-running LFO at 0.3Hz with swing just produces an irregular waveform with no rhythmic context. Users expecting swing to create a groove feel will be confused.
 
-**Do this instead:** Start fresh on patch load. The clock tracker will acquire valid state within 2 edges (~1 beat). This matches the existing philosophy of not serializing OU drift state.
+**Do this instead:** Only apply swing in clocked mode (ACQUIRING or LOCKED state). In free mode, the swing parameter is ignored.
 
-## Integration Points
+---
 
-### Internal Boundaries
+## Suggested Build Order
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Clock tracker to frequency computation | Member variables (`clockValid`, `smoothedClockPeriod`) | Same struct, same thread, no synchronization needed |
-| Clock tracker to phase accumulator | Direct `phase = 0.0` assignment | Same struct, same thread |
-| Clock tracker to display | `std::atomic<bool>` and `std::atomic<int>` | Audio thread writes, GUI thread reads |
-| Rate knob to ratio selection | `getRatioIndex()` reads `params[RATE_PARAM]` | Same as existing param reads |
+Based on dependency analysis and testing efficiency:
 
-### VCV Rack SDK Integration
+### Phase 1: Display Polish (HUD Backgrounds + Clock BPM)
 
-| SDK Component | Usage | Notes |
-|---------------|-------|-------|
-| `dsp::SchmittTrigger` | Edge detection on CLK input | Standard thresholds: low=0.1V, high=1.0V |
-| `inputs[].isConnected()` | Detect CLK cable presence | Determines free-run vs clocked mode |
-| `inputs[].getVoltage()` | Read CLK signal | Standard VCV Rack input reading |
-| `configInput()` | Register CLK input | Called in constructor |
+**Add:** Text background rects in `drawTextOverlays()`, incoming clock BPM text.
+**Modify:** `drawGlowText()` or add `drawTextBackground()` helper.
+**Test:** Visual verification -- text readable over bright waveform peaks, clock BPM shows correct value.
+**Why first:** Purely visual, no DSP changes, no new jacks/params. Quick win that improves existing functionality. Establishes the display baseline before other features add new display elements.
 
-### Backward Compatibility
+### Phase 2: RESET Jack + Phase Offset
 
-The module is **fully backward compatible**:
-- No CLK cable connected = identical behavior to v1.0.
-- No new parameters that could break existing patch files.
-- Enum extension adds CLK_INPUT at the end, so existing input indices are unchanged.
-- No serialization changes.
+**Add:** `RESET_INPUT`, `resetTrigger`, `PHASE_OFFSET_PARAM`, `PHASE_OFFSET_CV_INPUT`.
+**Modify:** `process()` -- add reset processing and phase offset calculation.
+**Test:** Trigger reset, verify phase snaps to offset position with anti-click crossfade. Modulate phase offset with CV, verify smooth animation.
+**Why second:** These two features are tightly coupled (reset-to-offset behavior) and should be designed together. They modify the phase readout path, which must be stable before other features layer onto it.
+**Dependencies:** None (uses existing crossfade mechanism).
 
-Existing patches saved with v1.0 will load and run identically in v1.1.
+### Phase 3: FM Input
 
-## Build Order (Suggested Phase Sequence)
+**Add:** `FM_INPUT`, `FM_ATTEN_PARAM`, FM processing in `process()`.
+**Modify:** Frequency computation section.
+**Test:** Patch an LFO into FM input, verify frequency wobble. Test in both free and clocked modes. Verify extreme FM does not cause phase explosion (safety clamp).
+**Why third:** Independent of Phase 2 features. Modifies frequency computation, which is upstream of all phase/waveform logic.
+**Dependencies:** None.
 
-Based on dependency analysis:
+### Phase 4: Expanded Analog Imperfections
 
-### Phase 1: Clock Input Infrastructure
-**Add:** CLK_INPUT enum entry, `configInput()` call, `SchmittTrigger` member, `processClockInput()` method with edge detection and period measurement.
-**Test:** Connect a clock source, verify edges are detected and period is measured (log output or debug display).
-**Why first:** Everything else depends on clock detection working correctly.
+**Add:** Phase jitter, DC offset drift, drift-dependent pitch slew, component spread.
+**Modify:** `process()` at four insertion points, constructor for component spread generation.
+**Test:** Sweep drift knob 0 to 1, verify progressive imperfection introduction. Verify drift=0 is perfectly clean. Compare two module instances for different component spread. Verify DC offset on scope.
+**Why fourth:** These features layer onto the phase readout and output paths established in Phases 2-3. They should be added together because they share the drift-scaling pattern and are tested as a group.
+**Dependencies:** Phase 2 (phase readout path must be established for jitter to layer correctly).
 
-### Phase 2: Frequency Computation in Clocked Mode
-**Add:** Ratio table, `getRatioIndex()`, dual-mode frequency selection in `process()`.
-**Test:** Connect clock, verify LFO frequency tracks clock at x1. Turn Rate knob, verify divisions and multiplications.
-**Why second:** Depends on Phase 1 clock detection. This is the core functional change.
+### Phase 5: Waveform Bleed in Morph
 
-### Phase 3: Phase Reset Logic
-**Add:** Phase reset on clock edge with division-aware counting.
-**Test:** Connect clock at slow tempo, verify waveform starts at beginning on beat. Test /4 division -- verify full cycle completes over 4 beats without premature reset.
-**Why third:** Refines Phase 2 behavior. Phase reset is tightly coupled to division logic.
+**Add:** Bleed calculation in `computeMorphedWave()`.
+**Modify:** `computeMorphedWave()` signature and implementation, `updateDisplayBuffer()`, all call sites.
+**Test:** Set morph to pure sine (0.0), sweep character from 0 to 1, verify subtle triangle bleed appears. Check display reflects bleed. Verify no amplitude change at morph boundaries.
+**Why fifth:** Modifies the waveform engine signature, which affects both audio and display paths. Best done after other waveform-path changes (jitter, phase offset) are stable.
+**Dependencies:** None strictly, but changing `computeMorphedWave()` signature touches a core function -- better to do after other modifications to that pipeline are settled.
 
-### Phase 4: Display Integration
-**Add:** `displayClockValid` and `displayRatioIndex` atomics, sync badge rendering, division label rendering in `WaveformDisplay`.
-**Test:** Visual verification -- badge appears when clocked, disappears when disconnected. Label shows correct ratio as Rate knob turns.
-**Why fourth:** Pure visual layer, no functional dependency except reading state from Phase 1-3.
+### Phase 6: Swing/Shuffle
 
-### Phase 5: Panel SVG Update
-**Add:** CLK jack hole, "CLK" label at (42.96, 86mm), widget `addInput()` call.
-**Test:** Visual verification in VCV Rack module browser and running module.
-**Why fifth:** Can be done in parallel with Phases 1-4 but listed last because it is trivial and independent.
+**Add:** `SWING_PARAM`, swing speed calculation in `process()`.
+**Modify:** deltaPhase computation in clocked mode.
+**Test:** Set clock to steady tempo, sweep swing from 50% to 75%, verify asymmetric timing on scope. Verify swing has no effect in free mode. Test with various division ratios.
+**Why sixth:** Swing modifies deltaPhase computation, which is upstream of phase accumulation. It interacts with the clock system and must be tested with real clock input. Saving it for late ensures the clock system and phase path are fully stable.
+**Dependencies:** Clock system (existing), Phase 2 (phase offset must not interfere with swing's half-cycle detection).
 
-### Phase 6: Edge Cases and Polish
-**Refine:** Clock disconnect/reconnect behavior, timeout for stale clock (e.g., if no edge for 10s, revert to free-run), Rate knob tooltip in clocked mode (custom ParamQuantity).
-**Test:** Stress testing -- rapid connect/disconnect, tempo changes, extreme divisions, very slow clocks, very fast clocks.
-**Why last:** Polish depends on all prior phases being functionally complete.
+### Phase 7: Panel Layout + Visual Verification
+
+**Add:** Updated SVG panel with all new jacks, knobs. Widget positions for all new components.
+**Test:** Full visual verification in VCV Rack. Check panel density, label readability, knob spacing. Verify all features interact correctly with the display.
+**Why last:** Panel layout depends on knowing the final component count. v1.0 retrospective specifically noted that incremental panel changes caused rework. Design for the final state.
+**Dependencies:** All prior phases (need to know exact jack/knob count).
+
+---
+
+## Interaction Matrix
+
+How v1.2 features interact with each other and existing systems:
+
+| Feature | Phase Accum | Freq Comp | Drift Engine | Waveform Engine | Clock Tracker | Display |
+|---------|------------|-----------|-------------|-----------------|---------------|---------|
+| FM Input | - | MODIFIES freq | - | - | - | - |
+| Phase Jitter | reads phase | - | uses RNG | - | - | - |
+| DC Offset | - | - | reads OU[0] | - | - | - |
+| Pitch Slew | - | MODIFIES slew | reads drift | - | - | - |
+| Component Spread | - | - | reads drift | reads morph/char | - | - |
+| Waveform Bleed | - | - | - | MODIFIES output | - | MODIFIES buffer |
+| RESET Jack | RESETS phase | - | - | - | resets beatCount | - |
+| Phase Offset | reads phase | - | - | - | - | modifies dotPos |
+| Swing | MODIFIES dPhase | reads freq | - | - | reads clockState | - |
+| HUD Backgrounds | - | - | - | - | - | MODIFIES render |
+| Clock BPM | - | - | - | - | reads period | MODIFIES render |
+
+Key observations:
+- **No feature modifies the clock tracker itself.** This is good -- the clock system remains a stable foundation.
+- **Phase accumulator has three modifiers:** swing (deltaPhase), drift (deltaPhase), and reset (snap to 0). These are well-ordered in the pipeline.
+- **Frequency computation has two modifiers:** FM and pitch slew. FM is applied before slew, which is correct (slew smooths the FM-modulated frequency).
+- **No circular dependencies.** The build order respects the unidirectional data flow.
+
+---
 
 ## Scalability Considerations
 
-| Concern | Impact | Mitigation |
-|---------|--------|------------|
-| CPU cost of clock tracking | Negligible: one SchmittTrigger::process() + one float comparison per sample | No concern |
-| Multiple instances with same clock | Each module tracks independently -- no shared state | Correct by design |
-| Very fast clocks (>100 Hz) | Phase reset creates discontinuities in output, may cause clicking if used as audio-rate modulation | Acceptable: LFO is sub-audio by design (max 20Hz native), fast clocks with multipliers would exceed this |
-| Very slow clocks (<0.1 Hz) | Long period between edges means EMA takes many seconds to converge | First edge snaps directly; subsequent edges smooth. Acceptable trade-off |
-| Clock jitter | EMA smoothing handles typical 1-sample jitter | Tested by VCV Rack's cable delay model |
+| Concern | Current (890 LOC) | Post-v1.2 (~1100 LOC) | Mitigation |
+|---------|-------------------|----------------------|------------|
+| File size | Single file, manageable | Still single file but getting long | Consider splitting WaveformDisplay into separate file at ~1200 LOC |
+| process() length | ~115 lines | ~160 lines | Group related operations with comments; consider helper methods for FM, swing, imperfections |
+| CPU per sample | 4 OU layers + waveform compute | Same + jitter noise + DC offset read + swing branch | Minimal impact; all additions are O(1) arithmetic |
+| Param/Input count | 7 params, 4 inputs | ~11 params, ~7 inputs | Approaching limits of 12HP panel density |
+| Display atomics | 5 atomics | 5 atomics (no new ones) | Clean; all new features are audio-thread-internal |
+
+---
 
 ## Sources
 
-- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- SchmittTrigger thresholds (0.1V/1.0V), trigger duration (1ms), clock/reset timing (HIGH confidence)
-- [VCV Rack API: dsp::TSchmittTrigger](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TSchmittTrigger) -- process() method signature (HIGH confidence)
-- [VCV Rack API: dsp::TTimer](https://vcvrack.com/docs-v2/structrack_1_1dsp_1_1TTimer) -- Timer utility for debouncing (HIGH confidence)
-- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) -- configInput, dataToJson/dataFromJson patterns (HIGH confidence)
-- [VCV Fundamental LFO](https://library.vcvrack.com/Fundamental/LFO) -- Reference behavior: CLK syncs frequency, FREQ knob becomes multiplier at 1x default (MEDIUM confidence -- behavior observed, source code not inspected)
-- [VCV Community: Clock Dividers discussion](https://community.vcvrack.com/t/clock-dividers-comparison-and-doubts/5940) -- Phase reset behavior at division boundaries (MEDIUM confidence)
-- Existing codebase: `src/AnalogLFO.cpp` -- Direct inspection of current architecture (HIGH confidence)
+- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- FM input scaling, trigger thresholds (HIGH confidence)
+- [VCV Fundamental LFO source (GitHub)](https://github.com/VCVRack/Fundamental/blob/v2/src/LFO.cpp) -- Reference FM implementation, RESET input pattern (HIGH confidence)
+- [VCV Community: FM CV levels](https://community.vcvrack.com/t/fm-cv-levels-correspond-to-what-exactly/13561) -- FM scaling conventions (MEDIUM confidence)
+- [KVR Audio: Implementing swing](https://www.kvraudio.com/forum/viewtopic.php?t=261858) -- Swing/shuffle algorithm patterns (MEDIUM confidence)
+- [JMK Music Pedals: MIDI Clock Swing](https://jmkmusicpedals.com/blogs/jmk/midi-clock-swing) -- TR-909 shuffle timing values (MEDIUM confidence)
+- [Mod Wiggler: LFO with sync and reset](https://www.modwiggler.com/forum/viewtopic.php?t=222452) -- Eurorack RESET jack conventions (MEDIUM confidence)
+- [Mod Wiggler: Crossfading vs wave shaping](https://www.modwiggler.com/forum/viewtopic.php?t=283479) -- Waveform bleed in analog crossfaders (MEDIUM confidence)
+- Existing codebase: `src/AnalogLFO.cpp` at 890 lines -- Direct inspection (HIGH confidence)
+- Project retrospective and milestone audit -- Architectural patterns and lessons learned (HIGH confidence)
 
 ---
-*Architecture research for: Clock Sync integration into Analog Series LFO (v1.1)*
-*Researched: 2026-03-07*
+*Architecture research for: v1.2 Deep Analog integration into Analog Series LFO*
+*Researched: 2026-03-13*
