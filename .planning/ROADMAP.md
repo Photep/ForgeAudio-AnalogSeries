@@ -60,7 +60,9 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
   1. SYNC badge, ratio label, BPM, and Hz text remain readable when the waveform trace passes directly through overlay areas at any morph/character/drift setting
   2. When clocked at a non-x1 ratio, the display shows both the raw incoming clock BPM and the ratio-adjusted effective BPM with clear visual distinction between them
   3. When clocked at x1 ratio, only one BPM value is displayed (no redundant duplicate)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 11-01-PLAN.md — Pill-backed text overlays and dual BPM stack
 
 ### Phase 12: RESET and Phase Offset
 **Goal**: Users can independently reset LFO phase and shift waveform output by a controllable offset
@@ -146,7 +148,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 8. Frequency Override and Ratio Table | v1.1 | 1/1 | Complete | 2026-03-10 |
 | 9. Phase Reset and Drift Integration | v1.1 | 1/1 | Complete | 2026-03-11 |
 | 10. Display and Panel | v1.1 | 2/2 | Complete | 2026-03-13 |
-| 11. Display Polish | v1.2 | 0/? | Not started | - |
+| 11. Display Polish | v1.2 | 0/1 | Not started | - |
 | 12. RESET and Phase Offset | v1.2 | 0/? | Not started | - |
 | 13. FM Input | v1.2 | 0/? | Not started | - |
 | 14. Expanded Imperfections | v1.2 | 0/? | Not started | - |
