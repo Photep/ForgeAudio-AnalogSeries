@@ -33,20 +33,34 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - ✓ Drift authority reduced in clocked mode (2% vs 7.5%) — v1.1
 - ✓ Smooth frequency slew during clock/free transitions — v1.1
 
+## Current Milestone: v1.2 Deep Analog
+
+**Goal:** Deepen the LFO's analog character with FM modulation, expanded drift/imperfection modeling, new modulation jacks, groove features, and display polish.
+
+**Target features:**
+- Display text overlay readability fix (HUD backgrounds over waveform)
+- FM input jack for frequency modulation
+- Phase jitter, DC offset drift, pitch slew, component spread (expanded analog imperfections)
+- Waveform bleed during morph transitions
+- Separate RESET jack (independent from CLK)
+- Phase offset knob/CV
+- Swing/shuffle control for clocked mode
+- Incoming clock BPM display alongside effective BPM
+
 ### Active
 
-(None — next milestone not yet defined)
-
-**Deferred (future milestones):**
-- [ ] LFO: FM input
+- [ ] LFO: Display text overlays readable over waveform in all scenarios
+- [ ] LFO: FM input jack for frequency modulation
 - [ ] LFO: Phase jitter, DC offset drift, pitch slew, component spread
 - [ ] LFO: Waveform bleed in morph transitions
-- [ ] LFO: CV control of division ratio
 - [ ] LFO: Separate RESET jack (independent from CLK)
-- [ ] LFO: Animated sync badge (clock-pulse flash)
 - [ ] LFO: Phase offset knob/CV
 - [ ] LFO: Swing/shuffle control
 - [ ] LFO: Display incoming clock BPM alongside effective BPM
+
+**Deferred (future milestones):**
+- [ ] LFO: CV control of division ratio
+- [ ] LFO: Animated sync badge (clock-pulse flash)
 - [ ] VCO module: V/Oct pitch input with 1V/octave tracking
 - [ ] VCO module: FM input and through-zero FM
 - [ ] VCO module: Hard sync input
@@ -121,4 +135,4 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | RATE label stays white-gray (#c0c0d0) | Matches knob label convention; CLK gets lavender as jack label | ✓ Good — visual consistency |
 
 ---
-*Last updated: 2026-03-13 after v1.1 milestone completed*
+*Last updated: 2026-03-13 after v1.2 milestone started*

@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Clock Sync
-status: archived
-stopped_at: Milestone v1.1 archived
+milestone: v1.2
+milestone_name: Deep Analog
+status: defining-requirements
+stopped_at: Milestone goals defined, needs research → requirements → roadmap
 last_updated: "2026-03-13"
-last_activity: 2026-03-13 -- Milestone v1.1 Clock Sync archived
+last_activity: 2026-03-13 -- Milestone v1.2 Deep Analog started
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,12 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Planning next milestone
+**Current focus:** v1.2 Deep Analog -- defining requirements
 
 ## Current Position
 
-Milestone v1.1 Clock Sync shipped and archived.
-Next: `/gsd:new-milestone` to define next milestone.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-13 — Milestone v1.2 started
 
 ## Performance Metrics
 
@@ -48,4 +50,4 @@ None.
 
 ### Blockers/Concerns
 
-None.
+- Display text overlays covered by waveform — attempted dark pill background in drawGlowText but did not work visually. Needs research into alternative approaches.
