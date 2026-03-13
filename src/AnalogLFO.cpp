@@ -787,6 +787,127 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgText(vg, x, y, text, NULL);
 	}
 
+	void drawBpmStack(NVGcontext* vg, int fontHandle, float alpha) {
+		int ratioIdx = module->displayRatioIndex.load(std::memory_order_relaxed);
+		float period = module->displaySmoothedPeriod.load(std::memory_order_relaxed);
+		if (ratioIdx < 0 || period <= 0.f) return;
+
+		float margin = 4.f;
+		float pad = 4.f;
+		float feather = 3.f;
+		float cornerRadius = 3.f;
+
+		// Calculate BPM values
+		float rawBPM = 60.f / period;
+		float effectiveBPM = rawBPM * AnalogLFO::RATIO_TABLE[ratioIdx];
+		bool isX1 = (ratioIdx == 7); // RATIO_TABLE[7] = 1.0
+
+		// Format effective BPM text
+		std::string bpmText;
+		if (effectiveBPM < 1.f)
+			bpmText = rack::string::f("%.1f BPM", effectiveBPM);
+		else
+			bpmText = rack::string::f("%d BPM", (int)std::round(effectiveBPM));
+
+		// Position: bottom-right corner
+		float bpmFontSize = 10.f;
+		float bpmX = box.size.x - margin;
+		float bpmY = box.size.y - margin;
+
+		if (isX1) {
+			// Single line: just effective BPM with pill
+			drawPillText(vg, fontHandle, bpmX, bpmY, bpmText.c_str(),
+			             bpmFontSize, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, alpha);
+		} else {
+			// Dual line: CLK on top, BPM below, shared pill
+
+			// Format CLK text
+			std::string clkText;
+			if (rawBPM < 1.f)
+				clkText = rack::string::f("%.1f CLK", rawBPM);
+			else
+				clkText = rack::string::f("%d CLK", (int)std::round(rawBPM));
+
+			float clkFontSize = 8.f;
+			float clkAlpha = alpha * 0.6f;
+
+			// Measure BPM line bounds (10px, right-bottom aligned)
+			nvgFontFaceId(vg, fontHandle);
+			nvgFontSize(vg, bpmFontSize);
+			nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+			float bpmBounds[4];
+			nvgTextBounds(vg, bpmX, bpmY, bpmText.c_str(), NULL, bpmBounds);
+
+			// Get BPM line height for spacing
+			float ascender, descender, lineh;
+			nvgTextMetrics(vg, &ascender, &descender, &lineh);
+
+			// CLK line positioned above BPM line with 2px gap
+			float clkY = bpmBounds[1] - 2.f; // top of BPM bounds minus gap
+			float clkX = bpmX;
+
+			// Measure CLK line bounds (8px, right-bottom aligned)
+			nvgFontSize(vg, clkFontSize);
+			nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+			float clkBounds[4];
+			nvgTextBounds(vg, clkX, clkY, clkText.c_str(), NULL, clkBounds);
+
+			// Union both bounds for shared pill
+			float unionLeft = std::fmin(bpmBounds[0], clkBounds[0]);
+			float unionTop = std::fmin(bpmBounds[1], clkBounds[1]);
+			float unionRight = std::fmax(bpmBounds[2], clkBounds[2]);
+			float unionBottom = std::fmax(bpmBounds[3], clkBounds[3]);
+
+			// Shared pill dimensions
+			float px = unionLeft - pad;
+			float py = unionTop - pad;
+			float pw = (unionRight - unionLeft) + 2.f * pad;
+			float ph = (unionBottom - unionTop) + 2.f * pad;
+
+			// Draw shared feathered pill background
+			NVGpaint pillPaint = nvgBoxGradient(vg,
+				px, py, pw, ph,
+				cornerRadius, feather,
+				nvgRGBAf(0.102f, 0.102f, 0.180f, 0.80f * alpha),
+				nvgRGBAf(0.102f, 0.102f, 0.180f, 0.0f));
+			nvgBeginPath(vg);
+			nvgRoundedRect(vg, px - feather, py - feather,
+			               pw + 2.f * feather, ph + 2.f * feather,
+			               cornerRadius + feather);
+			nvgFillPaint(vg, pillPaint);
+			nvgFill(vg);
+
+			// Draw CLK text (smaller, dimmer) on top of pill
+			nvgFontFaceId(vg, fontHandle);
+			nvgFontSize(vg, clkFontSize);
+			nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+
+			// CLK glow pass
+			nvgFontBlur(vg, 3.0f);
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, clkAlpha * 0.4f));
+			nvgText(vg, clkX, clkY, clkText.c_str(), NULL);
+
+			// CLK sharp pass
+			nvgFontBlur(vg, 0.0f);
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, clkAlpha));
+			nvgText(vg, clkX, clkY, clkText.c_str(), NULL);
+
+			// Draw BPM text (standard size, full alpha) on top of pill
+			nvgFontSize(vg, bpmFontSize);
+			nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+
+			// BPM glow pass
+			nvgFontBlur(vg, 3.0f);
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha * 0.4f));
+			nvgText(vg, bpmX, bpmY, bpmText.c_str(), NULL);
+
+			// BPM sharp pass
+			nvgFontBlur(vg, 0.0f);
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha));
+			nvgText(vg, bpmX, bpmY, bpmText.c_str(), NULL);
+		}
+	}
+
 	void drawTextOverlays(NVGcontext* vg) {
 		std::shared_ptr<Font> font = APP->window->loadFont(
 			asset::system("res/fonts/ShareTechMono-Regular.ttf"));
@@ -827,22 +948,10 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			             NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, effectiveAlpha);
 		}
 
-		// BPM readout (clocked mode, bottom-right)
-		if (bpmFadeAlpha > 0.001f && ratioIdx >= 0) {
-			float period = module->displaySmoothedPeriod.load(std::memory_order_relaxed);
-			if (period > 0.f) {
-				float effectiveBPM = 60.f / period * AnalogLFO::RATIO_TABLE[ratioIdx];
-				std::string bpmText;
-				if (effectiveBPM < 1.f) {
-					bpmText = rack::string::f("%.1f BPM", effectiveBPM);
-				} else {
-					bpmText = rack::string::f("%d BPM", (int)std::round(effectiveBPM));
-				}
-				drawPillText(vg, font->handle, box.size.x - margin,
-				             box.size.y - margin,
-				             bpmText.c_str(), fontSize,
-				             NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, bpmFadeAlpha);
-			}
+		// BPM stack (clocked mode, bottom-right)
+		// Dual-line CLK/BPM at non-x1 ratios, single BPM at x1
+		if (bpmFadeAlpha > 0.001f) {
+			drawBpmStack(vg, font->handle, bpmFadeAlpha);
 		}
 	}
 
