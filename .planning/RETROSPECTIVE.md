@@ -48,15 +48,66 @@
 
 ---
 
+## Milestone: v1.1 — Clock Sync
+
+**Shipped:** 2026-03-13
+**Phases:** 4 | **Plans:** 6 | **Timeline:** 6 days
+
+### What Was Built
+- Three-state clock tracker (FREE/ACQUIRING/LOCKED) with EMA smoothing and outlier rejection
+- 15 discrete musical ratios (/16 to x16) with dual-mode Rate knob
+- Division-aware phase reset with 3ms cosine crossfade for click-free beat alignment
+- Drift authority scaling and frequency slew for smooth mode transitions
+- NanoVG text overlays (SYNC badge, ratio label, BPM, Hz) with 200ms fade animations
+- Panel SVG CLK jack with lavender label
+
+### What Worked
+- Layered phase approach: clock detection → ratio mapping → phase reset → display kept each phase tightly scoped
+- Human verification plans (07-02, 10-02) caught zero issues — implementations were correct on first pass
+- Atomic display bridge pattern from v1.0 (displayPhase, displayDrift) extended cleanly for three new atomics (displayClockState, displayRatioIndex, displaySmoothedPeriod)
+- Research before Phase 7 produced the right algorithm (EMA vs PLL vs Kalman decision) — no rework
+- Phase 9 crossfade approach (capture lastOutputVoltage before reset) avoided coupling processClockInput() to morph/character state
+
+### What Was Inefficient
+- Phase 8 and 9 ROADMAP.md checkboxes were not updated after completion — caught during audit. Roadmap status tracking should be automated or checked at plan completion.
+- SUMMARY.md files lack `one_liner` field — gsd-tools summary-extract returns null. Either populate one_liner during plan completion or skip extraction.
+
+### Patterns Established
+- Relaxed atomics for all audio-to-GUI bridges (consistent with v1.0, now 5 atomics total)
+- Division-aware clock counting pattern for /N ratios using integer beat counter
+- SVG text-as-paths for nanosvg compatibility (CLK label as three separate path elements)
+- NanoVG two-pass glow text rendering (blur pass + sharp pass)
+- Fade animation state machine for smooth text overlay transitions
+
+### Key Lessons
+1. First-pass implementations that follow research closely tend to pass verification without changes — invest in research quality
+2. The atomic bridge pattern scales well — adding new display data requires only declaring the atomic and wiring store/load
+3. Clock-synced DSP is simpler than expected when built on a clean state machine foundation — the layered approach (detect → divide → reset → display) kept complexity manageable
+
+### Cost Observations
+- Model mix: quality profile (opus planning, sonnet execution/verification)
+- Notable: All 6 plans executed cleanly; zero rework needed post-verification
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
 
-| Milestone | Execution Time | Phases | Key Change |
-|-----------|---------------|--------|------------|
-| v1.0 | 58 min | 6 | Initial milestone — established visual verification pattern |
+| Milestone | Timeline | Phases | Plans | Key Change |
+|-----------|----------|--------|-------|------------|
+| v1.0 | 10 days | 6 | 12 | Established visual verification pattern |
+| v1.1 | 6 days | 4 | 6 | Layered DSP approach; zero rework post-verification |
+
+### Cumulative Stats
+
+| Milestone | LOC (total) | LOC Added | Requirements |
+|-----------|-------------|-----------|-------------|
+| v1.0 | 552 | 552 | 23/23 |
+| v1.1 | 890 | 338 | 18/18 |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. Visual verification plans are essential for UI-heavy modules — catches issues code review misses
-2. Research phase perception context matters — sub-audio vs audio-rate needs different parameter ranges
+1. Visual verification plans are essential for UI-heavy modules — catches issues code review misses (v1.0 confirmed, v1.1 reconfirmed)
+2. Research before planning produces first-pass implementations that pass verification without rework (v1.0 character amplitudes exception, v1.1 fully validated)
+3. Atomic bridge pattern for audio-to-GUI data scales cleanly across milestones — declare, store, load

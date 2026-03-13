@@ -2,18 +2,7 @@
 
 ## What This Is
 
-A VCV Rack 2 module series featuring analog-modeled oscillators. The first module is a sub-audio LFO built around a three-knob analog engine (morph, character, drift) with real-time waveform display. Each knob controls an independent axis: waveform shape selection, classic synth character modeling, and analog instability — all visible in real time on the display.
-
-## Current Milestone: v1.1 Clock Sync
-
-**Goal:** Add clock-synced operation to the LFO — a CLK input that tracks incoming tempo and converts the Rate knob into a clock divider/multiplier, fully backward compatible.
-
-**Target features:**
-- CLK trigger input with edge detection and period measurement
-- Dual-mode Rate knob (free frequency / clock division)
-- Phase reset on clock edge for beat alignment
-- Display sync indicator
-- Panel update with CLK jack
+A VCV Rack 2 module series featuring analog-modeled oscillators. The first module is a sub-audio LFO built around a three-knob analog engine (morph, character, drift) with real-time waveform display and clock sync. Each knob controls an independent axis: waveform shape selection, classic synth character modeling, and analog instability — all visible in real time on the display. When a clock source is patched in, the Rate knob switches to musical division/multiplication ratios with beat-aligned phase reset.
 
 ## Core Value
 
@@ -34,20 +23,30 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - ✓ SVG panel structured for designer handoff — v1.0
 - ✓ LFO rate control covering sub-audio range (0.01-20Hz) — v1.0
 - ✓ Lock-free double buffer for audio-to-display transfer — v1.0
+- ✓ CLK trigger input with edge detection and period tracking — v1.1
+- ✓ Dual-mode Rate knob (free Hz / 15 snapped musical ratios) — v1.1
+- ✓ Phase reset on clock edge with division-aware counting — v1.1
+- ✓ Anti-click 3ms cosine crossfade on phase reset — v1.1
+- ✓ Clock period smoothing via EMA with outlier rejection — v1.1
+- ✓ Display: SYNC badge, ratio label, BPM readout with fade animations — v1.1
+- ✓ Panel SVG updated with CLK jack and label — v1.1
+- ✓ Drift authority reduced in clocked mode (2% vs 7.5%) — v1.1
+- ✓ Smooth frequency slew during clock/free transitions — v1.1
 
 ### Active
 
-- [ ] LFO: CLK trigger input with edge detection and period tracking
-- [ ] LFO: Dual-mode Rate knob (free frequency when unclocked, division/multiplication when clocked)
-- [ ] LFO: Phase reset on clock edge for beat-aligned waveforms
-- [ ] LFO: Clock period smoothing over multiple edges for stability
-- [ ] LFO: Display sync badge and division label when clocked
-- [ ] LFO: Panel SVG updated with CLK jack
+(None — next milestone not yet defined)
 
 **Deferred (future milestones):**
 - [ ] LFO: FM input
 - [ ] LFO: Phase jitter, DC offset drift, pitch slew, component spread
 - [ ] LFO: Waveform bleed in morph transitions
+- [ ] LFO: CV control of division ratio
+- [ ] LFO: Separate RESET jack (independent from CLK)
+- [ ] LFO: Animated sync badge (clock-pulse flash)
+- [ ] LFO: Phase offset knob/CV
+- [ ] LFO: Swing/shuffle control
+- [ ] LFO: Display incoming clock BPM alongside effective BPM
 - [ ] VCO module: V/Oct pitch input with 1V/octave tracking
 - [ ] VCO module: FM input and through-zero FM
 - [ ] VCO module: Hard sync input
@@ -70,15 +69,17 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - Individually exposed drift params — one drift knob with curated proportions
 - Built-in sub-oscillator — panel complexity, dilutes three-knob focus
 - Octave snap / semitone selector — not meaningful for sub-audio LFO rates
+- PLL-based clock tracking — overkill for LFO rates; simple edge measurement + EMA is sufficient
+- Continuous (non-snapped) clock ratios — anti-pattern; produces non-musical results
 
 ## Context
 
-**Current state:** v1.0 LFO shipped. 552 lines of C++, 12HP panel, fully functional three-knob analog engine.
+**Current state:** v1.1 Clock Sync shipped. 890 lines of C++, 12HP panel, three-knob analog engine with clock sync.
 **Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
 **Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
-**Brand identity:** Deep navy (#1a1a2e), forge amber (#e8a838), muted lavender labels, white-gray text.
+**Brand identity:** Deep navy (#1a1a2e), forge amber (#e8a838), muted lavender labels (#8888aa), white-gray text (#c0c0d0).
 **Prior work:** POC LFO at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` — clean digital implementation, no analog modeling.
-**Release strategy:** LFO first (v1.0 shipped), VCO module next (v2.0). LFO validates the three-knob engine; VCO adds audio-rate complexity.
+**Release strategy:** LFO shipped (v1.0 + v1.1). VCO module next (v2.0). LFO validates the three-knob engine; VCO adds audio-rate complexity.
 
 ## Constraints
 
@@ -110,6 +111,14 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Lock-free double buffer for display | No mutexes in audio thread | ✓ Good — zero audio impact |
 | displayDrift atomic for CV-responsive visuals | Drift visuals respond to CV, not just knob position | ✓ Good — visual accuracy |
 | Two-row bottom layout (trimpots above jacks) | Standard Eurorack convention, clean grouping | ✓ Good — improved readability |
+| Three-state clock tracker (FREE/ACQUIRING/LOCKED) | Clean separation of unclocked, learning, and tracking states | ✓ Good — predictable transitions, fast-track re-acquisition |
+| EMA period smoothing (alpha 0.3) with outlier rejection | Balances responsiveness with jitter filtering | ✓ Good — stable tracking even with noisy clocks |
+| 15 discrete ratios via round(knob * 14) | No hysteresis needed, clean integer snap | ✓ Good — simple, deterministic ratio selection |
+| Cosine crossfade (3ms) on phase reset | Zero-derivative endpoints prevent clicks | ✓ Good — inaudible resets confirmed |
+| Drift authority scaling (2% clocked, 7.5% free) | Prevents phase error accumulation while preserving analog character | ✓ Good — musical in both modes |
+| Relaxed atomics for all display bridges | Independent per-atomic reads, no ordering needed | ✓ Good — correct and performant |
+| CLK label as SVG paths (not text element) | nanosvg compatibility — text elements not supported | ✓ Good — renders correctly |
+| RATE label stays white-gray (#c0c0d0) | Matches knob label convention; CLK gets lavender as jack label | ✓ Good — visual consistency |
 
 ---
-*Last updated: 2026-03-07 after v1.1 milestone started*
+*Last updated: 2026-03-13 after v1.1 milestone completed*
