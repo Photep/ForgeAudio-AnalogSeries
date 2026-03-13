@@ -75,29 +75,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DISP-01 | — | Pending |
-| DISP-02 | — | Pending |
-| MOD-01 | — | Pending |
-| MOD-02 | — | Pending |
-| MOD-03 | — | Pending |
-| MOD-04 | — | Pending |
-| PHASE-01 | — | Pending |
-| PHASE-02 | — | Pending |
-| PHASE-03 | — | Pending |
-| PHASE-04 | — | Pending |
-| CHAR-01 | — | Pending |
-| CHAR-02 | — | Pending |
-| CHAR-03 | — | Pending |
-| CHAR-04 | — | Pending |
-| CHAR-05 | — | Pending |
-| PANEL-01 | — | Pending |
-| PANEL-02 | — | Pending |
+| DISP-01 | Phase 11 | Pending |
+| DISP-02 | Phase 11 | Pending |
+| MOD-01 | Phase 13 | Pending |
+| MOD-02 | Phase 13 | Pending |
+| MOD-03 | Phase 12 | Pending |
+| MOD-04 | Phase 12 | Pending |
+| PHASE-01 | Phase 12 | Pending |
+| PHASE-02 | Phase 12 | Pending |
+| PHASE-03 | Phase 16 | Pending |
+| PHASE-04 | Phase 16 | Pending |
+| CHAR-01 | Phase 14 | Pending |
+| CHAR-02 | Phase 14 | Pending |
+| CHAR-03 | Phase 14 | Pending |
+| CHAR-04 | Phase 14 | Pending |
+| CHAR-05 | Phase 15 | Pending |
+| PANEL-01 | Phase 17 | Pending |
+| PANEL-02 | Phase 17 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-13*
-*Last updated: 2026-03-13 after initial definition*
+*Last updated: 2026-03-13 after roadmap creation*
