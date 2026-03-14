@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deep Analog
-status: completed
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-03-13T10:37:17.213Z"
-last_activity: 2026-03-13 -- Phase 11 plan 01 complete
+status: in-progress
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-03-14T08:46:09Z"
+last_activity: 2026-03-14 -- Phase 12 plan 01 complete
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 100
+  total_plans: 3
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** v1.2 Deep Analog -- Phase 11 (Display Polish)
+**Current focus:** v1.2 Deep Analog -- Phase 12 (RESET and Phase Offset)
 
 ## Current Position
 
-Phase: 11 of 17 (Display Polish)
-Plan: 1 of 1 (complete)
-Status: Phase 11 complete
-Last activity: 2026-03-13 -- Phase 11 plan 01 complete
+Phase: 12 of 17 (RESET and Phase Offset)
+Plan: 1 of 2 (complete)
+Status: Phase 12 in progress
+Last activity: 2026-03-14 -- Phase 12 plan 01 complete
 
-Progress: [██████████] 100% (Phase 11: 1/1 plans)
+Progress: [███████░░░] 67% (Phase 12: 1/2 plans)
 
 ## Performance Metrics
 
 **Velocity (cumulative):**
 - v1.0: 12 plans in 58 min (4.8 min avg)
 - v1.1: 6 plans in 6 days (includes human verification sessions)
-- v1.2: 1 plan in ~15 min
+- v1.2: 2 plans in ~46 min
 
 ## Accumulated Context
 
@@ -52,6 +52,11 @@ Phase 11:
 - CLK line at 60% alpha for visual hierarchy in BPM stack
 - 3px feather distance with oversized path to prevent gradient clipping
 
+Phase 12:
+- RESET reuses existing crossfade mechanism (not a separate anti-click system)
+- Bidirectional blanking via single PulseGenerator shared between CLK and RESET
+- RESET jack at temporary position (52.0, 86.0) -- Phase 17 finalizes layout
+
 ### Pending Todos
 
 None.
@@ -65,6 +70,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T10:30:00.000Z
-Stopped at: Completed 11-01-PLAN.md
-Resume file: .planning/phases/11-display-polish/11-01-SUMMARY.md
+Last session: 2026-03-14T08:46:09Z
+Stopped at: Completed 12-01-PLAN.md
+Resume file: .planning/phases/12-reset-and-phase-offset/12-01-SUMMARY.md

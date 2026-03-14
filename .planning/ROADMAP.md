@@ -74,9 +74,9 @@ Plans:
   3. The Phase Offset knob shifts the waveform output 0-360 degrees, and the waveform display dot tracks the offset-inclusive position
   4. Phase Offset CV input modulates offset in real time, enabling quadrature (90-degree) patches when driven by a constant voltage
   5. Changing the Phase Offset knob while running produces smooth waveform changes with no clicks or discontinuities
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 12-01-PLAN.md — RESET trigger with bidirectional 1ms blanking
+- [x] 12-01-PLAN.md — RESET trigger with bidirectional 1ms blanking
 - [ ] 12-02-PLAN.md — Phase Offset knob with CV and display integration
 
 ### Phase 13: FM Input
@@ -152,7 +152,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 9. Phase Reset and Drift Integration | v1.1 | 1/1 | Complete | 2026-03-11 |
 | 10. Display and Panel | v1.1 | 2/2 | Complete | 2026-03-13 |
 | 11. Display Polish | v1.2 | Complete    | 2026-03-13 | 2026-03-13 |
-| 12. RESET and Phase Offset | v1.2 | 0/2 | Not started | - |
+| 12. RESET and Phase Offset | 1/2 | In Progress|  | - |
 | 13. FM Input | v1.2 | 0/? | Not started | - |
 | 14. Expanded Imperfections | v1.2 | 0/? | Not started | - |
 | 15. Waveform Bleed | v1.2 | 0/? | Not started | - |
