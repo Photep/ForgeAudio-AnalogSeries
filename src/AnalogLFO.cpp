@@ -13,6 +13,8 @@ struct AnalogLFO : Module {
 		MORPH_ATTEN_PARAM,
 		CHARACTER_ATTEN_PARAM,
 		DRIFT_ATTEN_PARAM,
+		PHASE_OFFSET_PARAM,
+		PHASE_OFFSET_ATTEN_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
@@ -21,6 +23,7 @@ struct AnalogLFO : Module {
 		CHARACTER_CV_INPUT,
 		CLK_INPUT,
 		RESET_INPUT,
+		PHASE_OFFSET_CV_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
@@ -421,6 +424,9 @@ struct AnalogLFO : Module {
 		configInput(CHARACTER_CV_INPUT, "Character CV");
 		configInput(CLK_INPUT, "Clock");
 		configInput(RESET_INPUT, "Reset");
+		configParam(PHASE_OFFSET_PARAM, 0.f, 1.f, 0.f, "Phase Offset", " deg", 0.f, 360.f);
+		configParam(PHASE_OFFSET_ATTEN_PARAM, 0.f, 1.f, 1.f, "Phase Offset CV", "%", 0.f, 100.f);
+		configInput(PHASE_OFFSET_CV_INPUT, "Phase Offset CV");
 		configOutput(OUTPUT, "LFO");
 		updateDisplayBuffer(0.f, 0.f);
 
@@ -525,9 +531,6 @@ struct AnalogLFO : Module {
 		float charCV = inputs[CHARACTER_CV_INPUT].getVoltage();
 		float character = rack::math::clamp(charKnob + charAtten * charCV / 5.f, 0.f, 1.f);
 
-		// Update display phase
-		displayPhase.store((float)phase, std::memory_order_relaxed);
-
 		// Update display buffer on phase wrap, morph change, or character change
 		bool phaseWrapped = (phase < prevPhaseForDisplay);
 		bool morphChanged = (std::fabs(morph - prevDisplayMorph) > 0.002f);
@@ -544,9 +547,24 @@ struct AnalogLFO : Module {
 		}
 		prevPhaseForDisplay = phase;
 
-		// Waveform generation
-		float p = (float)phase;
+		// Phase offset computation (PHASE-01, PHASE-02)
+		float offsetKnob = params[PHASE_OFFSET_PARAM].getValue();
+		float offsetCV = 0.f;
+		if (inputs[PHASE_OFFSET_CV_INPUT].isConnected()) {
+			float offsetAtten = params[PHASE_OFFSET_ATTEN_PARAM].getValue();
+			offsetCV = offsetAtten * inputs[PHASE_OFFSET_CV_INPUT].getVoltage() / 5.f;
+		}
+		float phaseOffset = rack::math::clamp(offsetKnob + offsetCV, 0.f, 1.f);
+
+		// Apply offset at readout (not accumulator -- per PHASE-01)
+		float p = (float)phase + phaseOffset;
+		if (p >= 1.f) p -= 1.f;
 		float sample = computeMorphedWave(p, morph, character);
+
+		// Display phase includes offset (dot position matches audio output)
+		float displayP = (float)phase + phaseOffset;
+		if (displayP >= 1.f) displayP -= 1.f;
+		displayPhase.store(displayP, std::memory_order_relaxed);
 		float outputVoltage = 5.f * sample;
 
 		// Anti-click crossfade on phase reset (RATE-05)
@@ -1073,6 +1091,10 @@ struct AnalogLFOWidget : ModuleWidget {
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(24.0, 108.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(38.0, 108.0)), module, AnalogLFO::DRIFT_CV_INPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.0, 108.0)), module, AnalogLFO::OUTPUT));
+		// Phase Offset controls (TEMPORARY positions -- Phase 17 finalizes layout)
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.48, 86.0)), module, AnalogLFO::PHASE_OFFSET_PARAM));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(52.0, 96.0)), module, AnalogLFO::PHASE_OFFSET_ATTEN_PARAM));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.0, 118.0)), module, AnalogLFO::PHASE_OFFSET_CV_INPUT));
 	}
 };
 
