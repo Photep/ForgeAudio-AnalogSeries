@@ -20,6 +20,7 @@ struct AnalogLFO : Module {
 		DRIFT_CV_INPUT,
 		CHARACTER_CV_INPUT,
 		CLK_INPUT,
+		RESET_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
@@ -107,6 +108,10 @@ struct AnalogLFO : Module {
 	float crossfadeDuration = 0.003f; // 3ms default
 	float lastOutputVoltage = 0.f;  // previous frame's output for crossfade capture
 	dsp::TExponentialFilter<float> freqSlew; // frequency smoother for mode transitions
+
+	// Phase 12: RESET trigger with bidirectional blanking
+	dsp::SchmittTrigger resetTrigger;
+	dsp::PulseGenerator resetBlanking;  // 1ms bidirectional blanking window
 
 	struct RateParamQuantity : ParamQuantity {
 		std::string getDisplayValueString() override {
@@ -303,6 +308,7 @@ struct AnalogLFO : Module {
 				crossfadeProgress = 0.f;
 				phase = 0.0;
 				displayClockState.store(ACQUIRING, std::memory_order_relaxed);
+				resetBlanking.trigger(0.001f);  // Bidirectional blanking
 			}
 			else if (rawPeriod > 0.001f) {
 				// Second edge onward: we have a period measurement
@@ -374,7 +380,29 @@ struct AnalogLFO : Module {
 					crossfadeProgress = 0.f;
 					phase = 0.0;
 					clockBeatCount = 0;
+					resetBlanking.trigger(0.001f);  // Bidirectional blanking
 				}
+			}
+		}
+	}
+
+	void processResetInput(float sampleTime) {
+		// Always advance blanking timer (Pitfall 5: must run every sample)
+		bool blanking = resetBlanking.process(sampleTime);
+
+		if (!inputs[RESET_INPUT].isConnected()) return;
+
+		float resetVoltage = inputs[RESET_INPUT].getVoltage();
+		if (resetTrigger.process(resetVoltage, 0.1f, 1.0f)) {
+			if (!blanking) {
+				// Trigger crossfade and reset phase (reuses existing crossfade -- MOD-04)
+				crossfadeFrom = lastOutputVoltage;
+				crossfadeProgress = 0.f;
+				phase = 0.0;
+				// Start blanking window to suppress subsequent CLK reset
+				resetBlanking.trigger(0.001f);
+				// NOTE: Do NOT reset clockTimer, clockBeatCount, smoothedPeriod,
+				// clockEdgeCount, or clockState. RESET is independent of clock.
 			}
 		}
 	}
@@ -392,6 +420,7 @@ struct AnalogLFO : Module {
 		configInput(DRIFT_CV_INPUT, "Drift CV");
 		configInput(CHARACTER_CV_INPUT, "Character CV");
 		configInput(CLK_INPUT, "Clock");
+		configInput(RESET_INPUT, "Reset");
 		configOutput(OUTPUT, "LFO");
 		updateDisplayBuffer(0.f, 0.f);
 
@@ -425,6 +454,7 @@ struct AnalogLFO : Module {
 	void process(const ProcessArgs& args) override {
 		// Clock detection (Phase 7)
 		processClockInput(args.sampleTime);
+		processResetInput(args.sampleTime);
 
 		// Rate: dual-mode frequency calculation
 		float targetFreq;
@@ -1033,6 +1063,7 @@ struct AnalogLFOWidget : ModuleWidget {
 		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(42.96, 69.0)), module, AnalogLFO::DRIFT_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(18.0, 86.0)), module, AnalogLFO::RATE_PARAM));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(42.96, 86.0)), module, AnalogLFO::CLK_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.0, 86.0)), module, AnalogLFO::RESET_INPUT));
 		// Bottom section: Trimpots (upper row at y=96mm)
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(10.0, 96.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(24.0, 96.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
