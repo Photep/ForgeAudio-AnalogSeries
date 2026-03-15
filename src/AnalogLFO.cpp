@@ -15,6 +15,7 @@ struct AnalogLFO : Module {
 		DRIFT_ATTEN_PARAM,
 		PHASE_OFFSET_PARAM,
 		PHASE_OFFSET_ATTEN_PARAM,
+		FM_ATTEN_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
@@ -24,6 +25,7 @@ struct AnalogLFO : Module {
 		CLK_INPUT,
 		RESET_INPUT,
 		PHASE_OFFSET_CV_INPUT,
+		FM_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
@@ -427,6 +429,8 @@ struct AnalogLFO : Module {
 		configParam(PHASE_OFFSET_PARAM, 0.f, 1.f, 0.f, "Phase Offset", " deg", 0.f, 360.f);
 		configParam(PHASE_OFFSET_ATTEN_PARAM, 0.f, 1.f, 1.f, "Phase Offset CV", "%", 0.f, 100.f);
 		configInput(PHASE_OFFSET_CV_INPUT, "Phase Offset CV");
+		configParam(FM_ATTEN_PARAM, 0.f, 1.f, 0.f, "FM Depth", "%", 0.f, 100.f);
+		configInput(FM_INPUT, "FM");
 		configOutput(OUTPUT, "LFO");
 		updateDisplayBuffer(0.f, 0.f);
 
@@ -478,6 +482,16 @@ struct AnalogLFO : Module {
 			// Free-running mode: direct Hz from knob (identical to v1.0)
 			targetFreq = params[RATE_PARAM].getValue();
 		}
+		// FM processing (MOD-01, MOD-02)
+		if (inputs[FM_INPUT].isConnected()) {
+			float fmCV = inputs[FM_INPUT].getVoltage();
+			float fmAtten = params[FM_ATTEN_PARAM].getValue();
+			// Authority: reduced in clocked mode to prevent clock-phase fighting (MOD-02)
+			float depthScale = isClocked ? 0.1f : 0.6f;
+			float fmPitch = fmCV * fmAtten * depthScale;
+			targetFreq *= dsp::exp2_taylor5(fmPitch);
+		}
+
 		targetFreq = std::fmax(targetFreq, 0.001f);
 
 		// Frequency slew for smooth mode transitions (DISP-05)
@@ -1095,6 +1109,11 @@ struct AnalogLFOWidget : ModuleWidget {
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.48, 86.0)), module, AnalogLFO::PHASE_OFFSET_PARAM));
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(52.0, 96.0)), module, AnalogLFO::PHASE_OFFSET_ATTEN_PARAM));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.0, 118.0)), module, AnalogLFO::PHASE_OFFSET_CV_INPUT));
+		// FM controls (TEMPORARY positions -- Phase 17 finalizes layout)
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(8.0, 118.0)),
+		         module, AnalogLFO::FM_ATTEN_PARAM));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.0, 118.0)),
+		         module, AnalogLFO::FM_INPUT));
 	}
 };
 
