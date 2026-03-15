@@ -482,21 +482,23 @@ struct AnalogLFO : Module {
 			// Free-running mode: direct Hz from knob (identical to v1.0)
 			targetFreq = params[RATE_PARAM].getValue();
 		}
-		// FM processing (MOD-01, MOD-02)
-		if (inputs[FM_INPUT].isConnected()) {
-			float fmCV = inputs[FM_INPUT].getVoltage();
-			float fmAtten = params[FM_ATTEN_PARAM].getValue();
-			// Authority: reduced in clocked mode to prevent clock-phase fighting (MOD-02)
-			float depthScale = isClocked ? 0.1f : 0.6f;
-			float fmPitch = fmCV * fmAtten * depthScale;
-			targetFreq *= dsp::exp2_taylor5(fmPitch);
-		}
-
 		targetFreq = std::fmax(targetFreq, 0.001f);
 
 		// Frequency slew for smooth mode transitions (DISP-05)
 		float freq = freqSlew.process(args.sampleTime, targetFreq);
 		freq = std::fmax(freq, 0.001f);
+
+		// FM processing AFTER slew — slew smooths base frequency for mode transitions,
+		// FM modulates on top so it isn't filtered out (MOD-01, MOD-02)
+		if (inputs[FM_INPUT].isConnected()) {
+			float fmCV = inputs[FM_INPUT].getVoltage();
+			float fmAtten = params[FM_ATTEN_PARAM].getValue();
+			// Authority: reduced in clocked mode to prevent clock-phase fighting (MOD-02)
+			float depthScale = isClocked ? 0.5f : 0.6f;
+			float fmPitch = fmCV * fmAtten * depthScale;
+			freq *= dsp::exp2_taylor5(fmPitch);
+			freq = std::fmax(freq, 0.001f);
+		}
 
 		// Update display atomics for tooltip/display use
 		displayRatioIndex.store(ratioIdx, std::memory_order_relaxed);
