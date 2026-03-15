@@ -59,7 +59,7 @@ Phase 12:
 
 ### Pending Todos
 
-None.
+2 pending todos (see `.planning/todos/pending/`)
 
 ### Blockers/Concerns
 
