@@ -14,8 +14,8 @@ Requirements for v1.2 Deep Analog milestone. Each maps to roadmap phases.
 
 ### Modulation
 
-- [ ] **MOD-01**: FM input jack applies exponential frequency modulation with CV-controllable depth
-- [ ] **MOD-02**: FM authority reduced in clocked mode to prevent clock-phase fighting
+- [x] **MOD-01**: FM input jack applies exponential frequency modulation with CV-controllable depth
+- [x] **MOD-02**: FM authority reduced in clocked mode to prevent clock-phase fighting
 - [x] **MOD-03**: Separate RESET trigger jack resets phase independently from CLK, with 1ms blanking to prevent double-resets
 - [x] **MOD-04**: RESET uses existing anti-click cosine crossfade
 
@@ -77,8 +77,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | DISP-01 | Phase 11 | Complete |
 | DISP-02 | Phase 11 | Complete |
-| MOD-01 | Phase 13 | Pending |
-| MOD-02 | Phase 13 | Pending |
+| MOD-01 | Phase 13 | Complete |
+| MOD-02 | Phase 13 | Complete |
 | MOD-03 | Phase 12 | Complete |
 | MOD-04 | Phase 12 | Complete |
 | PHASE-01 | Phase 12 | Complete |

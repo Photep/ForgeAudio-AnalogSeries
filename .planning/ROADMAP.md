@@ -44,7 +44,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 
 - [x] **Phase 11: Display Polish** - Fix HUD text readability and add incoming clock BPM display (completed 2026-03-13)
 - [x] **Phase 12: RESET and Phase Offset** - Independent reset jack and CV-modulatable phase shift (completed 2026-03-15)
-- [ ] **Phase 13: FM Input** - Exponential frequency modulation with clocked-mode authority management
+- [x] **Phase 13: FM Input** - Exponential frequency modulation with clocked-mode authority management (completed 2026-03-15)
 - [ ] **Phase 14: Expanded Imperfections** - Phase jitter, DC offset drift, pitch slew, component spread
 - [ ] **Phase 15: Waveform Bleed** - Adjacent-shape crosstalk during morph transitions
 - [ ] **Phase 16: Swing and Shuffle** - Beat-pair phase warping for clocked groove
@@ -88,9 +88,9 @@ Plans:
   2. FM never drives frequency negative -- LFO remains stable at any FM depth and input voltage
   3. In clocked mode, FM is usable without destroying clock sync -- authority is reduced so clock-edge phase resets remain clean at moderate FM depths
   4. With FM attenuator at zero (default), output is identical to v1.1 behavior
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 13-01-PLAN.md — FM input jack, attenuator, exponential FM processing with clocked authority
+- [x] 13-01-PLAN.md — FM input jack, attenuator, exponential FM processing with clocked authority
 
 ### Phase 14: Expanded Imperfections
 **Goal**: The Drift knob controls a richer set of analog imperfections beyond pitch drift alone
@@ -155,7 +155,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 10. Display and Panel | v1.1 | 2/2 | Complete | 2026-03-13 |
 | 11. Display Polish | v1.2 | Complete    | 2026-03-13 | 2026-03-13 |
 | 12. RESET and Phase Offset | v1.2 | 2/2 | Complete | 2026-03-15 |
-| 13. FM Input | v1.2 | 0/1 | Not started | - |
+| 13. FM Input | v1.2 | 1/1 | Complete | 2026-03-15 |
 | 14. Expanded Imperfections | v1.2 | 0/? | Not started | - |
 | 15. Waveform Bleed | v1.2 | 0/? | Not started | - |
 | 16. Swing and Shuffle | v1.2 | 0/? | Not started | - |
