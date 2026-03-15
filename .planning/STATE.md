@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deep Analog
-status: in-progress
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-14T08:46:09Z"
-last_activity: 2026-03-14 -- Phase 12 plan 01 complete
+status: completed
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-03-15T02:20:36.100Z"
+last_activity: 2026-03-15 -- Phase 12 complete (all plans)
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -26,18 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-13)
 ## Current Position
 
 Phase: 12 of 17 (RESET and Phase Offset)
-Plan: 1 of 2 (complete)
-Status: Phase 12 in progress
-Last activity: 2026-03-14 -- Phase 12 plan 01 complete
+Plan: 2 of 2 (complete)
+Status: Phase 12 complete
+Last activity: 2026-03-15 -- Phase 12 complete (all plans)
 
-Progress: [███████░░░] 67% (Phase 12: 1/2 plans)
+Progress: [██████████] 100% (Phase 12: 2/2 plans)
 
 ## Performance Metrics
 
 **Velocity (cumulative):**
 - v1.0: 12 plans in 58 min (4.8 min avg)
 - v1.1: 6 plans in 6 days (includes human verification sessions)
-- v1.2: 2 plans in ~46 min
+- v1.2: 3 plans in ~61 min
 
 ## Accumulated Context
 
@@ -56,6 +56,9 @@ Phase 12:
 - RESET reuses existing crossfade mechanism (not a separate anti-click system)
 - Bidirectional blanking via single PulseGenerator shared between CLK and RESET
 - RESET jack at temporary position (52.0, 86.0) -- Phase 17 finalizes layout
+- Phase Offset applied at readout (not accumulator) -- preserves all existing timing behavior
+- Display buffer renders without offset; display dot includes offset for visual feedback
+- Phase Offset controls at temporary panel positions -- Phase 17 finalizes layout
 
 ### Pending Todos
 
@@ -70,6 +73,6 @@ Phase 12:
 
 ## Session Continuity
 
-Last session: 2026-03-14T08:46:09Z
-Stopped at: Completed 12-01-PLAN.md
-Resume file: .planning/phases/12-reset-and-phase-offset/12-01-SUMMARY.md
+Last session: 2026-03-15T02:20:36.098Z
+Stopped at: Completed 12-02-PLAN.md
+Resume file: None

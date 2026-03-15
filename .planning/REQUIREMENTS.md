@@ -21,8 +21,8 @@ Requirements for v1.2 Deep Analog milestone. Each maps to roadmap phases.
 
 ### Phase
 
-- [ ] **PHASE-01**: Phase offset knob shifts waveform phase 0-360 degrees, applied at waveform readout (not accumulator)
-- [ ] **PHASE-02**: Phase offset CV input for external modulation
+- [x] **PHASE-01**: Phase offset knob shifts waveform phase 0-360 degrees, applied at waveform readout (not accumulator)
+- [x] **PHASE-02**: Phase offset CV input for external modulation
 - [ ] **PHASE-03**: Swing/shuffle control warps phase progression within beat pairs in clocked mode
 - [ ] **PHASE-04**: Swing inactive in free-running mode
 
@@ -81,8 +81,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MOD-02 | Phase 13 | Pending |
 | MOD-03 | Phase 12 | Complete |
 | MOD-04 | Phase 12 | Complete |
-| PHASE-01 | Phase 12 | Pending |
-| PHASE-02 | Phase 12 | Pending |
+| PHASE-01 | Phase 12 | Complete |
+| PHASE-02 | Phase 12 | Complete |
 | PHASE-03 | Phase 16 | Pending |
 | PHASE-04 | Phase 16 | Pending |
 | CHAR-01 | Phase 14 | Pending |

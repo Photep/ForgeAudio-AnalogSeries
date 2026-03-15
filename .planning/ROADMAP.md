@@ -43,7 +43,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 **Milestone Goal:** Deepen the LFO's analog character with FM modulation, expanded drift/imperfection modeling, new modulation jacks, groove features, and display polish.
 
 - [x] **Phase 11: Display Polish** - Fix HUD text readability and add incoming clock BPM display (completed 2026-03-13)
-- [ ] **Phase 12: RESET and Phase Offset** - Independent reset jack and CV-modulatable phase shift
+- [x] **Phase 12: RESET and Phase Offset** - Independent reset jack and CV-modulatable phase shift (completed 2026-03-15)
 - [ ] **Phase 13: FM Input** - Exponential frequency modulation with clocked-mode authority management
 - [ ] **Phase 14: Expanded Imperfections** - Phase jitter, DC offset drift, pitch slew, component spread
 - [ ] **Phase 15: Waveform Bleed** - Adjacent-shape crosstalk during morph transitions
@@ -74,7 +74,7 @@ Plans:
   3. The Phase Offset knob shifts the waveform output 0-360 degrees, and the waveform display dot tracks the offset-inclusive position
   4. Phase Offset CV input modulates offset in real time, enabling quadrature (90-degree) patches when driven by a constant voltage
   5. Changing the Phase Offset knob while running produces smooth waveform changes with no clicks or discontinuities
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 12-01-PLAN.md — RESET trigger with bidirectional 1ms blanking
 - [ ] 12-02-PLAN.md — Phase Offset knob with CV and display integration
@@ -152,7 +152,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 9. Phase Reset and Drift Integration | v1.1 | 1/1 | Complete | 2026-03-11 |
 | 10. Display and Panel | v1.1 | 2/2 | Complete | 2026-03-13 |
 | 11. Display Polish | v1.2 | Complete    | 2026-03-13 | 2026-03-13 |
-| 12. RESET and Phase Offset | 1/2 | In Progress|  | - |
+| 12. RESET and Phase Offset | 2/2 | Complete   | 2026-03-15 | - |
 | 13. FM Input | v1.2 | 0/? | Not started | - |
 | 14. Expanded Imperfections | v1.2 | 0/? | Not started | - |
 | 15. Waveform Bleed | v1.2 | 0/? | Not started | - |
