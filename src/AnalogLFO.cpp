@@ -113,6 +113,7 @@ struct AnalogLFO : Module {
 	float crossfadeDuration = 0.003f; // 3ms default
 	float lastOutputVoltage = 0.f;  // previous frame's output for crossfade capture
 	dsp::TExponentialFilter<float> freqSlew; // frequency smoother for mode transitions
+	dsp::TExponentialFilter<float> driftSlew; // thermal pitch slew (Drift-gated, CHAR-03)
 
 	// Phase 12: RESET trigger with bidirectional blanking
 	dsp::SchmittTrigger resetTrigger;
@@ -438,6 +439,10 @@ struct AnalogLFO : Module {
 		freqSlew.setLambda(20.f);  // 50ms time constant (lambda = 1/tau = 1/0.05 = 20)
 		freqSlew.out = 0.7f;       // matches default Rate param value
 
+		// Phase 14: thermal pitch slew for Drift-dependent frequency lag (CHAR-03)
+		driftSlew.setLambda(500.f);  // effectively instant at init
+		driftSlew.out = 0.7f;        // match default Rate param value
+
 		// Per-module unique RNG seed
 		std::random_device rd;
 		rng.seed(rd(), rd());
@@ -488,6 +493,27 @@ struct AnalogLFO : Module {
 		float freq = freqSlew.process(args.sampleTime, targetFreq);
 		freq = std::fmax(freq, 0.001f);
 
+		// Drift parameter reads (moved early for pitch slew gate)
+		float driftKnob = params[DRIFT_PARAM].getValue();
+		float driftAtten = params[DRIFT_ATTEN_PARAM].getValue();
+		float driftCV = inputs[DRIFT_CV_INPUT].getVoltage();
+		float drift = rack::math::clamp(driftKnob + driftAtten * driftCV / 5.f, 0.f, 1.f);
+		displayDrift.store(drift, std::memory_order_relaxed);
+
+		// Pitch slew: thermal frequency lag (CHAR-03)
+		// Separate from freqSlew (mode transitions) -- this adds Drift-dependent lag
+		if (drift >= 0.001f) {
+			float driftAmount = progressiveCurve(drift);
+			// Time constant: 2ms at low drift -> 300ms at full drift
+			// lambda = 1/tau, high lambda = instant, low lambda = sluggish
+			float slewTau = 0.002f + driftAmount * 0.298f;
+			driftSlew.setLambda(1.f / slewTau);
+		} else {
+			driftSlew.setLambda(500.f);  // bypass: effectively instant
+		}
+		freq = driftSlew.process(args.sampleTime, freq);
+		freq = std::fmax(freq, 0.001f);
+
 		// FM processing AFTER slew — slew smooths base frequency for mode transitions,
 		// FM modulates on top so it isn't filtered out (MOD-01, MOD-02)
 		if (inputs[FM_INPUT].isConnected()) {
@@ -508,12 +534,6 @@ struct AnalogLFO : Module {
 		double deltaPhase = (double)freq * (double)args.sampleTime;
 
 		// Drift processing (modifies deltaPhase BEFORE phase accumulation)
-		float driftKnob = params[DRIFT_PARAM].getValue();
-		float driftAtten = params[DRIFT_ATTEN_PARAM].getValue();
-		float driftCV = inputs[DRIFT_CV_INPUT].getVoltage();
-		float drift = rack::math::clamp(driftKnob + driftAtten * driftCV / 5.f, 0.f, 1.f);
-		displayDrift.store(drift, std::memory_order_relaxed);
-
 		if (drift >= 0.001f) {
 			// Lazy init sqrtSampleTime (edge case before onSampleRateChange fires)
 			if (sqrtSampleTime == 0.f) sqrtSampleTime = std::sqrt(args.sampleTime);
@@ -530,6 +550,13 @@ struct AnalogLFO : Module {
 			float maxDrift = isClocked ? 0.02f : 0.075f;
 			float driftScale = driftAmount * maxDrift;
 			deltaPhase *= (1.0 + (double)(driftScale * combinedOU));
+
+			// Phase jitter: per-sample random phase deviation (CHAR-01)
+			// Independent white noise (not correlated OU layers)
+			float jitterNoise = normalDist(rng);
+			float jitterAuthority = isClocked ? 0.02f : 0.075f;  // same scaling as pitch drift
+			float jitterScale = driftAmount * jitterAuthority * 0.003f;  // ~0.3% max deviation
+			deltaPhase *= (1.0 + (double)(jitterScale * jitterNoise));
 		}
 
 		phase += deltaPhase;
