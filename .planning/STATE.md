@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deep Analog
 status: completed
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-03-16T10:40:49.156Z"
+stopped_at: Phase 15 context gathered
+last_updated: "2026-03-16T20:56:02.820Z"
 last_activity: 2026-03-16 -- Phase 14 plan 02 complete
 progress:
   total_phases: 7
@@ -90,6 +90,6 @@ Phase 14 (plan 02):
 
 ## Session Continuity
 
-Last session: 2026-03-16T10:35:14Z
-Stopped at: Completed 14-02-PLAN.md
-Resume file: .planning/phases/14-expanded-imperfections/14-02-SUMMARY.md
+Last session: 2026-03-16T20:56:02.818Z
+Stopped at: Phase 15 context gathered
+Resume file: .planning/phases/15-waveform-bleed/15-CONTEXT.md
