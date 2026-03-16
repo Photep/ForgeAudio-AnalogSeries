@@ -126,6 +126,7 @@ struct AnalogLFO : Module {
 	float sawCurvatureSpread = 0.f;       // saw exponential ramp spread
 	float squareDutySpread = 0.f;         // square duty cycle spread
 	float triAsymmetrySpread = 0.f;       // triangle asymmetry spread
+	float bleedSpread = 0.f;              // waveform bleed magnitude spread (CHAR-05)
 
 	// Phase 12: RESET trigger with bidirectional blanking
 	dsp::SchmittTrigger resetTrigger;
@@ -174,6 +175,8 @@ struct AnalogLFO : Module {
 		sawCurvatureSpread = d(spreadRng) * 0.02f;
 		squareDutySpread = d(spreadRng) * 0.01f;
 		triAsymmetrySpread = d(spreadRng) * 0.015f;
+		// Bleed magnitude spread: +/-2% (CHAR-05)
+		bleedSpread = d(spreadRng) * 0.02f;
 	}
 
 	void onSampleRateChange(const SampleRateChangeEvent& e) override {
@@ -267,17 +270,44 @@ struct AnalogLFO : Module {
 		float saw  = computeSaw(phase, character);
 		float sqr  = computeSquare(phase, character);
 
+		// Store shapes in array for indexed neighbor access
+		float shapes[4] = { sine, tri, saw, sqr };
+
 		float scaled = morph * 3.f;
 		int segment = std::min((int)scaled, 2);
 		float frac = scaled - (float)segment;
 
-		switch (segment) {
-			case 0: return sine + frac * (tri - sine);
-			case 1: return tri  + frac * (saw - tri);
-			case 2: return saw  + frac * (sqr - saw);
-			case 3: return sqr;
+		// Primary crossfade (unchanged from v1.1)
+		float result = shapes[segment] + frac * (shapes[segment + 1] - shapes[segment]);
+
+		// Waveform bleed: adjacent-shape crosstalk (CHAR-05)
+		if (character >= 0.001f) {
+			float c = progressiveCurve(character);
+
+			// Base bleed magnitude (4%) with component spread offset, clamped non-negative
+			float effectiveBleed = std::fmax(0.f, 0.04f + bleedSpread);
+			float bleedIntensity = c * effectiveBleed;
+
+			// Slow modulation from existing OU layer 0 (~20s cycle, +/-20% fluctuation)
+			bleedIntensity *= (1.f + ouLayers[0].state * 0.2f);
+			bleedIntensity = std::fmax(0.f, bleedIntensity);  // ensure non-negative after modulation
+
+			// Neighbor identification (wrapping ring: sine-tri-saw-sqr-sine)
+			int leftIdx  = (segment - 1 + 4) % 4;   // shape left of segment start
+			int rightIdx = (segment + 2) % 4;        // shape right of segment end
+
+			// Proximity weighting: closer neighbor bleeds more
+			float leftWeight  = 1.f - frac;   // frac=0 -> full left bleed
+			float rightWeight = frac;          // frac=1 -> full right bleed
+
+			float bleedSignal = leftWeight * shapes[leftIdx] + rightWeight * shapes[rightIdx];
+			result += bleedIntensity * bleedSignal;
+
+			// Normalize to maintain +/-1 range (prevents >+/-5V after 5V scaling)
+			result /= (1.f + bleedIntensity);
 		}
-		return sine;
+
+		return result;
 	}
 
 	void updateDisplayBuffer(float morph, float character) {
