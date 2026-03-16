@@ -115,6 +115,10 @@ struct AnalogLFO : Module {
 	dsp::TExponentialFilter<float> freqSlew; // frequency smoother for mode transitions
 	dsp::TExponentialFilter<float> driftSlew; // thermal pitch slew (Drift-gated, CHAR-03)
 
+	// DC offset wander: dedicated slow OU layer (CHAR-02)
+	OULayer dcOffsetOU;
+	float dcOffsetV = 0.f;  // computed DC offset voltage, applied after crossfade
+
 	// Phase 12: RESET trigger with bidirectional blanking
 	dsp::SchmittTrigger resetTrigger;
 	dsp::PulseGenerator resetBlanking;  // 1ms bidirectional blanking window
@@ -464,6 +468,13 @@ struct AnalogLFO : Module {
 		ouLayers[3].theta = 2.f * (float)M_PI * 2.0f;    // 12.566
 		ouLayers[3].sigma = 5.013f;
 		ouLayers[3].weight = 0.10f;
+
+		// DC offset wander OU layer (CHAR-02)
+		// 0.03Hz center frequency (~33s wander cycle)
+		dcOffsetOU.theta = 2.f * (float)M_PI * 0.03f;   // 0.188
+		dcOffsetOU.sigma = 0.614f;                         // stationary std ~1.0
+		dcOffsetOU.weight = 1.f;                           // single layer, no weighting
+		dcOffsetOU.state = 0.f;
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -557,6 +568,17 @@ struct AnalogLFO : Module {
 			float jitterAuthority = isClocked ? 0.02f : 0.075f;  // same scaling as pitch drift
 			float jitterScale = driftAmount * jitterAuthority * 0.003f;  // ~0.3% max deviation
 			deltaPhase *= (1.0 + (double)(jitterScale * jitterNoise));
+
+			// DC offset wander: independent slow OU process (CHAR-02)
+			// Continuous wander -- does NOT reset on clock phase resets
+			float dcNoise = normalDist(rng);
+			dcOffsetOU.state += dcOffsetOU.theta * (0.f - dcOffsetOU.state) * args.sampleTime
+			                  + dcOffsetOU.sigma * sqrtSampleTime * dcNoise;
+			float dcOffsetAuthority = isClocked ? 0.02f : 0.075f;
+			dcOffsetV = driftAmount * dcOffsetAuthority * dcOffsetOU.state * 0.1f;
+			// Results in ~50-100mV max wander at full drift in free-running mode
+		} else {
+			dcOffsetV = 0.f;
 		}
 
 		phase += deltaPhase;
@@ -623,6 +645,9 @@ struct AnalogLFO : Module {
 
 		// Store for next frame's crossfade capture
 		lastOutputVoltage = outputVoltage;
+
+		// Apply DC offset wander AFTER crossfade (CHAR-02, avoids Pitfall 3)
+		outputVoltage += dcOffsetV;
 
 		// Bipolar +/-5V output
 		outputs[OUTPUT].setVoltage(outputVoltage);
