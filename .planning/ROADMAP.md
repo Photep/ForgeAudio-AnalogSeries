@@ -45,7 +45,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 - [x] **Phase 11: Display Polish** - Fix HUD text readability and add incoming clock BPM display (completed 2026-03-13)
 - [x] **Phase 12: RESET and Phase Offset** - Independent reset jack and CV-modulatable phase shift (completed 2026-03-15)
 - [x] **Phase 13: FM Input** - Exponential frequency modulation with clocked-mode authority management (completed 2026-03-15)
-- [ ] **Phase 14: Expanded Imperfections** - Phase jitter, DC offset drift, pitch slew, component spread
+- [x] **Phase 14: Expanded Imperfections** - Phase jitter, DC offset drift, pitch slew, component spread (completed 2026-03-16)
 - [ ] **Phase 15: Waveform Bleed** - Adjacent-shape crosstalk during morph transitions
 - [ ] **Phase 16: Swing and Shuffle** - Beat-pair phase warping for clocked groove
 - [ ] **Phase 17: Panel Redesign** - Final 12HP layout for all new jacks and controls
@@ -102,7 +102,7 @@ Plans:
   3. Rapid frequency changes (via Rate knob or CV) show slight lag when Drift is up, simulating component thermal response
   4. Two instances of the module with identical knob positions produce audibly different output character due to per-instance component spread
   5. At Drift = 0, all new imperfections are completely inactive -- output matches pre-v1.2 digital precision
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 14-01-PLAN.md — Pitch slew filter and phase jitter (CHAR-03, CHAR-01)
 - [ ] 14-02-PLAN.md — DC offset wander and component spread with serialization (CHAR-02, CHAR-04)
@@ -159,7 +159,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 11. Display Polish | v1.2 | Complete    | 2026-03-13 | 2026-03-13 |
 | 12. RESET and Phase Offset | v1.2 | 2/2 | Complete | 2026-03-15 |
 | 13. FM Input | v1.2 | Complete    | 2026-03-15 | 2026-03-15 |
-| 14. Expanded Imperfections | 1/2 | In Progress|  | - |
+| 14. Expanded Imperfections | 2/2 | Complete   | 2026-03-16 | - |
 | 15. Waveform Bleed | v1.2 | 0/? | Not started | - |
 | 16. Swing and Shuffle | v1.2 | 0/? | Not started | - |
 | 17. Panel Redesign | v1.2 | 0/? | Not started | - |

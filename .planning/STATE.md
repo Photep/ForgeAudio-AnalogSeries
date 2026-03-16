@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deep Analog
 status: in-progress
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-03-16T10:28:00Z"
-last_activity: 2026-03-16 -- Phase 14 plan 01 complete
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-03-16T10:35:14Z"
+last_activity: 2026-03-16 -- Phase 14 plan 02 complete
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 6
-  completed_plans: 5
-  percent: 83
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -26,18 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-13)
 ## Current Position
 
 Phase: 14 of 17 (Expanded Imperfections)
-Plan: 1 of 2 (complete)
-Status: Phase 14 in progress
-Last activity: 2026-03-16 -- Phase 14 plan 01 complete
+Plan: 2 of 2 (complete)
+Status: Phase 14 complete
+Last activity: 2026-03-16 -- Phase 14 plan 02 complete
 
-Progress: [████████░░] 83% (Phase 14: 1/2 plans)
+Progress: [██████████] 100% (Phase 14: 2/2 plans)
 
 ## Performance Metrics
 
 **Velocity (cumulative):**
 - v1.0: 12 plans in 58 min (4.8 min avg)
 - v1.1: 6 plans in 6 days (includes human verification sessions)
-- v1.2: 5 plans in ~79 min
+- v1.2: 6 plans in ~82 min
 
 ## Accumulated Context
 
@@ -71,6 +71,12 @@ Phase 14 (plan 01):
 - Phase jitter magnitude 0.3% max deviation (conservative for subtle trace thickening)
 - Drift parameter reads moved earlier in process() to gate pitch slew (safe: pure parameter read)
 
+Phase 14 (plan 02):
+- DC offset OU layer at 0.03Hz (theta=0.188, sigma=0.614) for ~33s wander cycle
+- DC offset applied AFTER crossfade capture to prevent clicks on phase reset (Pitfall 3)
+- Component spread seed stored as hex strings (not json_integer) to avoid uint64_t sign issues (Pitfall 6)
+- Component spread magnitudes: 2% OU weights, 1.5% character/tri-asymmetry, 2% saw curvature, 1% square duty
+
 ### Pending Todos
 
 2 pending todos (see `.planning/todos/pending/`)
@@ -84,6 +90,6 @@ Phase 14 (plan 01):
 
 ## Session Continuity
 
-Last session: 2026-03-16T10:28:00Z
-Stopped at: Completed 14-01-PLAN.md
-Resume file: .planning/phases/14-expanded-imperfections/14-01-SUMMARY.md
+Last session: 2026-03-16T10:35:14Z
+Stopped at: Completed 14-02-PLAN.md
+Resume file: .planning/phases/14-expanded-imperfections/14-02-SUMMARY.md
