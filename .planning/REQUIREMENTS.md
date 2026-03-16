@@ -28,9 +28,9 @@ Requirements for v1.2 Deep Analog milestone. Each maps to roadmap phases.
 
 ### Analog Character
 
-- [ ] **CHAR-01**: Phase jitter adds per-sample random phase deviation scaled by Drift knob
+- [x] **CHAR-01**: Phase jitter adds per-sample random phase deviation scaled by Drift knob
 - [ ] **CHAR-02**: DC offset drift adds slow-wandering output bias scaled by Drift knob
-- [ ] **CHAR-03**: Pitch slew adds frequency lag (component thermal response) scaled by Drift knob
+- [x] **CHAR-03**: Pitch slew adds frequency lag (component thermal response) scaled by Drift knob
 - [ ] **CHAR-04**: Component spread applies per-instance random parameter offsets (serialized via RNG seed)
 - [ ] **CHAR-05**: Waveform bleed introduces adjacent-shape crosstalk during morph transitions
 
@@ -85,9 +85,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PHASE-02 | Phase 12 | Complete |
 | PHASE-03 | Phase 16 | Pending |
 | PHASE-04 | Phase 16 | Pending |
-| CHAR-01 | Phase 14 | Pending |
+| CHAR-01 | Phase 14 | Complete |
 | CHAR-02 | Phase 14 | Pending |
-| CHAR-03 | Phase 14 | Pending |
+| CHAR-03 | Phase 14 | Complete |
 | CHAR-04 | Phase 14 | Pending |
 | CHAR-05 | Phase 15 | Pending |
 | PANEL-01 | Phase 17 | Pending |

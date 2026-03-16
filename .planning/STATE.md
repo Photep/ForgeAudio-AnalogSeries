@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deep Analog
-status: completed
-stopped_at: Phase 14 context gathered
-last_updated: "2026-03-16T07:45:23.732Z"
-last_activity: 2026-03-15 -- Phase 13 complete (all plans)
+status: in-progress
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-03-16T10:28:00Z"
+last_activity: 2026-03-16 -- Phase 14 plan 01 complete
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_plans: 6
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** v1.2 Deep Analog -- Phase 13 (FM Input)
+**Current focus:** v1.2 Deep Analog -- Phase 14 (Expanded Imperfections)
 
 ## Current Position
 
-Phase: 13 of 17 (FM Input)
-Plan: 1 of 1 (complete)
-Status: Phase 13 complete
-Last activity: 2026-03-15 -- Phase 13 complete (all plans)
+Phase: 14 of 17 (Expanded Imperfections)
+Plan: 1 of 2 (complete)
+Status: Phase 14 in progress
+Last activity: 2026-03-16 -- Phase 14 plan 01 complete
 
-Progress: [██████████] 100% (Phase 13: 1/1 plans)
+Progress: [████████░░] 83% (Phase 14: 1/2 plans)
 
 ## Performance Metrics
 
 **Velocity (cumulative):**
 - v1.0: 12 plans in 58 min (4.8 min avg)
 - v1.1: 6 plans in 6 days (includes human verification sessions)
-- v1.2: 4 plans in ~76 min
+- v1.2: 5 plans in ~79 min
 
 ## Accumulated Context
 
@@ -66,6 +66,11 @@ Phase 13:
 - FM attenuator default 0.0 for backward compatibility (opt-in modulation)
 - FM controls at temporary panel positions (8.0, 118.0 and 20.0, 118.0) -- Phase 17 finalizes layout
 
+Phase 14 (plan 01):
+- driftSlew lambda=500 for bypass at Drift=0 (branchless hot path, converges in <2ms)
+- Phase jitter magnitude 0.3% max deviation (conservative for subtle trace thickening)
+- Drift parameter reads moved earlier in process() to gate pitch slew (safe: pure parameter read)
+
 ### Pending Todos
 
 2 pending todos (see `.planning/todos/pending/`)
@@ -79,6 +84,6 @@ Phase 13:
 
 ## Session Continuity
 
-Last session: 2026-03-16T07:45:23.730Z
-Stopped at: Phase 14 context gathered
-Resume file: .planning/phases/14-expanded-imperfections/14-CONTEXT.md
+Last session: 2026-03-16T10:28:00Z
+Stopped at: Completed 14-01-PLAN.md
+Resume file: .planning/phases/14-expanded-imperfections/14-01-SUMMARY.md
