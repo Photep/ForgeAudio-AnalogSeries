@@ -115,7 +115,9 @@ Plans:
   1. With Character above zero and Morph at intermediate positions, the waveform trace shows subtle influence from adjacent shapes (visible on display)
   2. At Character = 0, morph is a crisp crossfade with no bleed -- identical to v1.1 behavior
   3. Output stays within the +/-5V range at all morph/character/bleed combinations -- no amplitude spikes
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 15-01-PLAN.md — Waveform bleed with neighbor crosstalk, component spread, and OU modulation
 
 ### Phase 16: Swing and Shuffle
 **Goal**: Clocked LFO output can be grooved with swing timing for rhythmic modulation patches
@@ -160,6 +162,6 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 12. RESET and Phase Offset | v1.2 | 2/2 | Complete | 2026-03-15 |
 | 13. FM Input | v1.2 | Complete    | 2026-03-15 | 2026-03-15 |
 | 14. Expanded Imperfections | 2/2 | Complete    | 2026-03-16 | - |
-| 15. Waveform Bleed | v1.2 | 0/? | Not started | - |
+| 15. Waveform Bleed | v1.2 | 0/1 | Planned | - |
 | 16. Swing and Shuffle | v1.2 | 0/? | Not started | - |
 | 17. Panel Redesign | v1.2 | 0/? | Not started | - |
