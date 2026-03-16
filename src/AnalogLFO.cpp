@@ -119,6 +119,14 @@ struct AnalogLFO : Module {
 	OULayer dcOffsetOU;
 	float dcOffsetV = 0.f;  // computed DC offset voltage, applied after crossfade
 
+	// Component spread: per-instance parameter offsets (CHAR-04)
+	uint64_t spreadSeed[2] = {};          // persisted seed for reproducible spread
+	float ouWeightSpread[NUM_OU_LAYERS] = {};       // OU layer weight offsets
+	float characterSpread = 0.f;          // character curve response offset
+	float sawCurvatureSpread = 0.f;       // saw exponential ramp spread
+	float squareDutySpread = 0.f;         // square duty cycle spread
+	float triAsymmetrySpread = 0.f;       // triangle asymmetry spread
+
 	// Phase 12: RESET trigger with bidirectional blanking
 	dsp::SchmittTrigger resetTrigger;
 	dsp::PulseGenerator resetBlanking;  // 1ms bidirectional blanking window
@@ -152,6 +160,22 @@ struct AnalogLFO : Module {
 		return character * character;  // x^2: subtle first half, aggressive second half
 	}
 
+	void initComponentSpread() {
+		rack::random::Xoroshiro128Plus spreadRng;
+		spreadRng.seed(spreadSeed[0], spreadSeed[1]);
+		std::normal_distribution<float> d{0.f, 1.f};
+		// OU layer weight offsets: +/-2% per layer
+		for (int i = 0; i < NUM_OU_LAYERS; i++) {
+			ouWeightSpread[i] = d(spreadRng) * 0.02f;
+		}
+		// Character response: +/-1.5%
+		characterSpread = d(spreadRng) * 0.015f;
+		// Waveform shape coefficients: +/-1-3%
+		sawCurvatureSpread = d(spreadRng) * 0.02f;
+		squareDutySpread = d(spreadRng) * 0.01f;
+		triAsymmetrySpread = d(spreadRng) * 0.015f;
+	}
+
 	void onSampleRateChange(const SampleRateChangeEvent& e) override {
 		sqrtSampleTime = std::sqrt(e.sampleTime);
 	}
@@ -174,7 +198,7 @@ struct AnalogLFO : Module {
 		if (character < 0.001f) return tri;
 		float c = progressiveCurve(character);
 		// Slope asymmetry: valley shifts slightly right (falling slope longer)
-		float asymmetry = c * 0.10f;
+		float asymmetry = c * (0.10f + triAsymmetrySpread);
 		float valley = 0.5f + asymmetry * 0.5f;
 		float analogTri;
 		if (phase < valley) {
@@ -202,7 +226,7 @@ struct AnalogLFO : Module {
 		float c = progressiveCurve(character);
 		// Exponential ramp curvature (50% blend toward exponential at full character)
 		float expRamp = 1.f - 2.f * (1.f - std::exp(-3.f * phase)) / (1.f - std::exp(-3.f));
-		float curvedSaw = saw + c * 0.5f * (expRamp - saw);
+		float curvedSaw = saw + c * (0.5f + sawCurvatureSpread) * (expRamp - saw);
 		// Soft capacitor reset (~8% of cycle at full character)
 		float resetWidth = c * 0.08f;
 		if (phase < resetWidth && resetWidth > 0.001f) {
@@ -220,7 +244,7 @@ struct AnalogLFO : Module {
 		if (character < 0.001f) return sqr;
 		float c = progressiveCurve(character);
 		// Duty cycle asymmetry (4% at full)
-		float duty = 0.5f + c * 0.04f;
+		float duty = 0.5f + c * (0.04f + squareDutySpread);
 		// Sigmoid edge softening via tanh (~8% edge width at full)
 		float edgeWidth = c * 0.08f;
 		float sharpness = 1.f / std::fmax(edgeWidth, 0.001f);
@@ -451,6 +475,11 @@ struct AnalogLFO : Module {
 		std::random_device rd;
 		rng.seed(rd(), rd());
 
+		// Component spread: generate unique seed from per-module RNG (CHAR-04)
+		spreadSeed[0] = rng();
+		spreadSeed[1] = rng();
+		initComponentSpread();
+
 		// Initialize OU layers (multi-timescale drift)
 		// Layer 0: 0.05Hz slow wander
 		ouLayers[0].theta = 2.f * (float)M_PI * 0.05f;   // 0.314
@@ -475,6 +504,27 @@ struct AnalogLFO : Module {
 		dcOffsetOU.sigma = 0.614f;                         // stationary std ~1.0
 		dcOffsetOU.weight = 1.f;                           // single layer, no weighting
 		dcOffsetOU.state = 0.f;
+	}
+
+	json_t* dataToJson() override {
+		json_t* rootJ = json_object();
+		// Store spread seed as hex strings to avoid uint64_t -> int64_t sign issues (Pitfall 6)
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)spreadSeed[0]);
+		json_object_set_new(rootJ, "spreadSeed0", json_string(buf));
+		snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)spreadSeed[1]);
+		json_object_set_new(rootJ, "spreadSeed1", json_string(buf));
+		return rootJ;
+	}
+
+	void dataFromJson(json_t* rootJ) override {
+		json_t* s0J = json_object_get(rootJ, "spreadSeed0");
+		json_t* s1J = json_object_get(rootJ, "spreadSeed1");
+		if (s0J && s1J) {
+			spreadSeed[0] = std::stoull(json_string_value(s0J), nullptr, 16);
+			spreadSeed[1] = std::stoull(json_string_value(s1J), nullptr, 16);
+			initComponentSpread();  // regenerate deterministic offsets from restored seed
+		}
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -555,7 +605,7 @@ struct AnalogLFO : Module {
 				float noise = normalDist(rng);
 				ouLayers[i].state += ouLayers[i].theta * (0.f - ouLayers[i].state) * args.sampleTime
 				                   + ouLayers[i].sigma * sqrtSampleTime * noise;
-				combinedOU += ouLayers[i].state * ouLayers[i].weight;
+				combinedOU += ouLayers[i].state * (ouLayers[i].weight + ouWeightSpread[i]);
 			}
 			// Reduced drift authority in clocked mode (DISP-04)
 			float maxDrift = isClocked ? 0.02f : 0.075f;
@@ -594,7 +644,7 @@ struct AnalogLFO : Module {
 		float charKnob = params[CHARACTER_PARAM].getValue();
 		float charAtten = params[CHARACTER_ATTEN_PARAM].getValue();
 		float charCV = inputs[CHARACTER_CV_INPUT].getVoltage();
-		float character = rack::math::clamp(charKnob + charAtten * charCV / 5.f, 0.f, 1.f);
+		float character = rack::math::clamp(charKnob + charAtten * charCV / 5.f + characterSpread, 0.f, 1.f);
 
 		// Update display buffer on phase wrap, morph change, or character change
 		bool phaseWrapped = (phase < prevPhaseForDisplay);
