@@ -159,7 +159,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 11. Display Polish | v1.2 | Complete    | 2026-03-13 | 2026-03-13 |
 | 12. RESET and Phase Offset | v1.2 | 2/2 | Complete | 2026-03-15 |
 | 13. FM Input | v1.2 | Complete    | 2026-03-15 | 2026-03-15 |
-| 14. Expanded Imperfections | 2/2 | Complete   | 2026-03-16 | - |
+| 14. Expanded Imperfections | 2/2 | Complete    | 2026-03-16 | - |
 | 15. Waveform Bleed | v1.2 | 0/? | Not started | - |
 | 16. Swing and Shuffle | v1.2 | 0/? | Not started | - |
 | 17. Panel Redesign | v1.2 | 0/? | Not started | - |
