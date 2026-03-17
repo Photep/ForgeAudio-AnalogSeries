@@ -46,7 +46,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 - [x] **Phase 12: RESET and Phase Offset** - Independent reset jack and CV-modulatable phase shift (completed 2026-03-15)
 - [x] **Phase 13: FM Input** - Exponential frequency modulation with clocked-mode authority management (completed 2026-03-15)
 - [x] **Phase 14: Expanded Imperfections** - Phase jitter, DC offset drift, pitch slew, component spread (completed 2026-03-16)
-- [ ] **Phase 15: Waveform Bleed** - Adjacent-shape crosstalk during morph transitions
+- [x] **Phase 15: Waveform Bleed** - Adjacent-shape crosstalk during morph transitions (completed 2026-03-17)
 - [ ] **Phase 16: Swing and Shuffle** - Beat-pair phase warping for clocked groove
 - [ ] **Phase 17: Panel Redesign** - Final 12HP layout for all new jacks and controls
 
@@ -115,9 +115,9 @@ Plans:
   1. With Character above zero and Morph at intermediate positions, the waveform trace shows subtle influence from adjacent shapes (visible on display)
   2. At Character = 0, morph is a crisp crossfade with no bleed -- identical to v1.1 behavior
   3. Output stays within the +/-5V range at all morph/character/bleed combinations -- no amplitude spikes
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 15-01-PLAN.md — Waveform bleed with neighbor crosstalk, component spread, and OU modulation
+- [x] 15-01-PLAN.md — Waveform bleed with neighbor crosstalk, component spread, and OU modulation
 
 ### Phase 16: Swing and Shuffle
 **Goal**: Clocked LFO output can be grooved with swing timing for rhythmic modulation patches
@@ -162,6 +162,6 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 12. RESET and Phase Offset | v1.2 | 2/2 | Complete | 2026-03-15 |
 | 13. FM Input | v1.2 | Complete    | 2026-03-15 | 2026-03-15 |
 | 14. Expanded Imperfections | 2/2 | Complete    | 2026-03-16 | - |
-| 15. Waveform Bleed | v1.2 | 0/1 | Planned | - |
+| 15. Waveform Bleed | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 16. Swing and Shuffle | v1.2 | 0/? | Not started | - |
 | 17. Panel Redesign | v1.2 | 0/? | Not started | - |

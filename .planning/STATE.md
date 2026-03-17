@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deep Analog
 status: completed
-stopped_at: Phase 15 context gathered
-last_updated: "2026-03-16T20:56:02.820Z"
-last_activity: 2026-03-16 -- Phase 14 plan 02 complete
+stopped_at: Phase 15 complete
+last_updated: "2026-03-17T07:30:00Z"
+last_activity: 2026-03-17 -- Phase 15 plan 01 complete
 progress:
   total_phases: 7
-  completed_phases: 4
-  total_plans: 6
-  completed_plans: 6
+  completed_phases: 5
+  total_plans: 7
+  completed_plans: 7
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** v1.2 Deep Analog -- Phase 14 (Expanded Imperfections)
+**Current focus:** v1.2 Deep Analog -- Phase 15 (Waveform Bleed)
 
 ## Current Position
 
-Phase: 14 of 17 (Expanded Imperfections)
-Plan: 2 of 2 (complete)
-Status: Phase 14 complete
-Last activity: 2026-03-16 -- Phase 14 plan 02 complete
+Phase: 15 of 17 (Waveform Bleed)
+Plan: 1 of 1 (complete)
+Status: Phase 15 complete
+Last activity: 2026-03-17 -- Phase 15 plan 01 complete
 
-Progress: [██████████] 100% (Phase 14: 2/2 plans)
+Progress: [██████████] 100% (Phase 15: 1/1 plans)
 
 ## Performance Metrics
 
@@ -77,6 +77,12 @@ Phase 14 (plan 02):
 - Component spread seed stored as hex strings (not json_integer) to avoid uint64_t sign issues (Pitfall 6)
 - Component spread magnitudes: 2% OU weights, 1.5% character/tri-asymmetry, 2% saw curvature, 1% square duty
 
+Phase 15 (plan 01):
+- Array indexing replaces switch/case in computeMorphedWave() for indexed neighbor access
+- Wrapping ring topology (sine-tri-saw-sqr-sine) for neighbor identification via modular arithmetic
+- Normalization divisor (1 + bleedIntensity) guarantees output stays in [-1,1] regardless of bleed magnitude
+- bleedSpread appended as last RNG call in initComponentSpread() to preserve existing spread values
+
 ### Pending Todos
 
 2 pending todos (see `.planning/todos/pending/`)
@@ -90,6 +96,6 @@ Phase 14 (plan 02):
 
 ## Session Continuity
 
-Last session: 2026-03-16T20:56:02.818Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-waveform-bleed/15-CONTEXT.md
+Last session: 2026-03-17T07:30:00Z
+Stopped at: Phase 15 complete
+Resume file: .planning/phases/15-waveform-bleed/15-01-SUMMARY.md

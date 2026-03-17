@@ -32,7 +32,7 @@ Requirements for v1.2 Deep Analog milestone. Each maps to roadmap phases.
 - [x] **CHAR-02**: DC offset drift adds slow-wandering output bias scaled by Drift knob
 - [x] **CHAR-03**: Pitch slew adds frequency lag (component thermal response) scaled by Drift knob
 - [x] **CHAR-04**: Component spread applies per-instance random parameter offsets (serialized via RNG seed)
-- [ ] **CHAR-05**: Waveform bleed introduces adjacent-shape crosstalk during morph transitions
+- [x] **CHAR-05**: Waveform bleed introduces adjacent-shape crosstalk during morph transitions
 
 ### Panel
 
@@ -89,7 +89,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CHAR-02 | Phase 14 | Complete |
 | CHAR-03 | Phase 14 | Complete |
 | CHAR-04 | Phase 14 | Complete |
-| CHAR-05 | Phase 15 | Pending |
+| CHAR-05 | Phase 15 | Complete |
 | PANEL-01 | Phase 17 | Pending |
 | PANEL-02 | Phase 17 | Pending |
 
