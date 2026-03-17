@@ -165,5 +165,5 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 13. FM Input | v1.2 | Complete    | 2026-03-15 | 2026-03-15 |
 | 14. Expanded Imperfections | 2/2 | Complete    | 2026-03-16 | - |
 | 15. Waveform Bleed | v1.2 | Complete    | 2026-03-17 | 2026-03-17 |
-| 16. Swing and Shuffle | v1.2 | 1/1 | Complete | 2026-03-17 |
+| 16. Swing and Shuffle | v1.2 | Complete    | 2026-03-17 | 2026-03-17 |
 | 17. Panel Redesign | v1.2 | 0/? | Not started | - |
