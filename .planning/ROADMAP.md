@@ -48,7 +48,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 - [x] **Phase 14: Expanded Imperfections** - Phase jitter, DC offset drift, pitch slew, component spread (completed 2026-03-16)
 - [x] **Phase 15: Waveform Bleed** - Adjacent-shape crosstalk during morph transitions (completed 2026-03-17)
 - [x] **Phase 16: Swing and Shuffle** - Beat-pair phase warping for clocked groove (completed 2026-03-17)
-- [ ] **Phase 17: Panel Redesign** - Final 12HP layout for all new jacks and controls
+- [ ] ~~**Phase 17: Panel Redesign**~~ - SKIPPED: current layout functional; panel density issue deferred to future modulation routing system redesign
 
 ## Phase Details
 
@@ -132,16 +132,10 @@ Plans:
 Plans:
 - [x] 16-01-PLAN.md — Swing deltaPhase multiplier, context menu, display overlay, and serialization
 
-### Phase 17: Panel Redesign
-**Goal**: The panel accommodates all v1.2 components in a clean, cohesive 12HP layout
-**Depends on**: Phase 16 (all DSP features finalized before panel design)
-**Requirements**: PANEL-01, PANEL-02
-**Success Criteria** (what must be TRUE):
-  1. Panel SVG includes FM jack, RESET jack, and Phase Offset CV jack with appropriate labels
-  2. Phase Offset knob and FM attenuator trimpot are positioned following Eurorack layout conventions (trimpots above jacks, logical grouping)
-  3. All jack and control spacing meets minimum 7mm center-to-center, and the layout works at 12HP (or a documented fallback has been applied)
-  4. Panel is structured for designer handoff with consistent layer naming and grouped elements
-**Plans**: TBD
+### Phase 17: Panel Redesign — SKIPPED
+**Status**: Skipped
+**Reason**: Panel density analysis during context gathering revealed that fitting all v1.2 components (FM jack, FM attenuator, RESET jack, Phase Offset knob, Phase Offset attenuator, Phase Offset CV) cleanly in 12HP is not feasible with the current per-parameter CV architecture. A Surge XT-style modulation routing system (generic MOD inputs with assignable targets) would solve the density problem while adding flexibility. This is captured as a future todo and will be addressed in a future milestone. Current temporary component positions are functional.
+**Requirements**: PANEL-01, PANEL-02 — deferred to modulation routing milestone
 
 ## Progress
 
@@ -166,4 +160,4 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 14. Expanded Imperfections | 2/2 | Complete    | 2026-03-16 | - |
 | 15. Waveform Bleed | v1.2 | Complete    | 2026-03-17 | 2026-03-17 |
 | 16. Swing and Shuffle | v1.2 | Complete    | 2026-03-17 | 2026-03-17 |
-| 17. Panel Redesign | v1.2 | 0/? | Not started | - |
+| 17. Panel Redesign | v1.2 | - | Skipped | 2026-03-17 |

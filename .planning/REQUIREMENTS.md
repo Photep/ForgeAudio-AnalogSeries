@@ -36,8 +36,8 @@ Requirements for v1.2 Deep Analog milestone. Each maps to roadmap phases.
 
 ### Panel
 
-- [ ] **PANEL-01**: Panel SVG updated with all new jacks and controls in a cohesive layout
-- [ ] **PANEL-02**: Panel accommodates FM jack, RESET jack, phase offset knob/CV at minimum; swing control placement determined (panel or right-click menu)
+- [ ] **PANEL-01**: Panel SVG updated with all new jacks and controls in a cohesive layout — deferred to modulation routing milestone
+- [ ] **PANEL-02**: Panel accommodates FM jack, RESET jack, phase offset knob/CV at minimum; swing control placement determined (panel or right-click menu) — deferred to modulation routing milestone
 
 ## Future Requirements
 
@@ -90,8 +90,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CHAR-03 | Phase 14 | Complete |
 | CHAR-04 | Phase 14 | Complete |
 | CHAR-05 | Phase 15 | Complete |
-| PANEL-01 | Phase 17 | Pending |
-| PANEL-02 | Phase 17 | Pending |
+| PANEL-01 | Phase 17 | Deferred |
+| PANEL-02 | Phase 17 | Deferred |
 
 **Coverage:**
 - v1.2 requirements: 17 total
