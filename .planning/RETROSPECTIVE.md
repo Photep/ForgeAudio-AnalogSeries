@@ -90,6 +90,53 @@
 
 ---
 
+## Milestone: v1.2 — Deep Analog
+
+**Shipped:** 2026-03-17
+**Phases:** 6 (1 skipped) | **Plans:** 8 | **Timeline:** 5 days
+
+### What Was Built
+- Pill-backed HUD overlays with feathered nvgBoxGradient backgrounds for waveform readability
+- Independent RESET trigger with bidirectional 1ms blanking reusing existing crossfade
+- Phase Offset knob/CV applied at readout (not accumulator) preserving all timing behavior
+- Exponential FM input with dual-authority scaling (0.5f clocked, 1.0f free)
+- Expanded analog imperfections: phase jitter, DC offset wander, pitch slew, component spread
+- Waveform bleed via wrapping ring topology with proximity-weighted neighbor crosstalk
+- MPC-style swing timing with 6 named presets via right-click context menu
+
+### What Worked
+- Research-then-plan pattern continued to produce first-pass implementations that work correctly
+- Offset-at-readout design decision (Phase 12) avoided accumulator coupling — no side effects on clock/drift
+- Component spread serialization as hex strings (Phase 14) avoided uint64_t JSON sign issues caught in research
+- Wrapping ring topology (Phase 15) made waveform bleed clean and extensible via modular arithmetic
+- Swing as deltaPhase multiplier (Phase 16) was commutative with drift/jitter — no ordering issues
+- Phase 17 skip decision was correct — panel density analysis during context gathering prevented wasted effort
+
+### What Was Inefficient
+- SUMMARY.md files still lack `one_liner` field — gsd-tools summary-extract returns null (same issue as v1.1)
+- Phase 14 ROADMAP.md plan checkboxes not marked as [x] despite being complete — carried forward from v1.1 audit finding
+- v1.2 controls placed at temporary panel positions that will need rework when modulation routing is designed
+
+### Patterns Established
+- Right-click context menu for controls that don't fit on panel (swing presets)
+- Phase skip with documented rationale when scope analysis reveals wrong approach
+- DC offset applied after crossfade capture to prevent clicks on phase reset
+- Component spread with deterministic RNG seed for per-instance variation with serialization
+- Normalization divisor pattern (1 + intensity) for guaranteed amplitude safety
+
+### Key Lessons
+1. Phase skip is a valid outcome when context gathering reveals fundamental approach problems — better than forcing a bad design
+2. Temporary panel positions create tech debt that compounds — each new feature adds another "temporary" control
+3. The three-knob engine scales well — 6 phases of new features layered cleanly onto the v1.0/v1.1 foundation
+4. Modulation routing (Surge-style MOD inputs) is the right abstraction for panel density — per-parameter CV architecture doesn't scale
+
+### Cost Observations
+- Model mix: quality profile throughout
+- Sessions: ~4 planning + execution sessions
+- Notable: 8 plans in ~97 min — consistent with v1.0 velocity
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -98,6 +145,7 @@
 |-----------|----------|--------|-------|------------|
 | v1.0 | 10 days | 6 | 12 | Established visual verification pattern |
 | v1.1 | 6 days | 4 | 6 | Layered DSP approach; zero rework post-verification |
+| v1.2 | 5 days | 6 (+1 skip) | 8 | Phase skip pattern; right-click menu for panel overflow |
 
 ### Cumulative Stats
 
@@ -105,9 +153,12 @@
 |-----------|-------------|-----------|-------------|
 | v1.0 | 552 | 552 | 23/23 |
 | v1.1 | 890 | 338 | 18/18 |
+| v1.2 | 1,374 | 484 | 15/17 (2 deferred) |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Visual verification plans are essential for UI-heavy modules — catches issues code review misses (v1.0 confirmed, v1.1 reconfirmed)
-2. Research before planning produces first-pass implementations that pass verification without rework (v1.0 character amplitudes exception, v1.1 fully validated)
+2. Research before planning produces first-pass implementations that pass verification without rework (v1.0 character amplitudes exception, v1.1 and v1.2 fully validated)
 3. Atomic bridge pattern for audio-to-GUI data scales cleanly across milestones — declare, store, load
+4. Phase skip is a valid and valuable outcome when context gathering reveals fundamental approach problems (v1.2 Phase 17)
+5. SUMMARY.md one_liner fields need to be populated during plan completion (recurring gap v1.1 + v1.2)
