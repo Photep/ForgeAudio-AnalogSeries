@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deep Analog
 status: completed
-stopped_at: Phase 16 context gathered
-last_updated: "2026-03-17T02:10:17.068Z"
-last_activity: 2026-03-17 -- Phase 15 plan 01 complete
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-03-17T07:36:03.859Z"
+last_activity: 2026-03-17 -- Phase 16 plan 01 complete
 progress:
   total_phases: 7
-  completed_phases: 5
-  total_plans: 7
-  completed_plans: 7
+  completed_phases: 6
+  total_plans: 8
+  completed_plans: 8
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** v1.2 Deep Analog -- Phase 15 (Waveform Bleed)
+**Current focus:** v1.2 Deep Analog -- Phase 16 (Swing and Shuffle)
 
 ## Current Position
 
-Phase: 15 of 17 (Waveform Bleed)
+Phase: 16 of 17 (Swing and Shuffle)
 Plan: 1 of 1 (complete)
-Status: Phase 15 complete
-Last activity: 2026-03-17 -- Phase 15 plan 01 complete
+Status: Phase 16 complete
+Last activity: 2026-03-17 -- Phase 16 plan 01 complete
 
-Progress: [██████████] 100% (Phase 15: 1/1 plans)
+Progress: [██████████] 100% (Phase 16: 1/1 plans)
 
 ## Performance Metrics
 
 **Velocity (cumulative):**
 - v1.0: 12 plans in 58 min (4.8 min avg)
 - v1.1: 6 plans in 6 days (includes human verification sessions)
-- v1.2: 6 plans in ~82 min
+- v1.2: 7 plans in ~97 min
 
 ## Accumulated Context
 
@@ -83,6 +83,13 @@ Phase 15 (plan 01):
 - Normalization divisor (1 + bleedIntensity) guarantees output stays in [-1,1] regardless of bleed magnitude
 - bleedSpread appended as last RNG call in initComponentSpread() to preserve existing spread values
 
+Phase 16 (plan 01):
+- Swing applied as deltaPhase multiplier after drift/jitter (commutative, preserves groove feel)
+- No smoothing at phase 0.5 boundary -- instant rate change matches MPC/Akai swing behavior
+- Swing gated by isClocked -- zero effect in free-running mode (PHASE-04)
+- 6 named presets (Straight through Max 75%) via right-click submenu, not knob
+- Display buffer uses time-to-phase mapping; phase dot uses inverse phase-to-time mapping
+
 ### Pending Todos
 
 2 pending todos (see `.planning/todos/pending/`)
@@ -92,10 +99,10 @@ Phase 15 (plan 01):
 - ~~Display text overlays covered by waveform~~ -- RESOLVED by Phase 11 (pill backgrounds via DISP-01).
 - ~~FM clocked-mode authority design decision needed before Phase 13 begins.~~ -- RESOLVED by Phase 13 (0.5f depth scale).
 - Component spread magnitudes need empirical tuning during Phase 14.
-- Swing subdivision semantics at non-x1 ratios need resolution before Phase 16.
+- ~~Swing subdivision semantics at non-x1 ratios need resolution before Phase 16.~~ -- RESOLVED by Phase 16 (swing always warps individual LFO cycle regardless of ratio).
 
 ## Session Continuity
 
-Last session: 2026-03-17T02:10:17.066Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-swing-and-shuffle/16-CONTEXT.md
+Last session: 2026-03-17T07:36:03.856Z
+Stopped at: Completed 16-01-PLAN.md
+Resume file: None

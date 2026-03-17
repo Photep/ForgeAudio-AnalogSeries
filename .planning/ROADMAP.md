@@ -47,7 +47,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 - [x] **Phase 13: FM Input** - Exponential frequency modulation with clocked-mode authority management (completed 2026-03-15)
 - [x] **Phase 14: Expanded Imperfections** - Phase jitter, DC offset drift, pitch slew, component spread (completed 2026-03-16)
 - [x] **Phase 15: Waveform Bleed** - Adjacent-shape crosstalk during morph transitions (completed 2026-03-17)
-- [ ] **Phase 16: Swing and Shuffle** - Beat-pair phase warping for clocked groove
+- [x] **Phase 16: Swing and Shuffle** - Beat-pair phase warping for clocked groove (completed 2026-03-17)
 - [ ] **Phase 17: Panel Redesign** - Final 12HP layout for all new jacks and controls
 
 ## Phase Details
@@ -128,9 +128,9 @@ Plans:
   2. Swing is adjustable via right-click menu with musically useful presets (50% through 75%)
   3. In free-running mode, swing has no effect on output regardless of its setting
   4. At swing = 50% (default), clocked output is identical to v1.1 behavior
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 16-01-PLAN.md — Swing deltaPhase multiplier, context menu, display overlay, and serialization
+- [x] 16-01-PLAN.md — Swing deltaPhase multiplier, context menu, display overlay, and serialization
 
 ### Phase 17: Panel Redesign
 **Goal**: The panel accommodates all v1.2 components in a clean, cohesive 12HP layout
@@ -165,5 +165,5 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 13. FM Input | v1.2 | Complete    | 2026-03-15 | 2026-03-15 |
 | 14. Expanded Imperfections | 2/2 | Complete    | 2026-03-16 | - |
 | 15. Waveform Bleed | v1.2 | Complete    | 2026-03-17 | 2026-03-17 |
-| 16. Swing and Shuffle | v1.2 | 0/1 | Planned | - |
+| 16. Swing and Shuffle | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 17. Panel Redesign | v1.2 | 0/? | Not started | - |
