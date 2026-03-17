@@ -1,5 +1,29 @@
 # Milestones
 
+## v1.2 Deep Analog (Shipped: 2026-03-17)
+
+**Phases completed:** 6 phases (1 skipped), 8 plans
+
+**Key accomplishments:**
+- Pill-backed HUD text overlays with feathered backgrounds for waveform readability (DISP-01, DISP-02)
+- Independent RESET trigger with bidirectional 1ms blanking and Phase Offset knob/CV (MOD-03, MOD-04, PHASE-01, PHASE-02)
+- Exponential FM input with dual-authority clocked/free mode scaling (MOD-01, MOD-02)
+- Expanded analog imperfections: phase jitter, DC offset wander, pitch slew, component spread (CHAR-01 through CHAR-04)
+- Waveform bleed with neighbor-shape crosstalk during morph transitions (CHAR-05)
+- MPC-style swing timing with 6 named presets and context menu (PHASE-03, PHASE-04)
+
+**Stats:**
+- 1,374 lines of C++ (484 added), 44 commits
+- Timeline: 5 days (2026-03-13 to 2026-03-17)
+- Requirements: 15/17 complete (2 deferred: PANEL-01, PANEL-02)
+
+### Known Gaps
+- **PANEL-01**: Panel SVG update — deferred to modulation routing milestone
+- **PANEL-02**: Panel control placement — deferred to modulation routing milestone
+- **Phase 17** (Panel Redesign) skipped: 12HP density requires Surge-style modulation routing system
+
+---
+
 ## v1.1 Clock Sync (Shipped: 2026-03-13)
 
 **Phases completed:** 4 phases, 6 plans

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A VCV Rack 2 module series featuring analog-modeled oscillators. The first module is a sub-audio LFO built around a three-knob analog engine (morph, character, drift) with real-time waveform display and clock sync. Each knob controls an independent axis: waveform shape selection, classic synth character modeling, and analog instability — all visible in real time on the display. When a clock source is patched in, the Rate knob switches to musical division/multiplication ratios with beat-aligned phase reset.
+A VCV Rack 2 module series featuring analog-modeled oscillators. The first module is a sub-audio LFO built around a three-knob analog engine (morph, character, drift) with real-time waveform display, clock sync, FM modulation, expanded analog imperfections, and groove features. Each knob controls an independent axis: waveform shape selection, classic synth character modeling, and analog instability — all visible in real time on the display. When a clock source is patched in, the Rate knob switches to musical division/multiplication ratios with beat-aligned phase reset.
 
 ## Core Value
 
@@ -32,35 +32,30 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - ✓ Panel SVG updated with CLK jack and label — v1.1
 - ✓ Drift authority reduced in clocked mode (2% vs 7.5%) — v1.1
 - ✓ Smooth frequency slew during clock/free transitions — v1.1
-
-## Current Milestone: v1.2 Deep Analog
-
-**Goal:** Deepen the LFO's analog character with FM modulation, expanded drift/imperfection modeling, new modulation jacks, groove features, and display polish.
-
-**Target features:**
-- Display text overlay readability fix (HUD backgrounds over waveform)
-- FM input jack for frequency modulation
-- Phase jitter, DC offset drift, pitch slew, component spread (expanded analog imperfections)
-- Waveform bleed during morph transitions
-- Separate RESET jack (independent from CLK)
-- Phase offset knob/CV
-- Swing/shuffle control for clocked mode
-- Incoming clock BPM display alongside effective BPM
+- ✓ Display text overlays readable via pill backgrounds — v1.2
+- ✓ Incoming clock BPM alongside effective BPM — v1.2
+- ✓ FM input jack with exponential frequency modulation — v1.2
+- ✓ FM authority reduced in clocked mode — v1.2
+- ✓ Separate RESET trigger jack with 1ms blanking — v1.2
+- ✓ RESET uses existing cosine crossfade — v1.2
+- ✓ Phase offset knob (0-360 degrees) at readout — v1.2
+- ✓ Phase offset CV input — v1.2
+- ✓ Swing/shuffle for clocked mode — v1.2
+- ✓ Swing inactive in free-running mode — v1.2
+- ✓ Phase jitter scaled by Drift — v1.2
+- ✓ DC offset wander scaled by Drift — v1.2
+- ✓ Pitch slew (thermal lag) scaled by Drift — v1.2
+- ✓ Per-instance component spread with serialized seed — v1.2
+- ✓ Waveform bleed (neighbor crosstalk) during morph — v1.2
 
 ### Active
 
-- [ ] LFO: Display text overlays readable over waveform in all scenarios
-- [ ] LFO: FM input jack for frequency modulation
-- [ ] LFO: Phase jitter, DC offset drift, pitch slew, component spread
-- [ ] LFO: Waveform bleed in morph transitions
-- [ ] LFO: Separate RESET jack (independent from CLK)
-- [ ] LFO: Phase offset knob/CV
-- [ ] LFO: Swing/shuffle control
-- [ ] LFO: Display incoming clock BPM alongside effective BPM
-
-**Deferred (future milestones):**
+- [ ] LFO: Panel redesign with modulation routing system (Surge-style MOD inputs)
 - [ ] LFO: CV control of division ratio
 - [ ] LFO: Animated sync badge (clock-pulse flash)
+- [ ] LFO: Pulse width modulation
+
+**Deferred (future milestones):**
 - [ ] VCO module: V/Oct pitch input with 1V/octave tracking
 - [ ] VCO module: FM input and through-zero FM
 - [ ] VCO module: Hard sync input
@@ -85,15 +80,19 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - Octave snap / semitone selector — not meaningful for sub-audio LFO rates
 - PLL-based clock tracking — overkill for LFO rates; simple edge measurement + EMA is sufficient
 - Continuous (non-snapped) clock ratios — anti-pattern; produces non-musical results
+- Linear FM mode — perceptually identical to exponential at LFO rates
+- Through-zero FM — audio-rate timbral effect, not meaningful at LFO rates
+- Panel expansion beyond 12HP — preserve existing rack footprint
 
 ## Context
 
-**Current state:** v1.1 Clock Sync shipped. 890 lines of C++, 12HP panel, three-knob analog engine with clock sync.
+**Current state:** v1.2 Deep Analog shipped. 1,374 lines of C++, 12HP panel, three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, and swing timing.
 **Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
 **Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
 **Brand identity:** Deep navy (#1a1a2e), forge amber (#e8a838), muted lavender labels (#8888aa), white-gray text (#c0c0d0).
 **Prior work:** POC LFO at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` — clean digital implementation, no analog modeling.
-**Release strategy:** LFO shipped (v1.0 + v1.1). VCO module next (v2.0). LFO validates the three-knob engine; VCO adds audio-rate complexity.
+**Release strategy:** LFO feature-complete through v1.2. Panel redesign with modulation routing system needed before next LFO milestone. VCO module (v2.0) planned after LFO panel resolution.
+**Known tech debt:** FM, RESET, Phase Offset controls at temporary panel positions pending modulation routing redesign.
 
 ## Constraints
 
@@ -125,14 +124,22 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Lock-free double buffer for display | No mutexes in audio thread | ✓ Good — zero audio impact |
 | displayDrift atomic for CV-responsive visuals | Drift visuals respond to CV, not just knob position | ✓ Good — visual accuracy |
 | Two-row bottom layout (trimpots above jacks) | Standard Eurorack convention, clean grouping | ✓ Good — improved readability |
-| Three-state clock tracker (FREE/ACQUIRING/LOCKED) | Clean separation of unclocked, learning, and tracking states | ✓ Good — predictable transitions, fast-track re-acquisition |
-| EMA period smoothing (alpha 0.3) with outlier rejection | Balances responsiveness with jitter filtering | ✓ Good — stable tracking even with noisy clocks |
-| 15 discrete ratios via round(knob * 14) | No hysteresis needed, clean integer snap | ✓ Good — simple, deterministic ratio selection |
-| Cosine crossfade (3ms) on phase reset | Zero-derivative endpoints prevent clicks | ✓ Good — inaudible resets confirmed |
+| Three-state clock tracker (FREE/ACQUIRING/LOCKED) | Clean separation of unclocked, learning, and tracking states | ✓ Good — predictable transitions |
+| EMA period smoothing (alpha 0.3) with outlier rejection | Balances responsiveness with jitter filtering | ✓ Good — stable tracking |
+| 15 discrete ratios via round(knob * 14) | No hysteresis needed, clean integer snap | ✓ Good — deterministic ratio selection |
+| Cosine crossfade (3ms) on phase reset | Zero-derivative endpoints prevent clicks | ✓ Good — inaudible resets |
 | Drift authority scaling (2% clocked, 7.5% free) | Prevents phase error accumulation while preserving analog character | ✓ Good — musical in both modes |
 | Relaxed atomics for all display bridges | Independent per-atomic reads, no ordering needed | ✓ Good — correct and performant |
-| CLK label as SVG paths (not text element) | nanosvg compatibility — text elements not supported | ✓ Good — renders correctly |
-| RATE label stays white-gray (#c0c0d0) | Matches knob label convention; CLK gets lavender as jack label | ✓ Good — visual consistency |
+| Individual pill backgrounds per HUD overlay | Better visual integration than shared HUD pill | ✓ Good — readable at all waveform positions |
+| Phase Offset applied at readout (not accumulator) | Preserves all existing timing behavior | ✓ Good — no side effects on clock/drift |
+| FM processing after frequency slew filter | Preserves full modulation bandwidth | ✓ Good — FM not sluggish |
+| Clocked FM depth scale 0.5f | Clock phase resets already enforce sync | ✓ Good — usable FM in clocked mode |
+| DC offset applied after crossfade capture | Prevents clicks on phase reset | ✓ Good — clean resets preserved |
+| Component spread seed as hex strings | Avoids uint64_t sign issues in JSON | ✓ Good — reliable serialization |
+| Waveform bleed via wrapping ring topology | Modular arithmetic for neighbor access | ✓ Good — clean and extensible |
+| Swing as deltaPhase multiplier after drift/jitter | Commutative, preserves groove feel | ✓ Good — MPC-style timing |
+| Swing via right-click menu (not knob) | Preserves panel density | ✓ Good — functional within 12HP |
+| Skip Phase 17 Panel Redesign | 12HP density requires modulation routing system redesign | ⚠️ Revisit — tech debt, controls at temporary positions |
 
 ---
-*Last updated: 2026-03-13 after v1.2 milestone started*
+*Last updated: 2026-03-18 after v1.2 milestone*

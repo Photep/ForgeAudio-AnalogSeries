@@ -8,12 +8,12 @@ The Forge Audio Analog Series is a collection of VCV Rack 2 modules featuring an
 
 - ✅ **v1.0 Analog Series LFO** -- Phases 1-6 (shipped 2026-03-07)
 - ✅ **v1.1 Clock Sync** -- Phases 7-10 (shipped 2026-03-13)
-- **v1.2 Deep Analog** -- Phases 11-17 (in progress)
+- ✅ **v1.2 Deep Analog** -- Phases 11-17 (shipped 2026-03-17)
 
 ## Phases
 
 <details>
-<summary>v1.0 Analog Series LFO (Phases 1-6) -- SHIPPED 2026-03-07</summary>
+<summary>✅ v1.0 Analog Series LFO (Phases 1-6) -- SHIPPED 2026-03-07</summary>
 
 - [x] Phase 1: Plugin Scaffold and Panel (2/2 plans) -- completed 2026-02-25
 - [x] Phase 2: Waveform Engine (2/2 plans) -- completed 2026-02-25
@@ -27,7 +27,7 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
 </details>
 
 <details>
-<summary>v1.1 Clock Sync (Phases 7-10) -- SHIPPED 2026-03-13</summary>
+<summary>✅ v1.1 Clock Sync (Phases 7-10) -- SHIPPED 2026-03-13</summary>
 
 - [x] Phase 7: Clock Input and Period Tracking (2/2 plans) -- completed 2026-03-07
 - [x] Phase 8: Frequency Override and Ratio Table (1/1 plans) -- completed 2026-03-10
@@ -38,109 +38,22 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 
 </details>
 
-### v1.2 Deep Analog (Phases 11-17)
+<details>
+<summary>✅ v1.2 Deep Analog (Phases 11-17) -- SHIPPED 2026-03-17</summary>
 
-**Milestone Goal:** Deepen the LFO's analog character with FM modulation, expanded drift/imperfection modeling, new modulation jacks, groove features, and display polish.
+- [x] Phase 11: Display Polish (1/1 plan) -- completed 2026-03-13
+- [x] Phase 12: RESET and Phase Offset (2/2 plans) -- completed 2026-03-15
+- [x] Phase 13: FM Input (1/1 plan) -- completed 2026-03-15
+- [x] Phase 14: Expanded Imperfections (2/2 plans) -- completed 2026-03-16
+- [x] Phase 15: Waveform Bleed (1/1 plan) -- completed 2026-03-17
+- [x] Phase 16: Swing and Shuffle (1/1 plan) -- completed 2026-03-17
+- [ ] ~~Phase 17: Panel Redesign~~ -- SKIPPED (deferred to modulation routing milestone)
 
-- [x] **Phase 11: Display Polish** - Fix HUD text readability and add incoming clock BPM display (completed 2026-03-13)
-- [x] **Phase 12: RESET and Phase Offset** - Independent reset jack and CV-modulatable phase shift (completed 2026-03-15)
-- [x] **Phase 13: FM Input** - Exponential frequency modulation with clocked-mode authority management (completed 2026-03-15)
-- [x] **Phase 14: Expanded Imperfections** - Phase jitter, DC offset drift, pitch slew, component spread (completed 2026-03-16)
-- [x] **Phase 15: Waveform Bleed** - Adjacent-shape crosstalk during morph transitions (completed 2026-03-17)
-- [x] **Phase 16: Swing and Shuffle** - Beat-pair phase warping for clocked groove (completed 2026-03-17)
-- [ ] ~~**Phase 17: Panel Redesign**~~ - SKIPPED: current layout functional; panel density issue deferred to future modulation routing system redesign
+See: `.planning/milestones/v1.2-ROADMAP.md` for full details.
 
-## Phase Details
-
-### Phase 11: Display Polish
-**Goal**: Display overlays are always readable and show complete clock status information
-**Depends on**: Phase 10 (v1.1 display foundation)
-**Requirements**: DISP-01, DISP-02
-**Success Criteria** (what must be TRUE):
-  1. SYNC badge, ratio label, BPM, and Hz text remain readable when the waveform trace passes directly through overlay areas at any morph/character/drift setting
-  2. When clocked at a non-x1 ratio, the display shows both the raw incoming clock BPM and the ratio-adjusted effective BPM with clear visual distinction between them
-  3. When clocked at x1 ratio, only one BPM value is displayed (no redundant duplicate)
-**Plans:** 1/1 plans complete
-Plans:
-- [x] 11-01-PLAN.md — Pill-backed text overlays and dual BPM stack
-
-### Phase 12: RESET and Phase Offset
-**Goal**: Users can independently reset LFO phase and shift waveform output by a controllable offset
-**Depends on**: Phase 11
-**Requirements**: MOD-03, MOD-04, PHASE-01, PHASE-02
-**Success Criteria** (what must be TRUE):
-  1. A rising-edge trigger at the RESET jack snaps the LFO to its start position with a click-free crossfade, independent of clock state
-  2. Simultaneous triggers on CLK and RESET within 1ms do not cause double-resets or corrupt clock period tracking
-  3. The Phase Offset knob shifts the waveform output 0-360 degrees, and the waveform display dot tracks the offset-inclusive position
-  4. Phase Offset CV input modulates offset in real time, enabling quadrature (90-degree) patches when driven by a constant voltage
-  5. Changing the Phase Offset knob while running produces smooth waveform changes with no clicks or discontinuities
-**Plans:** 2/2 plans complete
-Plans:
-- [x] 12-01-PLAN.md — RESET trigger with bidirectional 1ms blanking
-- [x] 12-02-PLAN.md — Phase Offset knob with CV and display integration
-
-### Phase 13: FM Input
-**Goal**: Users can frequency-modulate the LFO from external CV sources in both free and clocked modes
-**Depends on**: Phase 12
-**Requirements**: MOD-01, MOD-02
-**Success Criteria** (what must be TRUE):
-  1. Patching a bipolar CV source into the FM jack modulates LFO frequency exponentially, with an attenuator controlling modulation depth
-  2. FM never drives frequency negative -- LFO remains stable at any FM depth and input voltage
-  3. In clocked mode, FM is usable without destroying clock sync -- authority is reduced so clock-edge phase resets remain clean at moderate FM depths
-  4. With FM attenuator at zero (default), output is identical to v1.1 behavior
-**Plans:** 1/1 plans complete
-Plans:
-- [x] 13-01-PLAN.md — FM input jack, attenuator, exponential FM processing with clocked authority
-
-### Phase 14: Expanded Imperfections
-**Goal**: The Drift knob controls a richer set of analog imperfections beyond pitch drift alone
-**Depends on**: Phase 12 (phase readout path must be established)
-**Requirements**: CHAR-01, CHAR-02, CHAR-03, CHAR-04
-**Success Criteria** (what must be TRUE):
-  1. With Drift above zero, waveform timing shows subtle per-sample jitter visible as slight trace thickness variation on the display
-  2. With Drift above zero, the output center drifts slowly away from 0V (DC offset wander), observable on a scope module
-  3. Rapid frequency changes (via Rate knob or CV) show slight lag when Drift is up, simulating component thermal response
-  4. Two instances of the module with identical knob positions produce audibly different output character due to per-instance component spread
-  5. At Drift = 0, all new imperfections are completely inactive -- output matches pre-v1.2 digital precision
-**Plans:** 2/2 plans complete
-Plans:
-- [ ] 14-01-PLAN.md — Pitch slew filter and phase jitter (CHAR-03, CHAR-01)
-- [ ] 14-02-PLAN.md — DC offset wander and component spread with serialization (CHAR-02, CHAR-04)
-
-### Phase 15: Waveform Bleed
-**Goal**: Morph transitions show analog crossfader crosstalk influenced by the Character knob
-**Depends on**: Phase 14 (pipeline changes to computeMorphedWave must follow imperfections)
-**Requirements**: CHAR-05
-**Success Criteria** (what must be TRUE):
-  1. With Character above zero and Morph at intermediate positions, the waveform trace shows subtle influence from adjacent shapes (visible on display)
-  2. At Character = 0, morph is a crisp crossfade with no bleed -- identical to v1.1 behavior
-  3. Output stays within the +/-5V range at all morph/character/bleed combinations -- no amplitude spikes
-**Plans:** 1/1 plans complete
-Plans:
-- [x] 15-01-PLAN.md — Waveform bleed with neighbor crosstalk, component spread, and OU modulation
-
-### Phase 16: Swing and Shuffle
-**Goal**: Clocked LFO output can be grooved with swing timing for rhythmic modulation patches
-**Depends on**: Phase 13 (FM and phase features must be stable before swing layers on)
-**Requirements**: PHASE-03, PHASE-04
-**Success Criteria** (what must be TRUE):
-  1. In clocked mode, a swing setting above 50% audibly shifts alternate beat timing -- the LFO "grooves" rather than playing straight
-  2. Swing is adjustable via right-click menu with musically useful presets (50% through 75%)
-  3. In free-running mode, swing has no effect on output regardless of its setting
-  4. At swing = 50% (default), clocked output is identical to v1.1 behavior
-**Plans:** 1/1 plans complete
-Plans:
-- [x] 16-01-PLAN.md — Swing deltaPhase multiplier, context menu, display overlay, and serialization
-
-### Phase 17: Panel Redesign — SKIPPED
-**Status**: Skipped
-**Reason**: Panel density analysis during context gathering revealed that fitting all v1.2 components (FM jack, FM attenuator, RESET jack, Phase Offset knob, Phase Offset attenuator, Phase Offset CV) cleanly in 12HP is not feasible with the current per-parameter CV architecture. A Surge XT-style modulation routing system (generic MOD inputs with assignable targets) would solve the density problem while adding flexibility. This is captured as a future todo and will be addressed in a future milestone. Current temporary component positions are functional.
-**Requirements**: PANEL-01, PANEL-02 — deferred to modulation routing milestone
+</details>
 
 ## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -154,10 +67,10 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 8. Frequency Override and Ratio Table | v1.1 | 1/1 | Complete | 2026-03-10 |
 | 9. Phase Reset and Drift Integration | v1.1 | 1/1 | Complete | 2026-03-11 |
 | 10. Display and Panel | v1.1 | 2/2 | Complete | 2026-03-13 |
-| 11. Display Polish | v1.2 | Complete    | 2026-03-13 | 2026-03-13 |
+| 11. Display Polish | v1.2 | 1/1 | Complete | 2026-03-13 |
 | 12. RESET and Phase Offset | v1.2 | 2/2 | Complete | 2026-03-15 |
-| 13. FM Input | v1.2 | Complete    | 2026-03-15 | 2026-03-15 |
-| 14. Expanded Imperfections | 2/2 | Complete    | 2026-03-16 | - |
-| 15. Waveform Bleed | v1.2 | Complete    | 2026-03-17 | 2026-03-17 |
-| 16. Swing and Shuffle | v1.2 | Complete    | 2026-03-17 | 2026-03-17 |
+| 13. FM Input | v1.2 | 1/1 | Complete | 2026-03-15 |
+| 14. Expanded Imperfections | v1.2 | 2/2 | Complete | 2026-03-16 |
+| 15. Waveform Bleed | v1.2 | 1/1 | Complete | 2026-03-17 |
+| 16. Swing and Shuffle | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 17. Panel Redesign | v1.2 | - | Skipped | 2026-03-17 |
