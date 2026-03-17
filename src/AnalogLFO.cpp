@@ -64,6 +64,30 @@ struct AnalogLFO : Module {
 		"x1.5", "x2", "x3", "x4", "x6", "x8", "x16"
 	};
 
+	// Swing presets: index into SWING_FRACTIONS table (PHASE-03)
+	static constexpr float SWING_FRACTIONS[6] = {
+		0.50f,   // Straight
+		0.54f,   // Light
+		0.58f,   // Medium
+		0.66f,   // Triplet (2/3)
+		0.71f,   // Heavy
+		0.75f    // Max (3/4)
+	};
+
+	static constexpr const char* SWING_MENU_LABELS[6] = {
+		"Straight 50%", "Light 54%", "Medium 58%",
+		"Triplet 66%", "Heavy 71%", "Max 75%"
+	};
+
+	static constexpr const char* SWING_OVERLAY_LABELS[6] = {
+		"",             // hidden at Straight
+		"LIGHT 54%",
+		"MEDIUM 58%",
+		"TRIPLET 66%",
+		"HEAVY 71%",
+		"MAX 75%"
+	};
+
 	double phase = 0.0;
 
 	// Drift engine: multi-timescale Ornstein-Uhlenbeck process
@@ -127,6 +151,14 @@ struct AnalogLFO : Module {
 	float squareDutySpread = 0.f;         // square duty cycle spread
 	float triAsymmetrySpread = 0.f;       // triangle asymmetry spread
 	float bleedSpread = 0.f;              // waveform bleed magnitude spread (CHAR-05)
+
+	// Swing state (PHASE-03, PHASE-04)
+	int swingIndex = 0;  // 0=Straight (default), persisted via dataToJson
+	int prevSwingIndex = -1;  // tracks changes for display buffer refresh
+
+	// Display bridge atomics for swing
+	std::atomic<int> displaySwingIndex{0};
+	std::atomic<float> displaySwingFraction{0.5f};
 
 	// Phase 12: RESET trigger with bidirectional blanking
 	dsp::SchmittTrigger resetTrigger;
@@ -310,10 +342,18 @@ struct AnalogLFO : Module {
 		return result;
 	}
 
-	void updateDisplayBuffer(float morph, float character) {
+	void updateDisplayBuffer(float morph, float character, float swingFrac = 0.5f) {
 		int writeIdx = 1 - displayReadIdx.load(std::memory_order_relaxed);
 		for (int i = 0; i < DISPLAY_SAMPLES; i++) {
-			float p = (float)i / (float)DISPLAY_SAMPLES;
+			float t = (float)i / (float)DISPLAY_SAMPLES;  // uniform time
+			float p;
+			if (swingFrac <= 0.5001f) {
+				p = t;  // fast path: no swing
+			} else if (t < swingFrac) {
+				p = t * 0.5f / swingFrac;                              // even: [0,S) -> [0,0.5)
+			} else {
+				p = 0.5f + (t - swingFrac) * 0.5f / (1.f - swingFrac); // odd: [S,1) -> [0.5,1)
+			}
 			displayBuffers[writeIdx][i] = computeMorphedWave(p, morph, character);
 		}
 		displayReadIdx.store(writeIdx, std::memory_order_release);
@@ -544,6 +584,8 @@ struct AnalogLFO : Module {
 		json_object_set_new(rootJ, "spreadSeed0", json_string(buf));
 		snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)spreadSeed[1]);
 		json_object_set_new(rootJ, "spreadSeed1", json_string(buf));
+		// Swing preset (PHASE-03)
+		json_object_set_new(rootJ, "swingIndex", json_integer(swingIndex));
 		return rootJ;
 	}
 
@@ -555,6 +597,10 @@ struct AnalogLFO : Module {
 			spreadSeed[1] = std::stoull(json_string_value(s1J), nullptr, 16);
 			initComponentSpread();  // regenerate deterministic offsets from restored seed
 		}
+		// Swing preset (PHASE-03)
+		json_t* swingJ = json_object_get(rootJ, "swingIndex");
+		if (swingJ)
+			swingIndex = rack::math::clamp((int)json_integer_value(swingJ), 0, 5);
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -661,6 +707,22 @@ struct AnalogLFO : Module {
 			dcOffsetV = 0.f;
 		}
 
+		// Swing: warp phase timing for clocked mode (PHASE-03)
+		// Even beat (first half, phase < 0.5): slower accumulation -> longer duration
+		// Odd beat (second half, phase >= 0.5): faster accumulation -> shorter duration
+		// PHASE-04: swing inactive in free-running mode (isClocked gate)
+		float swingFrac = SWING_FRACTIONS[swingIndex];
+		if (isClocked && swingFrac > 0.5001f) {
+			double swingMul = (phase < 0.5)
+				? (0.5 / (double)swingFrac)
+				: (0.5 / (1.0 - (double)swingFrac));
+			deltaPhase *= swingMul;
+		}
+
+		// Update swing display atomics
+		displaySwingIndex.store(swingIndex, std::memory_order_relaxed);
+		displaySwingFraction.store(swingFrac, std::memory_order_relaxed);
+
 		phase += deltaPhase;
 		if (phase >= 1.0) phase -= 1.0;
 
@@ -676,18 +738,21 @@ struct AnalogLFO : Module {
 		float charCV = inputs[CHARACTER_CV_INPUT].getVoltage();
 		float character = rack::math::clamp(charKnob + charAtten * charCV / 5.f + characterSpread, 0.f, 1.f);
 
-		// Update display buffer on phase wrap, morph change, or character change
+		// Update display buffer on phase wrap, morph change, character change, or swing change
 		bool phaseWrapped = (phase < prevPhaseForDisplay);
 		bool morphChanged = (std::fabs(morph - prevDisplayMorph) > 0.002f);
 		bool characterChanged = (std::fabs(character - prevDisplayCharacter) > 0.002f);
+		bool swingChanged = (swingIndex != prevSwingIndex);
 		displayUpdateTimer += args.sampleTime;
 		// Phase wrap always triggers; param changes rate-limited to ~30fps
 		// to prevent visual artifacts from fast CV modulation
 		bool paramReady = displayUpdateTimer >= (1.f / 30.f);
-		if (phaseWrapped || ((morphChanged || characterChanged) && paramReady)) {
-			updateDisplayBuffer(morph, character);
+		if (phaseWrapped || ((morphChanged || characterChanged || swingChanged) && paramReady)) {
+			float displaySwing = isClocked ? swingFrac : 0.5f;  // no warp in free-running display
+			updateDisplayBuffer(morph, character, displaySwing);
 			prevDisplayMorph = morph;
 			prevDisplayCharacter = character;
+			prevSwingIndex = swingIndex;
 			displayUpdateTimer = 0.f;
 		}
 		prevPhaseForDisplay = phase;
@@ -746,6 +811,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	float ratioFadeAlpha = 0.f;
 	float bpmFadeAlpha = 0.f;
 	float hzFadeAlpha = 1.f;  // starts visible (free-running mode default)
+	float swingFadeAlpha = 0.f;  // swing overlay (bottom-left)
 
 	void step() override {
 		// Advance breathe animation (~0.8Hz cycle)
@@ -767,6 +833,12 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			ratioFadeAlpha += rack::math::clamp(ratioTarget - ratioFadeAlpha, -fadeSpeed, fadeSpeed);
 			bpmFadeAlpha += rack::math::clamp(bpmTarget - bpmFadeAlpha, -fadeSpeed, fadeSpeed);
 			hzFadeAlpha += rack::math::clamp(hzTarget - hzFadeAlpha, -fadeSpeed, fadeSpeed);
+
+			// Swing overlay: visible when clocked AND swing > Straight
+			int swingIdx = module->displaySwingIndex.load(std::memory_order_relaxed);
+			bool showSwing = showClocked && (swingIdx > 0);
+			float swingTarget = showSwing ? 1.f : 0.f;
+			swingFadeAlpha += rack::math::clamp(swingTarget - swingFadeAlpha, -fadeSpeed, fadeSpeed);
 		}
 
 		TransparentWidget::step();
@@ -845,6 +917,15 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	}
 
 	void drawPhaseDot(NVGcontext* vg, const std::array<float, 256>& buffer, float phase, float dimFactor) {
+		// Swing phase-to-time remapping: dot position reflects swing-warped timing
+		float swingFrac = module ? module->displaySwingFraction.load(std::memory_order_relaxed) : 0.5f;
+		if (swingFrac > 0.5001f) {
+			if (phase < 0.5f)
+				phase = phase * 2.f * swingFrac;                           // [0,0.5) -> [0,S)
+			else
+				phase = swingFrac + (phase - 0.5f) * 2.f * (1.f - swingFrac);  // [0.5,1) -> [S,1)
+		}
+
 		float dotRadius = box.size.y * 0.03f;
 
 		// Read drift level for visual instability, scaled down at low rates
@@ -1149,6 +1230,16 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		if (bpmFadeAlpha > 0.001f) {
 			drawBpmStack(vg, font->handle, bpmFadeAlpha);
 		}
+
+		// Swing overlay (clocked mode, bottom-left, only when swing > Straight)
+		if (swingFadeAlpha > 0.001f) {
+			int swingIdx = module->displaySwingIndex.load(std::memory_order_relaxed);
+			if (swingIdx > 0 && swingIdx <= 5) {
+				drawPillText(vg, font->handle, margin, box.size.y - margin,
+				             AnalogLFO::SWING_OVERLAY_LABELS[swingIdx], fontSize,
+				             NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, swingFadeAlpha);
+			}
+		}
 	}
 
 	void drawPlaceholder(NVGcontext* vg) {
@@ -1248,6 +1339,20 @@ struct AnalogLFOWidget : ModuleWidget {
 		         module, AnalogLFO::FM_ATTEN_PARAM));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.0, 118.0)),
 		         module, AnalogLFO::FM_INPUT));
+	}
+
+	void appendContextMenu(Menu* menu) override {
+		AnalogLFO* module = getModule<AnalogLFO>();
+		if (!module) return;
+
+		menu->addChild(new MenuSeparator);
+
+		menu->addChild(createIndexSubmenuItem("Swing",
+			{"Straight 50%", "Light 54%", "Medium 58%",
+			 "Triplet 66%", "Heavy 71%", "Max 75%"},
+			[=]() { return (size_t)module->swingIndex; },
+			[=](size_t idx) { module->swingIndex = (int)idx; }
+		));
 	}
 };
 
