@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forge Audio Analog LFO — Design Explorations</title>
+<style>
+  /* === FONTS === */
+  @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Bebas+Neue&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Jost:wght@300;400;500&display=swap');
+
+  @font-face {
+    font-family: 'FoundationLogo';
+    src: url('./FoundationLogo.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: 'BCBarell';
+    src: url('./BCBarellTEST-Regular.otf') format('opentype');
+  }
+
+  /* === PAGE === */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0e0e12;
+    min-height: 100vh;
+    padding: 50px 30px 80px;
+    font-family: 'Chakra Petch', sans-serif;
+  }
+
+  .page-title {
+    text-align: center;
+    margin-bottom: 60px;
+  }
+  .page-title h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 38px;
+    letter-spacing: 8px;
+    color: #d0cdc8;
+    margin-bottom: 8px;
+  }
+  .page-title p {
+    font-size: 12px;
+    color: #555;
+    letter-spacing: 3px;
+    font-family: 'Chakra Petch', sans-serif;
+  }
+
+  .gallery {
+    display: flex;
+    justify-content: center;
+    gap: 80px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .version {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+  .version-header {
+    text-align: center;
+  }
+  .version-header h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 4px;
+    margin-bottom: 4px;
+  }
+  .version-header p {
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  /* === SHARED PANEL BASE === */
+  .panel {
+    position: relative;
+    height: 642px;
+    overflow: hidden;
+  }
+  .panel .lbl {
+    position: absolute;
+    text-align: center;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    pointer-events: none;
+    line-height: 1;
+  }
+  .panel .comp {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* ================================================================
+     VERSION A — FORGE INDUSTRIAL
+     16HP (81.28mm) — Brushed aluminum, black recessed sections
+     ================================================================ */
+
+  .va-head h2 { color: #b0ada8; }
+  .va-head p { color: #666; }
+
+  .panel-a {
+    width: 406px;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        transparent 0px,
+        rgba(255,255,255,0.025) 1px,
+        transparent 2px,
+        rgba(0,0,0,0.018) 3px,
+        transparent 4px
+      ),
+      linear-gradient(175deg, #ddd8cf 0%, #cdc8c0 25%, #d5d0c8 50%, #c8c3bb 75%, #d0cbc3 100%);
+    border: 1px solid #aaa8a3;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.3);
+  }
+
+  /* Screws */
+  .panel-a .screw {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 35%, #bbb, #777 60%, #666);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 0 1px rgba(255,255,255,0.3);
+  }
+  .panel-a .screw::before,
+  .panel-a .screw::after {
+    content: '';
+    position: absolute;
+    background: #555;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 0.5px;
+  }
+  .panel-a .screw::before { width: 10px; height: 1.5px; }
+  .panel-a .screw::after { width: 1.5px; height: 10px; }
+
+  /* Brand & name */
+  .panel-a .brand {
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 600;
+    font-size: 9px;
+    letter-spacing: 4px;
+    color: #777;
+  }
+  .panel-a .mod-name {
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 5px;
+    color: #333;
+  }
+
+  /* Decorative lines */
+  .panel-a .line {
+    position: absolute;
+    height: 1px;
+    background: #aaa;
+    opacity: 0.5;
+  }
+
+  /* Display tray */
+  .panel-a .display-tray {
+    position: absolute;
+    left: 18px; right: 18px;
+    background: #111;
+    border-radius: 6px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.15);
+    overflow: hidden;
+  }
+  .panel-a .display-tray svg {
+    width: 100%; height: 100%;
+  }
+
+  /* Knobs — Version A: knurled edge, metallic */
+  .panel-a .knob {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .panel-a .knob .k-edge {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    background: repeating-conic-gradient(
+      from 0deg,
+      #6a6a6a 0deg 2.5deg,
+      #444 2.5deg 5deg
+    );
+    padding: 4px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.45);
+  }
+  .panel-a .knob .k-body {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 30%, #555, #1c1c1c 72%);
+    position: relative;
+    box-shadow: inset 0 1px 2px rgba(255,255,255,0.12);
+  }
+  .panel-a .knob .k-ind {
+    position: absolute;
+    top: 12%;
+    left: calc(50% - 1.5px);
+    width: 3px;
+    height: 32%;
+    background: #e8e8e8;
+    border-radius: 1.5px;
+    transform-origin: bottom center;
+    transform: rotate(-35deg);
+  }
+  .panel-a .knob-xl { width: 82px; height: 82px; }
+  .panel-a .knob-lg { width: 64px; height: 64px; }
+  .panel-a .knob-md { width: 48px; height: 48px; }
+  .panel-a .knob-md .k-edge { padding: 3px; }
+  .panel-a .knob-md .k-ind { width: 2.5px; height: 28%; }
+
+  /* Jacks — Version A: metallic, industrial */
+  .panel-a .jack {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    width: 38px; height: 38px;
+    background: radial-gradient(
+      circle at 50% 50%,
+      #080808 26%,
+      #2a2a2a 27%,
+      #666 36%,
+      #999 44%,
+      #888 52%,
+      #666 65%,
+      #444 85%,
+      #333 100%
+    );
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5), inset 0 0 2px rgba(0,0,0,0.3);
+  }
+
+  /* Trimpots — Version A */
+  .panel-a .trim {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    width: 26px; height: 26px;
+    background: radial-gradient(circle at 40% 35%, #888, #444 75%);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 0.5px 1px rgba(255,255,255,0.15);
+  }
+  .panel-a .trim .t-slot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 12px; height: 1.5px;
+    background: #222;
+    transform: translate(-50%, -50%) rotate(30deg);
+    border-radius: 0.5px;
+  }
+
+  /* Labels — Version A */
+  .panel-a .lbl-pri {
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 2.5px;
+    color: #3a3a3a;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+  }
+  .panel-a .lbl-sec {
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 500;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #555;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+  }
+  .panel-a .lbl-cv {
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 500;
+    font-size: 7.5px;
+    letter-spacing: 1.5px;
+    color: #ccc;
+  }
+  .panel-a .lbl-out {
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: #d4a740;
+  }
+
+  /* CV Tray */
+  .panel-a .cv-tray {
+    position: absolute;
+    left: 18px; right: 18px;
+    background: #111;
+    border-radius: 6px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.15);
+  }
+
+  /* Output pod */
+  .panel-a .out-pod {
+    position: absolute;
+    background: #111;
+    border-radius: 6px;
+    border: 1.5px solid rgba(212, 167, 64, 0.5);
+    box-shadow: inset 0 1px 4px rgba(0,0,0,0.5), 0 0 8px rgba(212, 167, 64, 0.1);
+  }
+  .panel-a .jack-out {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5), 0 0 0 3px rgba(212, 167, 64, 0.4);
+  }
+
+
+  /* ================================================================
+     VERSION B — FORGE NOIR
+     14HP (71.12mm) — Matte black, forge ember accents
+     ================================================================ */
+
+  .vb-head h2 { color: #e85d26; }
+  .vb-head p { color: #777; }
+
+  .panel-b {
+    width: 356px;
+    background: #0c0c0c;
+    border: 1px solid #222;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.7);
+    overflow: visible;
+  }
+
+  /* Top/bottom accent bars */
+  .panel-b .accent-bar {
+    position: absolute;
+    left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, transparent, #e85d26 20%, #daa520 50%, #e85d26 80%, transparent);
+  }
+
+  /* Brand — FoundationLogo */
+  .panel-b .brand {
+    font-family: 'FoundationLogo', 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 5px;
+    color: #e85d26;
+  }
+  .panel-b .mod-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 6px;
+    color: #f0ece8;
+  }
+
+  /* Decorative slashes */
+  .panel-b .slash {
+    position: absolute;
+    width: 2px;
+    height: 14px;
+    background: linear-gradient(180deg, #e85d26, transparent);
+    transform: rotate(-25deg);
+    opacity: 0.5;
+  }
+  .panel-b .spark {
+    position: absolute;
+    width: 2px; height: 2px;
+    border-radius: 50%;
+    background: #e85d26;
+  }
+
+  /* Display — dramatic glow */
+  .panel-b .display-area {
+    position: absolute;
+    left: 18px; right: 18px;
+    background: #050505;
+    border-radius: 5px;
+    border: 1.5px solid rgba(232, 93, 38, 0.35);
+    box-shadow: 0 0 18px rgba(232, 93, 38, 0.15), inset 0 2px 8px rgba(0,0,0,0.8);
+    overflow: hidden;
+    animation: ember-pulse 4s ease-in-out infinite;
+  }
+  @keyframes ember-pulse {
+    0%, 100% { box-shadow: 0 0 14px rgba(232, 93, 38, 0.12), inset 0 2px 8px rgba(0,0,0,0.8); }
+    50% { box-shadow: 0 0 22px rgba(232, 93, 38, 0.25), inset 0 2px 8px rgba(0,0,0,0.8); }
+  }
+
+  /* Knobs — Version B: smooth dark, dashed ring, ember indicator */
+  .panel-b .knob {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .panel-b .knob .k-ring {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px dashed rgba(232, 93, 38, 0.4);
+  }
+  .panel-b .knob .k-body {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 30%, #3a3a3a, #0e0e0e 72%);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.6), inset 0 1px 2px rgba(255,255,255,0.06);
+    position: relative;
+  }
+  .panel-b .knob .k-ind {
+    position: absolute;
+    top: 12%;
+    left: calc(50% - 1.5px);
+    width: 3px;
+    height: 32%;
+    background: #e85d26;
+    border-radius: 1.5px;
+    transform-origin: bottom center;
+    transform: rotate(-35deg);
+    box-shadow: 0 0 4px rgba(232, 93, 38, 0.4);
+  }
+  .panel-b .knob-xl { width: 80px; height: 80px; }
+  .panel-b .knob-lg { width: 60px; height: 60px; }
+  .panel-b .knob-md { width: 44px; height: 44px; }
+  .panel-b .knob-md .k-ring { inset: -6px; border-width: 1.5px; }
+  .panel-b .knob-md .k-ind { width: 2.5px; height: 28%; }
+
+  /* Jacks — Version B: dark metallic */
+  .panel-b .jack {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    width: 36px; height: 36px;
+    background: radial-gradient(
+      circle,
+      #060606 26%,
+      #222 27%,
+      #555 38%,
+      #777 46%,
+      #555 58%,
+      #333 80%,
+      #222 100%
+    );
+    box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  }
+
+  /* Trimpots — Version B */
+  .panel-b .trim {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    width: 26px; height: 26px;
+    background: radial-gradient(circle at 40% 35%, #666, #222 75%);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+  .panel-b .trim .t-slot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 11px; height: 1.5px;
+    background: #888;
+    transform: translate(-50%, -50%) rotate(30deg);
+    border-radius: 0.5px;
+  }
+
+  /* Labels — Version B */
+  .panel-b .lbl-pri {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: #f0ece8;
+  }
+  .panel-b .lbl-sec {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 400;
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    color: #888;
+    text-transform: uppercase;
+  }
+  .panel-b .lbl-cv {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+    font-size: 7px;
+    letter-spacing: 1px;
+    color: #888;
+  }
+  .panel-b .lbl-out {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 13px;
+    letter-spacing: 4px;
+    color: #e85d26;
+  }
+
+  /* Section line */
+  .panel-b .sec-line {
+    position: absolute;
+    left: 30px; right: 30px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #e85d26 30%, #daa520 50%, #e85d26 70%, transparent);
+    opacity: 0.5;
+  }
+
+  /* Output accent */
+  .panel-b .jack-out {
+    width: 42px; height: 42px;
+    box-shadow: 0 0 0 3px rgba(232, 93, 38, 0.5), 0 0 14px rgba(232, 93, 38, 0.2), 0 2px 6px rgba(0,0,0,0.5);
+  }
+
+
+  /* ================================================================
+     VERSION C — FORGE MINIMAL
+     12HP (60.96mm) — Warm parchment, typography-forward, terracotta accent
+     ================================================================ */
+
+  .vc-head h2 { color: #b55a3c; }
+  .vc-head p { color: #666; }
+
+  .panel-c {
+    width: 305px;
+    background:
+      repeating-linear-gradient(
+        35deg,
+        transparent 0px,
+        rgba(0,0,0,0.012) 1px,
+        transparent 2px
+      ),
+      repeating-linear-gradient(
+        -55deg,
+        transparent 0px,
+        rgba(0,0,0,0.008) 1px,
+        transparent 2px
+      ),
+      linear-gradient(180deg, #ebe5dd 0%, #e4ded6 50%, #e8e2da 100%);
+    border: 1px solid #ccc7bd;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+  }
+
+  /* Brand & name */
+  .panel-c .brand {
+    font-family: 'BCBarell', serif;
+    font-size: 16px;
+    letter-spacing: 1px;
+    color: #3a3530;
+  }
+  .panel-c .mod-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 300;
+    font-style: italic;
+    font-size: 15px;
+    letter-spacing: 3px;
+    color: #6a6460;
+  }
+
+  /* Hairlines */
+  .panel-c .hairline {
+    position: absolute;
+    height: 0.5px;
+    background: #c0b8ae;
+  }
+
+  /* Display — minimal */
+  .panel-c .display-area {
+    position: absolute;
+    left: 18px; right: 18px;
+    background: #1a1814;
+    border-radius: 4px;
+    border: 0.5px solid #c0b8ae;
+    box-shadow: inset 0 1px 4px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+
+  /* Knobs — Version C: flat, minimal, dark */
+  .panel-c .knob {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .panel-c .knob .k-body {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 42% 36%, #484844, #1a1a18 78%);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    position: relative;
+  }
+  .panel-c .knob .k-ind {
+    position: absolute;
+    top: 14%;
+    left: calc(50% - 1px);
+    width: 2px;
+    height: 30%;
+    background: #ddd8d0;
+    border-radius: 1px;
+    transform-origin: bottom center;
+    transform: rotate(-35deg);
+  }
+  .panel-c .knob-xl { width: 76px; height: 76px; }
+  .panel-c .knob-lg { width: 54px; height: 54px; }
+  .panel-c .knob-md { width: 40px; height: 40px; }
+  .panel-c .knob-md .k-ind { width: 1.5px; height: 26%; }
+
+  /* Jacks — Version C: simple, clean */
+  .panel-c .jack {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    width: 34px; height: 34px;
+    background: radial-gradient(
+      circle,
+      #0a0a08 25%,
+      #2a2a28 26%,
+      #5a5a56 36%,
+      #7a7a76 44%,
+      #6a6a66 54%,
+      #4a4a46 72%,
+      #3a3a36 100%
+    );
+    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  }
+
+  /* Trimpots — Version C */
+  .panel-c .trim {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    width: 22px; height: 22px;
+    background: radial-gradient(circle at 42% 38%, #777, #3a3a38 75%);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .panel-c .trim .t-slot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 9px; height: 1px;
+    background: #222;
+    transform: translate(-50%, -50%) rotate(30deg);
+  }
+
+  /* Labels — Version C */
+  .panel-c .lbl-pri {
+    font-family: 'Jost', sans-serif;
+    font-weight: 400;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: #3a3530;
+  }
+  .panel-c .lbl-sec {
+    font-family: 'Jost', sans-serif;
+    font-weight: 300;
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: #8a8078;
+  }
+  .panel-c .lbl-cv {
+    font-family: 'Jost', sans-serif;
+    font-weight: 400;
+    font-size: 6.5px;
+    letter-spacing: 1.5px;
+    color: #8a8078;
+  }
+  .panel-c .lbl-out {
+    font-family: 'Jost', sans-serif;
+    font-weight: 500;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: #b55a3c;
+  }
+  .panel-c .jack-out {
+    box-shadow: 0 0 0 2.5px rgba(181, 90, 60, 0.45), 0 1px 3px rgba(0,0,0,0.35);
+  }
+
+  /* Morph position markers */
+  .panel-c .morph-mark {
+    position: absolute;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 7px;
+    font-style: italic;
+    color: #a09890;
+    transform: translateX(-50%);
+  }
+
+  /* Subtle arc around MORPH */
+  .panel-c .morph-arc {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 92px; height: 92px;
+    border-radius: 50%;
+    border: 0.5px dashed #c0b8ae;
+    opacity: 0.5;
+    clip-path: polygon(0% 10%, 100% 10%, 100% 100%, 0% 100%);
+  }
+
+</style>
+</head>
+<body>
+
+<div class="page-title">
+  <h1>FORGE AUDIO &mdash; ANALOG LFO</h1>
+  <p>PANEL DESIGN EXPLORATIONS &bull; 3 DIRECTIONS</p>
+</div>
+
+<div class="gallery">
+
+  <!-- ================================================================
+       VERSION A — FORGE INDUSTRIAL — 16HP
+       ================================================================ -->
+  <div class="version">
+    <div class="version-header va-head">
+      <h2>A &mdash; FORGE INDUSTRIAL</h2>
+      <p>16HP &bull; Brushed aluminum &bull; Recessed black sections</p>
+    </div>
+
+    <div class="panel panel-a">
+      <!-- Screws -->
+      <div class="screw" style="position:absolute; left:12px; top:12px;"></div>
+      <div class="screw" style="position:absolute; left:374px; top:12px;"></div>
+      <div class="screw" style="position:absolute; left:12px; top:610px;"></div>
+      <div class="screw" style="position:absolute; left:374px; top:610px;"></div>
+
+      <!-- Brand -->
+      <span class="lbl brand" style="left:203px; top:40px;">FORGE AUDIO</span>
+      <!-- Module name -->
+      <span class="lbl mod-name" style="left:203px; top:62px;">ANALOG LFO</span>
+      <!-- Decorative line -->
+      <div class="line" style="position:absolute; left:80px; right:80px; top:78px;"></div>
+
+      <!-- Display tray -->
+      <div class="display-tray" style="top:88px; height:118px;">
+        <svg viewBox="0 0 370 118" preserveAspectRatio="none">
+          <!-- Grid -->
+          <line x1="92" y1="8" x2="92" y2="110" stroke="#1e1e1e" stroke-width="0.5"/>
+          <line x1="185" y1="8" x2="185" y2="110" stroke="#1e1e1e" stroke-width="0.5"/>
+          <line x1="278" y1="8" x2="278" y2="110" stroke="#1e1e1e" stroke-width="0.5"/>
+          <line x1="10" y1="30" x2="360" y2="30" stroke="#1e1e1e" stroke-width="0.5"/>
+          <line x1="10" y1="59" x2="360" y2="59" stroke="#1e1e1e" stroke-width="0.5" stroke-dasharray="4,4"/>
+          <line x1="10" y1="88" x2="360" y2="88" stroke="#1e1e1e" stroke-width="0.5"/>
+          <!-- Waveform: sine -->
+          <path d="M 15 59 C 38 12, 62 12, 92 59 C 122 106, 148 106, 185 59 C 222 12, 248 12, 278 59 C 308 106, 332 106, 355 59"
+                fill="none" stroke="#d4a740" stroke-width="2" opacity="0.7"/>
+          <!-- Phase dot -->
+          <circle cx="278" cy="59" r="4" fill="#d4a740" opacity="0.8"/>
+          <circle cx="278" cy="59" r="7" fill="none" stroke="#d4a740" opacity="0.2" stroke-width="1"/>
+          <!-- Readout -->
+          <text x="15" y="20" fill="#d4a740" font-family="'Chakra Petch',sans-serif" font-size="10" opacity="0.5">2.40 Hz</text>
+        </svg>
+      </div>
+
+      <!-- MORPH -->
+      <span class="lbl lbl-pri" style="left:203px; top:212px; font-size:12px; letter-spacing:4px;">MORPH</span>
+      <div class="knob knob-xl" style="left:203px; top:264px;">
+        <div class="k-edge"><div class="k-body"><div class="k-ind"></div></div></div>
+      </div>
+
+      <!-- CHARACTER -->
+      <span class="lbl lbl-pri" style="left:112px; top:314px; font-size:9px;">CHARACTER</span>
+      <div class="knob knob-lg" style="left:112px; top:348px;">
+        <div class="k-edge"><div class="k-body"><div class="k-ind"></div></div></div>
+      </div>
+
+      <!-- DRIFT -->
+      <span class="lbl lbl-pri" style="left:294px; top:314px;">DRIFT</span>
+      <div class="knob knob-lg" style="left:294px; top:348px;">
+        <div class="k-edge"><div class="k-body"><div class="k-ind"></div></div></div>
+      </div>
+
+      <!-- RATE -->
+      <span class="lbl lbl-sec" style="left:72px; top:386px;">RATE</span>
+      <div class="knob knob-md" style="left:72px; top:414px;">
+        <div class="k-edge"><div class="k-body"><div class="k-ind"></div></div></div>
+      </div>
+
+      <!-- PHASE -->
+      <span class="lbl lbl-sec" style="left:162px; top:386px;">PHASE</span>
+      <div class="knob knob-md" style="left:162px; top:414px;">
+        <div class="k-edge"><div class="k-body"><div class="k-ind"></div></div></div>
+      </div>
+
+      <!-- CLK jack -->
+      <span class="lbl lbl-sec" style="left:268px; top:388px;">CLK</span>
+      <div class="jack" style="left:268px; top:414px;"></div>
+
+      <!-- RST jack -->
+      <span class="lbl lbl-sec" style="left:340px; top:388px;">RST</span>
+      <div class="jack" style="left:340px; top:414px;"></div>
+
+      <!-- Thin divider -->
+      <div class="line" style="position:absolute; left:50px; right:50px; top:446px;"></div>
+
+      <!-- CV Tray -->
+      <div class="cv-tray" style="top:460px; height:92px;">
+        <!-- Labels inside tray (light text) -->
+      </div>
+      <!-- CV Labels (on tray) -->
+      <span class="lbl lbl-cv" style="left:55px; top:468px;">MCV</span>
+      <span class="lbl lbl-cv" style="left:130px; top:468px;">CCV</span>
+      <span class="lbl lbl-cv" style="left:203px; top:468px;">DCV</span>
+      <span class="lbl lbl-cv" style="left:278px; top:468px;">FM</span>
+      <span class="lbl lbl-cv" style="left:351px; top:468px;">PH&Phi;</span>
+
+      <!-- CV Trimpots -->
+      <div class="trim" style="left:55px; top:492px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:130px; top:492px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:203px; top:492px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:278px; top:492px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:351px; top:492px;"><div class="t-slot"></div></div>
+
+      <!-- CV Jacks -->
+      <div class="jack" style="left:55px; top:528px;"></div>
+      <div class="jack" style="left:130px; top:528px;"></div>
+      <div class="jack" style="left:203px; top:528px;"></div>
+      <div class="jack" style="left:278px; top:528px;"></div>
+      <div class="jack" style="left:351px; top:528px;"></div>
+
+      <!-- OUTPUT pod -->
+      <div class="out-pod" style="left:153px; top:558px; width:100px; height:44px;"></div>
+      <span class="lbl lbl-out" style="left:203px; top:564px;">OUTPUT</span>
+      <div class="jack jack-out" style="left:203px; top:586px;"></div>
+
+      <!-- Bottom brand -->
+      <span class="lbl brand" style="left:203px; top:612px; font-size:7px; letter-spacing:3px; color:#999;">ANALOG SERIES</span>
+    </div>
+  </div>
+
+
+  <!-- ================================================================
+       VERSION B — FORGE NOIR — 14HP
+       ================================================================ -->
+  <div class="version">
+    <div class="version-header vb-head">
+      <h2>B &mdash; FORGE NOIR</h2>
+      <p>14HP &bull; Matte black &bull; Forge ember accents</p>
+    </div>
+
+    <div class="panel panel-b">
+      <!-- Top accent bar -->
+      <div class="accent-bar" style="top:0;"></div>
+
+      <!-- Decorative slashes -->
+      <div class="slash" style="left:22px; top:16px;"></div>
+      <div class="slash" style="left:32px; top:14px;"></div>
+      <div class="slash" style="left:42px; top:18px;"></div>
+      <div class="slash" style="left:310px; top:17px;"></div>
+      <div class="slash" style="left:320px; top:13px;"></div>
+      <div class="slash" style="left:330px; top:16px;"></div>
+
+      <!-- Sparks -->
+      <div class="spark" style="left:56px; top:20px; opacity:0.3;"></div>
+      <div class="spark" style="left:290px; top:15px; opacity:0.2;"></div>
+      <div class="spark" style="left:178px; top:56px; opacity:0.15;"></div>
+      <div class="spark" style="left:60px; top:435px; opacity:0.2;"></div>
+      <div class="spark" style="left:300px; top:440px; opacity:0.15;"></div>
+
+      <!-- Brand -->
+      <span class="lbl brand" style="left:178px; top:26px; font-size:18px; letter-spacing:6px;">FORGE AUDIO</span>
+      <!-- Module name -->
+      <span class="lbl mod-name" style="left:178px; top:50px;">ANALOG LFO</span>
+
+      <!-- Display -->
+      <div class="display-area" style="top:68px; height:126px;">
+        <svg viewBox="0 0 320 126" width="100%" height="100%">
+          <!-- Glow waveform (background) -->
+          <path d="M 12 90 L 52 16 L 52 90 L 98 16 L 98 90 L 148 16 L 148 90 L 200 16 L 200 90 L 248 16 L 248 90 L 305 16"
+                fill="none" stroke="#e85d26" stroke-width="5" opacity="0.12" stroke-linejoin="round"/>
+          <!-- Main waveform: sawtooth -->
+          <path d="M 12 90 L 52 16 L 52 90 L 98 16 L 98 90 L 148 16 L 148 90 L 200 16 L 200 90 L 248 16 L 248 90 L 305 16"
+                fill="none" stroke="#e85d26" stroke-width="2.5" opacity="0.85" stroke-linejoin="round"/>
+          <!-- Phase dot with glow -->
+          <circle cx="200" cy="16" r="6" fill="#e85d26" opacity="0.15"/>
+          <circle cx="200" cy="16" r="3.5" fill="#e85d26" opacity="0.9"/>
+          <!-- Readout -->
+          <text x="12" y="120" fill="#daa520" font-family="'JetBrains Mono',monospace" font-size="9" opacity="0.4">SYNC &times;2</text>
+          <text x="248" y="120" fill="#888" font-family="'JetBrains Mono',monospace" font-size="8" opacity="0.35">120 BPM</text>
+        </svg>
+      </div>
+
+      <!-- MORPH -->
+      <span class="lbl lbl-pri" style="left:178px; top:208px;">MORPH</span>
+      <div class="knob knob-xl" style="left:178px; top:250px;">
+        <div class="k-ring"></div>
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- CHARACTER -->
+      <span class="lbl lbl-sec" style="left:94px; top:302px;">CHARACTER</span>
+      <div class="knob knob-lg" style="left:94px; top:336px;">
+        <div class="k-ring"></div>
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- DRIFT -->
+      <span class="lbl lbl-sec" style="left:262px; top:302px;">DRIFT</span>
+      <div class="knob knob-lg" style="left:262px; top:336px;">
+        <div class="k-ring"></div>
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- RATE -->
+      <span class="lbl lbl-sec" style="left:72px; top:380px;">RATE</span>
+      <div class="knob knob-md" style="left:72px; top:406px;">
+        <div class="k-ring"></div>
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- PHASE -->
+      <span class="lbl lbl-sec" style="left:160px; top:380px;">PHASE</span>
+      <div class="knob knob-md" style="left:160px; top:406px;">
+        <div class="k-ring"></div>
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- CLK -->
+      <span class="lbl lbl-sec" style="left:252px; top:384px;">CLK</span>
+      <div class="jack" style="left:252px; top:406px;"></div>
+
+      <!-- RST -->
+      <span class="lbl lbl-sec" style="left:318px; top:384px;">RST</span>
+      <div class="jack" style="left:318px; top:406px;"></div>
+
+      <!-- Section line -->
+      <div class="sec-line" style="top:436px;"></div>
+
+      <!-- CV Labels -->
+      <span class="lbl lbl-cv" style="left:46px; top:448px;">MCV</span>
+      <span class="lbl lbl-cv" style="left:114px; top:448px;">CCV</span>
+      <span class="lbl lbl-cv" style="left:178px; top:448px;">DCV</span>
+      <span class="lbl lbl-cv" style="left:244px; top:448px;">FM</span>
+      <span class="lbl lbl-cv" style="left:310px; top:448px;">PH&Phi;</span>
+
+      <!-- CV Trimpots -->
+      <div class="trim" style="left:46px; top:470px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:114px; top:470px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:178px; top:470px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:244px; top:470px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:310px; top:470px;"><div class="t-slot"></div></div>
+
+      <!-- CV Jacks -->
+      <div class="jack" style="left:46px; top:508px;"></div>
+      <div class="jack" style="left:114px; top:508px;"></div>
+      <div class="jack" style="left:178px; top:508px;"></div>
+      <div class="jack" style="left:244px; top:508px;"></div>
+      <div class="jack" style="left:310px; top:508px;"></div>
+
+      <!-- Section line -->
+      <div class="sec-line" style="top:534px;"></div>
+
+      <!-- OUTPUT -->
+      <span class="lbl lbl-out" style="left:178px; top:546px;">OUTPUT</span>
+      <div class="jack jack-out" style="left:178px; top:574px;
+        background: radial-gradient(circle, #060606 24%, #222 25%, #555 36%, #888 44%, #666 56%, #444 75%, #333 100%);
+      "></div>
+
+      <!-- Bottom brand -->
+      <span class="lbl brand" style="left:178px; top:608px; font-size:10px; letter-spacing:4px; opacity:0.5;">FORGE</span>
+
+      <!-- Bottom accent bar -->
+      <div class="accent-bar" style="bottom:0;"></div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================
+       VERSION C — FORGE MINIMAL — 12HP
+       ================================================================ -->
+  <div class="version">
+    <div class="version-header vc-head">
+      <h2>C &mdash; FORGE MINIMAL</h2>
+      <p>12HP &bull; Warm parchment &bull; Typography-forward</p>
+    </div>
+
+    <div class="panel panel-c">
+      <!-- Brand -->
+      <span class="lbl brand" style="left:152px; top:24px; font-size:18px;">Forge Audio</span>
+      <!-- Module name -->
+      <span class="lbl mod-name" style="left:152px; top:50px;">Analog LFO</span>
+      <!-- Hairline -->
+      <div class="hairline" style="position:absolute; left:40px; right:40px; top:64px;"></div>
+
+      <!-- Display -->
+      <div class="display-area" style="top:74px; height:96px;">
+        <svg viewBox="0 0 269 96" width="100%" height="100%">
+          <!-- Gentle triangle wave -->
+          <path d="M 10 48 L 44 14 L 78 82 L 112 14 L 146 82 L 180 14 L 214 82 L 248 48"
+                fill="none" stroke="#9a9088" stroke-width="1.5" opacity="0.6" stroke-linejoin="round"/>
+          <!-- Phase dot -->
+          <circle cx="180" cy="14" r="3" fill="#b55a3c" opacity="0.7"/>
+          <!-- Readout -->
+          <text x="10" y="90" fill="#9a9088" font-family="'Jost',sans-serif" font-size="8" opacity="0.4" font-weight="300">0.85 Hz</text>
+        </svg>
+      </div>
+
+      <!-- Morph arc -->
+      <div class="morph-arc" style="left:152px; top:230px;"></div>
+
+      <!-- MORPH -->
+      <span class="lbl lbl-pri" style="left:152px; top:186px;">MORPH</span>
+      <div class="knob knob-xl" style="left:152px; top:230px;">
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- Morph position markers -->
+      <span class="morph-mark" style="left:96px; top:250px;">sin</span>
+      <span class="morph-mark" style="left:126px; top:272px;">tri</span>
+      <span class="morph-mark" style="left:178px; top:272px;">saw</span>
+      <span class="morph-mark" style="left:208px; top:250px;">sqr</span>
+
+      <!-- CHARACTER -->
+      <span class="lbl lbl-pri" style="left:88px; top:288px; font-size:8px; letter-spacing:2px;">CHARACTER</span>
+      <div class="knob knob-lg" style="left:88px; top:318px;">
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- DRIFT -->
+      <span class="lbl lbl-pri" style="left:216px; top:288px;">DRIFT</span>
+      <div class="knob knob-lg" style="left:216px; top:318px;">
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- RATE -->
+      <span class="lbl lbl-sec" style="left:58px; top:356px;">RATE</span>
+      <div class="knob knob-md" style="left:58px; top:380px;">
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- PHASE -->
+      <span class="lbl lbl-sec" style="left:126px; top:356px;">PHASE</span>
+      <div class="knob knob-md" style="left:126px; top:380px;">
+        <div class="k-body"><div class="k-ind"></div></div>
+      </div>
+
+      <!-- CLK -->
+      <span class="lbl lbl-sec" style="left:196px; top:358px;">CLK</span>
+      <div class="jack" style="left:196px; top:380px;"></div>
+
+      <!-- RST -->
+      <span class="lbl lbl-sec" style="left:254px; top:358px;">RST</span>
+      <div class="jack" style="left:254px; top:380px;"></div>
+
+      <!-- Hairline -->
+      <div class="hairline" style="position:absolute; left:24px; right:24px; top:408px;"></div>
+
+      <!-- CV section labels -->
+      <span class="lbl lbl-cv" style="left:38px; top:418px;">MCV</span>
+      <span class="lbl lbl-cv" style="left:96px; top:418px;">CCV</span>
+      <span class="lbl lbl-cv" style="left:152px; top:418px;">DCV</span>
+      <span class="lbl lbl-cv" style="left:210px; top:418px;">FM</span>
+      <span class="lbl lbl-cv" style="left:264px; top:418px;">PH&Phi;</span>
+
+      <!-- CV Trimpots -->
+      <div class="trim" style="left:38px; top:438px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:96px; top:438px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:152px; top:438px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:210px; top:438px;"><div class="t-slot"></div></div>
+      <div class="trim" style="left:264px; top:438px;"><div class="t-slot"></div></div>
+
+      <!-- CV Jacks -->
+      <div class="jack" style="left:38px; top:472px;"></div>
+      <div class="jack" style="left:96px; top:472px;"></div>
+      <div class="jack" style="left:152px; top:472px;"></div>
+      <div class="jack" style="left:210px; top:472px;"></div>
+      <div class="jack" style="left:264px; top:472px;"></div>
+
+      <!-- Hairline -->
+      <div class="hairline" style="position:absolute; left:24px; right:24px; top:500px;"></div>
+
+      <!-- OUTPUT -->
+      <span class="lbl lbl-out" style="left:152px; top:514px;">OUTPUT</span>
+      <div class="jack jack-out" style="left:152px; top:542px;
+        width: 38px; height: 38px;
+        background: radial-gradient(circle, #0a0a08 25%, #2a2a28 26%, #5a5a56 36%, #7a7a76 44%, #6a6a66 54%, #4a4a46 72%, #3a3a36 100%);
+      "></div>
+
+      <!-- Hairline -->
+      <div class="hairline" style="position:absolute; left:60px; right:60px; top:572px;"></div>
+
+      <!-- Bottom -->
+      <span class="lbl" style="left:152px; top:588px;
+        font-family:'Cormorant Garamond',serif;
+        font-size:9px;
+        font-style:italic;
+        letter-spacing:2px;
+        color:#a09890;
+      ">Analog Series</span>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
