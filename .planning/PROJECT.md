@@ -47,13 +47,14 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - ✓ Pitch slew (thermal lag) scaled by Drift — v1.2
 - ✓ Per-instance component spread with serialized seed — v1.2
 - ✓ Waveform bleed (neighbor crosstalk) during morph — v1.2
+- ✓ CV control of division ratio (via Rate CV in clocked mode) — v1.1
 
 ### Active
 
-- [ ] LFO: Panel redesign with modulation routing system (Surge-style MOD inputs)
-- [ ] LFO: CV control of division ratio
+- [ ] LFO: Morph range extension — Sine → Tri → Saw → Square → Narrow Pulse (PWM integrated into morph)
+- [ ] LFO: Forge Noir panel implementation (new SVG + NanoVG rendering)
+- [ ] LFO: Display layout per Forge Noir design (pills in left/right margins, waveform in center column)
 - [ ] LFO: Animated sync badge (clock-pulse flash)
-- [ ] LFO: Pulse width modulation
 
 **Deferred (future milestones):**
 - [ ] VCO module: V/Oct pitch input with 1V/octave tracking
@@ -82,17 +83,17 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - Continuous (non-snapped) clock ratios — anti-pattern; produces non-musical results
 - Linear FM mode — perceptually identical to exponential at LFO rates
 - Through-zero FM — audio-rate timbral effect, not meaningful at LFO rates
-- Panel expansion beyond 12HP — preserve existing rack footprint
+- Surge-style modulation routing system — abandoned in favor of direct CV jacks; over-engineered for LFO use case
 
 ## Context
 
-**Current state:** v1.2 Deep Analog shipped. 1,374 lines of C++, 12HP panel, three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, and swing timing.
+**Current state:** v1.3 Forge Noir in progress. 1,374 lines of C++, 14HP panel redesign underway (Forge Noir mockup at v19), three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, and swing timing.
 **Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
 **Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
-**Brand identity:** Deep navy (#1a1a2e), forge amber (#e8a838), muted lavender labels (#8888aa), white-gray text (#c0c0d0).
+**Brand identity:** Forge Noir — near-black panel (#0c0c0c), ember orange (#e85d26), gold accent (#daa520), warm white text (#e8e4e0). Fonts: Bebas Neue (brand/hero), Chakra Petch (labels), JetBrains Mono (data).
 **Prior work:** POC LFO at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` — clean digital implementation, no analog modeling.
-**Release strategy:** LFO feature-complete through v1.2. Panel redesign with modulation routing system needed before next LFO milestone. VCO module (v2.0) planned after LFO panel resolution.
-**Known tech debt:** FM, RESET, Phase Offset controls at temporary panel positions pending modulation routing redesign.
+**Release strategy:** v1.3 Forge Noir is the final LFO milestone. VCO module (v2.0) planned after LFO completion.
+**Known tech debt:** FM, RESET, Phase Offset controls at temporary panel positions — resolved by Forge Noir panel redesign.
 
 ## Constraints
 
@@ -100,7 +101,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - **Panel rendering:** SVG via nanosvg — limited subset (no filters, no CSS, text as paths)
 - **Real-time:** All DSP in process() callback at sample rate — no allocation, no blocking
 - **Display:** NanoVG on FramebufferWidget — must not drop frames
-- **Panel size:** 12HP (60.96mm) × 128.5mm height
+- **Panel size:** 14HP (71.12mm) × 128.5mm height (expanded from 12HP in Forge Noir redesign)
 - **Designer handoff:** SVG panel structured for easy redesign
 
 ## Key Decisions
@@ -139,7 +140,10 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Waveform bleed via wrapping ring topology | Modular arithmetic for neighbor access | ✓ Good — clean and extensible |
 | Swing as deltaPhase multiplier after drift/jitter | Commutative, preserves groove feel | ✓ Good — MPC-style timing |
 | Swing via right-click menu (not knob) | Preserves panel density | ✓ Good — functional within 12HP |
-| Skip Phase 17 Panel Redesign | 12HP density requires modulation routing system redesign | ⚠️ Revisit — tech debt, controls at temporary positions |
+| Skip Phase 17 Panel Redesign | 12HP density at limit; Surge-style modulation routing abandoned | Closed — panel will evolve with Forge Noir design language instead |
+| PWM as morph extension (not separate control) | Extends natural harmonic progression past square into pulse; no new knob needed | — Pending |
+| Forge Noir design language | Near-black panel, ember orange accents, machined metal knobs, scalloped trimpots, forge emblem | — Pending |
+| Panel expansion to 14HP | Forge Noir layout needs breathing room for 5 main knobs + display | — Pending |
 
 ---
-*Last updated: 2026-03-18 after v1.2 milestone*
+*Last updated: 2026-03-28 after v1.3 milestone start*

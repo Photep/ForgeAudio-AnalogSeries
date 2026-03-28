@@ -1,32 +1,34 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Deep Analog
-status: completed
-stopped_at: Milestone complete
-last_updated: "2026-03-18T00:00:00.000Z"
-last_activity: 2026-03-18 -- v1.2 milestone archived
+milestone: v1.3
+milestone_name: Forge Noir
+status: active
+stopped_at: null
+last_updated: "2026-03-28T00:00:00.000Z"
+last_activity: 2026-03-28 -- Milestone v1.3 started
 progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-18)
+See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Planning next milestone
+**Current focus:** Defining requirements for v1.3 Forge Noir
 
 ## Current Position
 
-Milestone: v1.2 Deep Analog — SHIPPED 2026-03-17
-Status: Milestone archived, ready for next milestone
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-28 — Milestone v1.3 started
 
 ## Performance Metrics
 
@@ -46,13 +48,14 @@ v1.2 decisions archived in milestones/v1.2-ROADMAP.md.
 
 ### Pending Todos
 
-2 pending todos (see `.planning/todos/pending/`)
+1 pending todo (see `.planning/todos/pending/`)
+- Separate display pills from waveform visualiser (being addressed in v1.3)
 
 ### Blockers/Concerns
 
-- Panel controls at temporary positions — requires modulation routing system redesign (deferred from Phase 17)
+None — panel control positions resolved by Forge Noir redesign.
 
 ## Session Continuity
 
-Last session: 2026-03-18
-Stopped at: v1.2 milestone archived
+Last session: 2026-03-28
+Stopped at: Defining v1.3 requirements
