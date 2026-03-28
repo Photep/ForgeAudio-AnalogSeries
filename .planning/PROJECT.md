@@ -51,7 +51,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ### Active
 
-- [ ] LFO: Morph range extension — Sine → Tri → Saw → Square → Narrow Pulse (PWM integrated into morph)
+- ✓ LFO: Morph range extension — Sine → Tri → Saw → Square → Narrow Pulse (PWM integrated into morph) — v1.3
 - [ ] LFO: Forge Noir panel implementation (new SVG + NanoVG rendering)
 - [ ] LFO: Display layout per Forge Noir design (pills in left/right margins, waveform in center column)
 - [ ] LFO: Animated sync badge (clock-pulse flash)
@@ -87,7 +87,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ## Context
 
-**Current state:** v1.3 Forge Noir in progress. 1,374 lines of C++, 14HP panel redesign underway (Forge Noir mockup at v19), three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, and swing timing.
+**Current state:** v1.3 Forge Noir in progress. ~1,400 lines of C++, 14HP panel redesign underway (Forge Noir mockup at v19), three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, swing timing, and 5-shape morph sweep (sine-tri-saw-square-pulse).
 **Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
 **Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
 **Brand identity:** Forge Noir — near-black panel (#0c0c0c), ember orange (#e85d26), gold accent (#daa520), warm white text (#e8e4e0). Fonts: Bebas Neue (brand/hero), Chakra Petch (labels), JetBrains Mono (data).
@@ -141,9 +141,9 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Swing as deltaPhase multiplier after drift/jitter | Commutative, preserves groove feel | ✓ Good — MPC-style timing |
 | Swing via right-click menu (not knob) | Preserves panel density | ✓ Good — functional within 12HP |
 | Skip Phase 17 Panel Redesign | 12HP density at limit; Surge-style modulation routing abandoned | Closed — panel will evolve with Forge Noir design language instead |
-| PWM as morph extension (not separate control) | Extends natural harmonic progression past square into pulse; no new knob needed | — Pending |
+| PWM as morph extension (not separate control) | Extends natural harmonic progression past square into pulse; no new knob needed | ✓ Good — smooth duty interpolation, no staircase artifacts |
 | Forge Noir design language | Near-black panel, ember orange accents, machined metal knobs, scalloped trimpots, forge emblem | — Pending |
 | Panel expansion to 14HP | Forge Noir layout needs breathing room for 5 main knobs + display | — Pending |
 
 ---
-*Last updated: 2026-03-28 after v1.3 milestone start*
+*Last updated: 2026-03-28 after Phase 18 (PWM DSP Extension) completion*
