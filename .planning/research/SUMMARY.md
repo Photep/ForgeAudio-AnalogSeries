@@ -1,17 +1,17 @@
 # Project Research Summary
 
-**Project:** Forge Audio Analog Series — v1.2 Deep Analog
-**Domain:** VCV Rack Eurorack LFO module — analog character deepening, modulation inputs, groove features
-**Researched:** 2026-03-13
+**Project:** Forge Audio Analog Series -- v1.3 Forge Noir
+**Domain:** VCV Rack 2 module development (LFO: PWM extension, panel redesign, display layout, animation)
+**Researched:** 2026-03-27
 **Confidence:** HIGH
 
 ## Executive Summary
 
-v1.2 "Deep Analog" is a targeted feature expansion to an existing, well-tested 890-line single-file VCV Rack LFO module. The foundation — four-layer Ornstein-Uhlenbeck drift engine, three-knob analog engine (Morph, Character, Drift), clock sync, real-time waveform display — is solid and remains architecturally unchanged. All new features are additive: new enum members, new computations at defined insertion points in the existing `process()` pipeline, and one modified function signature (`computeMorphedWave()` gains a bleed parameter). No new dependencies are introduced. No new source files. No Makefile changes. The estimated code growth is ~200–250 lines, reaching roughly 1,100 lines total — still manageable as a single file.
+The v1.3 Forge Noir milestone extends the existing ~1,374-line single-file VCV Rack 2 LFO module in four well-bounded directions: adding a fifth morph shape (pulse/PWM), replacing the 12HP panel with a 14HP Forge Noir design, restructuring the display into a three-column layout, and adding a clock-pulse flash animation to the SYNC badge. Critically, all four features fit entirely within the existing stack -- no new libraries, no new build system changes, no new dependencies. This is implementation work, not infrastructure work. The one deliberate addition is JetBrains Mono (a bundled TTF file for the NanoVG display), which follows the established font loading pattern and requires no code changes to the build system.
 
-The recommended build order is driven by data-flow dependencies and interaction risk management: display polish first (zero DSP risk), RESET and phase offset together (tightly coupled reset-target semantics), FM third (upstream frequency modifier), the four analog imperfections as a batch (all share the drift-scaling pattern), waveform bleed fifth (modifies the core waveform function signature), swing last (most complex clock interactions), and panel layout deferred until all DSP is finalized — a direct lesson from the v1.0 retrospective. After v1.2, the Forge Analog LFO will have a more comprehensive analog-character feature set than any other LFO in the VCV Rack ecosystem: the only module combining four-shape continuous morph, per-shape analog character modeling, multi-layer OU drift, clock sync with 15 ratios, FM input, phase offset, swing, expanded imperfections, and real-time waveform display.
+The recommended build order is A (PWM DSP) -> B (SVG panel + widget positions) -> C (display layout) -> D (sync animation), driven by hard dependencies: the panel must exist before display positions can be finalized, and the SYNC badge must be in its final position before adding flash animation. PWM is fully independent of all rendering work and should ship first to validate the DSP extension before visual complexity accumulates. The panel SVG is the most labor-intensive deliverable -- the HTML/CSS mockup (v19) uses features that nanosvg cannot render, requiring systematic element-by-element translation to nanosvg-compatible geometry, tested in VCV Rack iteratively rather than at the end.
 
-The primary risks are feature interaction bugs, not algorithmic complexity. FM fighting clock-derived frequency, the 1ms RESET/CLK blanking requirement, phase offset affecting what "reset" means, and phase jitter accumulating against clock sync are four critical interaction patterns that must be tested together, not in isolation. The most important architectural constraint for the entire milestone is the distinction between accumulator modification and readout modification: phase offset, jitter, and component spread all affect waveform output but must apply to a local copy of phase — never to the accumulator itself, which is the single source of truth for cycle timing, beat counting, and swing boundary detection.
+The dominant risk class is backward compatibility: the morph range remapping (4->5 shapes) changes what existing patches sound like unless handled with unequal segment widths; the panel width change (12HP->14HP) shifts neighboring modules in saved layouts; and enum ordering mistakes would silently corrupt saved parameter values. All three risks have clear, established mitigations and are not reasons to change the design -- they are reasons to test carefully and document in the changelog.
 
 ---
 
@@ -19,185 +19,193 @@ The primary risks are feature interaction bugs, not algorithmic complexity. FM f
 
 ### Recommended Stack
 
-The v1.2 stack is the v1.0/v1.1 stack. Every new algorithm is hand-rolled using only C++17 standard library math and existing VCV Rack SDK primitives. No external DSP libraries are needed or appropriate for five-to-fifteen-line per-feature computations.
+No new dependencies are needed for v1.3. The entire milestone is implementation work within the existing stack: VCV Rack 2 SDK (~2.6), C++17, NanoVG (bundled), nanosvg (bundled), and the standard VCV Makefile build system.
+
+The one deliberate file addition is JetBrains Mono Regular (`res/fonts/JetBrainsMono-Regular.ttf`) to align display typography with the Forge Noir design language. It is SIL OFL licensed (~150KB) and loaded via the established `APP->window->loadFont(asset::plugin(...))` pattern. No Makefile changes are needed -- the existing `DISTRIBUTABLES += res` covers new files automatically.
+
+Full details: `.planning/research/STACK.md`
 
 **Core technologies:**
-- `std::pow(2.f, x)` (C++17 `<cmath>`): exponential FM conversion — correct over `dsp::exp2_taylor5()` for monophonic accuracy; one call per sample at LFO rates is negligible CPU cost
-- `rack::dsp::SchmittTrigger` (second instance): independent RESET jack edge detection — same SDK pattern already used for CLK; add one member, no new architecture
-- `rack::dsp::TExponentialFilter` (existing instance): pitch slew — make the existing `freqSlew` lambda drift-dependent rather than adding a second filter; avoids double-slew stacking
-- NanoVG `nvgBoxGradient()` + `nvgTextBounds()`: HUD text backgrounds — soft-edged gradient halo (not a hard rectangle, which produced the "ugly black box" in v1.1 display testing)
-- `Xoroshiro128Plus` RNG (existing): per-instance component spread offsets — generate once in constructor, serialize RNG seed (not spread values) for reproducibility across patch saves
-- `std::normal_distribution` (existing): phase jitter noise draws — already used for OU layers; apply to waveform lookup copy only
+- VCV Rack 2 SDK: framework, component library, panel rendering -- in place, API stable since v2.0
+- C++17: all DSP and widget code -- in place, `std::atomic`, `std::array`, structured bindings all available
+- NanoVG (SDK-bundled): real-time display rendering -- in place, all APIs needed for v1.3 are already in active use
+- nanosvg (SDK-bundled): panel SVG parsing -- in place, constraints are well-documented and already respected in the v1.2 panel
+- JetBrains Mono TTF: display font for Forge Noir -- new file addition, zero code dependency changes required
 
-**No new dependencies.** No new source files. The module stays single-file through v1.2. WaveformDisplay refactoring into a separate file is a v2.0 consideration at ~1,200+ lines.
+**Critical version note:** Target 2-stop gradients only for SVG compatibility across older Rack versions. Radial gradient support improved in VCV 2.6 but circular-only (`r`, not `rx/ry`) is still the safest constraint.
 
-**Serialization change:** The v1.0 decision of "no OU state serialization" stands for drift layers. New exception: the RNG seed for component spread IS serialized via `dataToJson`/`dataFromJson`, because component spread represents fixed hardware characteristics (like physical component tolerances), not random runtime behavior. Store the seed, not the spread values, so the generation algorithm can evolve without breaking saved patches.
+**File additions summary:**
+```
+res/
+  AnalogLFO-ForgeNoir.svg      NEW  (14HP Forge Noir panel)
+  ForgeHexBolt.svg             NEW  (custom hex bolt screw)
+  ForgeKnobXL.svg              NEW  (hero knob body)
+  ForgeKnobLG.svg              NEW  (secondary knob body)
+  ForgeKnobMD.svg              NEW  (utility knob body)
+  ForgeTrim.svg                NEW  (trimpot body)
+  ForgeJackSmall.svg           NEW  (input jack)
+  ForgeJackLarge.svg           NEW  (output jack)
+  fonts/
+    JetBrainsMono-Regular.ttf  NEW  (display font)
 
-**CPU budget:** FM adds one `std::pow(2.f, x)` per sample (~15–20 cycles, the most expensive single addition). All other features are cheaper than one OU layer update. Total estimated overhead: ~5–10% over v1.1. Well within budget for a monophonic LFO.
+src/
+  AnalogLFO.cpp                MODIFY (PWM, layout, flash, custom components)
+```
 
 ### Expected Features
 
-**Must have (table stakes):**
-- FM input jack — standard on every serious LFO/VCO in VCV Rack; users patch LFO-to-LFO constantly for evolving modulation; both VCV Fundamental LFO and Bogaudio LFO have FM
-- Separate RESET jack — standard on VCV Fundamental LFO, Mutable Tides, nearly all hardware Eurorack LFOs; enables gate-driven phase restart independent of clock tracking
-- Display text overlay readability — known v1.1 issue: HUD text becomes unreadable when the waveform trace passes through overlay areas
-- Incoming clock BPM display — showing only ratio-adjusted BPM is misleading at non-x1 ratios; users need to verify clock detection is correct
+The v1.3 scope is locked -- all four core features are explicitly decided in PROJECT.md. Research validates feasibility and de-risks implementation rather than redefining scope.
 
-**Should have (differentiators):**
-- Phase offset knob with CV — enables quadrature patches (90-degree offset for stereo widening), polyrhythmic phase relationships, dynamic phase displacement via CV; few single-LFO modules offer a phase offset knob with CV
-- Expanded analog imperfections (phase jitter, DC offset drift, pitch slew, component spread) — deepens the core module identity beyond pitch-only drift; no competing VCV LFO models this level of analog authenticity
-- Waveform bleed during morph transitions — models analog crossfader crosstalk and capacitive coupling; no competing VCV LFO models this
-- Swing/shuffle for clocked mode — genuine differentiator; no LFO module in VCV Rack has built-in swing; right-click menu approach means no panel control needed
+Full details: `.planning/research/FEATURES.md`
 
-**Defer to v1.2.1 or v1.3:**
-- Swing/shuffle is the best deferral candidate if scope must be trimmed — highest complexity, most clock interactions, right-click implementation requires no panel changes
+**Must have (table stakes -- define the milestone):**
+- Morph-integrated PWM -- sine -> tri -> saw -> square -> narrow pulse as a single continuous sweep; no separate knob; backward compatibility requires the unequal-segment-widths approach (see pitfalls)
+- Forge Noir panel SVG (14HP) -- flat elements in SVG (background, text-as-paths, labels, decorative geometry, hex bolts); gradient and glow elements deferred to NanoVG overlays
+- Display three-column layout -- left pills (ratio, Hz, swing), center waveform, right pills (SYNC, BPM); eliminates current overlap-at-some-ratios problem
+- Animated SYNC badge -- clock-pulse flash on each clock edge (fast attack, ~200ms exponential decay); existing 2Hz sinusoidal blink during ACQUIRING state unchanged
 
-**Explicitly out of scope (anti-features):**
-- Exponential FM mode toggle — perceptual difference from linear FM is negligible at LFO rates; adds complexity for zero musical benefit
-- Through-zero FM — meaningful only at audio rates; produces confusing backward LFO modulation; defer to VCO module (v2.0)
-- Individual drift sub-parameter knobs — violates the three-knob identity; all imperfections bundle under the existing Drift knob
-- Separate phase-shifted output jack — contradicts single-output design philosophy
-- Swing in free-running mode — without a clock, "swing" has no musical meaning
+**Should have (elevates functional to premium -- defer only under time pressure):**
+- NanoVG premium knobs (xl/lg/md variants with multi-layer radial gradients, metallic rings, knurl texture for MORPH xl) -- highest complexity P2 item, with unvalidated GPU cost
+- Forge emblem atmospheric background (molten streams, ember particles, chevron marks at 0.03-0.18 opacity) -- SVG implementation
+- CRT display aesthetic (scanline overlay, corner bracket accents, animated border glow via breathePhase)
+- Character-aware PWM (squareDutySpread extended to pulse region, tanh edge softening, bleed ring topology extended to 5 shapes) -- small additive work, bundles well with Phase A
 
-**Non-negotiable backward compatibility:** All new params default to neutral values. FM atten=0, phase offset=0, swing=50% produce output identical to v1.1. Drift=0 still means digital perfection for all new imperfections (all are gated by `drift >= 0.001f`).
+**Defer (v2.0 or later):**
+- Through-zero PWM -- meaningful at audio rates only; adds morph mapping complexity for no LFO benefit
+- NanoVG trimpots and jacks -- poor effort-to-visual-reward ratio; SVG versions are acceptable for v1.3
+- Animated forge emblem (drifting particles, flowing streams) -- GPU cost non-trivial; violates "atmosphere not foreground" design principle
+
+**Competitive position:** No other VCV Rack LFO combines continuous waveform morphing through pulse, analog character modeling on the pulse shape, clock sync with swing, and a premium display. The v1.3 Forge Noir panel and NanoVG knobs further differentiate on presentation. The closest visual competitor (Surge XT) has NanoVG rendering but no analog character or morph engine. The closest functional competitor (Vult Vessek) has PW-all-waveforms but no clock sync, display, or drift.
 
 ### Architecture Approach
 
-v1.2 extends the existing three-struct architecture (AnalogLFO module, WaveformDisplay widget, AnalogLFOWidget) without structural changes. All new computations insert at defined points in `process()`. The critical unifying principle across all new features is the accumulator-vs-readout distinction:
+The module is a single-file, three-struct architecture: `AnalogLFO` (Module/DSP), `WaveformDisplay` (TransparentWidget/NanoVG), `AnalogLFOWidget` (ModuleWidget/panel). All audio-to-GUI communication uses relaxed atomics via a lock-free double buffer for waveform data. This architecture is not changing for v1.3 -- all four features integrate as localized extensions to existing structs via established patterns.
 
-- **Accumulator:** phase, deltaPhase, clockBeatCount — the source of truth for timing. Never touched by jitter, phase offset, or component spread. Only modified by swing (deltaPhase) and reset events (snap to 0).
-- **Readout:** the local `float p` copy computed just before `computeMorphedWave()`. Phase offset and jitter are applied here. The accumulator runs cleanly regardless.
+Full details: `.planning/research/ARCHITECTURE.md`
 
-No new display atomics are needed. The existing five atomics cover all new display data. `displayPhase` now stores the offset-inclusive phase value so the waveform dot accurately tracks position.
+**Major components and v1.3 changes:**
+1. `AnalogLFO` (Module) -- NEW: `computePulse()`, `pulseWidthSpread`, `clockPulseCount` atomic; MODIFIED: `computeMorphedWave()` (4->5 shapes, unequal segments), `initComponentSpread()`
+2. `WaveformDisplay` (TransparentWidget) -- NEW: `syncFlashAlpha`, `lastClockPulseCount`, three-column coordinate system, corner brackets; MODIFIED: pill positions, colors, font to JetBrains Mono
+3. `AnalogLFOWidget` (ModuleWidget) -- MODIFIED: all `mm2px(Vec(...))` positions for 14HP layout, new SVG panel path, new custom widget subclasses
+4. `res/AnalogLFO.svg` (Panel) -- REPLACED: 12HP -> 14HP, complete Forge Noir redesign
 
-**Revised process() pipeline (v1.2):**
-```
-1.  processClockInput()              [unchanged]
-2.  Process RESET input              [NEW: second SchmittTrigger]
-3.  Compute targetFreq               [unchanged]
-4.  Apply FM modulation              [NEW: targetFreq *= pow(2, fmVoltage * atten)]
-5.  Apply drift-dependent pitch slew [MODIFIED: freqSlew lambda = f(drift)]
-6.  Compute swing speed multiplier   [NEW: clocked mode only]
-7.  deltaPhase = freq * sampleTime * swing
-8.  Apply drift: OU layers modulate deltaPhase [unchanged]
-9.  phase += deltaPhase; wrap [0, 1)  [unchanged]
-10. Compute phaseOffset from knob+CV [NEW]
-11. Apply phase jitter to readout    [NEW: p = phase + offset + jitter, never accumulator]
-12. p = wrap(phase + phaseOffset + jitter, 1.0)
-13. Read morph/character params + CV [unchanged]
-14. Apply component spread to params [NEW: per-instance offsets * drift]
-15. Compute bleedAmount from character [NEW]
-16. computeMorphedWave(p, morph, character, bleed) [MODIFIED signature]
-17. Apply DC offset drift             [NEW: reuses OU layer 0 state * drift * scaling]
-18. Apply crossfade if recent reset  [unchanged]
-19. Output voltage                   [unchanged: ±5V]
-```
-
-**Component boundary changes:**
-- Phase accumulator: swing modulates deltaPhase; RESET adds second reset source
-- Frequency computation: FM inserted before slew; slew lambda made drift-dependent
-- Drift engine: DC offset drift reads existing OU layer 0 state — no new OU layers
-- Waveform engine: `computeMorphedWave()` gains bleed parameter; called with readout phase (offset + jitter applied)
-- Character engine: component spread adds per-instance parameter offsets scaled by drift
-- Display renderer: HUD backgrounds via box gradient halo; clock BPM text; dot tracks offset-inclusive phase
+**Key patterns applied:**
+- Monotonic counter (`clockPulseCount`) for audio-to-GUI edge events -- avoids the lost-event race condition of a bool flag; GUI detects multiple edges per frame if needed
+- Proportional coordinate system for display column boundaries -- `leftColRight()`, `centerLeft()`, etc. defined as fractions of `box.size.x`; survives any display box resize
+- Shape array extension (4->5 elements) -- morph engine was generic: N shapes with (N-1) segments; adding a shape is additive, not a refactor
+- Hybrid SVG+NanoVG rendering -- SVG for static structure, NanoVG for gradients and animation; this is the correct split for nanosvg's constraints
+- Unequal morph segment widths -- morph [0, 0.75] maps to existing 3 crossfade segments; morph [0.75, 1.0] maps to the new square-to-pulse segment; preserves all existing patch sounds exactly
 
 ### Critical Pitfalls
 
-The research identified 15 pitfalls (6 critical, 6 moderate, 3 minor). The top 8 that most directly affect build decisions:
+Sixteen pitfalls were identified in research. The top five by consequence severity:
 
-1. **FM driving frequency negative** — At LFO rates, FM easily pushes frequency through zero. `phase` goes unboundedly negative and waveform functions output garbage. Prevention: use exponential FM (`freq *= pow(2.f, fmVoltage * atten)`) which can never go negative, plus a safety clamp `max(freq, 0.001f)`. Add bidirectional phase wrap as defense-in-depth. Phase: FM implementation.
+1. **Morph continuity break at the square-to-pulse boundary** -- The naive 5-equal-segment approach (`morph * 4.f`) shifts every existing patch: square moves from morph=1.0 to morph=0.75. Prevent with unequal segment widths: morph [0, 0.75] maps to the 3 existing crossfade segments; morph [0.75, 1.0] maps to square-to-pulse. Detection: A/B test at morph=0.5 (pure saw) before and after -- output must be identical.
 
-2. **FM fighting clock sync** — FM accumulates phase error between clock edges; at high depths, crossfade artifacts occur on every clock edge. Prevention: full-authority FM in clocked mode is a documented tradeoff — test and tune, or offer right-click "FM Mode: Frequency/Phase" to redirect FM to phase offset in clocked scenarios. Phase: FM, with clocked-mode test immediately.
+2. **nanosvg rendering failures silently breaking the panel** -- The HTML/CSS mockup uses features nanosvg cannot render: `<text>`, `<use>`, `<defs>`, `<filter>`, CSS classes, multi-stop gradients, clip-paths. Designing the full panel in Inkscape before testing in VCV Rack produces a black rectangle in production. Prevent by testing in VCV Rack after each major SVG element, not at the end.
 
-3. **RESET + CLK simultaneous triggers** — Cable delay means the same source patched to both inputs arrives 1 sample apart. Without blanking: double phase reset and corrupted period measurement (1-sample period). VCV Rack Voltage Standards require 1ms post-RESET blanking for CLK triggers. Use `dsp::Timer`. RESET must not reset clock tracking state (`clockState`, `smoothedPeriod`). Phase: RESET implementation.
+3. **Enum reordering corrupting saved parameter values** -- Inserting a new param anywhere except the end of the enum shifts all subsequent IDs, causing patches to load with wrong values. Prevent by always appending to enums before `PARAMS_LEN`. The morph-integrated PWM design avoids needing any new param (PWM is the morph sweep, not a separate control) -- this risk is low for v1.3 but must be verified if any new param is added.
 
-4. **Phase offset applied to accumulator, not readout** — Adding offset to the accumulator shifts when wrap occurs, breaking beat counting, swing half-cycle detection, display tracking, and causing clicks on offset changes. Prevention: keep accumulator clean; add offset at waveform lookup: `float p = fmod((float)phase + phaseOffset, 1.0f)`. Phase: phase offset implementation.
+4. **Pulse wave amplitude and DC collapse at narrow duty cycles** -- At 10% duty, perceived amplitude drops and DC bias shifts toward -0.8V normalized. Prevent with a hard minimum duty cycle floor (10-15%) and verification that drift DC offset does not compound past +/-5V. Accept the inherent DC characteristic as authentic analog behavior.
 
-5. **Phase jitter accumulating against clock sync** — If jitter is added to the accumulator, floating-point bias compounds over 22,000+ samples per beat and causes visible phase drift despite clock sync. Prevention: apply jitter only to the readout copy `p`, never the accumulator. Scale jitter authority down in clocked mode (same 2% vs 7.5% pattern as drift authority). Phase: expanded imperfections.
+5. **Panel width change disrupting saved patch layouts** -- 12HP to 14HP forces a 2HP right-shift of all neighboring modules on patch load. Cables remain connected, parameters restore correctly. Prevent by NOT changing the module slug, documenting in the changelog, and testing load behavior with a real v1.2 patch file before release.
 
-6. **Waveform bleed causing amplitude spikes** — Adding non-adjacent waveform contributions without normalizing weights breaks the [−1, +1] output range. Prevention: normalize bleed coefficients so all weights sum to 1.0, or keep bleed small enough (3–8%) that overshoot is negligible; apply output clamp after bleed. Phase: waveform bleed.
-
-7. **Pitch slew double-stacking with existing freqSlew** — A new pitch slew layer on top of the existing 50ms mode-transition filter makes rate changes feel sluggish. Prevention: apply pitch slew only to the OU drift output (not main frequency); use a much shorter time constant (2–5ms); gate on Drift knob. Phase: expanded imperfections.
-
-8. **Display HUD text backgrounds — hard rectangle visual regression** — Known v1.1 issue: solid dark rectangle clips waveform glow, creating an "ugly black box." Prevention: `nvgBoxGradient()` soft-edged halo fading from opaque center (alpha 0.85) to transparent edge over ~4px. Draw order must be: waveform trace → background halos → text glow passes. Phase: display polish (Phase 1).
+Additional pitfalls covered in detail in `.planning/research/PITFALLS.md`: bleed ring topology (Pitfall 7), display buffer for pulse region (Pitfall 8), component placeholder alignment (Pitfall 9), font loading per-frame overhead (Pitfall 10), crossfade artifacts from rapid morph CV (Pitfall 11), three-column layout at small zoom (Pitfall 12), animation CPU when hidden (Pitfall 13), font bundling (Pitfall 14), component spread seed ordering (Pitfall 15), SVG cache during development (Pitfall 16).
 
 ---
 
 ## Implications for Roadmap
 
-Research across all four files converges on a 7-phase build order. The ordering is driven by data-flow dependencies (upstream features before downstream), interaction risk (tightly coupled features built together), and the v1.0 retrospective lesson (panel layout designed once for the final component count, never incrementally).
+Based on combined research, the phase structure is determined by the dependency graph. There is no ambiguity about ordering.
 
-### Phase 1: Display Polish
-**Rationale:** Zero DSP risk. Fixes the known v1.1 HUD readability regression. Establishes the display baseline before new features add new overlay elements. Quick win that ships an immediate UX improvement.
-**Delivers:** Readable text overlays at all waveform positions via soft-edged halo backgrounds; incoming clock BPM displayed alongside effective BPM with clear labeling ("CLK 120" prefix or smaller/dimmer formatting to avoid ambiguity).
-**Addresses:** Display text readability (table stakes), incoming clock BPM (table stakes).
-**Avoids:** Pitfall 11 (hard rectangle visual regression — use box gradient halo), Pitfall 12 (ambiguous BPM labeling — only show raw clock BPM when ratio is not x1).
-**Research flag:** Standard NanoVG patterns — no additional research needed.
+### Phase A: PWM DSP Extension
 
-### Phase 2: RESET Jack + Phase Offset
-**Rationale:** These two features are tightly coupled: the reset target semantics depend on phase offset being defined first. Building them separately forces a two-pass rework. Both modify only the phase readout path; neither requires upstream DSP changes to be in place.
-**Delivers:** Independent phase reset from rising-edge trigger (reuses existing crossfade); CV-modulatable phase shift (0–360 degrees) for quadrature patches and dynamic phase displacement. Reset always snaps to the offset position, not to 0.
-**Addresses:** RESET jack (table stakes), phase offset knob/CV (differentiator).
-**Avoids:** Pitfall 3 (1ms CLK/RESET blanking via `dsp::Timer`; RESET does not affect clock tracking state), Pitfall 5 (reset target = phaseOffset value because offset is applied at readout, not accumulator).
-**Research flag:** Standard VCV Rack patterns — no additional research needed.
+**Rationale:** Smallest, most self-contained change. Pure C++ math modifying only `AnalogLFO` struct. Zero panel dependencies -- the existing display automatically renders the new waveform range because `updateDisplayBuffer()` calls `computeMorphedWave()`. Validates the most important feature before visual complexity accumulates. Character-aware PWM bundles here because it modifies the same code (bleed ring, squareDutySpread, tanh softening on pulse edges).
 
-### Phase 3: FM Input
-**Rationale:** FM is independent of Phase 2 features and modifies frequency computation — upstream of all phase/waveform logic. Implementing it third means the stable phase readout path from Phase 2 is already in place when the FM + phase offset PM interaction is tested.
-**Delivers:** Exponential frequency modulation (`freq *= pow(2.f, fmVoltage * atten)`) via bipolar CV input with unipolar attenuator trimpot; works in both free and clocked modes.
-**Addresses:** FM input jack (table stakes).
-**Avoids:** Pitfall 1 (negative frequency via exponential FM + safety clamp), Pitfall 2 (FM vs clock sync — test and tune clocked-mode FM authority explicitly during this phase).
-**Research flag:** Exponential vs linear FM at LFO rates is well-understood. One open design decision to resolve: in clocked mode, should FM have full frequency authority (expressive but may cause crossfade artifacts at high depths) or redirect to phase offset (cleaner sync but different sonic character)? This must be decided before implementation begins.
+**Delivers:** Full five-shape morph sweep (sine->tri->saw->square->narrow pulse) using unequal segment widths to preserve all existing patch sounds. computePulse() with tanh edge softening. Bleed ring extended to 5 shapes with open-ended vs. ring topology decision made. pulseWidthSpread added as last entry in initComponentSpread().
 
-### Phase 4: Expanded Analog Imperfections
-**Rationale:** Phase jitter, DC offset drift, pitch slew, and component spread all share the drift-scaling pattern (`progressiveCurve(drift)`) and insert into the same pipeline region. Implementing as a batch enables group testing for their interactions. Phase jitter must layer onto the readout path established in Phase 2; pitch slew must NOT stack with the existing `freqSlew` filter.
-**Delivers:** Phase jitter (timing uncertainty at cycle level), DC offset drift (output center wander up to ±0.1V), pitch slew (frequency change inertia on OU drift output only, 2–5ms time constant), component spread (per-instance waveform personality generated in constructor, scaled by drift).
-**Addresses:** Expanded analog imperfections (differentiator), module core identity deepening.
-**Avoids:** Pitfall 4 (DC offset bounded to ±0.1V max; applied before 5V scaling), Pitfall 5b (jitter on readout copy only, never accumulator), Pitfall 7 (component spread effects visible on waveform display), Pitfall 8 (pitch slew on OU drift output only), Pitfall 9 (jitter scaled down in clocked mode), Pitfall 13 (independent RNG draws per imperfection type — do not share OU layer states between different imperfection types).
-**Research flag:** Component spread perceptibility at LFO rates is explicitly flagged (Pitfall 7) as a design risk — the v1.0 retrospective noted analog character effects needed 3–5x larger values than research suggested to be perceptible at LFO rates. Plan an empirical tuning pass on jitter amplitude, DC offset scaling, and component spread magnitudes. Do not assume research values are final.
+**Features addressed:** Morph-integrated PWM (P1 must-have), Character-aware PWM (P1 bundled)
 
-### Phase 5: Waveform Bleed
-**Rationale:** Modifies `computeMorphedWave()` — a core function called from both `process()` and `updateDisplayBuffer()`. Changing this function signature is cleanest after Phases 2–4 have settled all the pipeline changes that feed into it.
-**Delivers:** Adjacent and non-adjacent waveform bleed scaled by Character knob (`progressiveCurve(character) * 0.08f` maximum); visible in waveform display trace. At Character=0, morph is crisp crossfade (existing behavior). At Character=1, adjacent shapes bleed ~5–8%.
-**Addresses:** Waveform bleed during morph transitions (differentiator).
-**Avoids:** Pitfall 10 (normalize bleed coefficients so weights sum to 1.0; apply output clamp after bleed; keep bleed amounts small enough that unnormalized overshoot is negligible).
-**Research flag:** Standard waveform math — no additional research needed. Bleed percentage (0.5–3% in real hardware) is LOW confidence; treat the 8% maximum as a design parameter to tune empirically.
+**Critical pitfalls to avoid:** Pitfall 1 (morph continuity -- unequal segment widths), Pitfall 2 (amplitude/DC collapse -- hard floor at 10-15% duty), Pitfall 6 (enum ordering -- no new params for v1.3 PWM), Pitfall 7 (bleed ring topology -- update modulus atomically), Pitfall 8 (display buffer -- passes full morph range), Pitfall 15 (spread seed ordering -- append pulseWidthSpread last)
 
-### Phase 6: Swing/Shuffle
-**Rationale:** Most complex feature. Interacts with clock sync, phase reset, phase offset, and division ratios. All prior DSP phases must be stable before swing layers on top. Swing's `inFirstHalf` detection uses raw `phase` (before offset) so offset and swing compose cleanly. Swing is clocked-mode only — right-click menu implementation means no panel control is needed.
-**Delivers:** Swing/shuffle for clocked mode via right-click menu presets (50%, 54%, 58%, 62%, 67%, 71%, 75%); implemented as phase warp function applied after accumulation but before readout; display shows "SWG XX%" overlay when swing is non-50% and clocked.
-**Addresses:** Swing/shuffle (differentiator).
-**Avoids:** Pitfall 6 (phase warp function — not frequency modulation, not accumulator modification; piecewise linear warp is continuous and monotonic; identity at 50%; only active in ACQUIRING/LOCKED clock state).
-**Research flag:** Two items need design decisions before implementation: (1) swing subdivision semantics at non-x1 ratios — does one swing cycle equal one LFO cycle or one clock beat? The musical intent differs; (2) smooth vs piecewise-linear warp at transition points — TR-909 uses hard piecewise-linear (authentic); sinusoidal ease sounds smoother. Choose intentionally.
+**Research flag:** No deeper research needed. All patterns are direct extensions of existing computeSquare() code. LOW complexity, HIGH confidence.
 
-### Phase 7: Panel Redesign
-**Rationale:** Panel layout must be designed for the final component count — not incrementally modified. The v1.0 retrospective explicitly flagged incremental panel changes as a major source of wasted effort ("bottom row layout went through three iterations"). With all features finalized, the exact counts are known: 3 new jacks (FM, RESET, PHASE_OFFSET_CV), 3 new controls (PHASE_OFFSET knob, FM_ATTEN trimpot, SWING is right-click only — no panel control).
-**Delivers:** Updated 12HP SVG panel accommodating all 6 new components; updated widget positions in `AnalogLFOWidget`.
-**Addresses:** Panel density at 12HP (Pitfall 15).
-**Avoids:** Pitfall 15 (design once for final state; if 12HP is too cramped, fallback priority is: remove FM attenuverter trimpot first, then defer Phase Offset CV, then expand to 14HP).
-**Research flag:** Physical mm feasibility — sketch positions on a 60.96mm-wide grid before committing to SVG. Minimum 7mm center-to-center for adjacent jacks.
+---
+
+### Phase B: Forge Noir SVG Panel + Widget Positions
+
+**Rationale:** The panel SVG is a standalone file with no code dependencies beyond the widget constructor positions. It is the most labor-intensive deliverable and is the structural blocker for Phase C (display box position and size depend on the 14HP layout). Creating the panel before touching display code avoids working in two coordinate systems simultaneously.
+
+**Delivers:** Full 14HP Forge Noir panel SVG (panel background #0c0c0c, text-as-paths for all labels, decorative lines, hex bolt geometry, forge emblem as simplified low-opacity paths, display placeholder rect). Updated widget constructor with all `mm2px(Vec(...))` positions recalculated for 14HP per DESIGN-LANGUAGE.md coordinates. Custom SVG component files for knobs, jacks, trimpots, hex bolts.
+
+**Features addressed:** Forge Noir panel SVG (P1 must-have), Forge emblem atmospheric background (P2, simplified SVG version acceptable)
+
+**Critical pitfalls to avoid:** Pitfall 3 (2HP width change -- document, do not change slug), Pitfall 4 (nanosvg limitations -- test in VCV Rack after each major SVG element), Pitfall 9 (component placeholder alignment -- single source of truth in C++ positions), Pitfall 16 (SVG cache -- restart VCV Rack fully after SVG changes during development)
+
+**Research flag:** No deeper research needed. nanosvg constraints are fully documented. Translation from HTML/CSS mockup to nanosvg-compatible SVG is labor-intensive but not technically uncertain. MEDIUM complexity overall; HIGH confidence on the constraints, MEDIUM confidence on exact visual fidelity of the design language translation.
+
+---
+
+### Phase C: Display Three-Column Layout
+
+**Rationale:** Depends on Phase B (display box position and size are finalized). The three-column restructuring is a coordinate reorganization of existing NanoVG draw calls -- no new rendering technology, no new atomics. Column boundaries defined as proportions of `box.size.x` auto-adapt to the new 14HP display dimensions. CRT aesthetic elements (corner brackets, scanlines, border glow) bundle here because they modify the same drawLayer() function with minimal additional code.
+
+**Delivers:** Left/center/right column layout for all pills, waveform confined to center column, Forge Noir display colors (#030303 background, ember accent border), JetBrains Mono font loaded and cached for data readouts, corner bracket accents (8x8px L-shapes), CRT scanline overlay, animated border glow via breathePhase.
+
+**Features addressed:** Display three-column layout (P1 must-have), CRT display aesthetic (P2)
+
+**Critical pitfalls to avoid:** Pitfall 5 (FramebufferWidget misuse -- keep WaveformDisplay as TransparentWidget, never wrap), Pitfall 10 (font loading -- cache handle in member variable on first draw, not every frame), Pitfall 12 (zoom levels -- test at 50%/75%/100%/150%/200%), Pitfall 14 (font bundling -- use `asset::plugin()` not `asset::system()` for JetBrains Mono)
+
+**Research flag:** No deeper research needed. All NanoVG APIs are already in active use in the v1.2 display code. Coordinate math is proportional arithmetic. LOW complexity, HIGH confidence.
+
+---
+
+### Phase D: Animated SYNC Badge
+
+**Rationale:** Depends on Phase C (SYNC badge must be in its final position). The smallest GUI change in the milestone: one new atomic (`clockPulseCount`), one new float (`syncFlashAlpha`), a few lines in `step()`, and a minor alpha boost in `drawTextOverlays()`. Appropriately scoped as the final phase because it builds on both the display layout work (Phase C) and the existing breathePhase animation infrastructure.
+
+**Delivers:** Brief ember flash on each clock edge while LOCKED (fast attack, exponential decay ~200ms, base visibility ~60%). Flash uses monotonic counter bridge from audio thread to prevent lost-event races between audio and GUI frames. ACQUIRING state 2Hz sinusoidal blink is unchanged.
+
+**Features addressed:** Animated SYNC badge (P1 must-have)
+
+**Critical pitfalls to avoid:** Pitfall 5 (no FramebufferWidget involved here), Pitfall 13 (gate animation on `syncFadeAlpha > 0.001f`, matching existing pattern)
+
+**Research flag:** No deeper research needed. Pattern is a direct extension of the existing breathePhase and syncFadeAlpha animation system. LOW complexity, HIGH confidence.
+
+---
+
+### NanoVG Premium Knobs (P2 -- Phase E or Deferred)
+
+**Rationale:** The only P2 feature without a natural anchor in the above phases. NanoVG knobs require a custom widget subclass overriding `drawLayer()` with multi-pass radial gradients and FramebufferWidget caching (dirty only on rotation). This is architecturally separate from all other v1.3 work and carries the highest implementation risk: GPU cost of multi-pass gradient rendering is unvalidated, and FramebufferWidget interaction with multiple gradient passes has not been profiled.
+
+**Recommendation:** Defer to a clearly-scoped Phase E after the core milestone ships. Profile GPU cost immediately before committing to the full three-size system (xl/lg/md). Do not let knob rendering block the milestone.
+
+**Research flag:** NEEDS empirical performance validation before implementation begins. Multi-pass NanoVG knob GPU cost is explicitly listed at LOW confidence in FEATURES.md. If pursuing Phase E, profile with VCV Rack's performance meters on the first prototype knob before building all three sizes.
+
+---
 
 ### Phase Ordering Rationale
 
-- Display first: zero DSP risk; fixes a known regression; no dependencies on any new feature; ships visible improvement immediately
-- RESET and Phase Offset together: reset target semantics depend on phase offset being co-designed; building separately forces rework
-- FM before imperfections: FM modifies frequency computation (upstream); imperfections modify phase readout (downstream); upstream must be stable first
-- Imperfections before bleed: phase jitter applies at the same pipeline region where bleed reads; imperfections must be settled before the function signature changes
-- Bleed before swing: modifying `computeMorphedWave()` signature is cleanest when the surrounding pipeline is fully stable
-- Swing last of DSP phases: depends on clock system, phase offset, and division counting all being stable; best deferral candidate if scope must be trimmed
-- Panel always last: direct lesson from v1.0 retrospective
+- Phase A first: PWM DSP is zero-dependency on rendering work; validates the most important feature change with maximum isolation; any bugs are easier to isolate before panel and display complexity accumulates
+- Phase B second: the panel is the structural blocker for all coordinate work; must be locked before display positions can be finalized; it is the highest-effort single deliverable and benefits from being done while the implementation is still fresh
+- Phase C third: depends on Phase B display box position and size; all NanoVG APIs are already in use so iteration is fast once the panel coordinate system is established
+- Phase D last: depends on Phase C SYNC badge final position; it is the smallest change and the appropriate integration capstone
+- NanoVG knobs deferred or Phase E: architecturally orthogonal to all other work; carries the only unvalidated performance risk in the milestone
+
+---
 
 ### Research Flags
 
-Phases requiring explicit design decisions before implementation begins:
-- **Phase 3 (FM):** Decide FM authority in clocked mode before writing code — full frequency authority vs. redirect to phase offset (see Gaps section).
-- **Phase 4 (Imperfections):** Component spread magnitudes need empirical validation during implementation; budget a tuning pass.
-- **Phase 6 (Swing):** Resolve subdivision semantics at non-x1 ratios and warp curve shape (linear vs. smooth) before implementation.
+Phases needing deeper research or empirical validation:
 
-Phases with standard patterns (no pre-phase research needed):
-- **Phase 1 (Display Polish):** NanoVG box gradient is documented SDK usage.
-- **Phase 2 (RESET + Phase Offset):** SchmittTrigger and phase readout modification are established patterns; 1ms blanking rule is in VCV Rack Voltage Standards.
-- **Phase 5 (Waveform Bleed):** Pure waveform math; all four shapes already computed.
-- **Phase 7 (Panel):** SVG panel workflow established from v1.1 CLK jack addition.
+- **NanoVG Premium Knobs (Phase E):** GPU performance of multi-pass gradient rendering at three knob sizes is untested. Needs profiling on target hardware before committing to the full implementation. Listed at LOW confidence in source research.
+
+Phases with standard, established patterns (skip additional research):
+
+- **Phase A (PWM DSP):** Direct extension of computeSquare(). All math is proven in existing code.
+- **Phase B (SVG Panel):** nanosvg constraints are fully documented; translation from mockup is labor, not research. Iterative testing in VCV Rack is the validation mechanism.
+- **Phase C (Display Layout):** All NanoVG APIs already in active use. Coordinate math is proportional arithmetic.
+- **Phase D (Sync Animation):** Monotonic counter and exponential decay pattern directly mirrors existing animation infrastructure.
 
 ---
 
@@ -205,54 +213,60 @@ Phases with standard patterns (no pre-phase research needed):
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies; all additions use verified SDK built-ins and C++17 standard library; `src/AnalogLFO.cpp` directly inspected at 890 lines with precise line-number analysis |
-| Features | HIGH | Table stakes verified against VCV Fundamental LFO, Bogaudio, and Mutable Tides official documentation; anti-features grounded in established project philosophy and explicit v1.0/v1.1 design decisions |
-| Architecture | HIGH | All integration points identified with precise pipeline positions; interaction matrix across all new features vs. all existing systems is explicit; no circular dependencies |
-| Pitfalls | HIGH | Critical pitfalls derived from direct source code analysis at specific line numbers; VCV Rack Voltage Standards verification; well-understood DSP engineering principles; v1.0/v1.1 retrospective lessons |
+| Stack | HIGH | No new dependencies. All APIs verified against SDK docs and existing codebase at specific line numbers. JetBrains Mono follows an established loading pattern. |
+| Features | HIGH | All four core features explicitly scoped in PROJECT.md. PWM math, display layout, and animation patterns are well-documented. Design language finalized at mockup v19. NanoVG knob GPU cost is the one LOW-confidence item. |
+| Architecture | HIGH | Existing codebase fully analyzed (1,359 lines). All integration points identified with line numbers. Build order validated against dependency graph. Three key architectural patterns (monotonic counter, proportional coordinates, shape array extension) are established. |
+| Pitfalls | HIGH | 16 pitfalls identified, 12 at HIGH confidence from direct source analysis. Two at MEDIUM confidence (crossfade artifacts from rapid morph CV, font loading overhead) are edge cases with natural mitigations. Two at MEDIUM confidence (SVG cache behavior, visual fidelity of nanosvg gradient translation) are development process concerns, not architectural risks. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **FM authority in clocked mode:** Research documents both options (full-authority FM vs. phase-offset redirect in clocked mode) but does not pick one. This is a design decision, not a research gap. Decide before Phase 3 begins. The tradeoff: full authority is more expressive and musically useful (documented as desired behavior in FEATURES.md) but causes larger crossfade artifacts at high FM depths; phase-offset redirect is cleaner but changes the sonic character of clocked-mode FM. Recommendation: implement full-authority FM, test explicitly, and offer the redirect as a right-click option.
+- **Exact mm coordinates for 14HP component positions:** DESIGN-LANGUAGE.md specifies positions at 5x pixel scale. These need dividing by 5 to get mm, then converting via `mm2px()` in the widget constructor. The arithmetic is straightforward but must be done precisely. Verify against the mockup coordinate grid before authoring the SVG. Key positions: panel center at x=35.56mm, secondary columns at x=21.2mm and x=49.9mm, CV jack columns at x=9.2mm, 22.8mm, 35.56mm, 48.8mm, 62mm.
 
-- **Component spread perceptibility at LFO rates:** Research suggests ±2–3% parameter offsets based on analog component tolerance specs. The v1.0 retrospective lesson ("character deformation amplitudes from research were too subtle — had to increase 3–5x") applies directly. Treat the research values as starting points, not final values. Plan an empirical tuning pass during Phase 4 before the feature is considered complete.
+- **Minimum pulse duty cycle floor:** Research recommends 10-15%. The exact value should be validated by ear at morph=1.0 with character=0 -- the pulse should be narrow and distinctive, not perceived as silence or near-silence. The computePulse() ARCHITECTURE.md prototype uses 12.5% as the base duty at character=0, which is a natural starting point. Confirm by listening and observing the display.
 
-- **Swing subdivision semantics at non-x1 clock ratios:** At x1, one swing cycle = one LFO cycle (clear). At /4, it is ambiguous whether swing operates at the LFO cycle level (4 beats per swing cycle) or the clock beat level (swing occurs every 2 beats regardless of LFO rate). The musical intent differs and determines the implementation. Resolve with a design decision before Phase 6.
+- **Bleed ring topology for 5 shapes:** Research identifies two options: ring topology (pulse bleeds into sine, matching the circular structure of the existing 4-shape ring) vs. open-ended (no bleed at the extremes of sine and pulse). An open-ended topology is argued to be more musically appropriate for a linear morph sweep, but this is a design decision. Make it explicitly before implementing Phase A.
 
-- **12HP panel feasibility with 6 new components:** Research identifies the layout as "tight but feasible" with specific mm proposals but does not verify them against actual coordinate constraints. Do a paper or SVG sketch before committing to implementation. The recommended fallback priority if 12HP is too cramped: (1) SWING is already right-click only, (2) remove FM attenuverter trimpot (fixed depth), (3) defer Phase Offset CV to v1.3, (4) expand to 14HP.
+- **NanoVG knob GPU cost:** The only genuinely unknown quantity in the milestone. Multi-pass radial gradient rendering for three knob sizes has not been profiled. If pursuing NanoVG knobs (Phase E), profile the first prototype knob at 60fps before building the full system.
 
-- **Component spread JSON versioning:** The decision to serialize the RNG seed rather than the spread values means the spread generation algorithm must be stable. If the algorithm changes between v1.2 and v1.3, old patches will silently produce different component spread. Consider adding a version field to the JSON alongside the seed.
+- **nanosvg `<use>` with scale(-1,1) for forge emblem symmetry:** DESIGN-LANGUAGE.md specifies `<use>` mirroring for the forge emblem. ARCHITECTURE.md documents that `<use>` is not supported in nanosvg. The resolution is to duplicate and manually mirror geometry. Confirm by testing a simple mirrored element in VCV Rack before committing to the emblem geometry.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `src/AnalogLFO.cpp` (local codebase, 890 lines, directly analyzed) — all integration points, enum layouts, existing filter parameters, specific line numbers for pitfall analysis
-- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) — 1V/Oct, trigger thresholds (0.1V/1.0V), 1ms RESET/CLK blanking rule
-- [VCV Rack API: dsp namespace](https://vcvrack.com/docs-v2/namespacerack_1_1dsp) — SchmittTrigger, ExponentialFilter, exp2_taylor5
-- [VCV Library - VCV LFO](https://library.vcvrack.com/Fundamental/LFO) — FM input, RESET input feature verification
-- [VCV Fundamental LFO source](https://github.com/VCVRack/Fundamental/blob/v2/src/LFO.cpp) — FM and RESET implementation reference
-- [Mutable Instruments Tides documentation](https://pichenettes.github.io/mutable-instruments-documentation/modules/tides_2018/manual/) — phase shift, FM CV, trigger reset
-- [NanoVG API: nanovg.h](https://github.com/memononen/nanovg/blob/master/src/nanovg.h) — nvgTextBounds, nvgRoundedRect, nvgBoxGradient
-- [Jatin Chowdhury: Bad Circuit Modelling — Component Tolerances](https://ccrma.stanford.edu/~jatin/Bad-Circuit-Modelling/Tolerances.html) — truncated Gaussian per-instance variation
-- Project v1.0/v1.1 retrospectives — architectural lessons: panel layout rework, perceptibility amplitudes, OU drift authority
+
+- `src/AnalogLFO.cpp` (1,374 lines) -- direct source analysis for all integration points, current patterns, enum ordering, line-number-specific pitfall identification
+- [VCV Rack Module Panel Guide](https://vcvrack.com/manual/Panel) -- SVG requirements, nanosvg limitations, HP sizing
+- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) -- drawLayer, font loading, widget lifecycle, parameter serialization
+- [VCV Rack FramebufferWidget API](https://vcvrack.com/docs-v2/structrack_1_1widget_1_1FramebufferWidget) -- dirty flag, caching model, when to use vs. avoid
+- [nanosvg GitHub (memononen/nanosvg)](https://github.com/memononen/nanosvg) -- supported elements, paint types, gradient types
+- [VCV Rack RackWidget.cpp source](https://github.com/VCVRack/Rack/blob/v2/src/app/RackWidget.cpp) -- module position stored as grid coords, width derived from SVG
+- [VCV Rack ModuleWidget.cpp source](https://github.com/VCVRack/Rack/blob/v2/src/app/ModuleWidget.cpp) -- panel width derivation from SVG
+- `DESIGN-LANGUAGE.md` -- complete Forge Noir specification, color palette, typography, component sizing, layout coordinates at 5x scale
+- [nanosvg DeepWiki](https://deepwiki.com/memononen/nanosvg) -- feature overview, paint type enums, path commands
 
 ### Secondary (MEDIUM confidence)
-- [KVR Audio: Implementing swing](https://www.kvraudio.com/forum/viewtopic.php?t=261858) — swing/shuffle DSP approaches, TR-909 shuffle timing values
-- [Cycling '74: Shuffle for phasor LFO](https://cycling74.com/forums/shuffle-or-swing-for-a-phasor-driven-lfo) — phase warping approach for LFO swing
-- [Frap Tools: Exponential FM Explained](https://frap.tools/frequency-modulation-part-1-exponential-fm/) — why exponential FM is correct for pitch modulation
-- [Bogaudio GitHub](https://github.com/bogaudio/BogaudioModules) — LFO V/Oct, 8FO phase output patterns
-- [Analog Devices: Temperature Drift](https://analogtoolshub.com/temperature-drift-analog-circuits/) — DC offset drift mechanisms, temperature coefficient specs
-- [VCV Community: FM CV levels](https://community.vcvrack.com/t/fm-cv-levels-correspond-to-what-exactly/13561) — FM voltage scaling conventions
-- [Mod Wiggler: LFO with sync and reset](https://www.modwiggler.com/forum/viewtopic.php?t=222452) — Eurorack RESET jack conventions
 
-### Tertiary (LOW confidence — validate during implementation)
-- Waveform bleed percentages (0.5–3% in real hardware) — general CD4066 analog switch knowledge, not measured from specific vintage synths
-- Component spread magnitudes for LFO perceptibility (±2–3%) — standard EIA tolerance specs, not LFO-specific perceptual measurements; likely needs empirical increase
-- Phase jitter magnitude (0.01–0.5% of cycle) — general oscillator knowledge, not measurements from specific vintage circuits
+- [VCV Community: SVG transparencies and gradients](https://community.vcvrack.com/t/svg-transparencies-and-gradients/16833) -- gradient support details, 2-color limitation, VCV 2.6 improvements
+- [VCV Community: Notes for theme-able SVGs with nanoSvg](https://community.vcvrack.com/t/notes-for-theme-able-svgs-with-nanosvg/20060) -- theming patterns, SVG cache behavior
+- [VCV Community: Custom knob SVGs](https://community.vcvrack.com/t/how-can-i-implement-custom-knob-svgs/21399) -- SvgKnob subclass pattern
+- [VCV Community: Custom Widget Light Bloom](https://community.vcvrack.com/t/custom-widget-light-bloom/14647/3) -- ring lights via dual radial gradients, box gradients for bloom
+- [VCV Community: NanoVG optimization](https://community.vcvrack.com/t/trying-to-optimize-nanovg/16364) -- rendering performance, shadow impact
+- [Perfect Circuit: What is PWM?](https://www.perfectcircuit.com/signal/what-is-pwm) -- 5%-95% duty cycle limits, synth design conventions
+- [Sound on Sound: Synthesizing Strings with PWM](https://www.soundonsound.com/techniques/synthesizing-strings-pwm-string-sounds) -- duty cycle acoustic symmetry, standard limits
+- [Mutable Instruments Plaits manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/plaits/manual/) -- waveform morph engine, narrow pulse behavior
+- [VCO PWM click artifacts (Fundamental #140)](https://github.com/VCVRack/Fundamental/issues/140) -- discontinuity artifacts from duty cycle modulation
+
+### Tertiary (LOW confidence -- empirical validation needed)
+
+- GPU cost of multi-pass NanoVG knob rendering -- no community benchmarks found; must profile on target hardware before committing to Phase E
+- FramebufferWidget with multiple gradient passes -- community anecdotes suggest benefit for static knobs but not quantified for the Forge Noir rendering approach
+- nanosvg `<use>` with scale(-1,1) for forge emblem mirroring -- design language specifies this technique, architecture research flags it as unsupported; needs empirical confirmation in VCV Rack
 
 ---
-*Research completed: 2026-03-13*
+
+*Research completed: 2026-03-27*
 *Ready for roadmap: yes*

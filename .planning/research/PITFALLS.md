@@ -1,528 +1,379 @@
-# Pitfalls Research: v1.2 Deep Analog Features
+# Domain Pitfalls: v1.3 Forge Noir
 
-**Domain:** Adding FM modulation, expanded analog imperfections, waveform bleed, separate RESET jack, phase offset, swing/shuffle, and display polish to an existing 890-line VCV Rack LFO module
-**Researched:** 2026-03-13
-**Confidence:** HIGH (based on direct source code analysis of AnalogLFO.cpp, VCV Rack voltage standards, established DSP engineering practice, and v1.0/v1.1 retrospective lessons)
+**Domain:** Adding morph-integrated PWM, Forge Noir panel redesign (12HP to 14HP), display layout restructuring, and animated sync badge to an existing 1,374-line VCV Rack 2 LFO module
+**Researched:** 2026-03-27
+**Confidence:** HIGH (based on direct source code analysis of AnalogLFO.cpp, VCV Rack 2 SDK documentation, VCV Rack GitHub source for patch serialization, nanosvg limitations documentation, FramebufferWidget API reference, and community-documented PWM click artifacts)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, audible artifacts, or architectural dead-ends. These MUST be addressed in the phase that introduces the relevant feature.
+Mistakes that cause rewrites, broken patches, audible artifacts, or architectural dead-ends. These MUST be addressed in the phase that introduces the relevant feature.
 
 ---
 
-### Pitfall 1: FM Input Driving Phase Accumulator to Negative Frequency
+### Pitfall 1: Morph Continuity Break at the Square-to-Pulse Boundary
 
-**What goes wrong:** The FM input adds or subtracts from the LFO's frequency. With a bipolar FM signal (e.g., another LFO outputting +/-5V), the modulated frequency can go negative. The current phase accumulator (`double phase` at line 61) only handles forward phase progression (`phase += deltaPhase; if (phase >= 1.0) phase -= 1.0`). A negative `deltaPhase` makes `phase` go below 0.0, and the wrap logic never catches it. The phase becomes a large negative number that grows without bound, and the waveform functions (which expect phase in [0, 1)) produce garbage output -- NaN, infinity, or wild oscillations.
+**What goes wrong:** The current morph sweep is `Sine -> Tri -> Saw -> Square` mapped to [0, 1] via `float scaled = morph * 3.f` (line 308), producing 3 crossfade segments of equal width (0.333 each). Extending to `Sine -> Tri -> Saw -> Square -> Narrow Pulse` adds a 4th segment, changing the math to `morph * 4.f` with 4 equal segments (0.25 each). This means every existing morph CV mapping and knob position shifts: what was "pure square" at morph=1.0 is now somewhere at morph=0.75, and the top 25% of the knob is the new pulse territory. Every existing patch that stores a morph parameter value breaks its sound -- a user who carefully dialed in a saw/square blend at morph=0.85 now gets something between square and pulse.
 
-**Why it happens:** At LFO rates, FM modulation can easily push the frequency through zero. An LFO running at 0.5 Hz with a +/-5V FM input scaled to +/-2 Hz/V will see its frequency range from -1.5 Hz to +2.5 Hz. Unlike audio-rate VCOs where the carrier frequency is typically high enough to stay positive, sub-audio LFOs have very low base frequencies that are trivially driven negative.
+**Why it happens:** The morph param is stored as a normalized 0-1 float in patch JSON. VCV Rack restores parameter values directly on patch load. If the mapping of morph values to waveform regions changes, the same stored value produces a different waveform.
 
-**How to avoid:**
-1. **Clamp the modulated frequency to a small positive minimum:** After computing `targetFreq + fmOffset`, clamp to `max(result, 0.001f)`. This prevents negative frequency without through-zero capability. This is the correct approach for an LFO -- through-zero FM produces reversed waveforms that are disorienting as modulation sources rather than musically useful.
-2. **Add bidirectional phase wrapping:** Change the phase accumulator to handle both directions: `if (phase >= 1.0) phase -= 1.0; if (phase < 0.0) phase += 1.0;`. This is needed even with clamping as a safety net against floating-point edge cases.
-3. **Choose exponential FM, not linear FM:** Exponential FM (multiply frequency by 2^(V/N)) can never produce negative frequencies because 2^x is always positive. For an LFO where users want vibrato-like modulation of another LFO's rate, exponential FM is more musically intuitive. Linear FM is better suited for audio-rate harmonic FM synthesis, which is not this module's purpose.
-4. **Scale the FM input conservatively:** A reasonable default is 1 octave per 5V (so +5V doubles frequency, -5V halves it) for exponential, or a more restrained linear range with an attenuverter. Do NOT use 1V/oct scaling -- that is for VCOs, not LFOs.
+**Consequences:** Every existing patch with a non-zero morph setting sounds different after the update. Users who have dialed in specific morph positions for modulation targets lose their sounds. CV sequences mapped to morph shift their entire tonal palette.
 
-**Warning signs:**
-- Output voltage goes to NaN or clips to +/-inf
-- Display shows a flat line or glitchy waveform when FM is patched
-- Phase value in debugger is negative or > 1.0
-- Waveform output sounds like DC or noise instead of modulated LFO
+**Prevention:**
+1. Keep the existing [0, 1] range for `Sine -> Tri -> Saw -> Square` completely intact. The square waveform must remain at morph=1.0.
+2. Extend the morph range beyond 1.0 for the pulse region. The new morph range becomes [0, 1.333] or similar, where [1.0, 1.333] maps square (50% duty) to narrow pulse. The param config changes from `configParam(MORPH_PARAM, 0.f, 1.f, ...)` to `configParam(MORPH_PARAM, 0.f, 1.333f, ...)`.
+3. Alternatively (and better for knob feel): remap the internal morph value so that the 4-segment mapping uses unequal segment widths. The first three segments each get 25% of knob travel (unchanged positions within those segments), and the last 25% of knob travel covers square-to-pulse. The math: for `morph <= 0.75`, use `scaled = morph * (3.0/0.75) = morph * 4.0` which maps [0, 0.75] to [0, 3.0] -- same 3 crossfade segments. For `morph > 0.75`, the fourth segment maps [0.75, 1.0] to the square-to-pulse range. This preserves morph=0.0 as sine, morph=0.25 as tri, morph=0.5 as saw, morph=0.75 as square -- and adds morph > 0.75 as pulse territory.
+4. **Critical check:** Verify that the existing `computeMorphedWave` `shapes[4]` array and segment indexing via `int segment = std::min((int)scaled, 2)` adapts correctly to 5 shapes and 4 segments. The clamp becomes `std::min((int)scaled, 3)`.
 
-**Phase to address:** FM input implementation (first phase that touches frequency modulation)
+**Detection:** A/B test: save a patch at morph=0.5 (pure saw) before and after the change. If the output waveform differs, the mapping is broken.
 
-**Confidence:** HIGH (direct analysis of phase accumulator at AnalogLFO.cpp line 483-484; negative frequency is a well-documented FM synthesis issue)
+**Phase to address:** The very first phase that modifies the morph range or adds the pulse waveform.
+
+**Confidence:** HIGH (direct analysis of morph mapping at AnalogLFO.cpp lines 299-343; patch serialization confirmed to store raw param values)
 
 ---
 
-### Pitfall 2: FM Modulation Interacting Badly with Clock Sync
+### Pitfall 2: Pulse Wave Amplitude Collapse at Extreme Duty Cycles
 
-**What goes wrong:** When the LFO is clock-synced, its frequency is derived from the measured clock period and the selected ratio (`clockFreq * RATIO_TABLE[ratioIdx]` at line 440). If an FM input ALSO modifies the frequency, the FM signal fights the clock sync: the LFO runs slightly faster or slower than the clock dictates, accumulating phase error between clock edges. On the next clock edge, the phase is wrong, requiring a larger crossfade correction. At high FM depths, the LFO could be a full cycle ahead or behind, producing a dramatic waveform discontinuity that even the 3ms crossfade cannot hide.
+**What goes wrong:** As duty cycle narrows from 50% toward very low values (5-10%), the pulse wave becomes a series of narrow spikes. The RMS energy drops proportional to the square root of the duty cycle. At 10% duty, the wave is at +1 for 10% of the cycle and -1 for 90% -- still bipolar, still peak +/-1. But at 5% duty, the positive spike is so narrow that it is perceived as much quieter than a 50% square wave, even though peak amplitude is the same. Users sweeping morph from square into pulse will hear the output "disappear." Worse, when this feeds downstream modules expecting consistent amplitude, the modulation depth appears to collapse.
 
-**Why it happens:** Clock sync and FM modulation are fundamentally at odds. Clock sync says "your frequency is exactly X." FM modulation says "your frequency is X plus this offset." The phase accumulator faithfully integrates both, producing a frequency that is neither what the clock wants nor what FM alone would produce. The existing drift authority scaling (2% in clocked mode, line 478) was designed for this exact problem but only covers the OU drift engine, not an FM input.
+**Why it happens:** A mathematically correct pulse wave with constant +/-1 amplitude and narrowing duty cycle has decreasing RMS. The DC offset also shifts: at 50% duty, DC=0. At 10% duty, DC = 0.1*(+1) + 0.9*(-1) = -0.8V normalized. The output biases heavily negative.
 
-**How to avoid:**
-1. **Scale FM depth down in clocked mode:** Apply the same philosophy as drift authority. In clocked mode, FM modulation should be limited to a small percentage of the clock-derived frequency (e.g., 5-10% maximum deviation). This gives subtle frequency wobble without destroying sync alignment.
-2. **Apply FM to waveform phase offset instead of frequency:** In clocked mode, use the FM signal to modulate the phase offset rather than the frequency. This produces a similar sonic effect (the waveform shape changes over time) without accumulating phase error. The phase offset is corrected on each clock reset, so no error builds up.
-3. **Document the interaction clearly:** In free-running mode, FM has full authority. In clocked mode, FM authority is reduced. Users should understand this tradeoff.
-4. **Consider an FM mode switch:** Right-click menu option: "FM Mode: Frequency / Phase" where Phase mode redirects FM to phase offset, useful in clocked scenarios.
+**Consequences:** Non-uniform loudness across the morph sweep. DC offset shift at narrow duty cycles. Downstream VCAs and filters behave inconsistently.
 
-**Warning signs:**
-- Clock-synced LFO with FM input produces periodic clicks at clock rate
-- Phase error at clock edges increases with FM depth
-- Waveform display shows visible "jerk" at clock edges when FM is active
-- The crossfade from lastOutputVoltage (line 523-531) engages on every clock edge with large amplitude
+**Prevention:**
+1. Limit minimum duty cycle to 10-15% (never approach 0%). At morph=1.0 the pulse is narrow but still energetic. The existing `squareDutySpread` component spread (line 282) adds up to +/-1% variation, so the effective minimum is safe at 10%.
+2. Consider DC-compensated pulse generation: shift the waveform so the DC component stays near zero regardless of duty cycle. For duty cycle `d`, the high level = `(1-d)` and low level = `-d`, which maintains zero mean. This changes the spectral character slightly but eliminates DC shift.
+3. Alternatively, accept the DC shift as authentic (real analog pulse waves have DC offset) but document it, and ensure the Drift knob's DC offset wander (line 794) doesn't compound with the pulse's inherent DC offset to exceed the +/-5V output range.
+4. The 5V output scaling (line 778 `float outputVoltage = 5.f * sample`) will produce +5V/-5V peaks regardless of duty cycle. Verify that `sample` stays in [-1, +1] even with bleed (line 316-340) and DC offset (line 794) active simultaneously during pulse operation.
 
-**Phase to address:** FM input implementation, with clocked-mode interaction tested immediately
+**Detection:** Sweep morph slowly from 0.75 (square) to 1.0 (narrow pulse) while monitoring output voltage on a scope module. Watch for: amplitude perceived drop, DC offset shift, output exceeding +/-5V.
 
-**Confidence:** HIGH (direct analysis of clock sync + frequency pipeline in AnalogLFO.cpp lines 429-481; this is the same class of problem as Pitfall 2 in v1.1 PITFALLS.md, now with FM instead of drift)
+**Phase to address:** Pulse waveform implementation phase.
+
+**Confidence:** HIGH (standard DSP engineering; duty cycle / RMS relationship is well-established)
 
 ---
 
-### Pitfall 3: RESET Jack and CLK Jack Firing Simultaneously (1ms Blanking Violation)
+### Pitfall 3: Panel Width Change Causes Module Overlap on Existing Patch Load
 
-**What goes wrong:** VCV Rack has a well-documented timing issue: cables introduce 1-sample delay. When a user patches the same trigger source to both CLK and RESET (or uses a clock module that outputs both), the two signals arrive 1 sample apart. Without blanking, the module processes both triggers: the CLK edge fires `processClockInput()` which resets phase AND updates period measurement, then 1 sample later the RESET edge fires and resets phase again. Two resets in 2 samples produces a double-click artifact and corrupts the period measurement (the measured period is 1 sample instead of the real clock period).
+**What goes wrong:** The VCV Rack patch JSON stores module position as grid coordinates `[x, y]` via `pos = pos.div(RACK_GRID_SIZE).round()` (confirmed from RackWidget.cpp source). Module width is NOT stored in the patch -- it is derived from the SVG panel at load time. When the module changes from 12HP (60.96mm) to 14HP (71.12mm), loading an old patch places the module at its saved grid position, but the module is now 2HP wider. Any module to the right that was placed flush against the old 12HP boundary now overlaps. VCV Rack calls `setModulePosForce()` during patch load, which pushes overlapping modules to the right. This cascading push can shift an entire rack row, breaking carefully laid-out patches.
 
-**Why it happens:** The existing code has only one trigger input (CLK) and one `dsp::SchmittTrigger` instance (line 91). Adding a separate RESET jack introduces a second trigger input that must coordinate with the first. The VCV Rack Voltage Standards explicitly state: "Modules with CLOCK and RESET inputs should ignore CLOCK triggers up to 1 ms after receiving a RESET trigger." The inverse is also important: the RESET should probably not corrupt clock period measurement.
+**Why it happens:** VCV Rack's patch format deliberately does not store module width -- it trusts that the module's code/SVG defines the width. This is normally fine because module widths do not change. The 12HP to 14HP change is unusual. The `setModulePosForce()` function handles collisions by displacement, not by error.
 
-**How to avoid:**
-1. **Implement 1ms post-RESET blanking for CLK:** After a RESET trigger is detected, set a timer. Ignore CLK triggers during this window. Use `dsp::Timer` for the blanking period, consistent with the existing `clockTimer` pattern.
-2. **RESET should only reset phase, not affect clock tracking:** The RESET jack should set `phase = 0.0` and trigger the crossfade, but should NOT reset `clockEdgeCount`, `smoothedPeriod`, or `clockState`. The clock tracker should continue tracking independently. The RESET jack is for creative phase alignment; CLK is for tempo tracking.
-3. **Handle the reverse case too:** If CLK arrives first and RESET arrives 1 sample later (the more common cable-delay scenario), the CLK has already advanced the beat counter and reset phase. The RESET then tries to reset phase again when it is already near 0.0. This is harmless (tiny crossfade from near-0 to 0) but wasteful. Detect that phase is already near 0.0 and skip the crossfade.
-4. **Use separate SchmittTrigger instances:** `dsp::SchmittTrigger clockTrigger` (already exists) and `dsp::SchmittTrigger resetTrigger` (new). Each processes its own input independently.
+**Consequences:** Patches load successfully but with shifted module positions. Users who arranged modules tightly (a common Eurorack practice) find their layout disrupted. Cables remain connected (they are stored by module/port ID, not position), so functionality is preserved, but the visual layout is damaged. Users may not notice the shift immediately if it only affects modules far to the right.
 
-**Warning signs:**
-- Double click on some clock edges but not others (depends on cable routing order)
-- Period measurement jumps to near-zero then recovers (1-sample period)
-- Works fine with CLK only, but adding RESET cable causes erratic behavior
-- Clock state machine jumps between states unexpectedly
+**Prevention:**
+1. **Accept and document the shift.** This is a one-time migration cost. The module loads, cables work, parameters are preserved. Only the visual layout shifts. Document in release notes: "Analog LFO is now 14HP (was 12HP). Existing patches will load correctly but modules to the right may shift by 2HP."
+2. **Do NOT change the module slug** (`ForgeAnalogLFO` in plugin.json line 14). Changing the slug would make the module unrecognizable to existing patches, which is far worse than a 2HP layout shift. The slug MUST remain identical.
+3. **Do NOT change param/input/output enum values or ordering.** The current enums (lines 8-37) define param, input, and output IDs by order. Adding new params (e.g., a PWM-related param) must append to the end of the enum, not insert into the middle. Inserting shifts all subsequent IDs and breaks stored parameter values in patches.
+4. **Test with an existing patch file.** Before release, save a patch with the 12HP module, then load it with the 14HP build. Verify: (a) module loads at correct position, (b) all params restore correctly, (c) cables reconnect, (d) right-neighbor modules push rather than overlap.
 
-**Phase to address:** RESET jack implementation phase
+**Detection:** Load a saved 12HP patch with the 14HP build. Check if the module overlaps its right neighbor. Check if parameter values are preserved (especially morph, character, drift).
 
-**Confidence:** HIGH (verified against VCV Rack Voltage Standards 1ms blanking rule; direct analysis of processClockInput() at lines 253-379)
+**Phase to address:** The panel redesign phase, immediately on first SVG swap.
+
+**Confidence:** HIGH (confirmed from VCV Rack source: position stored as grid coords, width derived from SVG, `setModulePosForce` handles collisions)
 
 ---
 
-### Pitfall 4: DC Offset Drift Accumulating Through Downstream Modules
+### Pitfall 4: nanosvg Rendering Limitations Silently Breaking the Forge Noir Panel
 
-**What goes wrong:** Adding a DC offset drift imperfection means the LFO output no longer centers precisely at 0V. If the offset drifts to +0.5V over the OU timescale (several seconds), the output swings from -4.5V to +5.5V instead of the normal -5V to +5V. This exceeds the +/-5V bipolar standard. More critically, if the LFO modulates a VCA or filter cutoff, the slow DC drift becomes an unwanted slow modulation on top of the intended LFO shape. At high drift amounts, the DC offset drift is indistinguishable from the existing frequency drift in its audible effect, diluting the module's character range.
+**What goes wrong:** The Forge Noir design language (DESIGN-LANGUAGE.md) specifies features that nanosvg cannot render: CSS classes, gradients with more than 2 stops, SVG `<use>` elements for symmetry mirroring, `<text>` elements, SVG filters (Gaussian blur for the forge rune glow), linear-gradient syntax from CSS, `<defs>` blocks, and opacity via CSS properties. Designing the panel in HTML/CSS (as the mockup demonstrates) and then exporting to SVG will produce an SVG file that looks correct in a browser or Inkscape but renders as a black rectangle with scattered colored shapes in VCV Rack.
 
-**Why it happens:** Real analog oscillators have DC offset from op-amp input bias currents and capacitor leakage. Modeling this is authentic. But unlike a physical synth where downstream stages have coupling capacitors that block DC, VCV Rack is DC-coupled throughout. A 0.5V DC offset on an LFO output propagates unchanged to every downstream module.
+**Why it happens:** VCV Rack uses nanosvg (a minimal SVG parser) for panel rendering, not a full SVG renderer. nanosvg supports: basic shapes (rect, circle, ellipse, line, polyline, polygon, path), fill/stroke colors, opacity via `fill-opacity`/`stroke-opacity` attributes, and simple 2-stop linear/radial gradients. It does NOT support: `<text>`, `<use>`, `<defs>`, `<filter>`, `<clipPath>`, CSS stylesheets, `<style>` blocks, multi-stop gradients, elliptical radial gradients (only circular), or `transform` on gradient definitions.
 
-**How to avoid:**
-1. **Bound the DC offset tightly:** Limit DC offset drift to +/-0.1V maximum (2% of 5V range). This is perceptible on an oscilloscope/display but musically subtle. Real analog LFOs typically have offsets in the 10-50mV range after trimming.
-2. **Apply offset before the 5V scaling, not after:** Add the offset to the normalized [-1, +1] waveform sample, then scale by 5V. This keeps the math clean and bounds predictable: a 0.02 normalized offset becomes 0.1V at the output.
-3. **Use a separate OU layer for DC offset:** Do NOT reuse the existing pitch drift OU layers. DC offset drift should be a very slow, small-amplitude process (e.g., 0.02 Hz center frequency, low sigma). It should feel like the oscillator's zero point wandering, not like the pitch wandering.
-4. **Make DC offset part of the Drift knob scaling:** DC offset should scale to zero when Drift=0 and reach maximum at Drift=1, consistent with other imperfections. The existing `progressiveCurve()` (x-squared) is appropriate here.
-5. **Consider a DC blocker option:** A right-click menu toggle "DC-coupled output (authentic) / AC-coupled output (clean)" with a very gentle high-pass filter (~0.1 Hz) for users who want the visual character but not the DC offset in their signal chain.
+**Consequences:** The panel renders incorrectly or as a blank rectangle. Elements that depend on unsupported features silently disappear. The module becomes unusable because the panel shows no labels or component positions. Since the SVG also defines component placeholder positions (colored circles/rects at specific coordinates), incorrect rendering can misplace knobs and jacks.
 
-**Warning signs:**
-- LFO output exceeds +/-5V range (visible in scope module)
-- Downstream VCA or filter has a slow "breathing" modulation on top of the LFO pattern
-- Display waveform appears shifted vertically when drift is active
+**Prevention:**
+1. **Convert ALL text to paths** in Inkscape (Path > Object to Path) before saving. The current panel SVG (res/AnalogLFO.svg) already does this correctly -- every letter is a `<path>` element.
+2. **Replace `<use>` mirror transforms with duplicated geometry.** The DESIGN-LANGUAGE.md specifies `<use href="#forge-half" transform="translate(panelWidth, 0) scale(-1, 1)">` for perfect symmetry. nanosvg does not support `<use>`. Instead, duplicate the left-half paths and manually mirror their coordinates. This is verbose but guaranteed to render.
+3. **Replace multi-stop gradients with layered 2-stop gradients** or solid colors with opacity. The forge ember accent bar (`linear-gradient(90deg, #1a0800, #e85d26 25%, #daa520 50%, #e85d26 75%, #1a0800)`) has 5 stops. Replace with 2-3 overlapping rectangles with 2-stop gradients, or use a single solid color with opacity that approximates the effect.
+4. **Remove all SVG filter elements.** The forge rune's Gaussian blur glow (`stdDeviation 1.8`) will not render. Approximate the glow effect by layering multiple paths with decreasing opacity and increasing stroke width (the same technique already used for the waveform trace glow in the display, lines 896-917).
+5. **Remove all `<defs>` blocks.** Inline gradient definitions directly on elements using `fill="url(#gradientId)"` syntax where the gradient is defined as a sibling element, not inside `<defs>`.
+6. **Test the SVG in VCV Rack early and often.** Do not design the entire panel in Inkscape and test at the end. After each major element (brand text, knob positions, display area, CV section), load the SVG in VCV Rack to verify rendering.
+7. **Validate radial gradients are circular, not elliptical.** nanosvg has a hardcoded radius value (160px) for radial gradients that can cause incorrect proportions with elliptical gradients. Use only `r` (not `rx`/`ry`) for radial gradient radius. As of VCV Rack 2.6, gradient handling has improved, but circular is still safest.
 
-**Phase to address:** Expanded analog imperfections phase
+**Detection:** Load the SVG in VCV Rack. If any element is missing, miscolored, or positioned wrong compared to Inkscape preview, the element uses an unsupported feature. Compare VCV Rack rendering against Inkscape rendering side-by-side.
 
-**Confidence:** MEDIUM-HIGH (well-understood analog behavior; the specific bound of 0.1V is a design judgment based on LFO use cases and VCV Rack DC-coupled signal path)
+**Phase to address:** Panel SVG creation phase -- the FIRST time the new SVG is authored.
 
----
-
-### Pitfall 5: Phase Offset + Phase Reset = Wrong Cycle Start Point
-
-**What goes wrong:** A phase offset knob adds a fixed offset to the phase before waveform computation, so the LFO starts at a different point in its cycle (e.g., 90 degrees offset means starting at the sine peak instead of zero-crossing). When a clock edge or RESET trigger fires, the phase snaps to 0.0. But with a 90-degree offset, the user expects the reset to go to the OFFSET position (the peak), not to 0.0 (the zero-crossing). If the reset ignores the offset, the offset knob's behavior is inconsistent: it shifts the waveform visually and sonically during free-running, but has no effect at the reset point.
-
-**Why it happens:** The phase offset can be implemented in two places: (a) added to the phase accumulator itself, or (b) added when computing the waveform from the phase. If implemented as (a), reset sets `phase = 0.0` which discards the offset. If implemented as (b), reset sets `phase = 0.0` but the waveform is computed at `phase + offset`, which correctly starts at the offset position. The difference is subtle but the user experience is dramatically different.
-
-**How to avoid:**
-1. **Apply phase offset at waveform computation, not at phase accumulation:** Keep the phase accumulator clean (0.0 to 1.0, reset to 0.0). Apply the offset when sampling the waveform: `float p = fmod((float)phase + offset, 1.0f)`. This means the reset point is always phase=0.0 internally, but the waveform shape starts at the offset position. This is what users expect.
-2. **Update the display buffer with the offset applied:** The display shows one cycle of the waveform. With a phase offset, the display should show the waveform starting at the offset position, not at the default start. Otherwise the display contradicts the audio output.
-3. **Handle CV modulation of phase offset carefully:** If phase offset is CV-modulatable, rapid changes cause the effective waveform to shift in real time. This is musically useful (phase modulation) but visually confusing if the display tries to track it. Rate-limit display updates for phase offset changes, consistent with the existing morph/character 30fps limiting (line 508).
-4. **Phase offset + clock sync should produce quadrature-like behavior:** With CLK synced and 25% phase offset, the user gets a sine LFO that leads the beat by a quarter cycle. This is a very common and useful patch. Make sure it works correctly.
-
-**Warning signs:**
-- Phase offset has no effect at the moment of reset (waveform always starts at same point)
-- Display waveform and audio output disagree about starting position
-- Phase offset CV modulation at audio rates causes display to flicker or glitch
-- Phase offset interacts with the morph position unexpectedly (e.g., offset applied before morph crossfade changes the morph blending)
-
-**Phase to address:** Phase offset implementation phase
-
-**Confidence:** HIGH (well-understood quadrature LFO design pattern; direct analysis of phase accumulator and waveform computation pipeline)
+**Confidence:** HIGH (confirmed from VCV Rack Panel Guide and community documentation of nanosvg limitations; verified against existing AnalogLFO.svg which correctly uses paths-only approach)
 
 ---
 
-### Pitfall 6: Swing/Shuffle Timing Errors from Naive Implementation
+### Pitfall 5: FramebufferWidget Dirty Flagging Causing Stale or CPU-Draining Animation
 
-**What goes wrong:** Swing/shuffle alternates the timing of even and odd beats. A 66% swing means the first half of each beat pair takes 66% of the time, the second half takes 34%. Naive implementations make one of three mistakes: (1) applying swing to the LFO's frequency instead of its phase progression, which changes the waveform shape rather than the timing; (2) applying swing at the wrong subdivision level (e.g., swinging quarter notes instead of eighth notes); (3) accumulating timing error across beats because the swing ratio is not exactly compensated.
+**What goes wrong:** The current WaveformDisplay (line 802) is a `TransparentWidget` that redraws every frame via `drawLayer` (line 1264). This works because NanoVG rendering is lightweight for the current display. The Forge Noir design adds an animated sync badge (clock-pulse flash) and potentially the CRT scanline overlay, corner bracket accents, and three-column pill layout from the design language. If the display is placed inside a `FramebufferWidget` for performance (caching static elements), the animated sync badge will only update when the framebuffer is marked dirty. Two failure modes:
 
-**Why it happens:** Swing is conceptually simple ("delay the offbeats") but implementing it in a phase accumulator is tricky. The LFO does not operate on discrete beats -- it has a continuous phase. Swing must be implemented as a nonlinear phase mapping: the phase accumulator advances at a constant rate, but the effective phase used for waveform computation is warped so that the first half of each beat takes more time and the second half takes less (or vice versa).
+  **(a) Never marking dirty:** The sync badge appears frozen. The pulse flash animation never plays. The phase dot stops moving. The waveform trace becomes static.
 
-**How to avoid:**
-1. **Implement swing as a phase warp function:** Given a linear phase `p` in [0, 1), compute a swung phase `p_swing`:
-   - Split each cycle into two halves (beats)
-   - First half [0, 0.5): map to [0, swing_ratio) in the warped output
-   - Second half [0.5, 1.0): map to [swing_ratio, 1.0) in the warped output
-   - At 50% swing (no swing): identity mapping
-   - At 66% swing: first half takes 66% of the cycle time, second half takes 34%
-   - The warp must be continuous and monotonic to avoid waveform artifacts
-2. **Apply swing AFTER the phase accumulator, BEFORE waveform computation:** `float swungPhase = applySwing(phase, swingAmount); float sample = computeMorphedWave(swungPhase, morph, character);`. This keeps the phase accumulator clean and clock-resettable.
-3. **Swing only makes sense in clocked mode:** In free-running mode, swing has no musical meaning (there are no beats to swing against). Gray out or disable the swing control when not clocked. Applying swing to a free-running LFO produces an asymmetric waveform that could confuse users.
-4. **Use the right subdivision:** Swing typically operates on pairs of beats at the level of the selected division. If the LFO is set to x1 (one cycle per clock beat), swing alternates the halves of each cycle. If the LFO is at /2 (one cycle per two beats), swing alternates at the beat level within each half of the LFO cycle. This needs careful thought about what "swing" means at different clock ratios.
-5. **The phase warp should be smooth at the transition points:** A piecewise-linear warp produces a waveform speed change at the 50% and 100% phase points. For musically smooth swing, consider a sinusoidal warp that eases in and out. However, many classic drum machines use piecewise-linear swing (the TR-909 delays even 16th notes by fixed amounts), so a linear warp is also authentic.
+  **(b) Always marking dirty:** Calling `setDirty()` every frame defeats the purpose of the FramebufferWidget. The display re-renders from scratch every frame, using MORE GPU than a plain TransparentWidget (because FramebufferWidget adds framebuffer management overhead on top of the NanoVG draw calls).
 
-**Warning signs:**
-- Swing changes the waveform shape instead of the timing (saw wave looks different with swing)
-- Accumulated timing error: after many beats, the LFO drifts out of phase with the clock
-- Swing at 50% is not identical to no swing (identity mapping failure)
-- Waveform has a visible discontinuity at the swing transition point
+**Why it happens:** The FramebufferWidget is designed for widgets that change rarely (knob positions, static labels). Animated widgets that change every frame should NOT be inside a FramebufferWidget. The temptation is to wrap the entire display in one for "performance" without understanding when it helps versus hurts.
 
-**Phase to address:** Swing/shuffle implementation phase
+**Consequences:** Mode (a): Visual bugs where animations appear frozen. Mode (b): Higher CPU/GPU usage than before, possibly causing audio dropouts. Community developers have documented that reducing render frame rates from 60fps to 30fps or 15fps significantly reduces audio dropouts, confirming that rendering performance directly impacts audio stability.
 
-**Confidence:** MEDIUM-HIGH (swing implementation is well-documented for sequencers; applying it to a continuous phase accumulator for an LFO is less commonly discussed, requiring adaptation of the TR-909/MPC swing model)
+**Prevention:**
+1. **Keep the WaveformDisplay as a TransparentWidget** (current approach). The display is inherently animated -- the phase dot moves, overlays fade, the breathe animation runs continuously. It should redraw every frame. The current implementation is correct for this use case.
+2. **If performance becomes an issue, optimize the NanoVG draw calls themselves** rather than adding a FramebufferWidget. Specific optimizations: (a) Skip pill text rendering when alpha < 0.001f (already done at lines 1200, 1209, 1216, 1230, 1235), (b) Reduce waveform path complexity from 256 points to 128 when the display is small (zoomed out), (c) Skip the comet trail (5 extra circles per frame) when the module is not focused/visible.
+3. **For the animated sync badge specifically:** The current SYNC badge already blinks during ACQUIRING state (lines 1218-1221) via the breathe phase. A clock-pulse flash animation can be implemented the same way: store the timestamp of the last clock edge, compute flash intensity as `exp(-decay * timeSinceEdge)`, and render with that alpha. This is a single float computation per frame, negligible cost.
+4. **The `step()` method (line 816) runs at widget frame rate (~60fps) regardless of FramebufferWidget.** Animation state updates in `step()` are cheap. The expensive part is NanoVG path rendering in `drawLayer()`. If performance is an issue, the right approach is to reduce draw complexity, not to cache an inherently dynamic widget.
+
+**Detection:** Profile with VCV Rack's built-in performance meters. If the module's GUI thread time is disproportionate (>5% of frame time), investigate which NanoVG calls are expensive. Font loading via `APP->window->loadFont()` (line 1189) should be cached by VCV Rack internally, but verify it is not reloading from disk every frame.
+
+**Phase to address:** Display layout restructuring phase -- when the display widget is modified for the three-column Forge Noir layout.
+
+**Confidence:** HIGH (confirmed from VCV Rack FramebufferWidget API docs; current TransparentWidget approach validated against animated display requirements)
+
+---
+
+### Pitfall 6: Enum Reordering Breaking Patch Parameter Restoration
+
+**What goes wrong:** VCV Rack serializes parameter values by their integer ID (the position in the ParamId enum). The current enum (lines 8-19) defines 10 params: MORPH_PARAM=0 through FM_ATTEN_PARAM=9. If a new parameter for PWM (e.g., a pulse width knob or internal state) is inserted anywhere except at the end, every subsequent param ID shifts. A patch saved with the old ordering where RATE_PARAM=3 stored value 0.7 Hz will now assign that 0.7 to whatever param is at ID=3 in the new enum, which could be something completely different.
+
+**Why it happens:** C++ enums assign sequential integer values. Inserting a new entry before the terminal `PARAMS_LEN` shifts `PARAMS_LEN` up by 1 but does not shift existing entries -- unless the insertion is before them. The temptation when extending the morph range is to add a `PWM_PARAM` alongside `MORPH_PARAM` at the top of the enum for code readability.
+
+**Consequences:** All parameter values in existing patches load into wrong parameters. Morph gets drift's value, character gets rate's value, etc. The module sounds completely wrong and the user cannot figure out why.
+
+**Prevention:**
+1. **ALWAYS append new params/inputs/outputs at the end of their respective enums**, immediately before `PARAMS_LEN` / `INPUTS_LEN` / `OUTPUTS_LEN`. Never insert in the middle.
+2. The morph-integrated PWM design (from PROJECT.md) explicitly avoids needing a new PWM param -- PWM is part of the morph sweep, not a separate control. This is a design advantage: no new param enum entry needed for PWM itself.
+3. If future needs require a new param (unlikely for v1.3 but possible), add it as: `NEW_PARAM, PARAMS_LEN` -- replacing the old `PARAMS_LEN` position with the new param and putting `PARAMS_LEN` after it.
+4. Similarly for InputId: if any new input jack is added, it goes at the end before `INPUTS_LEN`. The Forge Noir redesign does not add new I/O jacks (per the active requirements in PROJECT.md), so this should not be an issue for v1.3.
+
+**Detection:** Save a patch with the old build. Load it with the new build. Check that every knob position matches what was saved. Specifically verify: Morph at a non-default value, Rate at a non-default Hz, Phase Offset at a non-zero angle.
+
+**Phase to address:** ANY phase that modifies the Module struct's enums.
+
+**Confidence:** HIGH (standard VCV Rack development practice; enum ordering is the #1 backward compatibility pitfall documented by the community)
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that cause user confusion, subtle bugs, or require iteration but not architectural rework.
+---
+
+### Pitfall 7: Waveform Bleed Ring Topology Breaks with 5 Shapes
+
+**What goes wrong:** The current waveform bleed implementation (lines 316-340) uses a 4-element wrapping ring: `shapes[4] = { sine, tri, saw, sqr }` with neighbor access via `(segment - 1 + 4) % 4` and `(segment + 2) % 4`. Adding a 5th shape (pulse) changes the ring size to 5. The modular arithmetic must change from `% 4` to `% 5`, the `shapes` array grows to 5 elements, and the neighbor identification logic changes because `segment + 2` no longer always points to the shape "right of segment end" -- with 5 shapes and 4 segments, the boundary conditions are different.
+
+**What goes wrong specifically:** With 4 shapes and 3 segments, `segment` ranges [0, 2]. The "right neighbor" at `(segment + 2) % 4` correctly gives shape index 2, 3, or 0 (wrapping). With 5 shapes and 4 segments, `segment` ranges [0, 3]. The "right neighbor" at `(segment + 2) % 5` gives 2, 3, 4, or 0. This is actually correct for a 5-element ring -- but the `leftIdx = (segment - 1 + 5) % 5` needs verification. At segment=0 (sine-to-tri crossfade), leftIdx would be 4 (pulse). Is pulse bleeding into a sine/tri crossfade the desired behavior? In the 4-shape ring, square bleeds into sine, which is musically reasonable (adjacent in a circular topology). In the 5-shape ring, pulse (a narrow spike) bleeding into the sine region produces a sharp artifact.
+
+**Prevention:**
+1. Decide whether the ring should wrap (pulse neighbors sine) or be open-ended (sine has no left neighbor, pulse has no right neighbor). For a morph sweep that extends linearly from sine to pulse, an open-ended topology makes more sense: no bleed at the extremes, maximum bleed in the middle.
+2. If using a ring topology, reduce the bleed intensity for the pulse shape because its extreme waveform character (narrow spikes) will produce disproportionate bleed artifacts compared to the smoother sine/tri/saw shapes.
+3. Update the `shapes` array size, ring modulus, and neighbor index math atomically -- do not partially update.
+
+**Phase to address:** Pulse waveform implementation phase.
+
+**Confidence:** HIGH (direct analysis of bleed implementation at lines 316-340)
 
 ---
 
-### Pitfall 7: Component Spread Having No Audible Effect at LFO Rates
+### Pitfall 8: Display Buffer Not Updated for Pulse Waveform Region
 
-**What goes wrong:** "Component spread" models per-component tolerances in analog circuits -- slightly different resistor values produce slightly different gain, cutoff, or bias in each voice of a polysynth. This is a well-established modeling technique for polyphonic audio-rate VCOs. But this module is monophonic and sub-audio. There is only one LFO, so there is no "per-voice" variation to model. And at LFO rates (0.01-20 Hz), the spectral effects of component tolerances are inaudible -- the output is used as CV, not listened to directly.
+**What goes wrong:** The display buffer update function `updateDisplayBuffer` (line 345) calls `computeMorphedWave(p, morph, character)` for 256 phase samples. When the morph range extends to include pulse, `computeMorphedWave` must correctly compute the pulse waveform for morph values in the new pulse region. If `computeMorphedWave` is updated but `updateDisplayBuffer` still passes morph values clamped to [0, 1], the display never shows the pulse waveform -- it caps at square.
 
-**Why it happens:** Component spread is on the v1.2 feature list because it sounds authentic and is a standard analog modeling feature. The conceptual error is importing a polyphonic audio-rate technique into a monophonic sub-audio context without adapting it.
+**Prevention:**
+1. Ensure `updateDisplayBuffer` passes the full morph range (including pulse territory) to `computeMorphedWave`.
+2. Verify that the display phase dot and comet trail correctly interpolate the buffer at pulse waveform positions.
+3. The display update trigger logic (lines 742-757) uses `std::fabs(morph - prevDisplayMorph) > 0.002f` for change detection. This works regardless of morph range as long as the morph value is passed correctly.
+4. If using the unequal-segment approach (Pitfall 1, option 3), the internal morph value passed to `computeMorphedWave` may differ from the knob value. Ensure the display uses the same internal morph value as the audio path.
 
-**How to avoid:**
-1. **Reinterpret "component spread" for a monophonic LFO:** Instead of per-voice variation, model per-instance variation. Each time the module is instantiated, randomize subtle parameters: slight duty cycle offset for square waves, small gain asymmetry for triangle, tiny phase offset for the OU drift layers. This gives each module instance a unique "personality" beyond just drift.
-2. **Make the effect visible, not just audible:** Since this is an LFO with a waveform display, component spread effects should be visible on the display. A tiny duty cycle asymmetry (e.g., 52% instead of 50%) is visible on the square wave display and creates real waveform differences.
-3. **Tie component spread to the existing Character knob:** The Character knob already models analog deformations. Component spread could add a random per-instance offset to the character deformation amounts, making each module's character response slightly different. At Character=0 (fully digital), component spread has no effect. At Character=1 (fully analog), each module sounds/looks slightly different.
-4. **Do NOT add a separate Component Spread knob:** It would be a fourth knob axis that users cannot easily distinguish from Character or Drift. Instead, make it an implicit per-instance randomization that is always active (like real component tolerances).
+**Phase to address:** Same phase as pulse waveform implementation.
 
-**Warning signs:**
-- Users cannot tell the difference between Drift and Component Spread
-- The feature has no visible effect on the waveform display
-- A/B comparison of two module instances shows identical behavior
-
-**Phase to address:** Expanded analog imperfections phase (can be folded into existing Character system)
-
-**Confidence:** MEDIUM (this is primarily a design/UX risk, not a technical one; the v1.0 retrospective noted that character deformation amplitudes needed 3-5x increase for LFO-rate perceptibility)
+**Confidence:** HIGH (direct analysis of display buffer path at line 345-360)
 
 ---
 
-### Pitfall 8: Pitch Slew Creating Unintended Portamento on Rate Changes
+### Pitfall 9: SVG Component Placeholders Misaligned After 12HP-to-14HP Conversion
 
-**What goes wrong:** "Pitch slew" models the finite slew rate of analog oscillator tuning circuits -- when voltage changes, the frequency does not jump instantly but glides. The module already has a frequency slew filter (`dsp::TExponentialFilter<float> freqSlew` at line 109, lambda=20 corresponding to 50ms time constant) used for smooth clock mode transitions. Adding a separate "pitch slew" analog imperfection on top of this creates a double-slew: the mode transition slew AND the imperfection slew both slow down frequency changes. Rapid Rate knob turns feel sluggish. Worse, if the pitch slew is always active (not just during analog character modeling), it affects the module's responsiveness in a way that feels like a bug.
+**What goes wrong:** VCV Rack reads colored circles/rects in the SVG to determine component (knob, jack, port) positions when using `createPanel()` and position-from-SVG helpers. The current panel uses hardcoded `mm2px(Vec(...))` positions in the widget constructor (lines 1296-1341), NOT SVG placeholders. However, if the Forge Noir panel SVG includes position placeholders (as is best practice per VCV Panel Guide), and those positions do not exactly match the `mm2px` calls in the C++ code, knobs and jacks will appear offset from their SVG labels.
 
-**Why it happens:** The existing `freqSlew` was designed for one specific purpose (smooth clock/free mode transitions) and has a carefully tuned time constant. Adding a second slew process in the same signal path compounds the smoothing. The two slews have different purposes and should not stack.
+**Prevention:**
+1. Decide on ONE source of truth for component positions: either the C++ code with `mm2px(Vec(...))` or the SVG placeholders. The current code uses C++ positions exclusively. For the Forge Noir redesign, switching to SVG-driven positions would be cleaner but requires converting all `addParam`/`addInput`/`addOutput` calls to use `createParamCentered<>(mm2px(Vec(x, y)), ...)` where x, y match the SVG.
+2. When switching from 12HP (60.96mm width) to 14HP (71.12mm width), ALL x-coordinate positions must be recalculated. The current positions (e.g., morph knob at x=30.48, which is center of 60.96mm) must shift to x=35.56 (center of 71.12mm) or to whatever the Forge Noir layout specifies.
+3. The DESIGN-LANGUAGE.md specifies exact positions at 5x scale: panel center at x=178px (which is 35.56mm at 1x, confirming 14HP center). Secondary columns at x=106, 250 (21.2mm, 50mm). CV columns at x=46, 114, 178, 244, 310 (9.2mm, 22.8mm, 35.56mm, 48.8mm, 62mm). These must be transcribed precisely to mm2px calls.
+4. **Screws:** The current screw positions (lines 1301-1304) use `box.size.x` which auto-adjusts to panel width. These are safe.
 
-**How to avoid:**
-1. **Apply pitch slew to the OU drift output, not to the main frequency:** Pitch slew should model the lag in analog frequency modulation (drift arrives gradually, not instantaneously). Apply a small lag filter to `combinedOU` before it modulates `deltaPhase`. This affects only the drift character, not the module's responsiveness.
-2. **Gate pitch slew on the Drift knob:** Pitch slew should scale with the Drift knob. At Drift=0, no slew. At Drift=1, maximum slew on the drift output. This keeps it coupled with the analog character system.
-3. **Use a MUCH smaller time constant than the mode transition slew:** The existing freqSlew uses 50ms for mode transitions. Pitch slew for analog character should be 2-5ms -- just enough to round off sharp drift changes without being perceptible as lag.
-4. **Do NOT apply pitch slew to Rate knob changes or clock-derived frequency:** Users expect immediate response when they turn the Rate knob or change the clock tempo. Pitch slew is for modeling internal component behavior, not for user-facing controls.
+**Phase to address:** Panel SVG creation and widget constructor update.
 
-**Warning signs:**
-- Rate knob feels sluggish or laggy
-- Clock tempo changes take noticeably longer to track
-- Frequency "overshoots" after rapid rate changes (two slews in series can create oscillation if time constants interact poorly)
-
-**Phase to address:** Expanded analog imperfections phase
-
-**Confidence:** HIGH (direct analysis of existing freqSlew filter at line 109; established signal processing principle about cascaded filters)
+**Confidence:** HIGH (direct analysis of widget constructor at lines 1296-1341)
 
 ---
 
-### Pitfall 9: Phase Jitter Breaking Clock Sync Phase Alignment
+### Pitfall 10: Font Loading in drawLayer Causing Per-Frame Disk Access
 
-**What goes wrong:** Phase jitter adds random sample-to-sample variation to the phase position, modeling capacitor noise and thermal jitter in analog oscillator timing circuits. But the existing clock sync system resets phase to exactly 0.0 on clock edges (line 304, 375). If phase jitter is active, the phase is perturbed away from 0.0 immediately after reset. After one full clock period, the phase has accumulated both the intended LFO cycle AND the cumulative jitter. If the jitter is not zero-mean per cycle, it causes systematic phase error that compounds the crossfade amplitude on reset.
+**What goes wrong:** The current `drawTextOverlays` method (line 1189) calls `APP->window->loadFont(asset::system("res/fonts/ShareTechMono-Regular.ttf"))` every time it is invoked. While VCV Rack caches fonts internally, this call still involves a hash lookup and shared_ptr reference counting every frame. The Forge Noir design language specifies THREE different fonts: Bebas Neue (brand/hero), Chakra Petch (labels), JetBrains Mono (data). If each font is loaded per-frame via `loadFont()`, the overhead triples.
 
-**Why it happens:** Phase jitter is typically modeled as `phase += deltaPhase + jitter * random()`. If the jitter term has any bias (even from floating-point rounding), it accumulates over hundreds of samples per clock period. At 44100 Hz sample rate and 120 BPM, there are 22050 samples per beat -- 22050 tiny jitter additions.
+**Prevention:**
+1. Store font handles as member variables of the display widget, loaded once in the constructor or on first draw.
+2. Note: VCV Rack's font loading requires a valid NVGcontext, which is only available during draw calls, not in the constructor. The standard pattern is to load on first draw and cache:
+   ```cpp
+   int jetbrainsFont = -1;
+   void drawLayer(const DrawArgs& args, int layer) override {
+       if (jetbrainsFont < 0) {
+           auto font = APP->window->loadFont(asset::plugin(pluginInstance, "res/fonts/JetBrainsMono.ttf"));
+           if (font) jetbrainsFont = font->handle;
+       }
+       // ... use jetbrainsFont
+   }
+   ```
+3. The Forge Noir display design uses JetBrains Mono for pills (Hz, BPM, SYNC, ratio labels) and the current code uses ShareTechMono. This font change must be reflected in the actual font file bundled in `res/fonts/`.
+4. Ensure font files are bundled in the plugin's `res/fonts/` directory, not loaded from system fonts. Use `asset::plugin()` not `asset::system()` for custom fonts. System fonts may not exist on all platforms.
 
-**How to avoid:**
-1. **Apply phase jitter to waveform lookup, not to the accumulator:** Instead of `phase += deltaPhase + jitter`, use `float jitteredPhase = phase + jitter * random()` only when computing the waveform. The clean phase accumulator remains unperturbed, so clock sync alignment is preserved.
-2. **Reduce jitter authority in clocked mode:** Same pattern as drift authority (line 478). In clocked mode, phase jitter should be minimal to preserve beat alignment.
-3. **Ensure jitter is truly zero-mean:** Use a symmetric distribution (the existing `normalDist{0.f, 1.f}` is fine) and verify there is no bias from clamping or scaling.
-4. **Scale jitter amplitude relative to frequency:** At very low LFO rates (0.01 Hz), each sample advances the phase by a tiny amount. Phase jitter that is meaningful at 1 Hz would be enormous relative to the phase increment at 0.01 Hz. Scale jitter proportional to `deltaPhase` to maintain consistent perceptual effect across the frequency range.
+**Phase to address:** Display layout restructuring phase.
 
-**Warning signs:**
-- Clock-synced LFO gradually drifts despite being synced (visible in display: phase at clock edge is not near 0.0)
-- Jitter effect varies wildly with LFO rate (too subtle at high rates, too extreme at low rates)
-- Phase accumulator grows unbounded due to jitter accumulation
-
-**Phase to address:** Expanded analog imperfections phase
-
-**Confidence:** HIGH (fundamental numerical analysis of accumulator bias; the zero-mean requirement is a standard DSP principle)
-
----
-
-### Pitfall 10: Waveform Bleed Producing Amplitude Spikes During Morph Transitions
-
-**What goes wrong:** "Waveform bleed" means adjacent waveforms partially leak through during morph transitions, modeling the imperfect isolation of analog waveshapers. The current morph system (lines 225-242) is a clean linear crossfade between adjacent waveforms (`sine + frac * (tri - sine)`). Adding bleed means the non-adjacent waveform ALSO contributes: when morphing from sine to triangle, a small amount of saw leaks through. If the bleed coefficients are not amplitude-compensated, the sum of three contributions can exceed [-1, +1], producing output spikes above +/-5V.
-
-**Why it happens:** Linear crossfade between two signals maintains the amplitude range (convex combination). Adding a third signal without reducing the others breaks this property. `0.7 * sine + 0.3 * tri + 0.1 * saw` sums to coefficients of 1.1, which means the peak output can be 110% of normal.
-
-**How to avoid:**
-1. **Normalize the bleed coefficients:** Ensure all waveform contribution weights sum to 1.0. If the crossfade position gives weights [0.7, 0.3] and bleed adds 0.05 from the next neighbor, renormalize: [0.7/1.05, 0.3/1.05, 0.05/1.05] = [0.667, 0.286, 0.048].
-2. **Keep bleed amounts very small:** 3-8% bleed is enough to break the "digital perfection" of the crossfade without being obvious. At these levels, amplitude overshoot is negligible even without perfect normalization.
-3. **Tie bleed to the Character knob, not a separate control:** At Character=0 (fully digital), morph transitions are perfect crossfades (current behavior). At Character>0, adjacent waveforms bleed through proportionally. This keeps the three-knob design clean and avoids a fourth axis of control.
-4. **Apply the output clamp after bleed:** The existing output path does `5.f * sample` (line 520). Add a soft clamp or let the natural [-1, 1] normalization prevent overshoot. The final output should never exceed +/-5V.
-
-**Warning signs:**
-- Output exceeds +/-5V at specific morph positions (visible in scope module)
-- Morph sweep produces a brief volume bump at crossfade center points
-- Display waveform appears "thicker" or "noisier" during morph transitions
-
-**Phase to address:** Waveform bleed implementation phase
-
-**Confidence:** HIGH (linear algebra of convex combinations; direct analysis of morph crossfade at lines 225-242)
+**Confidence:** MEDIUM (VCV Rack's internal font caching may make this a non-issue in practice, but the 3-font overhead is worth optimizing proactively)
 
 ---
 
-### Pitfall 11: Display Text Overlays Unreadable Over Bright Waveform Peaks
+### Pitfall 11: Crossfade Artifacts When PWM Duty Cycle Is Modulated by Morph CV
 
-**What goes wrong:** The current display renders text overlays (Hz readout, SYNC badge, ratio label, BPM) using two-pass glow text (lines 724-738): a blurred amber glow pass followed by a sharp amber text pass. When the waveform trace passes directly behind the text, the amber-on-amber colors make the text unreadable. This is the known issue mentioned in the milestone context ("dark pill background didn't work"). The problem is that a simple dark rectangle behind the text clips against the waveform glow and looks like an ugly black box on the otherwise elegant display.
+**What goes wrong:** The existing anti-click crossfade (lines 780-789) fires on clock-edge phase resets with a 3ms cosine crossfade. When morph CV rapidly sweeps through the square-to-pulse transition, the duty cycle changes dramatically within a single LFO cycle. If the duty cycle changes mid-cycle such that the waveform's transition edge (where it flips from +1 to -1) moves past the current phase position, the waveform value can jump discontinuously within a single cycle -- no phase reset involved, so the crossfade never fires.
 
-**Why it happens:** The four-pass waveform glow (lines 627-648) uses the same amber color family as the text. Where the waveform peak overlaps the text position, there is no contrast. The existing approach of drawing text "on top" does not help when both elements are the same hue. A solid dark background rectangle works technically but breaks the visual design.
+**Why it happens:** The square/pulse waveform is computed per-sample based on the current phase and current duty cycle. If duty = 0.5 at sample N and duty = 0.3 at sample N+1, and the phase is at 0.4, the output jumps from +1 (phase < 0.5) to -1 (phase > 0.3). This is a 2-unit (10V) discontinuity with no crossfade protection.
 
-**How to avoid:**
-1. **Use a soft-edged rounded rectangle with alpha gradient:** Instead of a hard-edged "pill" background, use `nvgBoxGradient()` to create a rounded rectangle that fades from opaque center (alpha 0.85) to transparent edge (alpha 0.0) over ~4px. This creates a halo effect that dims the waveform behind the text without a visible box edge. The background color should match the display background (`nvgRGBAf(0.051f, 0.051f, 0.102f, 0.85f)` from line 604).
-2. **Draw text backgrounds AFTER the waveform but BEFORE the text:** The render order must be: background fill, waveform trace, text background halos, text glow passes. The current code draws the waveform before text overlays (line 837-838), which is correct -- just insert the background halo between them.
-3. **Size the background to the text bounding box plus padding:** Use `nvgTextBounds()` to measure each text string, then inflate by 3-4px on each side for the background rectangle. This adapts to different text lengths ("0.70 Hz" vs "SYNC" vs "/16").
-4. **Consider contrasting text color:** Instead of amber text over amber waveform, use white or bright cream (`nvgRGBAf(1.0f, 0.95f, 0.85f, alpha)`) for the text with a dark halo. This provides contrast regardless of what is behind the text.
-5. **Test with all waveform shapes at all morph positions:** The waveform peak position varies with morph: sine peaks at 25% horizontal position (phase 0.25 maps to display y-top), saw peaks at the left edge, square is tall everywhere. Each text position will overlap with waveform peaks at different morph settings.
+**Prevention:**
+1. This is primarily an audio-rate concern (VCOs), not an LFO concern. At LFO rates (0.01-20Hz), the morph CV would need to change the duty cycle faster than the LFO frequency for this to be audible. At 20Hz, a duty cycle change within 50ms would matter. At 0.5Hz, only a change within 2 seconds matters, which is unlikely to be abrupt.
+2. However, with FM input modulating the frequency up to much higher values (exponential FM can push the effective frequency above 100Hz), this becomes relevant.
+3. The existing `computeSquare` (line 276) uses `tanh` sigmoid softening (line 294) when character > 0. At character=0 (pure digital), the edge is a hard step function, and the discontinuity from duty cycle change is maximally sharp. At higher character values, the `tanh` smoothing provides implicit anti-aliasing of the duty cycle transition.
+4. **Simplest prevention:** Ensure the pulse waveform computation always applies minimum edge softening, even at character=0, when computing the pulse region. A subtle `tanh` with sharpness=50 (producing ~0.5% edge width) is inaudible as smoothing but prevents clicks from duty cycle modulation.
 
-**Warning signs:**
-- Text disappears when waveform peak passes behind it
-- Background rectangle has visible hard edges that break the display aesthetic
-- Background rectangle clips the waveform glow, creating a "hole" effect
-- Text readability varies depending on morph knob position
+**Phase to address:** Pulse waveform implementation phase.
 
-**Phase to address:** Display polish phase (first phase of v1.2, as it is a known issue from v1.1)
-
-**Confidence:** HIGH (direct analysis of NanoVG rendering code at lines 601-847; the box gradient technique is standard NanoVG usage)
+**Confidence:** MEDIUM (edge case that depends on morph CV rate and LFO frequency; the tanh character smoothing provides natural mitigation at non-zero character values)
 
 ---
 
-### Pitfall 12: Incoming Clock BPM Display Conflicting with Effective BPM
+### Pitfall 12: Three-Column Display Layout Breaking at Small Zoom Levels
 
-**What goes wrong:** The v1.2 feature list includes "Display incoming clock BPM alongside effective BPM." The current display shows effective BPM in the bottom-right (lines 782-797). Adding a second BPM number creates ambiguity: which BPM is which? Users glancing at the display see "120 BPM" and "30 BPM" -- is 120 the incoming clock and 30 the effective LFO rate at /4, or vice versa? Without clear labeling, this is confusing rather than informative.
+**What goes wrong:** The Forge Noir design specifies a three-column display layout: left column (ratio pill, Hz readout, swing label), center column (waveform + phase dot), right column (SYNC badge, CLK/BPM stack). At 5x scale (356px panel width, display ~320px wide), the columns have generous spacing. But VCV Rack renders at multiple zoom levels, and at 50% zoom the display is only ~32px wide. Three columns of text pills at 5px font size become illegible at low zoom, and text elements overlap each other.
 
-**Why it happens:** The display area is small (57mm x 27mm). Two BPM numbers plus SYNC badge plus ratio label crowd the display. Label text at 10px font is barely readable at Rack's default zoom level.
+**Prevention:**
+1. The current pill text implementation (lines 1018-1065) uses `nvgTextBounds` for measurement and positions pills at fixed margin offsets from display edges. This approach scales correctly with zoom because NanoVG handles coordinate transforms. Text at 10px font size is 10px regardless of zoom -- zoom is a viewport transform, not a font size change.
+2. However, verify that pill backgrounds (the feathered box gradient at lines 1041-1053) do not overlap the waveform trace at narrow display widths. The `nvgScissor` call (line 1268) clips to display bounds, preventing overdraw, but overlapping pills look messy.
+3. For the three-column layout, test at 50%, 75%, 100%, 150%, and 200% zoom. If pills overlap at low zoom, add a zoom-aware threshold that hides secondary information (swing label, CLK BPM) when the display is below a certain pixel width.
+4. The design language specifies specific x-coordinates for columns (left: 16-55, center: 64-256, right: 262-302 at 5x scale). These translate to mm coordinates that work at any zoom. Verify these do not overlap at 1x scale.
 
-**How to avoid:**
-1. **Use different formatting to distinguish the two values:** Show incoming clock BPM with a clock icon or "CLK:" prefix, and effective LFO BPM as the main readout. Example: top-right shows "CLK 120" in a dimmer/smaller font, bottom-right shows the effective BPM prominently.
-2. **Only show incoming clock BPM when it differs from effective BPM:** At x1 ratio, incoming and effective BPM are identical -- showing both is redundant. Only display the incoming clock BPM when the ratio is not x1.
-3. **Consider replacing effective BPM with incoming clock BPM:** The ratio label (e.g., "/4") already tells the user the relationship. Showing "CLK 120" + "/4" is equivalent to showing "30 BPM" but more informative because the user can mentally compute any relationship.
-4. **Use the existing atomic bridge pattern for the new display data:** Add `std::atomic<float> displayIncomingClockBPM` alongside `displaySmoothedPeriod`. The display thread reads it with relaxed ordering, consistent with the established pattern (5 atomics already exist).
+**Phase to address:** Display layout restructuring phase.
 
-**Warning signs:**
-- Users confused about which BPM number is which
-- Display feels cluttered or text overlaps
-- Numbers update at different rates (incoming BPM updates only on clock edges; effective BPM updates continuously)
+**Confidence:** MEDIUM (NanoVG scaling handles most cases; the risk is primarily visual overlap at extreme zoom levels)
 
-**Phase to address:** Display polish phase
+---
 
-**Confidence:** HIGH (UX design issue; display area constraints are well-known from v1.0/v1.1 implementation)
+### Pitfall 13: Animated Sync Badge Consuming CPU When Not Visible
+
+**What goes wrong:** Adding a clock-pulse flash animation to the SYNC badge means computing the flash decay curve every frame, even when: (a) the module is not clocked (badge not visible), (b) the module is off-screen (not in viewport), (c) the module is bypassed. If the animation updates an atomic variable from the audio thread and a timer in the GUI thread, both threads do unnecessary work.
+
+**Prevention:**
+1. Gate the animation computation on visibility. The current code already skips SYNC rendering when `syncFadeAlpha <= 0.001f` (line 1216). The flash animation should be gated the same way.
+2. For the audio thread: store the last clock edge timestamp as an `std::atomic<float>` only when the clock state is ACQUIRING or LOCKED. The GUI thread reads this atomic and computes `exp(-decay * (currentTime - edgeTime))` only when drawing the badge.
+3. The `step()` method (line 816) already checks `if (module)` before updating fade timers. The flash animation fits naturally into this pattern.
+4. When the module is bypassed, `dimFactor` is set to 0.25f (line 1279). The flash animation should respect this dim factor to avoid a bright flash on a dimmed display.
+
+**Phase to address:** Animated sync badge implementation phase.
+
+**Confidence:** HIGH (standard optimization pattern; gating is already demonstrated in the existing code)
 
 ---
 
 ## Minor Pitfalls
 
-Issues that are easy to fix if caught early but annoying if discovered late.
+---
+
+### Pitfall 14: Custom Font Files Not Bundled in Plugin Distribution
+
+**What goes wrong:** The Forge Noir design specifies Bebas Neue, Chakra Petch, and JetBrains Mono fonts. If these font files are not included in the plugin's `res/fonts/` directory, the module will crash or render with fallback fonts on machines that do not have these fonts installed system-wide. The current code uses `asset::system("res/fonts/ShareTechMono-Regular.ttf")` which loads from VCV Rack's built-in fonts. Custom fonts must use `asset::plugin(pluginInstance, "res/fonts/FontName.ttf")`.
+
+**Prevention:**
+1. Bundle all three font files (.ttf or .otf) in `res/fonts/`.
+2. Check font licenses: Bebas Neue (SIL OFL), Chakra Petch (SIL OFL), JetBrains Mono (SIL OFL / Apache 2.0) -- all permissively licensed for bundling.
+3. Use `asset::plugin()` not `asset::system()` for all custom font loads.
+4. Note: These fonts are for the NanoVG display only. The panel SVG uses text-as-paths, so panel rendering does not depend on font files.
+
+**Phase to address:** Display layout restructuring phase, when fonts are first loaded.
+
+**Confidence:** HIGH (standard VCV Rack plugin pattern; straightforward to get right if remembered)
 
 ---
 
-### Pitfall 13: OU Drift Layers Sharing State Between Old and New Imperfections
+### Pitfall 15: Component Spread Seed Incompatibility After Adding Pulse Shape
 
-**What goes wrong:** The existing four OU layers (lines 63-76) produce multi-timescale drift for pitch modulation. Adding DC offset drift, phase jitter, and pitch slew requires additional random processes. If these new processes reuse the existing OU layers (to save CPU), they become correlated: DC offset and pitch drift would wander in the same direction at the same time, producing a "breathing" effect that sounds artificial rather than random.
+**What goes wrong:** The `initComponentSpread()` function (lines 196-212) generates deterministic random offsets from the stored seed. It calls `d(spreadRng)` in a specific order to produce `ouWeightSpread[0..3]`, `characterSpread`, `sawCurvatureSpread`, `squareDutySpread`, `triAsymmetrySpread`, and `bleedSpread`. If a new spread parameter is added for the pulse waveform (e.g., `pulseMinDutySpread`) and the call is inserted before `bleedSpread`, then `bleedSpread` (and any subsequent values) will receive a different random value from the same seed. Existing patches with stored seeds will have their component spread characteristics change subtly.
 
-**How to avoid:** Create separate OU instances (or separate RNG draws) for each imperfection type. The CPU cost of additional OU layers is negligible (a few multiplies per sample). The existing `rng` instance (line 71) can be shared since `normalDist(rng)` produces independent draws regardless of calling order.
+**Prevention:**
+1. Append any new spread parameter calls at the END of `initComponentSpread()`, after `bleedSpread`. This preserves all existing spread values from the same seed.
+2. Since PWM is an extension of the morph range, the existing `squareDutySpread` may already cover the pulse region's behavior. If so, no new spread parameter is needed.
+3. If a new parameter IS needed (e.g., minimum pulse width variation), add it after `bleedSpread = d(spreadRng) * 0.02f;` (line 211).
 
-**Phase to address:** Expanded analog imperfections phase
+**Phase to address:** Pulse waveform implementation phase, if spread is added.
 
-**Confidence:** HIGH (statistical independence requirement; direct analysis of OU engine at lines 63-76)
-
----
-
-### Pitfall 14: Phase Offset CV Creating FM-like Artifacts at Audio Rates
-
-**What goes wrong:** Phase offset with CV input allows real-time modulation of the phase offset. If a fast CV source (e.g., an audio-rate VCO) is patched to the phase offset CV, the effect is phase modulation -- mathematically equivalent to FM synthesis. At audio-rate modulation, the LFO output contains sidebands that extend well beyond its normal frequency range, producing unexpected spectral content. The display update logic (rate-limited to 30fps for parameter changes, line 508) cannot track audio-rate phase offset changes, so the display becomes misleading.
-
-**How to avoid:**
-1. **Slew-limit the phase offset CV:** Apply a low-pass filter to the phase offset CV input with a cutoff around 20-50 Hz. This preserves musically useful slow modulation while preventing unintended audio-rate phase modulation.
-2. **Or embrace it as a feature:** Some users may want phase modulation. If so, document it clearly and accept that the display will not track fast modulation. Add a note in the tooltip: "Phase Offset - CV modulation at audio rates produces phase modulation effects."
-3. **Use the same attenuverter pattern as other CV inputs:** The existing morph/character/drift CVs use `knob + atten * cv / 5.0f`. Apply the same pattern for phase offset CV.
-
-**Phase to address:** Phase offset implementation phase
-
-**Confidence:** MEDIUM (depends on design intent -- is audio-rate phase modulation desired or not?)
+**Confidence:** HIGH (deterministic RNG ordering is a known concern; documented in v1.2 pitfalls as well)
 
 ---
 
-### Pitfall 15: Panel Space Exhaustion at 12HP
+### Pitfall 16: Panel SVG Cache Interference When Testing Multiple Versions
 
-**What goes wrong:** v1.2 adds: FM input jack, RESET jack, phase offset knob, phase offset CV jack, swing control, and potentially swing CV. That is 2-3 new knobs and 2-3 new jacks on an already-populated 12HP panel. The current layout has the bottom section fully occupied (3 trimpots at y=96mm, 3 CV jacks + 1 output at y=108mm). There is no room for new jacks without either removing something, going to a larger panel, or making the panel uncomfortably dense.
+**What goes wrong:** VCV Rack caches loaded SVGs by filename. During development, if you save a modified `AnalogLFO.svg` and reload VCV Rack, the cache may serve the old version. More insidiously, if you have both the old 12HP and new 14HP SVG with the same filename in different build directories, the cache might serve the wrong one.
 
-**How to avoid:**
-1. **Inventory all new controls before panel design:** List every knob, jack, trimpot, and switch needed for v1.2. Plan the panel layout holistically, not incrementally. The v1.0 retrospective specifically flagged: "Panel layout should be designed for final component count, not incrementally expanded."
-2. **Consider expanding to 14HP or 16HP:** Two extra HP provides significant additional space. The display can be wider, the bottom section can accommodate a third row, and the module does not feel cramped.
-3. **Multiplex controls:** Phase offset and swing could share a single knob with a mode switch, or be implemented as right-click menu options with CV-only control (no panel knob). FM depth could be an attenuverter on the FM jack rather than a separate knob.
-4. **Prioritize by user interaction frequency:** FM input and RESET jacks are frequently patched (need panel jacks). Phase offset and swing are "set and forget" parameters (can be right-click menu or small trimpots). FM depth attenuverter is essential for usability.
+**Prevention:**
+1. After modifying the SVG, fully quit and restart VCV Rack to clear the cache.
+2. During development, use the VCV Rack `-d` (developer mode) flag if available, which may disable caching.
+3. If testing both 12HP and 14HP versions, use different filenames temporarily during development, then rename to `AnalogLFO.svg` for final build.
 
-**Warning signs:**
-- Controls too close together for comfortable use (minimum 7mm center-to-center for knobs)
-- Panel redesign required after features are implemented (wasted effort)
-- Labels overlap or become unreadable at standard zoom
+**Phase to address:** Panel SVG creation phase.
 
-**Phase to address:** Panel planning phase (before any implementation)
-
-**Confidence:** HIGH (12HP constraints are well-known from v1.0/v1.1; v1.0 retrospective lesson about panel layout planning)
+**Confidence:** MEDIUM (cache behavior documented by community; exact invalidation behavior may vary by VCV Rack version)
 
 ---
 
-## Technical Debt Patterns
+## Phase-Specific Warnings
 
-Shortcuts that seem reasonable but create long-term problems.
-
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Reusing OU layers for new imperfections | Less code, lower CPU | Correlated artifacts sound artificial | Never -- independent RNG is cheap |
-| Applying all imperfections to phase accumulator | Simple implementation | Pollutes phase for clock sync, display, and reset | Only for pitch drift (existing); other imperfections on waveform output |
-| Hardcoding swing to 8th-note subdivision | Simple swing implementation | Wrong for triplet and non-standard ratios | Acceptable for MVP, but design for extensibility |
-| Skipping display background for text | Faster rendering | Text unreadable over waveform peaks | Never -- this is the known v1.1 issue |
-| Adding FM, RESET, and phase offset to the existing process() function | No refactoring needed | 890 lines becoming 1200+ lines in a single function | Acceptable for v1.2 but plan refactoring for v2.0 |
-
----
-
-## Feature Interaction Matrix
-
-The highest-risk aspect of v1.2 is feature interactions. Each new feature interacts with every existing feature. This matrix identifies the dangerous combinations.
-
-| New Feature | + Clock Sync | + Drift Engine | + Character | + Display | + Other New Features |
-|-------------|-------------|----------------|-------------|-----------|---------------------|
-| **FM Input** | CRITICAL: FM fights clock-derived frequency (Pitfall 2) | MODERATE: FM + drift both modulate frequency, effects compound | LOW: independent | LOW: no display impact | FM + Phase Offset = phase modulation (Pitfall 14) |
-| **Phase Jitter** | HIGH: jitter accumulates between clock resets (Pitfall 9) | MODERATE: jitter + drift = too much instability at high settings | LOW: independent | LOW: jitter too fast for display | Jitter + Swing = uneven timing feels random not groovy |
-| **DC Offset Drift** | LOW: DC doesn't affect timing | LOW: independent OU process | LOW: independent | MODERATE: waveform shifts vertically on display | DC offset + waveform bleed = offset bleeds between shapes |
-| **Pitch Slew** | LOW: if applied to drift only | HIGH: double-slew with freqSlew (Pitfall 8) | LOW: independent | LOW: no display impact | Pitch slew + FM = FM response feels sluggish |
-| **Waveform Bleed** | LOW: no timing impact | LOW: independent | MODERATE: bleed amounts interact with character deformations | MODERATE: display should show bleed effect | Bleed + Phase Offset = bleed visible at different cycle position |
-| **RESET Jack** | CRITICAL: 1ms blanking required (Pitfall 3) | LOW: reset doesn't affect drift | LOW: character crossfade on reset (existing) | LOW: display handles reset (existing) | RESET + Phase Offset = reset target (Pitfall 5) |
-| **Phase Offset** | MODERATE: offset affects reset target (Pitfall 5) | LOW: independent | LOW: independent | MODERATE: display must reflect offset | Phase Offset + FM = PM synthesis (Pitfall 14) |
-| **Swing/Shuffle** | CRITICAL: only meaningful when clocked | LOW: independent | LOW: independent | MODERATE: display should show timing warp | Swing + Phase Reset = swing resets with phase (correct) |
-
-**Most dangerous combinations (must be tested together):**
-1. FM + Clock Sync (Pitfall 2) -- frequency authority conflict
-2. RESET + CLK + 1ms blanking (Pitfall 3) -- timing coordination
-3. Phase Offset + RESET (Pitfall 5) -- reset target ambiguity
-4. Phase Jitter + Clock Sync (Pitfall 9) -- accumulator drift
-5. Pitch Slew + existing freqSlew (Pitfall 8) -- cascaded smoothing
-6. FM + Phase Offset at audio rate (Pitfall 14) -- unintended PM synthesis
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| PWM via morph extension | Pitfall 1 (morph continuity), Pitfall 2 (amplitude collapse), Pitfall 6 (enum ordering) | Preserve existing morph mapping, limit min duty cycle, append new enums |
+| Forge Noir panel SVG | Pitfall 3 (width change overlap), Pitfall 4 (nanosvg limitations), Pitfall 9 (placeholder alignment) | Document 2HP shift, text-as-paths only, test SVG in Rack early |
+| Display layout restructuring | Pitfall 5 (FramebufferWidget misuse), Pitfall 10 (font loading), Pitfall 12 (zoom levels), Pitfall 14 (font bundling) | Keep TransparentWidget, cache fonts, test at multiple zoom levels |
+| Animated sync badge | Pitfall 5 (dirty flagging), Pitfall 13 (CPU when hidden) | Gate animation on visibility, use decay curve from atomic timestamp |
+| Waveform bleed update | Pitfall 7 (ring topology), Pitfall 8 (display buffer) | Update ring modulus and neighbor logic atomically, pass full morph range |
+| Backward compatibility | Pitfall 1 (morph mapping), Pitfall 3 (panel width), Pitfall 6 (enum ordering), Pitfall 15 (spread seed) | Preserve all existing numeric mappings, append-only changes |
 
 ---
 
-## Performance Traps
+## Integration Pitfalls
 
-Patterns that work in testing but fail under real-world load.
+These are not about any single feature but about how the features interact when combined.
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Per-sample OU computation for all imperfections | CPU usage spikes with multiple imperfections at high sample rates | Subsample OU layers (e.g., update every 4-8 samples) for slow processes like DC offset drift | At 192kHz with 8+ OU layers active, per-module CPU exceeds 1% |
-| Display buffer rebuild for phase offset changes | Display stutters when phase offset CV is modulated | Rate-limit display rebuilds to 30fps for all parameter changes (existing pattern) | With audio-rate phase offset CV, rebuild triggers on every sample if not rate-limited |
-| Additional atomic stores for new display data | Cache line contention between audio and GUI threads | Keep all atomics in the same cache line (64 bytes) or separate into dedicated cache lines | With 8+ atomics written per sample, false sharing between threads becomes measurable |
-| Swing phase warp computation per sample | Unnecessary computation in free-running mode | Gate swing computation on `isClocked` flag; skip entirely when swing=50% or unclocked | Always active swing computation at 192kHz wastes CPU in the common case |
+### Integration Pitfall A: PWM + Character + Bleed Triple Interaction
 
----
+The pulse waveform with character-modeled edge softening (tanh shaping) AND waveform bleed from adjacent shapes creates a complex interaction. At high character, the pulse edges are soft (tanh smoothing), the bleed adds saw/square crosstalk, and the DC offset from the drift engine shifts the baseline. Test the combined effect at: morph=0.9 (square/pulse crossfade), character=1.0 (max analog), drift=1.0 (max imperfection). Verify output stays within +/-5.5V and no NaN/inf occurs.
 
-## UX Pitfalls
+### Integration Pitfall B: Panel Resize + Display Resize Coordinate Mismatch
 
-Common user experience mistakes when adding these features.
+The display widget position is set in mm2px coordinates in the widget constructor (line 1312: `display->box.pos = mm2px(Vec(2.f, 15.f))`). When the panel changes from 12HP to 14HP, the display position and size must be updated to match the Forge Noir layout. If the display size changes but the internal NanoVG drawing coordinates (used for phaseToX, valueToY at lines 848-856) are based on `box.size`, they will auto-scale. However, pill text positions that use absolute offsets (e.g., `float margin = 4.f` at line 1193) may need adjustment if the display aspect ratio changes significantly.
 
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Swing control active in free-running mode | User turns swing knob, nothing perceptible happens, thinks module is broken | Disable/gray-out swing when not clocked; show "CLK required" in tooltip |
-| FM depth too sensitive (0-10V = huge range) | Any FM source produces extreme modulation; unusable without external attenuation | Built-in FM attenuverter knob; default range of +/-1 octave per 5V |
-| Phase offset in degrees | Most Eurorack users think in "0-360" but VCV knobs are 0-1 | Label in degrees (0-360) or percentage (0-100%); internally use [0, 1) |
-| Too many new controls at once | Users overwhelmed by 3-4 new knobs + jacks; can't tell what each does | Introduce in logical groups; FM first, then phase offset, then swing |
-| RESET jack behavior unclear | User expects RESET to restart the module from scratch vs. just phase reset | Tooltip: "Phase Reset -- resets LFO to cycle start without affecting clock tracking" |
-| Component spread invisible | User enables drift, sees nothing different from v1.1 | Ensure at least one visible change on display (e.g., slight duty cycle asymmetry on square wave) |
+### Integration Pitfall C: dataFromJson Migration for New Features
 
----
-
-## "Looks Done But Isn't" Checklist
-
-Things that appear complete but are missing critical pieces.
-
-- [ ] **FM Input:** Often missing negative frequency protection -- verify with -5V static FM input at 0.1 Hz base rate
-- [ ] **FM Input:** Often missing clocked-mode authority scaling -- verify FM + clock sync does not produce clicks
-- [ ] **RESET Jack:** Often missing 1ms blanking -- verify with CLK and RESET from same source through different cable paths
-- [ ] **RESET Jack:** Often missing interaction with division counter -- verify RESET does not corrupt `clockBeatCount`
-- [ ] **Phase Offset:** Often missing display update -- verify display waveform starts at offset position, not phase 0
-- [ ] **Phase Offset:** Often missing reset interaction -- verify clock reset goes to offset position, not phase 0
-- [ ] **Swing:** Often missing identity at 50% -- verify swing=50% produces identical output to swing disabled
-- [ ] **Swing:** Often missing clocked-only gating -- verify swing has no effect in free-running mode
-- [ ] **DC Offset Drift:** Often missing output range check -- verify output stays within +/-5V with all imperfections maxed
-- [ ] **Phase Jitter:** Often missing rate scaling -- verify jitter effect is consistent at 0.01 Hz and 10 Hz
-- [ ] **Waveform Bleed:** Often missing coefficient normalization -- verify output does not exceed +/-5V at morph midpoints
-- [ ] **Display Text:** Often missing dynamic background sizing -- verify text readable with all waveform shapes at all morph positions
-- [ ] **Incoming BPM:** Often missing labeling -- verify user can distinguish incoming clock BPM from effective LFO BPM
-
----
-
-## Recovery Strategies
-
-When pitfalls occur despite prevention, how to recover.
-
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| FM negative frequency (P1) | LOW | Add bidirectional phase wrap + frequency clamp; 2 lines of code |
-| FM + clock sync conflict (P2) | MEDIUM | Add authority scaling; requires testing all ratio/FM combinations |
-| RESET + CLK blanking (P3) | MEDIUM | Add timer and blanking logic; requires careful testing with multiple clock sources |
-| DC offset exceeding range (P4) | LOW | Add output clamp or reduce offset bounds; 1-2 lines |
-| Phase offset reset target (P5) | LOW | Move offset application from accumulator to waveform lookup; small refactor |
-| Swing timing errors (P6) | MEDIUM | Rewrite swing as phase warp function; requires rethinking if implemented as frequency modulation |
-| Display text readability (P11) | LOW | Add nvgBoxGradient background; purely additive change to render code |
-| Panel space (P15) | HIGH | Panel redesign affects SVG, widget positions, and visual balance; best caught before implementation |
-
----
-
-## Pitfall-to-Phase Mapping
-
-How roadmap phases should address these pitfalls.
-
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| P1: FM negative frequency | FM input implementation | Patch -5V DC to FM input at 0.1Hz rate; output must not produce NaN or DC |
-| P2: FM + clock sync | FM input implementation | Patch LFO to FM input while clock-synced; listen for clicks at clock rate |
-| P3: RESET + CLK blanking | RESET jack implementation | Patch same trigger to both CLK and RESET; verify single reset per trigger |
-| P4: DC offset range | Analog imperfections phase | Set drift=1, run for 60 seconds, verify output stays within +/-5.2V |
-| P5: Phase offset + reset | Phase offset implementation | Set 90-degree offset, send clock; verify waveform starts at peak not zero |
-| P6: Swing timing | Swing implementation | Set swing=50%, verify identical output to swing disabled (null test) |
-| P7: Component spread perceptibility | Analog imperfections phase | Instantiate two modules, set character=1; verify visible difference on display |
-| P8: Pitch slew + freqSlew | Analog imperfections phase | Rapidly turn Rate knob with drift=1; verify no perceptible lag vs drift=0 |
-| P9: Phase jitter + clock | Analog imperfections phase | Run jitter + clock sync for 5 minutes; verify phase at clock edges stays near 0.0 |
-| P10: Waveform bleed amplitude | Waveform bleed implementation | Sweep morph 0-1 with character=1; verify output peak never exceeds 5.1V |
-| P11: Display text readability | Display polish phase | Set morph to each shape; verify text readable at every morph position |
-| P12: Dual BPM display | Display polish phase | Set ratio to /4 with 120 BPM clock; verify both BPM values are distinguishable |
-| P13: OU independence | Analog imperfections phase | Log DC offset and pitch drift over 60s; verify correlation coefficient < 0.3 |
-| P14: Phase offset audio rate | Phase offset implementation | Patch audio-rate VCO to phase offset CV; verify no crashes, accept PM behavior |
-| P15: Panel space | Panel planning (before implementation) | Mock up panel SVG with all v1.2 controls; verify 7mm minimum spacing |
+The `dataFromJson` method (lines 592-604) currently restores `spreadSeed` and `swingIndex`. If v1.3 adds new serialized state (e.g., animation preferences, display mode), the `dataFromJson` must gracefully handle loading patches from v1.2 that lack these fields. The current pattern of checking `if (swingJ)` before accessing the value is correct -- apply the same null-check pattern for any new fields.
 
 ---
 
 ## Sources
 
-### Official Documentation (HIGH confidence)
-- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- 1ms blanking rule, Schmitt trigger thresholds, trigger/gate voltage levels
-- [VCV Rack DSP Manual](https://vcvrack.com/manual/DSP) -- Signal processing guidance
-- [NanoVG GitHub](https://github.com/memononen/nanovg) -- nvgBoxGradient, nvgTextBounds API reference
-
-### Community and Technical Discussions (MEDIUM confidence)
-- [KVR Audio: Implementing swing/shuffle](https://www.kvraudio.com/forum/viewtopic.php?t=261858) -- Phase warp approach for swing timing
-- [KVR Audio: Analog Modeling - what is being modeled](https://www.kvraudio.com/forum/viewtopic.php?t=368351) -- Component tolerance modeling approaches
-- [KVR Audio: DC removal high-pass corner frequency](https://www.kvraudio.com/forum/viewtopic.php?t=535852) -- DC offset handling in synthesizers
-- [ModWiggler: Adding swing to clock](https://modwiggler.com/forum/viewtopic.php?t=174713) -- Eurorack swing implementation patterns
-- [VCV Community: Reset sequencers one step off](https://community.vcvrack.com/t/reset-sequencers-are-one-step-off/12898) -- 1ms blanking rule real-world implications
-- [VCV Community: Advanced NanoVG custom label](https://community.vcvrack.com/t/advanced-nanovg-custom-label/6769?page=2) -- NanoVG text rendering in VCV Rack
-- [Learning Modular: FM types explained](https://learningmodular.com/understanding-the-differences-between-exponential-linear-and-through-zero-fm/) -- Exponential vs linear vs through-zero FM
-- [Frap Tools: Exponential FM](https://frap.tools/frequency-modulation-part-1-exponential-fm/) -- FM implementation at different frequency ranges
-
-### Module References (MEDIUM confidence)
-- [Cherry Audio Quadrature VLFO](https://store.cherryaudio.com/modules/quadrature-vlfo) -- Phase offset knob behavior reference
-- [New Systems Instruments Quad LFO](https://nsinstruments.com/modules/qlfo.html) -- Quadrature phase offset implementation
-- [Noise Engineering: Clocks](https://noiseengineering.us/blogs/loquelic-literitas-the-blog/clocks-don-t-have-to-be-boring/) -- Clock and swing in Eurorack context
-
-### Direct Source Analysis (HIGH confidence)
-- `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` -- 890 lines: phase accumulator, OU drift, clock sync, waveform engine, display system
-- `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/.planning/PROJECT.md` -- Feature list, constraints, key decisions
-- `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/.planning/RETROSPECTIVE.md` -- Lessons from v1.0 and v1.1
-
-### Analog Synthesis References (MEDIUM confidence)
-- [North Coast Synthesis: DC coupling](https://northcoastsynthesis.com/news/more-about-dc-coupling/) -- DC offset behavior in analog signal chains
-- [Wikipedia: Analog modeling synthesizer](https://en.wikipedia.org/wiki/Analog_modeling_synthesizer) -- Component tolerance modeling overview
-- TR-909 swing specification: delays even 16th notes by 2/96 to 12/96 of a beat (6 shuffle settings)
-
----
-*Pitfalls research for: v1.2 Deep Analog features*
-*Researched: 2026-03-13*
+- [VCV Rack FramebufferWidget API](https://vcvrack.com/docs-v2/structrack_1_1widget_1_1FramebufferWidget) - dirty flag behavior, oversample, setDirty()
+- [VCV Rack Module Panel Guide](https://vcvrack.com/manual/Panel) - SVG requirements, nanosvg limitations, HP sizing
+- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) - module slugs, parameter serialization
+- [FramebufferWidget community discussion](https://community.vcvrack.com/t/framebufferwidget-question/3041) - usage patterns, dirty flag timing
+- [NanoVG optimization discussion](https://community.vcvrack.com/t/trying-to-optimize-nanovg/16364) - rendering performance, shadow impact
+- [SVG gradient limitations](https://community.vcvrack.com/t/svg-transparencies-and-gradients/16833) - 2-stop limit, radial gradient issues
+- [VCO PWM click artifacts (Fundamental #140)](https://github.com/VCVRack/Fundamental/issues/140) - MinBLEP double-discontinuity bug
+- [PWM community discussion](https://community.vcvrack.com/t/clicks-and-pops-from-pwm/15824) - click artifacts from duty cycle modulation
+- [nanosvg theme-able SVG notes](https://community.vcvrack.com/t/notes-for-theme-able-svgs-with-nanosvg/20060) - SVG cache behavior
+- [VCV Rack RackWidget.cpp source](https://github.com/VCVRack/Rack/blob/v2/src/app/RackWidget.cpp) - module position stored as grid coords, width from SVG
+- [VCV Rack ModuleWidget.cpp source](https://github.com/VCVRack/Rack/blob/v2/src/app/ModuleWidget.cpp) - panel width derived from SVG: `box.size.x = std::round(panel->box.size.x / RACK_GRID_WIDTH) * RACK_GRID_WIDTH`
+- Direct source code analysis: `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` (1,360 lines)
+- Direct source code analysis: `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/res/AnalogLFO.svg` (existing 12HP panel)
+- Direct source code analysis: `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/DESIGN-LANGUAGE.md` (Forge Noir specification)

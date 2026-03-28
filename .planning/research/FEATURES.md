@@ -1,376 +1,296 @@
-# Feature Landscape: v1.2 Deep Analog
+# Feature Research
 
-**Domain:** Eurorack LFO module -- analog character deepening, modulation inputs, groove features
-**Researched:** 2026-03-13
-**Overall Confidence:** HIGH
-**Scope:** NEW features only -- deep analog additions to existing Analog Series LFO (v1.0 engine + v1.1 clock sync)
+**Domain:** VCV Rack 2 Eurorack LFO module -- v1.3 Forge Noir milestone features
+**Researched:** 2026-03-27
+**Confidence:** HIGH (DSP patterns well-established, VCV Rack API documented, design language already prototyped through v19)
 
----
+## Existing Foundation (v1.0 through v1.2 -- must not be disrupted)
 
-## Existing Foundation (v1.0 + v1.1 -- must not be disrupted)
-
-- Three-knob analog engine (Morph, Character, Drift) with CV inputs
-- Four-shape parametric morph (Sine-Tri-Saw-Square) with per-shape analog character modeling
+- Three-knob analog engine (Morph, Character, Drift) with CV inputs and attenuverters
+- Four-shape parametric morph (Sine->Tri->Saw->Square) with per-shape analog character modeling
 - Four-layer Ornstein-Uhlenbeck drift engine with per-module RNG
-- Real-time waveform display with lock-free double buffer, glow trace, phase-tracking dot
-- Three-state clock tracker (FREE/ACQUIRING/LOCKED) with EMA smoothing
+- Real-time waveform display with lock-free double buffer, four-pass glow trace, phase-tracking dot
+- Three-state clock tracker (FREE/ACQUIRING/LOCKED) with EMA smoothing, outlier rejection
 - 15 discrete musical ratios via dual-mode Rate knob
 - Division-aware phase reset with 3ms cosine crossfade
-- NanoVG text overlays (SYNC badge, ratio, BPM, Hz) with fade animations
-- Drift authority scaling (2% clocked vs 7.5% free), 50ms frequency slew for mode transitions
-- 12HP panel, bipolar +/-5V single output, 890 lines of C++
+- NanoVG text overlays (SYNC badge, ratio, Hz, BPM stack, swing) with 200ms fade animations
+- FM input with exponential modulation, RESET trigger, Phase Offset with CV
+- Swing/shuffle via right-click menu (6 presets), phase jitter, DC wander, pitch slew, component spread, waveform bleed
+- 12HP panel, bipolar +/-5V single output, ~1,374 lines of C++
 
 ---
 
-## Table Stakes
+## Feature Landscape
 
-Features users expect from a mature LFO module. Missing any of these means the module feels incomplete compared to VCV Fundamental LFO, Bogaudio LFO, or Mutable Instruments Tides.
+### Table Stakes (Users Expect These)
 
-| Feature | Why Expected | Complexity | Dependencies on Existing Engine | Notes |
-|---------|--------------|------------|-------------------------------|-------|
-| **FM input jack** | Every serious LFO/VCO in hardware and VCV Rack has an FM input. VCV Fundamental LFO has it. Bogaudio LFO has V/Oct. Users patch LFO-to-LFO constantly for evolving modulation. | Low | Modifies frequency calculation -- same insertion point as drift. New `FM_INPUT` in InputId, new attenuverter trimpot. | Linear FM (proportional Hz scaling). At LFO rates, exponential FM is perceptually identical to linear -- no toggle needed. See detailed breakdown below. |
-| **Separate RESET jack** | Standard on VCV Fundamental LFO, Mutable Tides, nearly all hardware Eurorack LFOs. Users expect to restart LFO phase independently of clock -- essential for syncing to note gates, sequences, or manual triggers. | Low | Reuses existing phase-reset + crossfade logic from clock sync (v1.1). New `RESET_INPUT` in InputId, new `dsp::SchmittTrigger`. | Rising-edge trigger resets phase. Must work in both free-running and clocked modes. Independent of CLK tracking. See detailed breakdown below. |
-| **Display text overlay readability** | Current HUD text (Hz, BPM, ratio, SYNC) renders directly on the waveform trace. When waveform passes through text areas, readability drops. Users need to read values while patching. | Low | Display rendering only (NanoVG). No DSP changes. Modify `drawTextOverlays()` to add semi-transparent dark pill backgrounds behind text. | Standard UI pattern: `nvgRoundedRect` fill at ~0.6 alpha of background color before text rendering. Minimal code, immediate UX improvement. |
-| **Incoming clock BPM display** | Users need to see both raw clock tempo AND ratio-adjusted LFO rate. Currently only effective BPM is shown, which is misleading at non-x1 ratios. | Low | No new atomics needed -- `displaySmoothedPeriod` already exists. Calculation: `60.f / smoothedPeriod`. New text element in display. | Show raw clock BPM (e.g., "120 CLK") in bottom-left when clocked. Effective BPM stays in bottom-right. Helps users verify clock detection is correct. |
+Features that must work correctly for the v1.3 release to feel complete. These are the "contract" of the milestone -- if any are missing, the release feels unfinished relative to the promises implied by the existing morph architecture and the Forge Noir mockup at v19.
 
-**Confidence:** HIGH -- FM input and RESET jack are verified as standard across VCV Fundamental LFO (official manual and library page), Bogaudio LFO, Mutable Instruments Tides (manual verified), and the broader Eurorack ecosystem. Display improvements are straightforward NanoVG operations.
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Morph-integrated PWM** (Sine->Tri->Saw->Square->Pulse) | The morph knob currently stops at square. Users exploring the knob expect it to go further -- a hard stop at 1.0 with square feels like the end when it should be a waypoint. Every notable morphing oscillator (Plaits, Vult Vessek, RS-MET) extends past square into pulse territory. The morph range extension was explicitly scoped for v1.3 in PROJECT.md. | MEDIUM | Requires extending morph from 4 segments (0-3) to 5 segments (0-4), adding computePulse() function, updating display buffer generation. Duty cycle sweep: 50% (square) down to 5% (narrow pulse). Standard 5%-95% limits per hardware synth convention. |
+| **Forge Noir panel SVG** | The mockup is at v19 and the design language doc is comprehensive. The current panel is the old 12HP blue placeholder from v1.0. The 14HP expansion is already decided. This is the visual identity of the module. | HIGH | Full SVG redesign at 14HP. nanosvg has severe gradient limitations -- complex gradients from the HTML mockup (multi-stop radials, conic gradients, Gaussian blur) cannot render via SVG. Must use hybrid SVG+NanoVG strategy. See Technical Notes. |
+| **Display three-column layout** | The Forge Noir mockup (v19) shows pills in left/right margins with waveform centered. Current code uses ad-hoc positioning that can overlap at some ratios. The separated layout is necessary for readability at the new 14HP width. | LOW | Mostly repositioning existing drawPillText/drawBpmStack calls with updated coordinates matching the three-column spec in DESIGN-LANGUAGE.md (left: x 16-55, center: x 64-256, right: x 262-302). Corner bracket accents and CRT scanline overlay are new NanoVG additions. |
+| **Animated SYNC badge** (clock-pulse flash) | Current SYNC badge blinks during ACQUIRING state (2Hz sinusoidal via breathePhase). The v1.3 expectation is a brief ember flash on each clock pulse -- a "heartbeat" that shows the module is alive and locked. This is standard in hardware Eurorack modules with clock inputs (LED flash on trigger). Already scoped in PROJECT.md active items. | LOW | Already have animation infrastructure in WaveformDisplay::step(). Need a clock-edge-triggered flash envelope (fast attack ~16ms, slow decay ~200ms) modulating SYNC badge alpha. Requires one new atomic float bridge from process() to display. |
 
----
-
-## Differentiators
-
-Features that set this module apart from competitors. Not expected by default, but valued -- these are what make users choose this LFO over alternatives.
-
-| Feature | Value Proposition | Complexity | Dependencies on Existing Engine | Notes |
-|---------|-------------------|------------|-------------------------------|-------|
-| **Phase offset knob with CV** | Enables quadrature patches (90-degree offset for stereo widening), polyrhythmic phase relationships, and dynamic phase displacement. Tides and 8FO have phase shift but few single-LFO modules offer a phase offset knob with CV. | Medium | Additive offset on phase readout, not on the accumulator itself. New `PHASE_PARAM`, `PHASE_ATTEN_PARAM`, `PHASE_CV_INPUT`. Display must show offset waveform. | See detailed breakdown below. |
-| **Expanded analog imperfections** | Deepens existing drift engine beyond pitch-only drift. Real analog circuits exhibit DC offset wander, per-component parameter spread, phase jitter, and frequency slew. This is the module's core identity -- going deeper into analog authenticity where no competitor goes. | High | Extends existing OU infrastructure. Phase jitter at cycle wrap. DC offset on output. Component spread as static per-instance offsets. All bundled under existing Drift knob. | See detailed breakdown below. Four sub-features, all scaled by `progressiveCurve(drift)`. |
-| **Waveform bleed during morph transitions** | In real analog waveshaper circuits, switching between outputs is never perfectly clean. Adjacent waveforms "bleed" through due to analog multiplexer crosstalk and capacitive coupling. No competing VCV LFO models this. | Medium | Modifies `computeMorphedWave()`. Adds small non-adjacent shape bleed scaled by character level. All four shapes already computed -- minimal additional computation. | See detailed breakdown below. Only active when character > 0. |
-| **Swing/shuffle for clocked mode** | Adds groove to clocked LFO patterns. Straight-time modulation sounds mechanical. 4ms SCM and Impromptu Clocked offer swing, but no LFO module has built-in swing -- a genuine differentiator. | High | Modifies phase progression in clocked mode via phase warping. Interacts with clock sync, phase reset, and division-aware beat counting. | See detailed breakdown below. Only active in clocked mode. |
-
-**Confidence:** MEDIUM for swing (novel, complex interactions), HIGH for the rest (grounded in well-documented analog phenomena and established Eurorack patterns).
+**Confidence:** HIGH -- All four features are already decided in PROJECT.md. PWM patterns are well-documented across synth literature. Panel design language is finalized at v19. Display layout is specified in DESIGN-LANGUAGE.md. SYNC animation builds on existing infrastructure.
 
 ---
 
-## Anti-Features
+### Differentiators (Competitive Advantage)
 
-Features to explicitly NOT build for v1.2.
+Features that go beyond what other VCV Rack LFOs offer and reinforce the Forge Audio brand identity. These elevate v1.3 from "functional" to "premium."
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| **Exponential FM mode / toggle switch** | At LFO rates (0.01-20Hz), exponential FM is perceptually identical to linear FM. Adding a toggle adds UI complexity for zero musical benefit. Exponential FM is meaningful at audio rates -- the VCO module (v2.0) will need both modes; the LFO does not. | Linear FM only. Proportional scaling: `freq *= (1.f + fmAtten * fmCV / 5.f)`. One mode, no switch. |
-| **Through-zero FM** | TZ-FM is meaningful only at audio rates where frequency passes through 0 Hz and inverts. At LFO rates, frequency inversion produces confusing backward modulation with no musical utility. | Linear FM with clamping: `freq = fmax(freq, 0.001f)`. If FM pushes frequency negative, it stops rather than reverses. |
-| **Individually exposed drift sub-parameters** | Exposing phase jitter, DC offset, pitch slew, and component spread as separate controls violates the v1.0 design decision: "one drift knob with curated proportions." Adding 4+ knobs breaks the three-knob engine identity. | Bundle all imperfections under existing Drift knob. Each scales with `progressiveCurve(drift)`. Right-click menu to enable/disable specific layers is acceptable for advanced users. |
-| **Additional OU layers for new imperfections** | More OU layers = more per-sample RNG calls and computation. The existing four layers already provide the stochastic foundation. | Reuse existing OU layer 0 output (slow wander) with different scaling for DC offset drift. Phase jitter uses existing RNG directly at phase wrap only (once per LFO cycle, not per sample). |
-| **Swing knob on front panel** | 12HP panel is already dense. Adding a visible swing knob requires expanding the panel or cramping existing controls. | Right-click context menu for swing percentage (stepped: 50%, 54%, 58%, 62%, 67%, 71%, 75%). Serialized in JSON. Display shows swing value when non-50%. |
-| **Swing in free-running mode** | Without a clock, "swing" has no musical meaning. There are no beats to shuffle. | Swing parameter ignored in free-running mode. Only active when CLK is connected and clock state is ACQUIRING or LOCKED. |
-| **Per-cycle random phase offset (humanize)** | Random per-cycle phase offsets produce the same perceptual effect as phase jitter from the expanded drift engine. Implementing both would be redundant. | Phase jitter under the Drift knob covers this use case. |
-| **Separate phase-shifted output jack** | Some multi-output LFOs provide phase-shifted copies on additional jacks. This contradicts the single-output design philosophy ("single morphed output IS the design concept"). | Phase offset knob shifts the single output. Users wanting multiple copies should use multiple module instances. |
-| **FM depth knob on front panel** | Panel real estate is limited. A dedicated FM depth knob would be a fourth "big" control breaking the three-knob aesthetic. | FM depth controlled by attenuverter trimpot in bottom section, matching existing CV attenuverter pattern (Morph, Character, Drift attenuverters). |
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| **NanoVG-rendered premium knobs** | No other VCV Rack module renders knobs with the level of detail in the Forge Noir mockup -- multi-layer radial gradients, machined grooves, specular highlights, knurled outer rings. SVG knobs are flat by comparison. This makes the module look like a product photo rather than a circuit diagram. | HIGH | Custom Knob widget subclass overriding drawLayer() with NanoVG: nvgRadialGradient for body curvature, concentric stroke passes for metallic ring, repeating-conic-gradient equivalent for knurl texture (MORPH xl only). Must cache in FramebufferWidget and mark dirty only on rotation. Three size variants (xl 82px / lg 60px / md 46px). |
+| **Forge emblem atmospheric background** | The subtle forge-themed pattern behind the knobs (molten streams, ember particles, chevron marks) is unique to the Forge Audio brand. No other VCV module has this level of atmospheric panel design. The define-once-mirror-via-`<use>` technique guarantees perfect symmetry, which is a hard rule. | MEDIUM | Mostly SVG with opacity-limited paths (0.03-0.18 alpha). Uses `<use href="#forge-half" transform="...scale(-1,1)">` for mirrored symmetry. Some elements (radial core glow, heat shimmer) may need NanoVG overlay if SVG gradients fail in nanosvg. |
+| **Character-aware PWM** | When morph extends into pulse territory AND character is turned up, the pulse waveform exhibits analog imperfections -- duty cycle asymmetry, edge softening via tanh sigmoid, DC offset/bleed from v1.2. No other morphing LFO applies analog character modeling to its pulse waveform. | LOW | Builds directly on existing computeSquare() patterns. squareDutySpread already offsets duty cycle -- extend range for pulse. Character's tanh edge softening scales with `c` identically for pulse edges. Waveform bleed ring topology extends to include pulse as a 5th element. |
+| **CRT display aesthetic** | Scanline overlay, corner bracket accents, animated border glow, dark blue-black background (#030303) -- these details make the display feel like a real oscilloscope. Most VCV Rack displays are plain rectangles with a waveform line. | LOW | Pure NanoVG additions: repeating-linear-gradient for scanlines (2px transparent / 2px dark bands), four L-shaped corner paths (8x8px, ember at opacity 0.4), nvgBoxGradient for animated glow pulsing between 0.08 and 0.18 opacity over 5 seconds using existing breathePhase. |
 
-**Confidence:** HIGH -- all decisions align with established project philosophy (three-knob identity, 12HP constraint, "one drift knob with curated proportions").
+**Confidence:** HIGH for character-aware PWM and CRT aesthetic (straightforward NanoVG). MEDIUM for NanoVG knobs (complexity, performance risk with multiple gradient passes). HIGH for forge emblem concept (design is finalized, SVG implementation is standard).
 
 ---
 
-## Detailed Feature Breakdowns
+### Anti-Features (Commonly Requested, Often Problematic)
 
-### FM Input Jack (Table Stakes)
+Features that seem appealing but would damage the v1.3 milestone scope, performance, or design coherence.
 
-**Analog synth convention:** LFO FM at sub-audio rates produces vibrato (when modulating pitch) or evolving modulation patterns (LFO-to-LFO FM). Eurorack conventions:
-- **Linear FM:** Input voltage directly scales frequency proportionally. More intuitive at LFO rates.
-- **Exponential FM:** Input voltage scales frequency via V/octave. Standard for VCOs, less useful for LFOs.
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| **Separate PWM knob** | Traditional synth design gives PWM its own control. Users familiar with hardware expect a dedicated PW knob. | Breaks the three-knob philosophy (morph, character, drift). Morph already traverses waveform space -- extending it is more coherent. 14HP panel cannot accommodate another primary knob without cramping the 1-2-2 diamond layout. | PWM integrated into morph range. Single sweep covers Sine through narrow Pulse. CV on morph modulates the full range. |
+| **Full NanoVG panel** (no SVG at all) | Maximum visual quality, no gradient limitations. | Massive complexity: every text label, line, shape, jack must be positioned and drawn in code. Loses compatibility with VCV Rack's standard panel loading pipeline. SVG provides structural backbone that NanoVG enhances selectively. | Hybrid: SVG for flat elements (background, text paths, dividers, bolts) + NanoVG overlays for gradient-dependent elements (knobs, glow effects, display). |
+| **Per-pulse SYNC badge color cycling** | Alternating ember/gold/white-hot colors on each clock pulse. | Distracting. SYNC flash is status feedback, not decoration. Color cycling draws attention away from the waveform display and makes the badge harder to read at a glance. | Single ember-colored flash with alpha/intensity modulation only. Consistent color maintains readability. |
+| **Animated forge emblem** (drifting particles, flowing streams) | Brings the panel "alive" with motion. | GPU cost is non-trivial for continuous per-frame animation of ~50 path elements across the entire panel background. Violates "atmosphere, not foreground" -- if the emblem moves, it competes with the waveform display for visual attention. | Static emblem. The breathing glow on the display border provides the "alive" feeling. The emblem anchors the brand identity without competing. |
+| **Through-zero PWM** (duty cycle crosses 0%) | Some advanced oscillators allow duty cycle to cross zero, producing phase-inverted pulse bursts. | At LFO rates, through-zero PWM is imperceptible and creates confusing discontinuities. The waveform silently disappears and reappears inverted, which reads as a bug. Adds morph mapping complexity. | Hard-limit duty cycle at 5% minimum. Standard practice across Moog, Roland, Sequential. |
+| **Display showing PWM CV modulation in real-time** | Users want to see the duty cycle changing as CV modulates the morph into pulse territory. | Display buffer updates are rate-limited to ~30fps to avoid visual artifacts from fast CV. Adding CV-rate PWM animation requires audio-rate buffer updates -- the exact pattern the architecture avoids. | Display shows static shape from morph knob position. Phase dot still animates in real-time showing timing. Shape reflects "what," dot shows "motion." |
+| **NanoVG trimpots and jacks** | Matching the premium knob rendering quality across all components. | Lower visual impact than knobs -- trimpots are small and jacks are standard. The effort-to-visual-reward ratio is poor. SVG versions are acceptable. | SVG trimpots and jacks for v1.3. Defer NanoVG component rendering to a future polish pass if warranted. |
 
-VCV Fundamental LFO offers both modes (LFM toggle). Bogaudio LFO uses V/Oct (exponential). At sub-audio rates where the full frequency range is 0.01-20Hz, the perceptual difference between linear and exponential FM is negligible.
-
-**Recommended implementation:**
-- Input range: +/-5V bipolar
-- Attenuverter trimpot: 0 to 1 (unipolar -- FM polarity comes from the modulation source, not the attenuverter, keeping it consistent with the existing Morph/Character/Drift attenuverter pattern)
-- Scaling: proportional to base frequency. `freq *= (1.f + fmAtten * fmCV / 5.f)`. At full attenuverter with +5V input, frequency doubles. With -5V, frequency goes to zero (clamped to 0.001).
-- Clamp result: `freq = fmax(freq, 0.001f)`
-- Integration point: AFTER base frequency calculation, BEFORE drift processing. Order in process(): base freq -> FM -> drift -> phase accumulation.
-- In clocked mode: FM modulates the clock-derived frequency, allowing rhythmic frequency variation even when synced.
-
-**Panel placement:** FM attenuverter trimpot + FM jack in bottom section, grouped near CLK jack (related modulation inputs together).
-
-### Separate RESET Jack (Table Stakes)
-
-**Analog synth convention:** RESET/SYNC jacks on LFOs accept a rising-edge trigger and restart the waveform from the beginning of its cycle:
-- Rising-edge trigger (Schmitt: 0.1V low, 1.0V high -- VCV SDK convention)
-- Phase resets to 0.0 (or to phase offset value when offset is implemented)
-- No effect on frequency or clock tracking
-- Works in both free-running and clocked modes
-
-**Distinction from CLK input:** CLK serves dual purposes: (1) tempo reference, and (2) phase reset. RESET provides phase reset ONLY without affecting clock tracking. Key use cases:
-- Reset LFO to note onset (gate to RESET) while keeping tempo-locked frequency (clock to CLK)
-- Manual reset via button module
-- Reset from sequencer step trigger
-
-**Implementation:** New `RESET_INPUT` in InputId enum, new `dsp::SchmittTrigger resetTrigger`. In process(), after clock processing: check `resetTrigger`, if triggered, reset phase to offset value (or 0.0), apply same 3ms cosine crossfade as clock reset. Do NOT reset `clockBeatCount` -- clock tracking stays independent.
-
-**Panel placement:** RESET jack adjacent to CLK jack (both are timing/trigger inputs).
-
-### Phase Offset Knob with CV (Differentiator)
-
-**Analog synth convention:** Phase offset is standard on quadrature LFO modules:
-- Mutable Instruments Tides: SHIFT knob applies phase shift between outputs in cyclic mode
-- Bogaudio 8FO: 8 outputs at fixed 45-degree intervals
-- Cherry Audio Quadrature VLFO: Phase Adjust knob, 0-360 degrees
-- Erica Synths Black Octasource: 8 syncable outputs with 45-degree shifts
-- New Systems Instruments QLFO: 8 phase-shifted outputs, tunable to any relationship
-
-Range is always 0-360 degrees. The offset shifts where in the cycle the output currently is without changing frequency.
-
-**Key behaviors:**
-- Phase offset is ADDITIVE to the running phase: `outputPhase = fmod(phase + offset, 1.0)`
-- Changing offset smoothly shifts the output waveform in time
-- CV modulation of offset = phase modulation (PM), producing waveform "sliding" at LFO rates
-- RESET trigger resets phase to the offset value (not 0.0)
-- Clock-triggered reset also resets to the offset value
-
-**Range convention:**
-- Knob: 0.0 to 1.0 internally (tooltip displays 0-360 degrees)
-- CV: 0-10V unipolar with attenuverter (0V = no additional offset, 10V = +360 degrees = full cycle)
-
-**Display implications:** Both the waveform trace and phase-tracking dot must reflect the offset. The display should show what the output actually looks like. Implementation: shift the phase lookup when reading from the display buffer, or regenerate the buffer with offset applied.
-
-**Panel considerations:** Needs a small knob (RoundBlackKnob, matching Rate), an attenuverter trimpot, and a CV jack. The most panel-space-demanding new feature. See Panel Density Analysis section.
-
-### Expanded Analog Imperfections (Differentiator)
-
-Each imperfection models a real analog circuit phenomenon. All bundled under the existing Drift knob.
-
-**1. Phase Jitter (cycle-to-cycle timing variation)**
-
-*Real analog behavior:* Each cycle of a real analog oscillator varies slightly in duration due to transistor noise, power supply ripple, and thermal effects. Visible as edge "blurring" on an oscilloscope. Typically 0.01-0.5% of cycle period in vintage circuits.
-
-*Implementation:* On each phase wrap (`phase >= 1.0`), apply a small random offset: `phase += progressiveCurve(drift) * 0.005f * normalDist(rng)`. Uses existing per-module RNG. No per-sample cost -- fires once per LFO cycle.
-
-*Complexity:* Low. One random number and one addition at phase wrap.
-
-**2. DC Offset Drift (output voltage center wander)**
-
-*Real analog behavior:* Real oscillators rarely output perfectly symmetric waveforms centered at 0V. DC offset wanders slowly due to op-amp input offset voltage drift (~1-10 uV/degC), capacitor leakage, and aging. The drift is proportional to sqrt(elapsed time) per Analog Devices documentation. Typical wander: 10-50mV over minutes.
-
-*Implementation:* Reuse the existing slowest OU layer (layer 0, 0.05Hz) output with different scaling. `dcOffset = ouLayers[0].state * progressiveCurve(drift) * 0.01f` (producing +/-50mV on the +/-5V output at full drift). Applied after waveform computation: `outputVoltage += dcOffset`. No new OU process needed.
-
-*Complexity:* Very Low. One multiply and one add per sample, using existing OU state.
-
-**3. Pitch Slew (frequency change inertia)**
-
-*Real analog behavior:* Analog oscillator circuits cannot change frequency instantaneously. The expo converter and integrator have finite bandwidth. Slew time: 1-10ms for small changes, 10-50ms for large jumps.
-
-*Current state:* The module already has `freqSlew` (TExponentialFilter, lambda=20, ~50ms time constant) for mode transitions. In free-running mode, the raw knob value goes directly to `targetFreq`.
-
-*Implementation:* Make the slew filter's time constant drift-dependent. At drift=0, lambda=100 (essentially instant, 10ms). At full drift, lambda=5 (200ms, noticeable analog-style lag on rate changes). Dynamically set: `freqSlew.setLambda(rack::math::clamp(100.f - 95.f * progressiveCurve(drift), 5.f, 100.f))`.
-
-*Complexity:* Very Low. The infrastructure already exists. Just make the lambda drift-dependent.
-
-**4. Component Spread (per-instance parameter variation)**
-
-*Real analog behavior:* Component tolerances (1-5% for resistors, 10-20% for capacitors) mean each synth module has slightly different characteristics. Two "identical" LFOs have slightly different frequency calibration, waveform symmetry, and output level.
-
-*Implementation:* On module construction, generate per-instance random offsets using existing RNG:
-- Frequency calibration: +/-2% (`freqSpread = 1.f + 0.04f * (normalDist(rng) * 0.5f)`)
-- Square duty cycle offset: +/-1% additional asymmetry
-- Output amplitude: +/-1%
-
-These are STATIC per instance (set once in constructor). Apply only when drift > 0: `freq *= 1.f + (freqSpread - 1.f) * progressiveCurve(drift)`.
-
-*Complexity:* Medium. Requires generating and storing multiple offsets, applying at various points.
-
-### Waveform Bleed During Morph Transitions (Differentiator)
-
-**Analog synth convention:** In real analog synths with waveform selectors (Minimoog, Prophet-5, Juno-106), non-selected waveforms leak through due to:
-- Analog switch ON resistance (CD4066: ~50-200 ohm) allowing signal coupling
-- Capacitive coupling between adjacent PCB traces
-- Imperfect transistor switching in waveshaper networks
-
-Leakage is typically 0.5-3% of non-selected waveform amplitude.
-
-**Implementation:** After computing the main morphed wave, add a bleed contribution from all four shapes:
-```cpp
-float bleedAmount = progressiveCurve(character) * 0.03f;  // max 3% at full character
-if (bleedAmount > 0.001f) {
-    float avgAll = (sine + tri + saw + sqr) * 0.25f;
-    float bleedSignal = avgAll - mainOutput;  // everything NOT in the main output
-    mainOutput += bleedAmount * bleedSignal;
-}
-```
-
-Computationally near-free since all four shapes are already computed. Scales with character (zero character = zero bleed = digital perfection). Display buffer should incorporate bleed, making the trace slightly more complex at high character -- visually communicates the imperfection.
-
-### Swing/Shuffle for Clocked Mode (Differentiator)
-
-**What swing means for a continuous LFO:** Swing timing alternates between longer and shorter half-cycles within each period. At 50% swing, both halves are equal (straight time). At 67% (triplet feel), the first half takes 2/3 of the period and the second half takes 1/3.
-
-**Industry conventions:**
-- TR-808/TR-909: shuffle delays every other 16th note by 2/96 to 12/96 of a beat
-- MPC: swing values 50-75%, with 54-58% being subtle groove, 62-67% being strong
-- 4ms SCM: "Slip" CV shifts specific beats forward in time
-- Impromptu Clocked: swing percentage on clock outputs with CV via expander
-- Standard definition: swing percentage S means the first beat takes S% of the total beat pair
-
-**Phase-warping algorithm:**
-```
-Given raw linear phase p (0 to 1) and swing ratio s (0.5 to 0.75):
-
-if p < s:
-    warped = p * 0.5 / s                            // first half stretched
-else:
-    warped = 0.5 + (p - s) * 0.5 / (1.0 - s)       // second half compressed
-
-output = computeMorphedWave(warped, morph, character)
-```
-
-**Feature interaction chain:** phase accumulation -> swing warp -> phase offset -> waveform computation.
-
-**UI:** Right-click context menu with stepped presets (50%, 54%, 58%, 62%, 67%, 71%, 75%). Serialized in patch JSON. Display shows "SWG 67%" overlay when swing is non-50% and module is clocked.
+**Confidence:** HIGH -- all decisions align with established project philosophy (three-knob identity, hybrid rendering, performance-first display architecture).
 
 ---
 
 ## Feature Dependencies
 
 ```
-Display text readability fix    (independent, display-only, quick win)
-Incoming clock BPM display      (independent, display-only, quick win)
-
-FM input jack                   (independent, modifies freq calculation)
-
-RESET jack                      (independent, reuses v1.1 crossfade)
+Forge Noir Panel SVG (14HP)
     |
-    v
-Phase offset knob/CV            (depends on RESET: reset target = offset value)
+    +-- requires --> 14HP dimensions (71.12mm x 128.5mm, already decided)
     |
-    v
-Swing/shuffle                   (depends on phase offset: swing warp composes with offset)
+    +-- enhances --> NanoVG Premium Knobs (knobs render on top of SVG panel)
+    |                    |
+    |                    +-- requires --> FramebufferWidget caching (perf)
+    |                    +-- requires --> Custom Knob widget subclass
+    |
+    +-- enhances --> Forge Emblem Background (between SVG base and knobs)
+    |
+    +-- contains --> Display Three-Column Layout (display is panel element)
+                         |
+                         +-- contains --> Animated SYNC Badge (display element)
+                         +-- contains --> CRT Aesthetic (display styling)
 
-Expanded imperfections          (independent, extends drift infrastructure)
-    - Phase jitter              (low complexity, phase wrap only)
-    - DC offset drift           (low complexity, reuses OU layer 0)
-    - Pitch slew                (very low, extends existing freqSlew)
-    - Component spread          (medium, constructor-time offsets)
+Morph-Integrated PWM
+    |
+    +-- extends --> Existing morph engine (computeMorphedWave, shapes[], segment count)
+    |
+    +-- enhances --> Character-Aware PWM (character applies to pulse shapes)
+    |
+    +-- independent of --> Panel/display work (DSP is separate from rendering)
 
-Waveform bleed                  (independent, modifies computeMorphedWave)
-
-Panel layout                    (depends on ALL features being finalized)
+Character-Aware PWM
+    |
+    +-- requires --> Morph-Integrated PWM (pulse waveform must exist first)
+    |
+    +-- reuses --> Existing squareDutySpread, tanh softening, bleed ring
 ```
 
-**Critical ordering rationale:**
-1. RESET before Phase Offset -- offset changes what "reset" means
-2. Phase Offset before Swing -- swing warping must compose with offset
-3. Display fixes are fully independent -- good first-phase quick wins
-4. FM input is fully independent
-5. Expanded imperfections are independent but should be grouped as one unit
-6. Waveform bleed is independent
-7. Panel layout must come last after all components are known
+### Dependency Notes
+
+- **Panel SVG requires 14HP dimensions:** Already decided. One-way gate for all panel work.
+- **NanoVG Knobs require FramebufferWidget:** Multi-pass gradient rendering is expensive without caching. Each knob wraps in FramebufferWidget, dirty only on rotation (parameter change). VCV API: `FramebufferWidget::setDirty()` triggers re-render on next step().
+- **Display layout requires panel SVG:** Display widget position and size derive from the 14HP SVG panel. Three-column dimensions come from panel width minus margins.
+- **SYNC badge is inside display:** Not a separate widget -- drawn by WaveformDisplay::drawTextOverlays(). The clock flash extends the existing syncFadeAlpha system, adding a new clockFlashEnvelope atomic.
+- **PWM is independent of panel:** Morph engine changes (computePulse, segment count) can be developed and tested without the panel redesign. Zero shared code paths.
+- **Character-aware PWM requires base PWM:** Cannot add analog imperfections to a pulse waveform that does not yet exist. Build computePulse first, then layer character effects.
 
 ---
 
-## Panel Density Analysis
+## MVP Definition
 
-Current panel (12HP = 60.96mm) layout:
+### v1.3 Core (Must Ship)
+
+These define the milestone. Without all four, v1.3 is not complete.
+
+- [ ] **Morph-integrated PWM** -- Extends morph from 4 segments to 5 segments. Pulse region (~morph 0.75-1.0) sweeps duty cycle from 50% (square) down to 5% (narrow pulse). Character modeling applies to pulse. Display buffer renders the full extended range.
+- [ ] **Forge Noir panel SVG** -- New 14HP SVG implementing the design language. Flat elements in SVG (panel background #0c0c0c, text labels as paths, decorative lines, section dividers, hex bolts, accent bars). Placeholder circles for component positions per the 1-2-2 diamond layout.
+- [ ] **Display three-column layout** -- Left: ratio pill, Hz readout, swing label. Center: waveform + phase dot. Right: SYNC badge, BPM stack. Corner bracket accents. Pill positioning prevents overlap at all ratios and zoom levels.
+- [ ] **Animated SYNC badge** -- Brief ember flash on clock edge, decaying over ~200ms. LOCKED state: clock-pulse flash with steady ~60% base visibility. ACQUIRING state: existing 2Hz sinusoidal blink (unchanged).
+
+### v1.3 Polish (Should Ship, Defer Only if Time-Constrained)
+
+- [ ] **NanoVG premium knobs** -- Three sizes (xl/lg/md). Multi-layer radial gradients, metallic ring, center cap indent, ember indicator line with glow. Knurled outer ring for MORPH xl. Cached in FramebufferWidget.
+- [ ] **Forge emblem background** -- Atmospheric SVG pattern: molten streams, forge marks, ember particles. `<use>` mirroring for perfect symmetry. Low-opacity (0.03-0.18).
+- [ ] **CRT display aesthetic** -- Scanline overlay, corner bracket accents (8x8px L-shapes), animated border glow using breathePhase. Display background #030303.
+- [ ] **Character-aware PWM** -- Analog imperfections applied to pulse: squareDutySpread extended, tanh edge softening, bleed ring expanded to 5 shapes.
+
+### Deferred (v2.0 VCO or Later)
+
+- [ ] **Through-zero PWM** -- Meaningful at audio rates, not LFO rates. Defer to VCO module.
+- [ ] **NanoVG trimpots and jacks** -- Lower visual impact than knobs; SVG versions acceptable for v1.3.
+- [ ] **Animated forge emblem** -- Moving particles, flowing streams. GPU cost vs. design philosophy.
+
+---
+
+## Feature Prioritization Matrix
+
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Morph-integrated PWM | HIGH | MEDIUM | P1 |
+| Forge Noir panel SVG | HIGH | HIGH | P1 |
+| Display three-column layout | HIGH | LOW | P1 |
+| Animated SYNC badge | MEDIUM | LOW | P1 |
+| Character-aware PWM | MEDIUM | LOW | P1 (bundled with PWM) |
+| NanoVG premium knobs | HIGH | HIGH | P2 |
+| Forge emblem background | MEDIUM | MEDIUM | P2 |
+| CRT display aesthetic | MEDIUM | LOW | P2 |
+
+**Priority key:**
+- P1: Must have for v1.3 launch. These define the milestone.
+- P2: Should have. Elevates from "functional" to "premium." Defer only under time pressure.
+
+---
+
+## Competitor Feature Analysis
+
+| Feature | Befaco EvenVCO | Bogaudio VCO | Vult Vessek | Surge XT VCO | Forge Analog LFO (v1.3) |
+|---------|----------------|--------------|-------------|--------------|--------------------------|
+| Waveform morph | None (separate outs) | None (separate outs) | Shape knob per osc | Mode selector | Continuous Sine->Tri->Saw->Square->Pulse on single knob |
+| PWM | Separate PW knob, square only | Separate PW knob, square only | PW knob affects all waveforms | Per-mode controls | Integrated into morph sweep (no extra knob needed) |
+| Analog character | None | None | Inherent in model | Digital (clean) | Dedicated Character knob with classic synth references |
+| Drift/imperfections | None | None | Minimal | None | Drift knob: 4-layer OU, jitter, DC wander, pitch slew, component spread, bleed |
+| Panel design | SVG (flat Befaco) | SVG (flat, functional) | SVG (Vult brand) | Custom NanoVG (skinnable) | Hybrid SVG+NanoVG (Forge Noir premium) |
+| Display | None | None | None | Waveform in LFO | Real-time single-cycle waveform, HUD pills, phase dot, three-column layout |
+| Clock sync | None (VCO) | None (VCO) | None (VCO) | Clock divider | 15 musical ratios, EMA smoothing, division-aware reset, swing |
+| SYNC indicator | N/A | N/A | N/A | N/A | Animated badge with clock-pulse flash |
+
+**Competitive position:** The Forge Analog LFO occupies a unique niche. No other VCV Rack LFO combines continuous waveform morphing (now through pulse), analog character modeling, clock sync with swing, and a premium display. The v1.3 PWM extension and Forge Noir panel further differentiate. The closest visual competitor (Surge XT) has NanoVG rendering but no analog character or morph engine. The closest functional competitor (Vult Vessek) has PW-all-waveforms but no clock sync, display, or drift.
+
+---
+
+## Technical Implementation Notes
+
+### PWM as Morph Extension
+
+**Mathematical approach:** The morph parameter (0.0-1.0) currently maps to 4 segments via `scaled = morph * 3.0`, producing segments [0,1,2] with fractional crossfade. Extending to 5 segments: `scaled = morph * 4.0`, adding segment 3 (square-to-pulse crossfade) with the pulse shape at index 4 in the shapes array.
+
+**computePulse() function:** Parameterized by duty cycle derived from the morph fraction within the square-to-pulse segment. When the morph fraction `frac` is 0.0, duty cycle = 0.50 (identical to square). When frac = 1.0, duty cycle = 0.05 (narrow pulse). Mapping: `duty = 0.50 - frac * 0.45`.
+
+The implementation reuses the same tanh sigmoid approach as computeSquare(), with the variable duty cycle replacing the fixed ~0.5:
 ```
-y=54mm:   [MORPH]                    (RoundBigBlackKnob, x=30.48)
-y=69mm:   [CHARACTER]    [DRIFT]     (RoundLargeBlackKnob, x=18, x=42.96)
-y=86mm:   [RATE]         [CLK]      (RoundBlackKnob x=18, PJ301MPort x=42.96)
-y=96mm:   [MATrim] [CATrim] [DATrim] (Trimpot, x=10, 24, 38)
-y=108mm:  [MCV]   [CCV]   [DCV]  [OUT] (PJ301MPort, x=10, 24, 38, 52)
+center = duty * 0.5
+halfWidth = duty * 0.5
+dist = halfWidth - |phase - center| (with wrap)
+pulse = tanh(sharpness * dist)
 ```
 
-v1.2 additions needed:
-- FM attenuverter trimpot + FM input jack (2 components)
-- RESET input jack (1 component)
-- Phase offset knob + attenuverter trimpot + Phase CV jack (3 components)
+**Duty cycle limits:** Hard floor at 5% (0.05 duty). Below this, the pulse becomes inaudible and visually disappears -- a well-documented issue in synth design. Standard practice across Moog, Roland, Sequential is to restrict range to 5%-95%. Since a 5% duty cycle and a 95% duty cycle sound identical (acoustic symmetry), there is no reason to extend past 50% on the wide side.
 
-Total: 6 new components on an already well-populated 12HP panel.
+**Character interaction:** At character > 0:
+- squareDutySpread offsets base duty (+/-1%, existing)
+- Edge softening: `edgeWidth = c * 0.08` produces tanh-smoothed transitions (existing pattern)
+- Waveform bleed: wrapping ring topology extends from 4 shapes to 5 (sine-tri-saw-sqr-pulse-sine)
+- Pulse neighbors: left=square, right=sine (ring wraps)
 
-**Options:**
-1. **Stay at 12HP, creative layout:** Place RESET and FM near CLK. Phase offset knob replaces or shares the Rate row area. Third row of small components.
-2. **Expand to 14HP (+10.16mm):** Comfortable for all components. Breaks established form factor.
-3. **Defer Phase CV to right-click:** Phase offset becomes knob-only initially (no CV), reducing by 2 components.
-4. **Design panel LAST:** Implement all DSP first with temporary placement, then dedicate a phase to comprehensive panel redesign.
+**Display buffer update:** `updateDisplayBuffer()` calls `computeMorphedWave()` which already handles crossfade. The extended range propagates automatically once computePulse is wired into the shapes array (`float shapes[5] = { sine, tri, saw, sqr, pulse }`) and segment count becomes 4 (`int segment = std::min((int)scaled, 3)`).
 
-**Recommendation:** Option 4 -- design panel once for all features. Panel rework was identified as a v1.0 inefficiency in the retrospective ("Bottom row layout went through three iterations"). Design for the final state.
+**CV behavior:** Morph CV already modulates `morph` in [0, 1] and clamps. Full CV sweep now covers Sine through narrow Pulse transparently. No CV path changes needed.
+
+**Backward compatibility:** At morph=0.75 (previously: full square), the new 5-segment mapping places this at segment 3 frac 0.0, which is square-to-pulse crossfade at 0% = pure square. Users with patches at morph=1.0 will hear square (since square is now at ~0.75 in the sweep). IMPORTANT: This is a breaking change for existing patches that use morph at specific values. Morph knob position meanings shift. Mitigate by documenting in changelog and ensuring morph CV still sweeps the full useful range.
+
+### Panel SVG + NanoVG Hybrid Strategy
+
+**SVG handles:** Panel background (#0c0c0c flat fill), accent bars (flat color -- gradients are unreliable in nanosvg), hex bolt outlines (polygon shapes), text labels (as `<path>` elements exported from font outlines -- NOT `<text>` tags which nanosvg does not render), section divider lines, decorative slashes, module name, brand text, forge rune (simple paths only, no blur filter). Component positions marked as invisible reference circles.
+
+**NanoVG handles:** Knob rendering (multi-layer radial gradients), forge emblem glow elements (radial gradients that nanosvg may fail on), display border glow (animated, needs per-frame update), CRT scanlines (repeating pattern), corner bracket accents. Rendered in drawLayer() on layer 1 for light/bloom effects per VCV community documentation.
+
+**FramebufferWidget strategy:** Each NanoVG knob wraps in its own FramebufferWidget. Dirty flag set on parameter change only (rotation). The WaveformDisplay widget already redraws every frame for phase dot animation -- no FramebufferWidget needed there (and wrapping it would prevent animation).
+
+**nanosvg limitations confirmed via VCV Community:**
+- Complex multi-stop gradients: unreliable rendering
+- Gaussian blur filters: not supported
+- CSS styling: not supported
+- `<text>` elements: not rendered (must use `<path>` outlines)
+- Simple two-color linear gradients: generally work
+- Opacity: works reliably
+- `<use>` with transforms: works (confirmed for mirror technique)
+
+### Animated SYNC Badge
+
+**Current state:** `syncFadeAlpha` fades in (200ms) when clock detected, fades out when clock lost. During ACQUIRING, alpha is modulated by a 2Hz sinusoidal blink (`breathePhase * 2.5`).
+
+**New behavior -- two-state approach:**
+- **ACQUIRING:** Keep existing 2Hz blink (unchanged). Communicates "searching for clock."
+- **LOCKED:** Add `clockFlashEnvelope` (new `std::atomic<float>`). Set to 1.0 on each clock edge in processClockInput(). In WaveformDisplay::step(), decay: `clockFlashEnvelope *= 0.92f` (~200ms decay at 60fps). Multiply SYNC badge alpha by `max(0.6f, clockFlashEnvelope)` to produce brief brightening on each pulse while maintaining base visibility.
+
+**Visual effect:** SYNC badge at steady ~60% alpha when locked, with brief 100% flashes on each clock edge. Communicates "I am receiving and tracking pulses" without the instability of the ACQUIRING blink. The ember color (#e85d26) intensifies briefly on each pulse.
+
+**Implementation cost:** One new atomic float, one line in processClockInput(), three lines in WaveformDisplay::step(). Trivial.
+
+### Display Three-Column Layout
+
+**Current layout:** Ad-hoc pill positions with 4px margins. Hz top-left, ratio top-left (replacing Hz), SYNC top-right, BPM stack bottom-right, swing bottom-left.
+
+**New layout per Forge Noir mockup (v19) and DESIGN-LANGUAGE.md:**
+- Left column (x: 16-55 at display scale): Ratio pill (top), Hz readout (top, exclusive with ratio), Swing pill + label (bottom)
+- Center column (x: 64-256): Single-cycle waveform trace with phase dot, dashed zero-crossing reference line
+- Right column (x: 262-302): SYNC badge (top), CLK BPM (bottom), LFO BPM (bottom, below CLK)
+
+The three-column approach eliminates overlap risk. Each column has fixed x-bounds regardless of text length. The center waveform column is the widest (~60% of display width).
+
+**New display elements:**
+- Corner bracket accents: 8x8px L-shaped ember paths at each corner (1.5px stroke, opacity 0.4)
+- CRT scanlines: repeating horizontal bands (2px transparent, 2px at opacity ~0.03)
+- Animated border glow: nvgBoxGradient around display rect, opacity pulsing via breathePhase (0.08 to 0.18 over 5-second cycle)
+- Background color change: from current blue-black (#0D0D1A) to near-black (#030303) per Forge Noir spec
 
 ---
 
-## MVP Recommendation
+## Backward Compatibility Considerations
 
-**Priority order for v1.2 phases:**
-
-1. **Display text readability fix + incoming clock BPM** -- Quick wins, immediate UX improvement, no DSP risk
-2. **RESET jack** -- Table stakes, low complexity, reuses existing crossfade
-3. **FM input jack** -- Table stakes, low complexity, high user value
-4. **Phase offset knob/CV** -- Differentiator, medium complexity, depends on RESET
-5. **Expanded imperfections** -- Differentiator, high complexity, core identity deepening
-6. **Waveform bleed** -- Differentiator, medium complexity, extends character knob
-7. **Swing/shuffle** -- Differentiator, high complexity, clocked-mode only
-8. **Panel redesign** -- Accommodates all new components in final layout
-
-**Defer if scope must be trimmed:** Swing/shuffle is the best deferral candidate. It has the most complex interactions (clock sync + phase reset + phase offset + division ratios), is only useful in clocked mode, and the right-click menu approach means it needs no panel changes -- easy to add in v1.2.1 or v1.3.
-
----
-
-## Competitive Landscape
-
-| Feature | VCV Fundamental LFO | Bogaudio LFO | Bogaudio 8FO | Mutable Tides | Forge Analog LFO (after v1.2) |
-|---------|---------------------|--------------|--------------|---------------|-------------------------------|
-| FM input | Yes (lin + expo) | Yes (V/Oct) | Yes | Yes (expo) | Yes (linear) |
-| RESET jack | Yes | No | No | Yes (gate) | Yes |
-| Phase offset | No | No | Yes (8 fixed) | Yes (per output) | Yes (knob + CV) |
-| Swing/shuffle | No | No | No | No | Yes (clocked mode) |
-| Analog character | No | No | No | Wavefolder only | Yes (per-shape modeling) |
-| Multi-layer drift | No | No | No | No | Yes (4-layer OU) |
-| Expanded imperfections | No | No | No | No | Yes (jitter, DC offset, slew, spread) |
-| Waveform bleed | No | No | No | No | Yes |
-| Clock sync | Yes | No | No | Yes | Yes (15 ratios) |
-| Waveform display | No | No | No | No | Yes (real-time with dot) |
-| Continuous morph | No | Wave selector | No | Shape knob | Yes (4-shape continuous) |
-
-**Positioning:** After v1.2, Forge Analog LFO will have the most comprehensive analog-character feature set of any LFO in the VCV Rack ecosystem. The combination of three-knob analog engine + clock sync + FM + phase offset + swing + expanded imperfections + waveform display is unmatched by any single module.
-
----
-
-## Backward Compatibility (Non-Negotiable)
-
-| Requirement | How to Verify |
-|-------------|--------------|
-| No new inputs/params alter existing behavior at default values | FM atten=0, phase offset=0, swing=50% produce identical output to v1.1 |
-| Existing patches load correctly in v1.2 | New params have safe defaults; new inputs unconnected = no effect |
-| No CPU regression for basic operation | New features early-exit when params are at default values |
-| Display unchanged when new features inactive | HUD backgrounds only appear behind active text |
-| Output voltage range unchanged | Still bipolar +/-5V; DC offset drift adds ~50mV max (within spec) |
-| Drift=0 still means digital perfection | All new imperfections gated by `drift >= 0.001f` check |
+| Concern | Impact | Mitigation |
+|---------|--------|------------|
+| Morph range remapping (4->5 segments) | Existing patches with specific morph values will produce different waveforms. Morph=1.0 was square, now maps to narrow pulse. | Document in changelog. Morph=0.75 is now approximately where square lives. This is an intentional design change, not a bug. |
+| Panel size change (12HP->14HP) | Existing patches with tight module placement may need adjustment. | Standard VCV Rack behavior -- users expect panel size may change between versions. |
+| Display layout change | Pill positions move. No functional impact. | Purely visual -- no user-facing behavior change. |
+| New atomic (clockFlashEnvelope) | Trivial memory addition. No existing state affected. | Default to 0.0 -- no flash until first clock edge. |
 
 ---
 
 ## Sources
 
-### HIGH Confidence (Official documentation, verified APIs, direct inspection)
-- VCV Rack SDK `dsp/digital.hpp` -- SchmittTrigger API (0.1V/1.0V thresholds), verified from local SDK
-- Existing `src/AnalogLFO.cpp` source (890 lines) -- verified integration points, current enum layout, all existing patterns
-- [VCV Library - VCV LFO](https://library.vcvrack.com/Fundamental/LFO) -- Fundamental LFO feature set: FM input (linear/expo toggle), RESET input, CLK input, UNI/BI switch, polyphonic
-- [Mutable Instruments Tides documentation](https://pichenettes.github.io/mutable-instruments-documentation/modules/tides_2018/manual/) -- Phase shift per output in cyclic mode, FM via expo CV, trigger reset, shape/slope/smoothness
+### HIGH Confidence (Official docs, verified APIs, direct code inspection)
+- Current `src/AnalogLFO.cpp` (1,374 lines) -- all existing patterns, integration points, morph engine structure
+- [VCV Rack FramebufferWidget API](https://vcvrack.com/docs-v2/structrack_1_1widget_1_1FramebufferWidget) -- dirty flag, caching, setDirty(), performance characteristics
+- [VCV Rack Module Panel Guide](https://vcvrack.com/manual/Panel) -- SVG requirements, nanosvg constraints
+- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) -- drawLayer, TransparentWidget, widget lifecycle
+- Forge Noir DESIGN-LANGUAGE.md -- complete panel specification, typography, color palette, component sizing
+- Forge Noir mockup v19 (forge-noir-v19.png) -- visual reference for all panel and display layout
 
-### MEDIUM Confidence (Multiple sources agree, community-verified patterns)
-- [VCV Community - FM CV levels](https://community.vcvrack.com/t/fm-cv-levels-correspond-to-what-exactly/13561) -- FM voltage scaling conventions
-- [KVR Audio - Implementing swing](https://www.kvraudio.com/forum/viewtopic.php?t=261858) -- Swing/shuffle DSP approaches, TR-909 shuffle tick values
-- [Cycling '74 - Shuffle for phasor LFO](https://cycling74.com/forums/shuffle-or-swing-for-a-phasor-driven-lfo) -- Phase warping approaches for LFO swing
-- [4ms Shuffling Clock Multiplier](https://4mscompany.com/scm.php) -- Slip/shuffle: CV shifts beats forward, 5 slipped + 3 steady outputs
-- [Impromptu Clocked](https://library.vcvrack.com/ImpromptuModular/Clocked) -- Swing + clock delay + pulse width as core features
-- [Bogaudio GitHub](https://github.com/bogaudio/BogaudioModules) -- LFO V/Oct tracking, 8FO phase outputs
-- [Cherry Audio Quadrature VLFO](https://store.cherryaudio.com/modules/quadrature-vlfo) -- Phase Adjust knob 0-360 degrees
-- [Erica Synths Black Octasource](https://www.sweetwater.com/store/detail/BkOctasource--erica-synths-black-octasource-syncable-lfo-eurorack-module-with-phase-shift) -- 8 syncable outputs, 45-degree shifts
-- [New Systems Instruments QLFO](https://nsinstruments.com/modules/qlfo.html) -- 8 phase-shifted outputs, tunable
-- [MOD WIGGLER - LFO with sync and reset](https://www.modwiggler.com/forum/viewtopic.php?t=222452) -- Community expectations for RESET jack behavior
-- [Noise Engineering - Vibrato](https://noiseengineering.us/blogs/loquelic-literitas-the-blog/vibrato/) -- FM/vibrato: pitch modulation < 1 semitone, sine or triangle LFO source
-- [Analog Devices - Temperature Drift](https://analogtoolshub.com/temperature-drift-analog-circuits/) -- DC offset drift mechanisms, temperature coefficient specs
-- [AllAboutCircuits - Component Aging](https://www.allaboutcircuits.com/technical-articles/electronic-component-aging-aging-effects-of-resistors-and-operational-amps/) -- Op-amp offset drift proportional to sqrt(elapsed time)
-- [Vintage Synth Forum - Analog drift](https://forum.vintagesynth.com/viewtopic.php?t=54750) -- Real-world drift: tuning drift as circuits warm, EM interference, component aging
-- [MOD WIGGLER - Adding swing to clock](https://modwiggler.com/forum/viewtopic.php?t=174713) -- Modular swing: delay-based, LFO-based, alternating gate timing
+### MEDIUM Confidence (Multiple sources agree, community-verified)
+- [Perfect Circuit: What is PWM?](https://www.perfectcircuit.com/signal/what-is-pwm) -- 5%-95% duty cycle limits, harmonic behavior, synth design conventions
+- [Sound on Sound: Synthesizing Strings with PWM](https://www.soundonsound.com/techniques/synthesizing-strings-pwm-string-sounds) -- duty cycle acoustic symmetry, standard limits
+- [RS-MET waveform morph discussion](https://github.com/RobinSchmidt/RS-MET/discussions/323) -- linear segment composition, morph parameter math, DC-free normalization
+- [Vult Vessek documentation](https://modlfo.github.io/VultModules/vessek/) -- PW affecting all waveforms, integrated morph+PW pattern
+- [VCV Community: Custom Widget Light Bloom](https://community.vcvrack.com/t/custom-widget-light-bloom/14647/3) -- ring lights via dual radial gradients, box gradients for bloom, NanoVG paint boundary semantics
+- [VCV Community: SVG Gradients](https://community.vcvrack.com/t/svg-transparencies-and-gradients/16833) -- nanosvg gradient rendering limitations
+- [VCV Community: drawLayer layers](https://community.vcvrack.com/t/drawlayer-has-anyone-figured-out-all-the-possible-layers/15542) -- layer 1 for lights/glow rendering
+- [Mutable Instruments Plaits manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/plaits/manual/) -- waveform morph engine, narrow pulse behavior
 
-### LOW Confidence (General knowledge, single source, needs validation)
-- Waveform bleed percentages (0.5-3%) -- general knowledge of CD4066 analog switch characteristics, not measured from specific synths
-- Component spread tolerances (1-5% resistor, 10-20% capacitor) -- standard EIA bands, not synth-specific
-- Phase jitter magnitude (0.01-0.5% of cycle) -- general oscillator knowledge, not vintage synth measurements
-- Panel density feasibility at 12HP with all v1.2 additions -- needs visual verification
+### LOW Confidence (Single source or general knowledge)
+- Exact GPU cost of multi-pass NanoVG knob rendering -- needs profiling on target hardware
+- FramebufferWidget behavior with multiple gradient passes -- needs empirical testing
+- nanosvg `<use>` with scale(-1,1) transform for mirror -- documented in design language but needs SVG rendering verification
+
+---
+*Feature research for: Forge Audio Analog LFO v1.3 Forge Noir*
+*Researched: 2026-03-27*

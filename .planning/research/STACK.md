@@ -1,453 +1,284 @@
-# Technology Stack: v1.2 Deep Analog Additions
+# Stack Research: v1.3 Forge Noir
 
-**Project:** Forge Audio Analog Series -- v1.2 Deep Analog milestone
-**Researched:** 2026-03-13
-**Confidence:** HIGH (all additions use VCV Rack SDK built-ins, C++ standard library, and hand-rolled DSP algorithms with no external dependencies)
-
-## Scope
-
-This document covers ONLY stack additions and changes for v1.2 features. The validated v1.0/v1.1 stack (VCV Rack 2 SDK, C++17, NanoVG display, nanosvg panel, GNU Make/plugin.mk, lock-free double buffer, OU drift engine, SchmittTrigger/Timer clock tracking, ExponentialFilter period smoothing) is unchanged. No new dependencies are introduced.
+**Domain:** VCV Rack 2 module development -- adding PWM morph extension, Forge Noir SVG panel, display layout changes, and animated sync badge to existing C++ LFO module
+**Researched:** 2026-03-27
+**Confidence:** HIGH (validated against existing codebase, VCV Rack SDK docs, nanosvg/NanoVG references)
 
 ---
 
-## New SDK Components Needed
+## What Already Exists (DO NOT ADD)
 
-### FM Input: Exponential Frequency Modulation
+The v1.2 codebase already has everything needed for core DSP and rendering. No new libraries, frameworks, or dependencies are required for v1.3. The existing stack is:
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| `std::pow(2.f, ...)` (C++ `<cmath>`) | C++17 standard | Convert FM CV voltage to exponential frequency multiplier | FM at LFO rates should be exponential (V/Oct style), not linear. Exponential FM modulates pitch by equal musical intervals up and down: `freq *= std::pow(2.f, fmVoltage * fmDepth)`. This matches VCV Rack voltage standards where 1V = 1 octave. At sub-audio rates, exponential FM produces musically useful vibrato/warble. Linear FM (`freq += voltage * index`) is for audio-rate timbral FM -- inappropriate for an LFO where users expect pitch-symmetric modulation. |
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| VCV Rack 2 SDK (~2.6) | Framework, build system, component library | In place |
+| C++17 | Module DSP + widget code | In place |
+| NanoVG (bundled in SDK) | Real-time display rendering | In place |
+| nanosvg (bundled in SDK) | Panel SVG parsing/rasterization | In place |
+| Standard VCV Makefile + plugin.mk | Build system | In place |
 
-**Implementation pattern (exponential FM for LFO):**
-```cpp
-// In process(), after base frequency calculation:
-float fmVoltage = inputs[FM_INPUT].getVoltage();  // +/-5V typical
-float fmDepth = params[FM_ATTEN_PARAM].getValue(); // 0..1 attenuverter
-float fmMultiplier = std::pow(2.f, fmVoltage * fmDepth);
-freq *= fmMultiplier;
-freq = rack::math::clamp(freq, 0.001f, 100.f);  // safety clamp
-```
-
-**Why NOT `dsp::exp2_taylor5()`:** The SDK's fast approximation is designed for SIMD polyphonic paths where accuracy trade-offs matter. Our LFO is monophonic and already uses `std::pow` elsewhere. One `std::pow(2.f, x)` per sample at LFO rates is negligible CPU cost. Use the standard library for correctness.
-
-**Why NOT linear FM:** At sub-audio rates, linear FM shifts the mean frequency upward (asymmetric modulation). With exponential FM, +1V doubles frequency and -1V halves it -- musically symmetric intervals. This matches how every VCV Rack V/Oct input works and what users expect from a CV-controlled frequency input.
-
-**FM depth attenuverter vs. attenuator:** Use an attenuator (0 to 1), not an attenuverter (-1 to 1). The FM input voltage is already bipolar. An attenuverter on FM depth would invert the modulation direction, which is confusing for LFO FM (unlike VCO FM where inversion enables through-zero FM effects). Keep it simple: depth 0 = no FM, depth 1 = full FM range.
-
-### Separate RESET Jack: Trigger Detection
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| `rack::dsp::SchmittTrigger` (second instance) | SDK built-in | Detect rising edge on RESET input independently from CLK | Already used for CLK input. Add a second `SchmittTrigger` instance for the RESET jack. Standard VCV pattern -- modules like Fundamental VCO use separate SchmittTrigger instances for sync and reset inputs. Use same thresholds (0.1V low, 1.0V high). |
-
-**Implementation pattern:**
-```cpp
-dsp::SchmittTrigger resetTrigger;  // NEW member
-
-// In process():
-if (resetTrigger.process(inputs[RESET_INPUT].getVoltage(), 0.1f, 1.0f)) {
-    crossfadeFrom = lastOutputVoltage;  // reuse existing anti-click crossfade
-    crossfadeProgress = 0.f;
-    phase = 0.0 + (double)phaseOffset;  // reset to phase offset position
-    clockBeatCount = 0;                 // reset division counter too
-}
-```
-
-**Interaction with CLK:** RESET is independent from CLK. CLK resets phase on beat boundaries for sync; RESET forces immediate phase reset regardless of clock state. Both share the existing anti-click cosine crossfade mechanism. No new crossfade code needed.
-
-### Phase Offset Knob/CV
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| Phase offset as additive constant | No dependency | Shift LFO output phase by 0-360 degrees | Phase offset is trivially implemented by adding a constant to the phase accumulator before waveform computation. No SDK utility needed. The offset applies to the read phase, not the accumulator, to avoid drift: `float p = std::fmod((float)phase + phaseOffset, 1.f)`. |
-
-**Implementation pattern:**
-```cpp
-// In constructor:
-configParam(PHASE_OFFSET_PARAM, 0.f, 1.f, 0.f, "Phase Offset", " deg", 0.f, 360.f);
-
-// In process(), after phase accumulation:
-float offsetKnob = params[PHASE_OFFSET_PARAM].getValue();
-float offsetCV = inputs[PHASE_OFFSET_CV_INPUT].getVoltage();
-float phaseOffset = rack::math::clamp(offsetKnob + offsetCV / 10.f, 0.f, 1.f);
-float p = std::fmod((float)phase + phaseOffset, 1.f);
-float sample = computeMorphedWave(p, morph, character);
-```
-
-**Why additive read-offset, not accumulator modification:** Modifying the phase accumulator with the offset would cause discontinuities when the offset changes (knob turn = phase jump = click). Instead, add the offset only at the point of waveform evaluation. The accumulator runs cleanly; the offset shifts the "window" into the waveform. This also means the display phase dot tracks the offset naturally.
+**No new dependencies. No new libraries. No new build system changes.** The v1.3 milestone is purely implementation work within the existing stack.
 
 ---
 
-## New Algorithms: No External Libraries
+## Stack Requirements Per Feature
 
-All v1.2 DSP features are hand-rolled algorithms using only C++ standard library math. No external DSP libraries are needed or recommended.
+### 1. PWM as Morph Extension
 
-### Expanded Analog Imperfections
+**What's needed:** Pure C++ math. No new dependencies.
 
-These four new imperfection layers integrate into the existing drift architecture. They are all simple per-sample computations.
+**Implementation stack:**
 
-#### 1. Phase Jitter
+| Component | What | Why |
+|-----------|------|-----|
+| `computePulse()` function | New waveform generator using phase comparison against variable duty cycle | Extends the morph sweep from 4 shapes (sine/tri/saw/square) to 5 (+ narrow pulse) |
+| Morph scaling change | `morph * 4.f` instead of `morph * 3.f`, 4 segments instead of 3 | Adds a fifth position at morph=1.0 while preserving existing waveform positions at 0.0, 0.25, 0.5, 0.75 |
+| `tanh()` edge softening | Same sigmoid technique already used in `computeSquare()` | Consistent analog character modeling; reuse existing pattern |
+| Bleed ring expansion | `shapes[5]` wrapping ring instead of `shapes[4]` | Waveform bleed (CHAR-05) needs to include pulse as a neighbor of square and wrap back to sine |
 
-| Algorithm | Source | Purpose | Why This Approach |
-|-----------|--------|---------|-------------------|
-| OU process on phase accumulator | Extension of existing 4-layer OU drift | Random per-sample phase perturbation simulating capacitor noise | The existing drift engine applies OU noise to deltaPhase (frequency domain). Phase jitter adds a separate OU noise source directly to the phase readout. This models a different physical phenomenon: not pitch instability but timing uncertainty in the oscillator core. Use a single fast OU layer (~5-10 Hz bandwidth) with small amplitude (0.001-0.005 of a cycle). Scale with drift knob. |
+**Key technical detail:** The square-to-pulse morph is a continuous duty cycle narrowing. At morph=0.75 (square), duty is 50%. At morph=1.0 (narrow pulse), duty narrows to ~10-15%. The `character` knob should apply the same type of analog deformation (edge softening, duty asymmetry with component spread) as it does for square.
 
-```cpp
-// New member:
-OULayer phaseJitterLayer;  // ~8Hz, small sigma
+**What NOT to add:**
+- No separate PWM knob or CV input. The morph knob IS the PWM control in the square-to-pulse region.
+- No PWM LFO. The morph CV input provides external PWM modulation.
+- No anti-aliasing (polyBLEP). This is an LFO at sub-audio rates. Anti-aliasing is a VCO concern (deferred to v2.0).
 
-// In process():
-float jitter = phaseJitterLayer.state * phaseJitterLayer.weight;
-float p = std::fmod((float)phase + phaseOffset + jitter * driftAmount, 1.f);
-if (p < 0.f) p += 1.f;  // handle negative jitter wrapping
-```
-
-#### 2. DC Offset Drift
-
-| Algorithm | Source | Purpose | Why This Approach |
-|-----------|--------|---------|-------------------|
-| Slow OU process on output voltage | Hand-rolled | Wandering DC offset simulating capacitor coupling and op-amp bias drift | Real analog oscillators have slowly wandering DC offset from aging capacitors and thermal drift in op-amp bias currents. Add a very slow OU layer (~0.02-0.05 Hz) that adds a small voltage offset to the final output. Maximum offset: ~50-100mV at full drift (1-2% of 5V output). This is subtle but measurable -- exactly how analog gear behaves. |
-
-```cpp
-// New member:
-OULayer dcOffsetLayer;  // ~0.03Hz, very slow wander
-
-// In process(), after waveform computation:
-float dcOffset = dcOffsetLayer.state * dcOffsetLayer.weight * driftAmount;
-float outputVoltage = 5.f * sample + dcOffset * 0.1f;  // max ~50mV offset
-```
-
-#### 3. Pitch Slew (Slew-Rate Limited Frequency)
-
-| Algorithm | Source | Purpose | Why This Approach |
-|-----------|--------|---------|-------------------|
-| Exponential slew on frequency target | `b1 = exp(-1 / slewTime)` one-pole filter | Simulates VCO core that cannot change frequency instantaneously | Real analog VCOs have integrating capacitors that slew between frequencies. When the rate knob changes quickly or FM modulation is fast, the frequency should lag slightly behind. The existing `freqSlew` (ExponentialFilter with lambda=20) handles clock/free transitions. For analog pitch slew, add a second, lighter slew (lambda ~100-200, i.e. 5-10ms time constant) that runs always, simulating the capacitor charging time of an analog VCO core. Scale the slew effect with the character knob (digital = instant, analog = slewed). |
-
-```cpp
-// Reuse existing SDK utility:
-dsp::TExponentialFilter<float> analogPitchSlew;
-
-// In constructor:
-analogPitchSlew.setLambda(150.f);  // ~6.7ms time constant
-
-// In process():
-float slewedFreq;
-if (character > 0.001f) {
-    float slewAmount = progressiveCurve(character);
-    float lambda = rack::math::rescale(slewAmount, 0.f, 1.f, 1000.f, 100.f);
-    analogPitchSlew.setLambda(lambda);
-    slewedFreq = analogPitchSlew.process(args.sampleTime, freq);
-} else {
-    slewedFreq = freq;
-    analogPitchSlew.out = freq;  // keep filter primed
-}
-```
-
-**Why tie to character knob, not drift knob:** Pitch slew is about the oscillator core's response characteristics (hardware design), not random instability. Character models "what kind of hardware is this" while drift models "how unstable is it." A Minimoog's VCO core has inherent slew; that is character, not drift.
-
-#### 4. Component Spread (Per-Instance Tolerance Variation)
-
-| Algorithm | Source | Purpose | Why This Approach |
-|-----------|--------|---------|-------------------|
-| Truncated Gaussian parameter offsets, initialized once per module instance | Jatin Chowdhury's "Bad Circuit Modelling" approach | Each module instance gets slightly different waveform characteristics | Real analog synths have component tolerances (resistors at +/-5%, capacitors at +/-10%). Two "identical" oscillators sound slightly different. Model this by generating per-instance random offsets at module construction using the existing Xoroshiro128Plus RNG. Apply as small multipliers to character parameters: duty cycle offset, triangle asymmetry offset, saw curvature offset, etc. These are fixed for the module lifetime (persist across saves via seed serialization), making each instance unique. |
-
-```cpp
-// New member:
-struct ComponentSpread {
-    float dutyOffset;      // +/-0.02 (2% variation)
-    float triangleAsym;    // +/-0.015
-    float sawCurvature;    // +/-0.02
-    float sineThd;         // +/-0.01
-};
-ComponentSpread spread;
-
-// In constructor, after RNG seeding:
-auto gaussRand = [&]() -> float {
-    return rack::math::clamp(normalDist(rng) * 0.33f, -1.f, 1.f);
-};
-spread.dutyOffset = gaussRand() * 0.02f;
-spread.triangleAsym = gaussRand() * 0.015f;
-spread.sawCurvature = gaussRand() * 0.02f;
-spread.sineThd = gaussRand() * 0.01f;
-```
-
-**Why truncated Gaussian, not uniform:** Real component values cluster around the nominal with a Gaussian distribution, but extreme outliers are rejected by quality control (the "truncation"). Clamp at +/-1 sigma times the tolerance. Uniform distribution would over-represent extreme values.
-
-**Serialization consideration:** To make each module instance consistently unique across patch saves, serialize the RNG seed (two uint64_t values) via `dataToJson`/`dataFromJson`. This is a deliberate departure from the v1.0 decision of "no OU state serialization" because component spread represents fixed hardware characteristics, not random runtime behavior. The OU drift layers should remain uninitialized on load (analog-authentic randomness).
-
-### Waveform Bleed During Morph Transitions
-
-| Algorithm | Source | Purpose | Why This Approach |
-|-----------|--------|---------|-------------------|
-| Widened crossfade window with secondary shape mixing | Hand-rolled | Adjacent waveforms partially leak into morph position | Currently, morphing uses a linear crossfade between adjacent shapes with a hard boundary at integer morph positions. Real analog morphers (like the Prophet VS vector joystick) have cross-coupling where adjacent shapes bleed into each other. Implement by widening the crossfade region so that at morph=0.5 (tri position), a trace of sine and saw is present. This is NOT equal-power crossfade -- it is a wider transition window where secondary shapes contribute at reduced amplitude. |
-
-```cpp
-// Modified computeMorphedWave with bleed:
-float computeMorphedWave(float phase, float morph, float character, float bleedAmount) {
-    float sine = computeSine(phase, character);
-    float tri  = computeTriangle(phase, character);
-    float saw  = computeSaw(phase, character);
-    float sqr  = computeSquare(phase, character);
-    float shapes[4] = {sine, tri, saw, sqr};
-
-    if (bleedAmount < 0.001f) {
-        // Original behavior (no bleed)
-        // ... existing segment crossfade code ...
-    }
-
-    // With bleed: each shape gets a weight based on distance from morph position
-    float scaled = morph * 3.f;
-    float result = 0.f;
-    float totalWeight = 0.f;
-    for (int i = 0; i < 4; i++) {
-        float dist = std::fabs(scaled - (float)i);
-        float weight = std::fmax(0.f, 1.f - dist / (1.f + bleedAmount * 2.f));
-        weight *= weight;  // quadratic falloff for natural bleed
-        result += shapes[i] * weight;
-        totalWeight += weight;
-    }
-    return result / totalWeight;  // normalize to prevent amplitude change
-}
-```
-
-**Why tie to character knob:** Waveform bleed is a property of the morphing circuit's impedance matching and buffer isolation. More "analog" character = more bleed. At character=0 (digital), morphing is crisp crossfades. At character=1, adjacent shapes leak ~5-10%.
-
-### Swing/Shuffle for Clocked Mode
-
-| Algorithm | Source | Purpose | Why This Approach |
-|-----------|--------|---------|-------------------|
-| Even-beat phase offset within LFO cycle | Standard swing algorithm (TR-909 pattern) | Delay every other beat to create rhythmic groove | Swing works by alternating the timing of even-numbered subdivisions. At 50% swing = straight time. At 66.7% = triplet feel. At 75% = dotted-note feel. For a clocked LFO, swing modifies the phase accumulation rate: advance faster during the first half of each beat pair, slower during the second half. This creates the characteristic "long-short" pattern without changing the overall cycle length. |
-
-**Implementation approach:**
-
-Swing at the LFO level is conceptually different from swing on a sequencer. The LFO produces a continuous waveform, not discrete steps. Swing should subtly warp the phase progression so that the waveform "lingers" on the first half and "rushes" through the second half of each beat pair.
-
-```cpp
-// New member:
-float swingAmount = 0.5f;  // 0.5 = straight, 0.67 = triplet, 0.75 = dotted
-
-// In process(), when clocked:
-if (isClocked && swingAmount > 0.501f) {
-    // Determine position within beat pair (0..1 over two beats)
-    float beatPairPhase = std::fmod((float)phase * 2.f, 1.f);
-    // Phase warping: stretch first half, compress second half
-    float warpedRate;
-    if (beatPairPhase < swingAmount) {
-        warpedRate = 0.5f / swingAmount;       // slower (stretch)
-    } else {
-        warpedRate = 0.5f / (1.f - swingAmount); // faster (compress)
-    }
-    deltaPhase *= warpedRate;
-}
-```
-
-**Constraint:** Swing only applies in clocked mode. In free-running mode, there are no "beats" to swing against. The swing parameter should have no effect (or be hidden/grayed) when CLK is not connected.
-
-**Why NOT a separate swing clock:** Some modular approaches use a gate delay on alternate triggers. That pattern is for sequencers and drum machines. An LFO produces a continuous signal -- swing must warp the phase progression, not delay triggers.
+**Confidence:** HIGH. This is straightforward DSP math using the exact same patterns already validated in `computeSquare()`.
 
 ---
 
-## Display Enhancements
+### 2. Forge Noir Panel SVG (nanosvg constraints)
 
-### Text Overlay Readability (HUD Backgrounds)
+**What's needed:** A new 14HP SVG file respecting nanosvg's limited feature set, plus custom SVG component widgets (hex bolt screws, Forge knobs, Forge jacks).
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| `nvgTextBounds()` + `nvgRoundedRect()` | NanoVG (SDK bundled) | Measure text extents, draw semi-transparent pill backgrounds | The current text overlays (SYNC badge, ratio label, BPM readout, Hz readout) use glow rendering but can be hard to read when the waveform trace passes behind them. Solution: measure each text string's bounds with `nvgTextBounds()`, then draw a small semi-transparent rounded rectangle behind it before rendering the text. This is the standard "HUD pill" pattern used throughout VCV Rack's own modules. |
+**nanosvg Supported Features (use these):**
 
-```cpp
-void drawHudText(NVGcontext* vg, int fontHandle, float x, float y,
-                 const char* text, float fontSize, int align, float alpha) {
-    nvgFontFaceId(vg, fontHandle);
-    nvgFontSize(vg, fontSize);
-    nvgTextAlign(vg, align);
+| SVG Feature | Support Level | Notes |
+|-------------|---------------|-------|
+| `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>`, `<polygon>` | Full | All basic shapes work |
+| `<path>` with M/L/C/S/Q/T/A/Z commands | Full | All path commands including arcs |
+| `<g>` groups with `transform` | Full | translate, scale, rotate, skewX, skewY, matrix |
+| `fill`, `stroke`, `stroke-width` | Full | Inline attributes only (not CSS) |
+| `opacity`, `fill-opacity`, `stroke-opacity` | Full | Per-element opacity works |
+| `<linearGradient>` (2-color) | Full | Simple two-stop linear gradients |
+| `<radialGradient>` (2-color, circular) | Partial | Circular only (cx/cy/r). No fx/fy. No elliptical. Improved in VCV 2.6 |
+| `fill-rule` (evenodd, nonzero) | Full | Already used in current panel for letter cutouts |
+| `stroke-dasharray`, `stroke-linecap`, `stroke-linejoin` | Full | Dashed lines, round/butt/square caps |
+| Units: mm, px, pt, cm, in | Full | Panel must use mm (71.12mm x 128.5mm for 14HP) |
 
-    // Measure text bounds
-    float bounds[4];
-    nvgTextBounds(vg, x, y, text, NULL, bounds);
+**nanosvg NOT Supported (avoid these):**
 
-    // Draw semi-transparent pill background
-    float pad = 2.f;
-    nvgBeginPath(vg);
-    nvgRoundedRect(vg,
-        bounds[0] - pad, bounds[1] - pad,
-        (bounds[2] - bounds[0]) + 2.f * pad,
-        (bounds[3] - bounds[1]) + 2.f * pad,
-        2.f);
-    nvgFillColor(vg, nvgRGBAf(0.051f, 0.051f, 0.102f, 0.75f * alpha));
-    nvgFill(vg);
+| SVG Feature | Status | Workaround |
+|-------------|--------|------------|
+| `<text>` / `<tspan>` | Not supported | Convert all text to `<path>` geometry (already done in current panel) |
+| `<use>` / `<defs>` references | Not supported | Inline all geometry. No symbol reuse. |
+| CSS `<style>` blocks | Not supported | Use inline `fill=` / `stroke=` attributes only |
+| `<filter>` (blur, drop-shadow) | Not supported | Approximate glows with semi-transparent overlapping shapes |
+| `<clipPath>` / `<mask>` | Not supported | Use path intersection or opacity layering |
+| Multi-stop gradients (3+ stops) | Not supported | Chain multiple 2-stop gradient rectangles to simulate |
+| Gradient transforms (`gradientTransform`) | Buggy | Avoid. Position gradient coordinates in absolute space |
+| `<image>` | Not supported | Everything must be vector |
+| CSS animations | Not supported | No animated SVG; animation lives in NanoVG code |
 
-    // Render text on top (keep existing glow technique)
-    drawGlowText(vg, fontHandle, x, y, text, fontSize, align, alpha);
-}
+**Custom SVG Components needed:**
+
+| Component | Type | Approach |
+|-----------|------|----------|
+| Hex bolt screws | `app::SvgScrew` subclass | Create `ForgeHexBolt.svg` (hex with socket detail), load via `setSvg(Svg::load(asset::plugin(...)))` |
+| Hero knob (MORPH) | `app::SvgKnob` subclass | Create `ForgeKnobXL.svg` (background) + `ForgeKnobXL-bg.svg` if needed. Knurled ring as concentric path rings in SVG |
+| Secondary knobs (CHAR/DRIFT) | `app::SvgKnob` subclass | `ForgeKnobLG.svg` -- machined metal look via radial gradient (2-color only) |
+| Utility knobs (RATE/PHASE) | `app::SvgKnob` subclass | `ForgeKnobMD.svg` -- same visual language, smaller |
+| Trimpots | `app::SvgKnob` subclass | `ForgeTrim.svg` -- scalloped trimpot with directional indicator |
+| Input jacks | `app::SvgPort` subclass | `ForgeJackSmall.svg` -- PJ301M-style metallic rings, concentric gradient |
+| Output jack | `app::SvgPort` subclass | `ForgeJackLarge.svg` -- same + ember accent ring as additional path with `fill-opacity` |
+
+**Forge Noir SVG implementation strategy:**
+
+The DESIGN-LANGUAGE.md describes effects (multi-layer box-shadows, conic-gradients, repeating gradients, blur filters) that are CSS/HTML-only and cannot exist in an SVG parsed by nanosvg. The SVG panel must be a **faithful translation** that achieves the same visual impression within nanosvg constraints:
+
+| Design Language Element | SVG Translation |
+|------------------------|-----------------|
+| Panel texture (radial gradient) | Single 2-color radial gradient rect, centered at ~35% height |
+| Accent bars (multi-stop gradient) | 3-5 adjacent thin rects with solid fills simulating gradient steps |
+| Forge emblem (atmospheric background) | Paths with low fill-opacity (0.03-0.18) in ember/gold colors |
+| Section divider (gradient line) | Thin rect with linearGradient (2-color, from transparent to ember) |
+| Decorative header slashes | Simple rotated `<line>` elements with stroke-opacity |
+| Module name "cut" through divider line | Panel-colored rect behind text paths to mask the line |
+| Knob body (multi-layer gradient) | Rendered as SVG component, not panel SVG. Use 2-color radial gradient for main curvature |
+| CRT scanlines on display | Cannot do in SVG; render in NanoVG `drawBackground()` if desired |
+
+**Panel SVG file structure:**
+
+```
+res/
+  AnalogLFO-ForgeNoir.svg      (14HP panel background)
+  ForgeHexBolt.svg              (custom screw)
+  ForgeKnobXL.svg               (hero knob body)
+  ForgeKnobLG.svg               (secondary knob body)
+  ForgeKnobMD.svg               (utility knob body)
+  ForgeTrim.svg                 (trimpot body)
+  ForgeJackSmall.svg            (input jack)
+  ForgeJackLarge.svg            (output jack)
 ```
 
-**Background color:** Use the display background color (`0.051, 0.051, 0.102`) at ~75% opacity. This makes the pill blend seamlessly with the display when no waveform is behind it, but provides contrast when the amber waveform trace overlaps. Avoid pure black (looks harsh) or panel color (looks disconnected).
-
-### Incoming Clock BPM Display
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| No new technology | -- | Show raw clock BPM alongside effective (ratio-adjusted) BPM | Use existing `displaySmoothedPeriod` atomic. Calculate `clockBPM = 60.f / smoothedPeriod`. Display as "CLK: 120" or similar alongside the existing ratio-adjusted BPM. Both use the same NanoVG text rendering. The only new code is a second BPM text string in `drawTextOverlays()`. |
+**Confidence:** HIGH for nanosvg constraints (verified against nanosvg source, VCV community reports, and existing panel patterns). MEDIUM for exact visual fidelity of the Forge Noir design -- some CSS effects (knurled texture via conic-gradient, multi-layer box-shadows) will need creative SVG approximation.
 
 ---
 
-## New Enum Members and Parameters
+### 3. NanoVG Display Layout Changes
 
-### Inputs (add to InputId enum)
+**What's needed:** Restructure the existing `WaveformDisplay::drawLayer()` to use the Forge Noir three-column layout. No new dependencies.
 
-```cpp
-enum InputId {
-    MORPH_CV_INPUT,
-    DRIFT_CV_INPUT,
-    CHARACTER_CV_INPUT,
-    CLK_INPUT,
-    FM_INPUT,              // NEW: FM frequency modulation
-    RESET_INPUT,           // NEW: independent phase reset
-    PHASE_OFFSET_CV_INPUT, // NEW: phase offset CV
-    INPUTS_LEN
-};
+**Current NanoVG APIs already in use (no changes needed):**
+
+| Function | Current Use | v1.3 Use |
+|----------|-------------|----------|
+| `nvgBeginPath` / `nvgRoundedRect` / `nvgFill` | Display background | Same + corner bracket accents |
+| `nvgStrokeColor` / `nvgStroke` | Waveform trace, inset frame | Same |
+| `nvgRadialGradient` / `nvgFillPaint` | Phase dot halo | Same |
+| `nvgBoxGradient` | Pill backgrounds | Same |
+| `nvgFontFaceId` / `nvgFontSize` / `nvgText` | Text overlays (SYNC, Hz, BPM, ratios) | Same, repositioned to columns |
+| `nvgFontBlur` | Text glow effect | Same |
+| `nvgTextBounds` / `nvgTextMetrics` | Pill sizing | Same |
+| `nvgScissor` / `nvgResetScissor` | Zero-crossing reference line clipping | Same |
+
+**Custom Font for Forge Noir Display:**
+
+The current display uses `ShareTechMono-Regular.ttf` (system font). The Forge Noir design language specifies JetBrains Mono for display data. To use it:
+
+| Font | File | Purpose | Loading Pattern |
+|------|------|---------|-----------------|
+| JetBrains Mono | `res/fonts/JetBrainsMono-Regular.ttf` | Display data (Hz, BPM, ratios, SYNC) | `APP->window->loadFont(asset::plugin(pluginInstance, "res/fonts/JetBrainsMono-Regular.ttf"))` |
+
+**Important:** NanoVG font handles must be loaded every frame in `drawLayer()`, not cached across frames. The existing pattern (`APP->window->loadFont()`) is correct -- it returns from an internal cache. JetBrains Mono is SIL Open Font License, safe for plugin distribution.
+
+The Forge Noir design language also specifies Bebas Neue and Chakra Petch, but those are for the SVG panel text (rendered as `<path>` elements), not for NanoVG display text. Only JetBrains Mono is needed in the NanoVG runtime.
+
+**Layout change specifics:**
+
+| Column | X Range (approx) | Content |
+|--------|-------------------|---------|
+| Left | 4px - ~35% width | Ratio pill, Hz readout, Swing label |
+| Center | ~20% - ~80% width | Waveform trace + phase dot (existing, repositioned) |
+| Right | ~65% width - margin | SYNC badge, CLK/LFO BPM stack |
+
+The three-column layout prevents pill-waveform overlap. This is a coordinate reorganization of existing draw calls, not new rendering technology.
+
+**Confidence:** HIGH. All NanoVG APIs needed are already in use in the v1.2 display code.
+
+---
+
+### 4. Animated Sync Badge (Clock-Pulse Flash)
+
+**What's needed:** An animation state variable bridged from the audio thread, and a brightness modulation in the existing SYNC badge draw code. No new dependencies.
+
+**Implementation stack:**
+
+| Component | What | Why |
+|-----------|------|-----|
+| `std::atomic<bool> displayClockPulse` | New atomic bridge from audio thread | Signals when a clock edge is detected; set to `true` in `processClockInput()` when trigger fires |
+| `float syncFlashAlpha` in WaveformDisplay | Flash envelope state (decays from 1.0 to 0.0) | Visual feedback that clock is being received |
+| Exponential decay in `step()` | `syncFlashAlpha *= 0.92f` (or similar) per frame | ~60fps gives roughly 100-150ms visible flash, natural exponential decay |
+| Brightness boost in `drawTextOverlays()` | Modulate SYNC badge ember color brightness by `syncFlashAlpha` | Brighter on clock pulse, dims between pulses |
+
+**Animation architecture (matching existing pattern):**
+
+The existing codebase already has the correct architecture for this:
+1. Audio thread sets atomic flag on clock edge (like `displayClockState`)
+2. Widget `step()` reads atomic and updates animation envelope (like `syncFadeAlpha` updates)
+3. `drawLayer()` uses animation state to modulate rendering (like the ACQUIRING blink effect)
+
+The clock-pulse flash adds one new atomic and one new animation variable. The `WaveformDisplay` already redraws every frame (it is a `TransparentWidget`, not cached in a `FramebufferWidget`), so no dirty-flagging is needed.
+
+**Alternative considered and rejected:**
+- Using `dsp::PulseGenerator` in the widget for flash timing. Rejected because widgets don't have access to sample rate, and the ~60fps frame rate is sufficient for visual effects. A simple multiplicative decay per frame is simpler and correct.
+
+**Confidence:** HIGH. Direct extension of existing animation patterns already working in v1.2.
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | Why Not |
+|-------------|-------------|---------|
+| Text as `<path>` in panel SVG | Embedding TTF fonts in SVG | nanosvg does not support `<text>` elements at all |
+| 2-color gradients for knob metallic look | Multi-stop gradients | nanosvg only reliably supports 2-stop gradients |
+| NanoVG corner bracket accents on display | SVG-rendered display frame | Display is a NanoVG widget overlaid on the SVG panel; decorative frame belongs in NanoVG where it can animate |
+| Multiplicative alpha decay for flash | Timer-based PulseGenerator in widget | Widgets run at frame rate (~60fps), not sample rate; decay per frame is simpler and frame-rate-independent with dt scaling |
+| JetBrains Mono for display | Keep ShareTechMono | ShareTechMono is a system font with good readability but JetBrains Mono aligns with the Forge Noir design language and offers better glyph quality at small sizes |
+| Inline all SVG elements | `<use>` / `<defs>` for symmetry | nanosvg does not support `<use>` or `<defs>` references; the DESIGN-LANGUAGE.md's `<use>` mirroring advice applies to the HTML mockup, not the production SVG |
+| Separate SVG files per component | Single monolithic SVG | VCV Rack's component library architecture expects individual SVG files per widget type; this enables hot-swapping and theming |
+
+---
+
+## What NOT to Add
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| External SVG preprocessing tool (svgo, etc.) | Adds build complexity; nanosvg handles simple SVGs fine | Hand-author SVGs or use Inkscape with Object-to-Path |
+| OpenGL shaders for knob rendering | Overkill for static knob graphics; VCV Rack's SvgKnob handles rotation | SVG-based knob components with radial gradients |
+| Custom NanoVG build or patches | Modifying SDK headers breaks compatibility with future VCV Rack updates | Work within bundled NanoVG's capabilities |
+| Additional C++ libraries (Eigen, etc.) | PWM is trivial math; no linear algebra or DSP library needed | Standard `<cmath>` (already included) |
+| Separate display widget class hierarchy | Current `WaveformDisplay` struct handles all display rendering | Extend existing struct with new layout coordinates |
+| Animation framework / tween library | One exponential decay variable does not need a framework | `syncFlashAlpha *= decayFactor` in `step()` |
+| Web fonts or @font-face in SVG | Not supported by nanosvg | Convert all panel text to `<path>` elements |
+| SVG filters for glow/shadow | Not supported by nanosvg | Use overlapping semi-transparent shapes for glow approximation |
+| FramebufferWidget for WaveformDisplay | The display updates every frame (phase dot moves continuously) | Keep as TransparentWidget; framebuffer caching would require marking dirty every frame anyway |
+
+---
+
+## Version Compatibility
+
+| Component | Version | Compatibility Notes |
+|-----------|---------|---------------------|
+| VCV Rack SDK | 2.x (tested ~2.6) | Stable API. `app::SvgScrew`, `app::SvgKnob`, `app::SvgPort` classes unchanged since v2.0 |
+| nanosvg (bundled) | SDK-pinned | Gradient support improved in 2.6; target 2-color gradients for compatibility with older Rack versions |
+| NanoVG (bundled) | SDK-pinned | `nvgBoxGradient`, `nvgRadialGradient`, font functions all stable since v2.0 |
+| JetBrains Mono | Latest (SIL OFL) | No version dependency; TTF file bundled with plugin. ~150KB per weight |
+| C++17 | As per SDK | `std::atomic`, `std::array`, structured bindings all available |
+
+---
+
+## File Additions Summary
+
+```
+res/
+  AnalogLFO-ForgeNoir.svg      NEW  (14HP Forge Noir panel)
+  ForgeHexBolt.svg              NEW  (custom hex bolt screw)
+  ForgeKnobXL.svg               NEW  (hero knob body)
+  ForgeKnobLG.svg               NEW  (secondary knob body)
+  ForgeKnobMD.svg               NEW  (utility knob body)
+  ForgeTrim.svg                 NEW  (trimpot body)
+  ForgeJackSmall.svg            NEW  (input jack)
+  ForgeJackLarge.svg            NEW  (output jack)
+  fonts/
+    JetBrainsMono-Regular.ttf   NEW  (display font)
+
+src/
+  AnalogLFO.cpp                 MODIFY (PWM, layout, flash, custom components)
 ```
 
-### Parameters (add to ParamId enum)
-
-```cpp
-enum ParamId {
-    MORPH_PARAM,
-    CHARACTER_PARAM,
-    DRIFT_PARAM,
-    RATE_PARAM,
-    MORPH_ATTEN_PARAM,
-    CHARACTER_ATTEN_PARAM,
-    DRIFT_ATTEN_PARAM,
-    PHASE_OFFSET_PARAM,   // NEW: 0..1 (0..360 degrees)
-    FM_ATTEN_PARAM,       // NEW: FM depth attenuator (0..1)
-    SWING_PARAM,          // NEW: swing amount (0.5..0.75, default 0.5)
-    PARAMS_LEN
-};
-```
-
-### Panel Space Consideration
-
-Adding 3 new jacks (FM, RESET, PHASE_OFFSET_CV) and 3 new controls (PHASE_OFFSET knob, FM_ATTEN trimpot, SWING knob/trimpot) to a 12HP panel is tight but feasible. The existing layout has:
-- 3 large knobs (morph, character, drift) in the mid-section
-- 1 medium knob (rate) + 1 jack (CLK) in the rate row
-- 3 trimpots + 3 CV jacks + 1 output jack in the bottom section
-
-**Recommended layout approach:** Add PHASE_OFFSET as a small knob near the RATE knob. Add FM and RESET jacks in a new row or alongside existing jacks. FM_ATTEN as a trimpot near FM jack. SWING as a trimpot in the bottom section (only meaningful in clocked mode). This may require rearranging the bottom section or using smaller widget sizes.
-
-If 12HP becomes too crowded, consider: (a) making SWING a right-click menu parameter instead of a panel control, or (b) expanding to 14HP. Research the actual mm spacing during implementation.
-
----
-
-## Components NOT Needed
-
-These were considered and explicitly rejected:
-
-| Technology | Why NOT Needed |
-|------------|----------------|
-| External DSP libraries (STK, Faust, etc.) | All v1.2 algorithms are 5-15 lines of C++ each. Adding a library dependency for simple OU noise, exponential FM, or phase offset is over-engineering. The existing codebase has zero external dependencies and should stay that way. |
-| `dsp::exp2_taylor5()` for FM | SIMD-optimized approximation for polyphonic modules. Our monophonic LFO benefits more from `std::pow(2.f, x)` accuracy at negligible CPU cost difference. |
-| Linear FM / through-zero FM | Designed for audio-rate VCOs where harmonic sidebands are the goal. At LFO rates, exponential FM gives musically useful vibrato/warble. Linear FM would produce asymmetric pitch modulation that feels wrong at sub-audio rates. Defer TZFM to the VCO module (v2.0). |
-| FM attenuverter (bipolar depth) | FM input voltage is already bipolar. Attenuverting the depth would invert the modulation direction, which is confusing for an LFO. Use a unipolar attenuator (0 to 1). Reserve attenuverters for the VCO module where through-zero FM makes inversion meaningful. |
-| PLL for phase tracking | Still overkill. Simple edge measurement + EMA continues to be sufficient for LFO clock tracking. The v1.2 features do not change this assessment. |
-| `rack::dsp::SlewLimiter` for pitch slew | `ExponentialFilter` is already in use and provides the correct exponential convergence behavior. SlewLimiter has asymmetric rate capping which would sound wrong for analog pitch response. |
-| External random number generators | The existing `Xoroshiro128Plus` RNG + `std::normal_distribution` handles all noise generation (OU layers, component spread, phase jitter). No need for additional RNG infrastructure. |
-| `dsp::Decimator` or oversampling | Not relevant for sub-audio LFO signals. No aliasing concerns at 0.01-20 Hz output frequencies. Reserve for VCO module. |
-| JSON serialization for OU state | v1.0 decision stands: OU drift state stays fresh on patch load. However, the NEW `ComponentSpread` offsets SHOULD be serialized (see below). |
-| `std::mutex` or `std::condition_variable` | All new features run in the `process()` callback. New display atomics follow the established lock-free pattern. No synchronization primitives needed. |
-
----
-
-## Serialization Changes
-
-### New: Serialize Component Spread Seed
-
-```cpp
-json_t* dataToJson() override {
-    json_t* root = json_object();
-    // Serialize RNG seed for reproducible component spread
-    json_object_set_new(root, "rngSeed0", json_integer((json_int_t)rngSeed0));
-    json_object_set_new(root, "rngSeed1", json_integer((json_int_t)rngSeed1));
-    return root;
-}
-
-void dataFromJson(json_t* root) override {
-    json_t* s0 = json_object_get(root, "rngSeed0");
-    json_t* s1 = json_object_get(root, "rngSeed1");
-    if (s0 && s1) {
-        rngSeed0 = (uint64_t)json_integer_value(s0);
-        rngSeed1 = (uint64_t)json_integer_value(s1);
-        rng.seed(rngSeed0, rngSeed1);
-        regenerateComponentSpread();  // deterministic from saved seed
-    }
-}
-```
-
-Store the seed, not the spread values. This keeps serialization compact and allows the spread generation algorithm to evolve without breaking saved patches.
-
----
-
-## Build Changes
-
-**None.** No new source files, no new dependencies, no Makefile changes. All code goes into the existing `src/AnalogLFO.cpp`. The SVG panel file (`res/AnalogLFO.svg`) needs updating to add new jack and knob positions, following the same workflow as v1.1's CLK jack addition.
-
----
-
-## Integration Order Recommendation
-
-Based on dependency analysis, implement in this order:
-
-1. **Display text HUD backgrounds** -- No DSP changes, pure display fix. Quick win, immediately visible improvement.
-2. **Phase offset knob/CV** -- Simple additive offset, no interaction with other features.
-3. **Separate RESET jack** -- Second SchmittTrigger instance, reuses existing crossfade. Independent from all other features.
-4. **FM input** -- Exponential multiplier on frequency. Must integrate with existing frequency slew chain.
-5. **Expanded imperfections** (phase jitter, DC offset, pitch slew, component spread) -- Four parallel features that all integrate into the existing drift/character pipeline. Implement together to test interactions.
-6. **Waveform bleed** -- Modifies `computeMorphedWave()` signature. Must be done after imperfections are stable since both affect the output simultaneously.
-7. **Swing/shuffle** -- Most complex interaction with clock system. Implement last when all other clock-interacting features (reset, phase offset) are settled.
-8. **Clock BPM display** -- Pure display, depends on no DSP changes. Can slot anywhere but naturally last since it is the simplest remaining task.
-
----
-
-## CPU Budget Assessment
-
-Current module at v1.1: ~890 lines, primary cost is 4 OU layers + 4 waveform computations + crossfade per sample.
-
-v1.2 additions per sample:
-- FM: 1x `std::pow(2.f, x)` -- moderate (~15-20 cycles)
-- Phase jitter: 1 additional OU layer -- negligible
-- DC offset drift: 1 additional OU layer -- negligible
-- Pitch slew: 1 ExponentialFilter update -- negligible
-- Component spread: lookup of pre-computed offsets -- negligible
-- Waveform bleed: 4 distance calculations + normalization -- light
-- Swing phase warp: 1 conditional branch + multiply -- negligible
-- Phase offset: 1 fmod + addition -- negligible
-
-**Total estimated overhead:** ~5-10% increase over v1.1. The `std::pow` call is the most expensive single addition. All other features are cheaper than a single OU layer update. Well within CPU budget for a monophonic LFO module.
-
-If profiling reveals `std::pow` is a concern (unlikely), replace with the polynomial approximation: `float exp2_fast(float x) { float y = 1.f + x * (0.6931472f + x * (0.2402265f + x * 0.0558011f)); return y; }` -- but only if measured, not preemptively.
+No Makefile changes needed. The existing `SOURCES += $(wildcard src/*.cpp)` and `DISTRIBUTABLES += res` already cover all additions.
 
 ---
 
 ## Sources
 
-- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) -- 1V/Oct standard, trigger thresholds (0.1V/1.0V), cable delay model
-- [VCV Rack API: dsp namespace](https://vcvrack.com/docs-v2/namespacerack_1_1dsp) -- SchmittTrigger, ExponentialFilter, exp2_taylor5 reference
-- [VCV Rack DSP Manual](https://vcvrack.com/manual/DSP) -- general DSP guidance for module development
-- [VCV Community: Oscillators with Phase Control](https://community.vcvrack.com/t/oscillators-with-phase-control/16534) -- phase offset implementation patterns in VCV modules
-- [VCV Community: Reset Sequencers Timing](https://community.vcvrack.com/t/reset-sequencers-are-one-step-off/12898) -- cable delay and reset timing considerations
-- [Frap Tools: Exponential FM Explained](https://frap.tools/frequency-modulation-part-1-exponential-fm/) -- why exponential FM is correct for pitch modulation
-- [DAFx2020: Practical Linear and Exponential FM](https://dafx2020.mdw.ac.at/proceedings/papers/DAFx2020_paper_61.pdf) -- academic treatment of FM synthesis variants
-- [Jatin Chowdhury: Bad Circuit Modelling -- Component Tolerances](https://ccrma.stanford.edu/~jatin/Bad-Circuit-Modelling/Tolerances.html) -- truncated Gaussian distribution for per-instance variation
-- [Jatin Chowdhury: Bad Circuit Modelling Paper](https://ccrma.stanford.edu/~jatin/papers/BadCircuitModels.pdf) -- academic paper on analog circuit imperfection modeling
-- [Gearspace: Simulating Analog Oscillator Drift](https://gearspace.com/board/electronic-music-instruments-and-electronic-music-production/852329-simulating-analog-oscillator-drift.html) -- community techniques for drift and jitter simulation
-- [KVR: Implementing Swing/Shuffle](https://www.kvraudio.com/forum/viewtopic.php?t=261858) -- DSP implementation patterns for swing timing
-- [SuperCollider: Pattern Guide Swing](https://doc.sccode.org/Tutorials/A-Practical-Guide/PG_Cookbook08_Swing.html) -- algorithmic swing implementation reference
-- [MOD WIGGLER: Adding Swing to Clock](https://modwiggler.com/forum/viewtopic.php?t=174713) -- modular synth swing approaches
-- [NanoVG API: nanovg.h](https://github.com/memononen/nanovg/blob/master/src/nanovg.h) -- nvgTextBounds, nvgRoundedRect, nvgFontBlur API reference
-- [NanoVG: Text Bounds Issues](https://github.com/memononen/nanovg/issues/41) -- layout calculation with nvgTextBounds
-- Existing codebase: `src/AnalogLFO.cpp` (directly verified, 890 lines, v1.1)
+- [VCV Rack Module Panel Guide](https://vcvrack.com/manual/Panel) -- Official SVG requirements, nanosvg limitations (HIGH confidence)
+- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) -- Font loading, NanoVG rendering, FramebufferWidget, custom widgets (HIGH confidence)
+- [VCV Rack FramebufferWidget API](https://vcvrack.com/docs-v2/structrack_1_1widget_1_1FramebufferWidget) -- Dirty flag, setDirty(), performance model (HIGH confidence)
+- [nanosvg GitHub (memononen/nanosvg)](https://github.com/memononen/nanosvg) -- Supported SVG elements, paint types, gradient types (HIGH confidence)
+- [nanosvg DeepWiki](https://deepwiki.com/memononen/nanosvg) -- Feature overview, paint type enums, path commands (HIGH confidence)
+- [VCV Community: SVG transparencies and gradients](https://community.vcvrack.com/t/svg-transparencies-and-gradients/16833) -- Gradient support details, 2-color limitation, VCV 2.6 improvements (MEDIUM confidence)
+- [VCV Community: Notes for theme-able SVGs with nanoSvg](https://community.vcvrack.com/t/notes-for-theme-able-svgs-with-nanosvg/20060) -- Theming patterns, SVG traversal (MEDIUM confidence)
+- [VCV Community: Custom knob SVGs](https://community.vcvrack.com/t/how-can-i-implement-custom-knob-svgs/21399) -- SvgKnob subclass pattern (HIGH confidence)
+- [VCV Rack componentlibrary.hpp (v2)](https://github.com/VCVRack/Rack/blob/v2/include/componentlibrary.hpp) -- ScrewSilver/ScrewBlack/SvgKnob class patterns (HIGH confidence)
+- [stellare-modular/vcv-rack-sdk nanovg.h](https://github.com/stellare-modular/vcv-rack-sdk/blob/master/dep/include/nanovg.h) -- NanoVG font and gradient API signatures (HIGH confidence)
+- [Perfect Circuit: What is PWM?](https://www.perfectcircuit.com/signal/what-is-pwm) -- PWM fundamentals, duty cycle narrowing (HIGH confidence)
+- [Yamaha Synth: All Squares are Pulse](https://yamahasynth.com/learn/synth-programming/synth-basics-all-squares-are-pulse/) -- Pulse wave as square with variable duty (HIGH confidence)
+- Existing codebase: `src/AnalogLFO.cpp` -- computeSquare (lines 276-297), computeMorphedWave (lines 299-343), WaveformDisplay (lines 802-1293) (HIGH confidence)
 
 ---
-*Stack research for: Forge Audio Analog Series v1.2 Deep Analog*
-*Researched: 2026-03-13*
+*Stack research for: Forge Audio Analog Series v1.3 Forge Noir*
+*Researched: 2026-03-27*
