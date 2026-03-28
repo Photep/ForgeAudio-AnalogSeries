@@ -151,6 +151,7 @@ struct AnalogLFO : Module {
 	float squareDutySpread = 0.f;         // square duty cycle spread
 	float triAsymmetrySpread = 0.f;       // triangle asymmetry spread
 	float bleedSpread = 0.f;              // waveform bleed magnitude spread (CHAR-05)
+	float pulseEdgeSpread = 0.f;              // pulse edge softening spread
 
 	// Swing state (PHASE-03, PHASE-04)
 	int swingIndex = 0;  // 0=Straight (default), persisted via dataToJson
@@ -209,6 +210,8 @@ struct AnalogLFO : Module {
 		triAsymmetrySpread = d(spreadRng) * 0.015f;
 		// Bleed magnitude spread: +/-2% (CHAR-05)
 		bleedSpread = d(spreadRng) * 0.02f;
+		// Pulse edge softening spread: +/-2%
+		pulseEdgeSpread = d(spreadRng) * 0.02f;
 	}
 
 	void onSampleRateChange(const SampleRateChangeEvent& e) override {
@@ -294,6 +297,34 @@ struct AnalogLFO : Module {
 		float analog = std::tanh(sharpness * dist);
 		// Crossfade: prevents snap at low character values
 		return sqr + c * (analog - sqr);
+	}
+
+	float computePulse(float phase, float character, float duty) {
+		// Digital: +1 for phase < duty, -1 for phase >= duty (D-07)
+		float pulse = (phase < duty) ? 1.f : -1.f;
+		if (character < 0.001f) return pulse;
+		float c = progressiveCurve(character);
+
+		// Tanh edge softening (D-05): same approach as computeSquare
+		// Scale edge width to avoid exceeding narrow pulse region (Pitfall 1)
+		float maxEdge = std::fmin(duty, 1.f - duty) * 0.8f;
+		float edgeWidth = c * std::fmin(0.08f, maxEdge);
+		float sharpness = 1.f / std::fmax(edgeWidth, 0.001f);
+
+		// Component spread affects edge softening intensity only (D-06)
+		sharpness *= (1.f + pulseEdgeSpread);
+
+		// Soft pulse: +1 region [0, duty], -1 region [duty, 1]
+		float center = duty * 0.5f;
+		float halfWidth = duty * 0.5f;
+		float d = phase - center;
+		if (d > 0.5f) d -= 1.f;
+		if (d < -0.5f) d += 1.f;
+		float dist = halfWidth - std::fabs(d);
+		float analog = std::tanh(sharpness * dist);
+
+		// Crossfade: prevents snap at low character values
+		return pulse + c * (analog - pulse);
 	}
 
 	float computeMorphedWave(float phase, float morph, float character) {
