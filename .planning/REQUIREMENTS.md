@@ -9,7 +9,7 @@ Requirements for Forge Noir milestone. Each maps to roadmap phases.
 
 ### Waveform Engine
 
-- [ ] **WAVE-01**: Morph sweep extends past square into variable-width pulse (Sine → Tri → Saw → Square → Pulse)
+- [ ] **WAVE-01**: Morph sweep extends past square into variable-width pulse (Sine -> Tri -> Saw -> Square -> Pulse)
 - [ ] **WAVE-02**: Pulse duty cycle ranges from 50% (square) to 5% (narrow pulse) across morph range
 - [ ] **WAVE-03**: Character knob applies analog deformation to pulse shape (tanh edge softening, component spread)
 - [ ] **WAVE-04**: Waveform bleed ring wraps to 5 shapes (pulse neighbors sine)
@@ -57,8 +57,8 @@ Deferred to VCO module (v2.0).
 
 | Feature | Reason |
 |---------|--------|
-| Surge-style modulation routing | Abandoned — over-engineered for LFO; direct CV jacks sufficient |
-| Separate PWM knob/CV | PWM integrated into morph sweep — no new controls needed |
+| Surge-style modulation routing | Abandoned -- over-engineered for LFO; direct CV jacks sufficient |
+| Separate PWM knob/CV | PWM integrated into morph sweep -- no new controls needed |
 | Individual waveform outputs | Single morphed output IS the design concept |
 | Polyphonic operation | 16x CPU cost, complicates drift and display |
 | NanoVG premium knobs at runtime | NanoVG knob rendering deferred if GPU cost too high; SVG knobs as fallback |
@@ -68,31 +68,31 @@ Deferred to VCO module (v2.0).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WAVE-01 | — | Pending |
-| WAVE-02 | — | Pending |
-| WAVE-03 | — | Pending |
-| WAVE-04 | — | Pending |
-| WAVE-05 | — | Pending |
-| PANEL-01 | — | Pending |
-| PANEL-02 | — | Pending |
-| PANEL-03 | — | Pending |
-| PANEL-04 | — | Pending |
-| PANEL-05 | — | Pending |
-| PANEL-06 | — | Pending |
-| PANEL-07 | — | Pending |
-| DISP-01 | — | Pending |
-| DISP-02 | — | Pending |
-| DISP-03 | — | Pending |
-| DISP-04 | — | Pending |
-| DISP-05 | — | Pending |
-| ANIM-01 | — | Pending |
-| ANIM-02 | — | Pending |
+| WAVE-01 | Phase 18 | Pending |
+| WAVE-02 | Phase 18 | Pending |
+| WAVE-03 | Phase 18 | Pending |
+| WAVE-04 | Phase 18 | Pending |
+| WAVE-05 | Phase 18 | Pending |
+| PANEL-01 | Phase 19 | Pending |
+| PANEL-02 | Phase 19 | Pending |
+| PANEL-03 | Phase 19 | Pending |
+| PANEL-04 | Phase 19 | Pending |
+| PANEL-05 | Phase 19 | Pending |
+| PANEL-06 | Phase 19 | Pending |
+| PANEL-07 | Phase 19 | Pending |
+| DISP-01 | Phase 20 | Pending |
+| DISP-02 | Phase 20 | Pending |
+| DISP-03 | Phase 20 | Pending |
+| DISP-04 | Phase 20 | Pending |
+| DISP-05 | Phase 20 | Pending |
+| ANIM-01 | Phase 21 | Pending |
+| ANIM-02 | Phase 21 | Pending |
 
 **Coverage:**
 - v1.3 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19 ⚠️
+- Mapped to phases: 19
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-28*
-*Last updated: 2026-03-28 after initial definition*
+*Last updated: 2026-03-28 after roadmap creation*

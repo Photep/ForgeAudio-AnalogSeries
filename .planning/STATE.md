@@ -5,9 +5,9 @@ milestone_name: Forge Noir
 status: active
 stopped_at: null
 last_updated: "2026-03-28T00:00:00.000Z"
-last_activity: 2026-03-28 -- Milestone v1.3 started
+last_activity: 2026-03-28 -- Roadmap created for v1.3 Forge Noir
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Defining requirements for v1.3 Forge Noir
+**Current focus:** Phase 18 -- PWM DSP Extension
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-28 — Milestone v1.3 started
+Phase: 18 of 21 (PWM DSP Extension) -- first of 4 phases in v1.3
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-28 -- Roadmap created for v1.3 Forge Noir
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -42,20 +44,25 @@ Last activity: 2026-03-28 — Milestone v1.3 started
 ### Decisions
 
 All decisions logged in PROJECT.md Key Decisions table.
-v1.0 decisions archived in milestones/v1.0-ROADMAP.md.
-v1.1 decisions archived in milestones/v1.1-ROADMAP.md.
-v1.2 decisions archived in milestones/v1.2-ROADMAP.md.
+v1.0-v1.2 decisions archived in milestones/ ROADMAP files.
+
+Key pending decisions for v1.3:
+- PWM as morph extension [0.75, 1.0] preserving backward compat
+- Forge Noir design language (near-black, ember orange, gold accents)
+- Panel expansion 12HP to 14HP (shifts modules in existing patches)
+- Bleed ring topology for 5 shapes (open-ended vs ring -- decide in Phase 18)
 
 ### Pending Todos
 
 1 pending todo (see `.planning/todos/pending/`)
-- Separate display pills from waveform visualiser (being addressed in v1.3)
+- Separate display pills from waveform visualiser (addressed by Phase 20 three-column layout)
 
 ### Blockers/Concerns
 
-None — panel control positions resolved by Forge Noir redesign.
+None.
 
 ## Session Continuity
 
 Last session: 2026-03-28
-Stopped at: Defining v1.3 requirements
+Stopped at: Roadmap created, ready to plan Phase 18
+Resume file: None
