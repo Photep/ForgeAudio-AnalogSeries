@@ -333,14 +333,20 @@ struct AnalogLFO : Module {
 		float saw  = computeSaw(phase, character);
 		float sqr  = computeSquare(phase, character);
 
-		// Store shapes in array for indexed neighbor access
-		float shapes[4] = { sine, tri, saw, sqr };
-
-		float scaled = morph * 3.f;
-		int segment = std::min((int)scaled, 2);
+		// D-01: morph * 4.0 gives 5 shapes across [0, 1], each shape 20% of knob range
+		float scaled = morph * 4.f;
+		int segment = std::min((int)scaled, 3);  // 0-3 (4 segments for 5 shapes)
 		float frac = scaled - (float)segment;
 
-		// Primary crossfade (unchanged from v1.1)
+		// D-08: duty = 0.50 - 0.45 * frac, computed from morph position in pulse region
+		float pulseFrac = std::fmax(0.f, scaled - 3.f);  // 0 at square/pulse boundary, 1 at morph=1
+		float pulseDuty = 0.50f - 0.45f * std::fmin(pulseFrac, 1.f);  // D-07: 50% to 5%
+		float pls  = computePulse(phase, character, pulseDuty);
+
+		// D-03: Sine -> Tri -> Saw -> Square -> Pulse
+		float shapes[5] = { sine, tri, saw, sqr, pls };
+
+		// Primary crossfade (unchanged from v1.2)
 		float result = shapes[segment] + frac * (shapes[segment + 1] - shapes[segment]);
 
 		// Waveform bleed: adjacent-shape crosstalk (CHAR-05)
@@ -355,9 +361,9 @@ struct AnalogLFO : Module {
 			bleedIntensity *= (1.f + ouLayers[0].state * 0.2f);
 			bleedIntensity = std::fmax(0.f, bleedIntensity);  // ensure non-negative after modulation
 
-			// Neighbor identification (wrapping ring: sine-tri-saw-sqr-sine)
-			int leftIdx  = (segment - 1 + 4) % 4;   // shape left of segment start
-			int rightIdx = (segment + 2) % 4;        // shape right of segment end
+			// D-04: Neighbor identification (wrapping ring: sine-tri-saw-sqr-pulse-sine)
+			int leftIdx  = (segment - 1 + 5) % 5;   // shape left of segment start
+			int rightIdx = (segment + 2) % 5;        // shape right of segment end
 
 			// Proximity weighting: closer neighbor bleeds more
 			float leftWeight  = 1.f - frac;   // frac=0 -> full left bleed
