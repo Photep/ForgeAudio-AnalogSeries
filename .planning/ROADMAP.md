@@ -138,7 +138,7 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21
 | 15. Waveform Bleed | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 16. Swing and Shuffle | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 17. Panel Redesign | v1.2 | - | Skipped | 2026-03-17 |
-| 18. PWM DSP Extension | v1.3 | 1/1 | Complete   | 2026-03-28 |
+| 18. PWM DSP Extension | v1.3 | 1/1 | Complete    | 2026-03-28 |
 | 19. Forge Noir Panel + Custom Components | v1.3 | 0/0 | Not started | - |
 | 20. Display Layout + CRT Aesthetic | v1.3 | 0/0 | Not started | - |
 | 21. Animated SYNC Badge | v1.3 | 0/0 | Not started | - |
