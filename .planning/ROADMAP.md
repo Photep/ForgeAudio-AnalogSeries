@@ -58,7 +58,7 @@ See: `.planning/milestones/v1.2-ROADMAP.md` for full details.
 
 **Milestone Goal:** Extend morph sweep through pulse/PWM, replace the 12HP panel with the 14HP Forge Noir design language, restructure the display into a three-column layout with CRT aesthetic, and add animated SYNC badge flash.
 
-- [ ] **Phase 18: PWM DSP Extension** - Extend morph sweep past square into variable-width pulse with analog character
+- [x] **Phase 18: PWM DSP Extension** - Extend morph sweep past square into variable-width pulse with analog character (completed 2026-03-28)
 - [ ] **Phase 19: Forge Noir Panel + Custom Components** - 14HP Forge Noir SVG panel with custom knobs, jacks, trimpots, and brand elements
 - [ ] **Phase 20: Display Layout + CRT Aesthetic** - Three-column display with left/right pills, center waveform, CRT scanlines, and border glow
 - [ ] **Phase 21: Animated SYNC Badge** - Clock-pulse flash on SYNC badge with exponential decay
@@ -77,7 +77,7 @@ See: `.planning/milestones/v1.2-ROADMAP.md` for full details.
 **Plans**: 1 plan
 
 Plans:
-- [ ] 18-01-PLAN.md -- Add computePulse() and extend computeMorphedWave() to 5 shapes with bleed ring wrap
+- [x] 18-01-PLAN.md -- Add computePulse() and extend computeMorphedWave() to 5 shapes with bleed ring wrap
 
 ### Phase 19: Forge Noir Panel + Custom Components
 **Goal**: The module appears in VCV Rack with the 14HP Forge Noir visual identity -- near-black panel, custom machined-metal knobs, scalloped trimpots, accent-ring jacks, forge emblem, and path-rendered brand typography
@@ -138,7 +138,7 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21
 | 15. Waveform Bleed | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 16. Swing and Shuffle | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 17. Panel Redesign | v1.2 | - | Skipped | 2026-03-17 |
-| 18. PWM DSP Extension | v1.3 | 0/1 | In progress | - |
+| 18. PWM DSP Extension | v1.3 | 1/1 | Complete   | 2026-03-28 |
 | 19. Forge Noir Panel + Custom Components | v1.3 | 0/0 | Not started | - |
 | 20. Display Layout + CRT Aesthetic | v1.3 | 0/0 | Not started | - |
 | 21. Animated SYNC Badge | v1.3 | 0/0 | Not started | - |
