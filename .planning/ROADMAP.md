@@ -66,7 +66,7 @@ See: `.planning/milestones/v1.2-ROADMAP.md` for full details.
 ## Phase Details
 
 ### Phase 18: PWM DSP Extension
-**Goal**: Users can sweep the morph knob through a fifth waveform shape -- variable-width pulse -- with full analog character and backward-compatible patch loading
+**Goal**: Users can sweep the morph knob through a fifth waveform shape -- variable-width pulse -- with full analog character (backward compatibility dropped per D-02)
 **Depends on**: Phase 16 (existing morph engine)
 **Requirements**: WAVE-01, WAVE-02, WAVE-03, WAVE-04, WAVE-05
 **Success Criteria** (what must be TRUE):
@@ -74,7 +74,10 @@ See: `.planning/milestones/v1.2-ROADMAP.md` for full details.
   2. Existing patches saved with morph at any position (0 to 0.75) produce identical output to v1.2 -- no timbral shift on load
   3. Turning the Character knob while in the pulse region visibly softens the pulse edges (tanh rounding) and varies the duty cycle spread per instance
   4. Sweeping morph through the square-to-pulse boundary and through pulse-to-sine wrap (bleed) produces smooth transitions with no clicks or discontinuities
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 18-01-PLAN.md -- Add computePulse() and extend computeMorphedWave() to 5 shapes with bleed ring wrap
 
 ### Phase 19: Forge Noir Panel + Custom Components
 **Goal**: The module appears in VCV Rack with the 14HP Forge Noir visual identity -- near-black panel, custom machined-metal knobs, scalloped trimpots, accent-ring jacks, forge emblem, and path-rendered brand typography
@@ -135,7 +138,7 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21
 | 15. Waveform Bleed | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 16. Swing and Shuffle | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 17. Panel Redesign | v1.2 | - | Skipped | 2026-03-17 |
-| 18. PWM DSP Extension | v1.3 | 0/0 | Not started | - |
+| 18. PWM DSP Extension | v1.3 | 0/1 | In progress | - |
 | 19. Forge Noir Panel + Custom Components | v1.3 | 0/0 | Not started | - |
 | 20. Display Layout + CRT Aesthetic | v1.3 | 0/0 | Not started | - |
 | 21. Animated SYNC Badge | v1.3 | 0/0 | Not started | - |
