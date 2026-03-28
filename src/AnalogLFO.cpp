@@ -346,8 +346,15 @@ struct AnalogLFO : Module {
 		// D-03: Sine -> Tri -> Saw -> Square -> Pulse
 		float shapes[5] = { sine, tri, saw, sqr, pls };
 
-		// Primary crossfade (unchanged from v1.2)
-		float result = shapes[segment] + frac * (shapes[segment + 1] - shapes[segment]);
+		// Primary crossfade — duty interpolation for square-to-pulse region
+		float result;
+		if (segment == 3) {
+			// Square-to-pulse: pulseDuty already varies 0.50→0.05 with morph position
+			// Direct duty interpolation avoids staircase artifact from crossfading two rectangles
+			result = pls;
+		} else {
+			result = shapes[segment] + frac * (shapes[segment + 1] - shapes[segment]);
+		}
 
 		// Waveform bleed: adjacent-shape crosstalk (CHAR-05)
 		if (character >= 0.001f) {
