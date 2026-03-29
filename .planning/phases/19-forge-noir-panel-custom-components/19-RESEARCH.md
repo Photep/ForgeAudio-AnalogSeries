@@ -10,9 +10,9 @@ Phase 19 replaces the existing 12HP panel with a 14HP Forge Noir panel featuring
 
 Rack 2.6.0 (Nov 2024) added 2-stop linear/radial gradient rendering, confirmed by both the changelog and the nanosvg parser source in the SDK. This is the critical enabler for metallic curvature, accent bar gradients, and knob depth effects. Gradients are defined in `<defs>` blocks (nanosvg DOES parse `<defs>` for gradients, despite not supporting `<use>`/`<defs>` for element cloning). Each gradient is limited to exactly 2 stops. Multiple overlapping shapes with different 2-stop gradients can simulate multi-stop effects.
 
-The coordinate conversion from the forge-noir.html mockup (356px wide at 5x) to panel mm is: `mm = px * (71.12 / 356)`, factor 0.199775. All 18 controls have been mapped from mockup pixel positions to mm coordinates.
+The coordinate conversion from the forge-noir.html mockup (356px wide at 5x) to panel mm is: `mm = px * (71.12 / 356)`, factor 0.199775. All 18 controls have been mapped from mockup pixel positions to mm coordinates. A complete UI-SPEC (19-UI-SPEC.md) has been generated and checker-approved, documenting the rendering contracts, component inventory, and position map in detail.
 
-**Primary recommendation:** Create the panel SVG and 8 component SVGs (3 knob sizes, 1 trimpot, 2 jack sizes, 1 hex bolt screw, and the panel itself) using hand-authored nanosvg-compatible SVG with 2-stop gradients for depth, then wire them into custom C++ widget structs that subclass the standard VCV base classes.
+**Primary recommendation:** Create the panel SVG and 12 component SVGs (3 knob sizes with bg layers, 1 trimpot with bg layer, 2 jack sizes, 1 hex bolt screw, and the panel itself) using hand-authored nanosvg-compatible SVG with 2-stop gradients for depth, then wire them into custom C++ widget structs that subclass the standard VCV base classes. Disable the built-in CircularShadow (`shadow->opacity = 0.0;`) when providing custom shadow artwork in the bg SVG.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -55,10 +55,10 @@ None -- discussion stayed within phase scope.
 |----|-------------|------------------|
 | PANEL-01 | 14HP Forge Noir SVG panel with near-black background, ember accent bars, hex bolt screws | SVG structure verified: width="71.12mm" height="128.5mm", 2-stop linear gradients for accent bars, hex bolt screws as custom SvgScrew subclass |
 | PANEL-02 | All controls repositioned per Forge Noir mockup (5 main knobs, 5 CV trimpots+jacks, CLK/RST/OUTPUT) | Full coordinate mapping from forge-noir.html pixel positions to mm completed -- 18 controls total (10 params, 7 inputs, 1 output) |
-| PANEL-03 | Custom SVG knob components (3 sizes: hero/secondary/utility) with machined metal appearance | SvgKnob base class with bg layer confirmed; struct pattern: subclass RoundKnob, set minAngle/maxAngle, call setSvg() with custom SVG |
+| PANEL-03 | Custom SVG knob components (3 sizes: hero/secondary/utility) with machined metal appearance | SvgKnob base class with bg layer confirmed; struct pattern: subclass SvgKnob, set minAngle/maxAngle, add bg SvgWidget, call setSvg() with custom SVG, disable built-in CircularShadow |
 | PANEL-04 | Custom SVG trimpot components (bright scalloped attenuverters) | Trimpot base class confirmed: subclasses SvgKnob, has bg layer, minAngle=-0.75*PI, maxAngle=0.75*PI |
-| PANEL-05 | Custom SVG jack components (2 sizes: standard/output with ember accent ring) | SvgPort base class confirmed; output ember ring baked into output jack SVG per D-09 |
-| PANEL-06 | Forge emblem background element | Baked into panel SVG as low-opacity paths; symmetry via manual duplication (nanosvg has no `<use>` cloning) |
+| PANEL-05 | Custom SVG jack components (2 sizes: standard/output with ember accent ring) | SvgPort base class confirmed; output ember ring baked into output jack SVG per D-09; disable built-in CircularShadow if providing custom shadow |
+| PANEL-06 | Forge emblem background element | Baked into panel SVG as low-opacity paths; symmetry via manual duplication (nanosvg has no `<use>` cloning); forge-noir.html emblem source has 3 gradient stops in radial -- must simplify to 2-stop for nanosvg |
 | PANEL-07 | Brand typography rendered as SVG paths (Forge Audio header, Analog LFO name) | Text-as-paths pattern already established in current AnalogLFO.svg; font glyph conversion required for FoundationLogo, Bebas Neue, Chakra Petch, JetBrains Mono |
 </phase_requirements>
 
@@ -90,17 +90,18 @@ None -- discussion stayed within phase scope.
 res/
   AnalogLFO.svg              # 14HP Forge Noir panel (replaces old 12HP)
   components/
-    ForgeKnobHero.svg        # 82px hero knob (MORPH)
-    ForgeKnobHero_bg.svg     # Hero knob background/shadow layer
+    ForgeKnobHero.svg        # 82px hero knob (MORPH) -- rotating layer
+    ForgeKnobHero_bg.svg     # Hero knob background/shadow/metallic ring -- static layer
     ForgeKnobSecondary.svg   # 60px secondary knob (CHARACTER, DRIFT)
     ForgeKnobSecondary_bg.svg
     ForgeKnobUtility.svg     # 46px utility knob (RATE, PHASE)
     ForgeKnobUtility_bg.svg
-    ForgeTrimpot.svg          # 18px bright scalloped trimpot
-    ForgeTrimpot_bg.svg
+    ForgeTrimpot.svg          # 18px bright scalloped trimpot -- rotating layer
+    ForgeTrimpot_bg.svg       # Trimpot shadow ring -- static layer
     ForgeJackInput.svg        # 36px standard input jack
-    ForgeJackOutput.svg       # 42px output jack with ember ring
+    ForgeJackOutput.svg       # 42px output jack with ember ring baked in
     ForgeHexBolt.svg          # 16px hexagonal bolt (screw replacement)
+  PANEL-SPEC.md               # Updated for 14HP Forge Noir (replaces old 12HP spec)
 src/
   AnalogLFO.cpp               # Widget struct definitions + updated constructor
 ```
@@ -108,7 +109,7 @@ src/
 **Recommendation on SVG file organization:** Separate component SVGs in a `res/components/` subdirectory. The panel SVG stays at `res/AnalogLFO.svg` to maintain the existing `setPanel()` asset path.
 
 ### Pattern 1: Custom Knob Widget Struct
-**What:** Subclass RoundKnob (which extends SvgKnob) to load custom SVG skins
+**What:** Subclass SvgKnob (via a RoundKnob-like intermediate) to load custom SVG skins with background layer
 **When to use:** All three knob sizes
 **Example:**
 ```cpp
@@ -120,6 +121,9 @@ struct ForgeKnobHero : app::SvgKnob {
         minAngle = -0.83 * M_PI;
         maxAngle = 0.83 * M_PI;
 
+        // CRITICAL: Disable built-in CircularShadow -- we provide custom shadow in bg SVG
+        shadow->opacity = 0.0;
+
         bg = new widget::SvgWidget;
         fb->addChildBelow(bg, tw);
 
@@ -129,6 +133,8 @@ struct ForgeKnobHero : app::SvgKnob {
 };
 ```
 
+**Why shadow->opacity = 0.0:** SvgKnob creates a built-in `CircularShadow* shadow` member rendered via NanoVG (a simple dark circle). When providing a custom shadow via the bg SVG layer, the built-in shadow must be disabled to prevent visual doubling. This pattern is used by NKK, CKSS, and other SDK components (componentlibrary.hpp:801,810,818).
+
 ### Pattern 2: Custom Port Widget Struct
 **What:** Subclass SvgPort to load custom jack SVG
 **When to use:** Both input and output jack types
@@ -137,16 +143,21 @@ struct ForgeKnobHero : app::SvgKnob {
 // Source: componentlibrary.hpp PJ301MPort pattern
 struct ForgeJackInput : app::SvgPort {
     ForgeJackInput() {
+        // Disable built-in shadow -- jack SVG includes its own depth effects
+        shadow->opacity = 0.0;
         setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeJackInput.svg")));
     }
 };
 
 struct ForgeJackOutput : app::SvgPort {
     ForgeJackOutput() {
+        shadow->opacity = 0.0;
         setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeJackOutput.svg")));
     }
 };
 ```
+
+**Note:** SvgPort also has a `CircularShadow* shadow` member (SvgPort.hpp:16). The stock PJ301MPort does NOT disable it, so it gets the default NanoVG shadow. For Forge components with custom depth rendering in the SVG, disable it.
 
 ### Pattern 3: Custom Trimpot Widget Struct
 **What:** Subclass SvgKnob with narrower rotation range for attenuverter behavior
@@ -160,6 +171,8 @@ struct ForgeTrimpot : app::SvgKnob {
     ForgeTrimpot() {
         minAngle = -0.75 * M_PI;
         maxAngle = 0.75 * M_PI;
+
+        shadow->opacity = 0.0;
 
         bg = new widget::SvgWidget;
         fb->addChildBelow(bg, tw);
@@ -183,6 +196,8 @@ struct ForgeHexBolt : app::SvgScrew {
 };
 ```
 
+**Note:** SvgScrew does NOT have a CircularShadow member (SvgScrew.hpp) -- no shadow to disable.
+
 ### Pattern 5: Coordinate Conversion from Mockup
 **What:** Convert forge-noir.html CSS pixel positions to VCV mm coordinates
 **When to use:** Every addParam/addInput/addOutput call in the widget constructor
@@ -194,6 +209,8 @@ struct ForgeHexBolt : app::SvgScrew {
 addParam(createParamCentered<ForgeKnobHero>(mm2px(Vec(35.56f, 47.35f)),
          module, AnalogLFO::MORPH_PARAM));
 ```
+
+**Important:** The HTML uses `transform: translate(-50%, -50%)` on knobs/jacks, meaning the CSS `left` and `top` values ARE center coordinates. No additional offset needed.
 
 ### Pattern 6: nanosvg-Compatible SVG Component Structure
 **What:** SVG file structure for knob/jack/trimpot components
@@ -212,12 +229,66 @@ addParam(createParamCentered<ForgeKnobHero>(mm2px(Vec(35.56f, 47.35f)),
       <stop offset="100%" stop-color="#0a0a0a"/>
     </radialGradient>
   </defs>
-  <!-- Metallic ring (bg layer renders this) -->
   <!-- Knob body with radial gradient -->
   <circle cx="8.19" cy="8.19" r="7.5" fill="url(#knob-body)"/>
-  <!-- Indicator line (rotated by VCV SvgKnob) -->
+  <!-- Center cap indent -->
+  <circle cx="8.19" cy="8.19" r="1.8" fill="#080808"/>
+  <!-- Machined groove texture (very subtle) -->
+  <circle cx="8.19" cy="8.19" r="6.0" fill="none" stroke="#ffffff" stroke-width="0.1" stroke-opacity="0.02"/>
+  <circle cx="8.19" cy="8.19" r="5.0" fill="none" stroke="#000000" stroke-width="0.1" stroke-opacity="0.03"/>
+  <circle cx="8.19" cy="8.19" r="4.0" fill="none" stroke="#ffffff" stroke-width="0.1" stroke-opacity="0.02"/>
+  <!-- Indicator line at 12-o'clock (SvgKnob rotates this) -->
   <rect x="7.69" y="1" width="1" height="5" rx="0.3"
         fill="#e85d26" opacity="0.9"/>
+  <!-- Indicator glow halo at tip -->
+  <circle cx="8.19" cy="1.5" r="1.2" fill="#e85d26" opacity="0.25"/>
+</svg>
+```
+
+### Pattern 7: Panel SVG Declaration
+**What:** SVG document structure for the 14HP panel
+**When to use:** res/AnalogLFO.svg
+**Example:**
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="71.12mm" height="128.5mm"
+     viewBox="0 0 71.12 128.5">
+  <!-- Forge Noir 14HP panel -->
+  <defs>
+    <!-- Gradients for accent bars, panel warmth, etc. -->
+    <linearGradient id="accent-left" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1a0800"/>
+      <stop offset="100%" stop-color="#e85d26"/>
+    </linearGradient>
+    <linearGradient id="accent-right" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e85d26"/>
+      <stop offset="100%" stop-color="#1a0800"/>
+    </linearGradient>
+    <radialGradient id="panel-warmth" cx="50%" cy="35%" r="42%">
+      <stop offset="0%" stop-color="#e85d26" stop-opacity="0.02"/>
+      <stop offset="100%" stop-color="#e85d26" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Panel background -->
+  <rect x="0" y="0" width="71.12" height="128.5" fill="#0c0c0c"/>
+
+  <!-- Panel border -->
+  <rect x="0.15" y="0.15" width="70.82" height="128.2"
+        fill="none" stroke="#1a1a1a" stroke-width="0.3"/>
+
+  <!-- Accent bars (two rects per bar for 2-stop gradient approximation) -->
+  <rect x="0" y="0" width="35.56" height="0.6" fill="url(#accent-left)"/>
+  <rect x="35.56" y="0" width="35.56" height="0.6" fill="url(#accent-right)"/>
+
+  <!-- ... emblem, decorations, labels, component layer ... -->
+
+  <!-- Hidden component placement layer -->
+  <g id="components" style="display:none">
+    <circle cx="35.56" cy="47.35" r="8.19" fill="#ff0000"/>  <!-- MORPH -->
+    <!-- ... all control positions ... -->
+  </g>
 </svg>
 ```
 
@@ -231,14 +302,15 @@ addParam(createParamCentered<ForgeKnobHero>(mm2px(Vec(35.56f, 47.35f)),
 - **Using 3-digit hex colors:** Always use 6-digit (e.g., `#0c0c0c` not `#0c0`).
 - **More than 2 gradient stops:** Rack 2.6 renders only 2-stop gradients. Layer multiple shapes for multi-stop effects.
 - **Using `<image>` elements:** Not supported.
+- **Leaving CircularShadow enabled with custom bg shadows:** Creates doubled shadow artifacts. Always set `shadow->opacity = 0.0;` when providing custom shadow artwork.
 
 ## Don't Hand-Roll
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
 | SVG knob rotation | Custom rotation code | SvgKnob base class with TransformWidget | SvgKnob handles rotation math, framebuffer caching, minAngle/maxAngle automatically |
-| Knob shadow | NanoVG shadow overlay | Separate _bg.svg with shadow circle | SvgKnob.bg layer renders behind the rotating knob body -- standard VCV pattern |
-| Panel loading | Custom SVG parsing | `setPanel(createPanel(asset::plugin(...)))` | Handles SVG→panel pipeline, dark mode, dimensions |
+| Knob shadow | NanoVG shadow overlay | Separate _bg.svg with shadow circle (and `shadow->opacity = 0.0;`) | SvgKnob.bg layer renders behind the rotating knob body -- standard VCV pattern |
+| Panel loading | Custom SVG parsing | `setPanel(createPanel(asset::plugin(...)))` | Handles SVG-to-panel pipeline, dark mode, dimensions |
 | Component centering | Manual box.pos math | `createParamCentered<T>()` / `createInputCentered<T>()` | Automatically offsets by half the widget size |
 | Font to path conversion | Manual path tracing | FontForge/Inkscape SVG export of text outlines | Complex glyph outlines need proper bezier curves; manual approximation loses quality |
 
@@ -267,7 +339,7 @@ addParam(createParamCentered<ForgeKnobHero>(mm2px(Vec(35.56f, 47.35f)),
 ### Pitfall 4: Foreground SVG vs Background SVG Confusion
 **What goes wrong:** The knob indicator appears behind the knob body, or the shadow renders on top.
 **Why it happens:** SvgKnob has TWO SVG layers: the main SVG (which rotates with the knob) and the bg SVG (which stays static behind it). Shadows/rings go in bg, the rotating knob body + indicator go in the main SVG.
-**How to avoid:** Main SVG = knob body + indicator line (rotates). Bg SVG = shadow circle + static outer ring (stays put). The `fb->addChildBelow(bg, tw)` call ensures bg renders below the transform widget.
+**How to avoid:** Main SVG = knob body + indicator line (rotates). Bg SVG = shadow circle + static outer metallic ring (stays put). The `fb->addChildBelow(bg, tw)` call ensures bg renders below the transform widget.
 **Warning signs:** Indicator doesn't rotate, or shadow rotates with the knob.
 
 ### Pitfall 5: Text Path Data Complexity
@@ -294,11 +366,23 @@ addParam(createParamCentered<ForgeKnobHero>(mm2px(Vec(35.56f, 47.35f)),
 **How to avoid:** Draw the indicator at the 12-o'clock position (pointing straight up) in the SVG. SvgKnob rotates from minAngle (CCW) to maxAngle (CW) around center. Match the rotation range to the existing knob behavior.
 **Warning signs:** Indicator at wrong angle at min/max values.
 
+### Pitfall 9: CircularShadow Doubling
+**What goes wrong:** Components appear to have an extra blurry dark circle behind them, creating visual artifacts or muddying the carefully designed bg SVG.
+**Why it happens:** SvgKnob and SvgPort both create a `CircularShadow* shadow` member (NanoVG-rendered) by default. If you also provide a shadow in the bg SVG, both render -- doubling the shadow effect.
+**How to avoid:** Set `shadow->opacity = 0.0;` in every custom widget struct constructor. This is standard practice in the SDK for components with custom shadow artwork (see NKK, CKSS structs in componentlibrary.hpp).
+**Warning signs:** Components look like they float higher than expected, or have a dark halo around them.
+
+### Pitfall 10: Emblem 3-Stop Gradient in Source HTML
+**What goes wrong:** The forge-noir.html emblem uses a 3-stop radial gradient (`forge-core` has stops at 0%, 45%, 100%). Direct copy into panel SVG breaks because nanosvg only supports 2 stops.
+**Why it happens:** The HTML reference is designed for browser rendering with no gradient stop limits.
+**How to avoid:** Simplify the `forge-core` gradient to 2 stops (e.g., ember at center opacity 0.2 to transparent at edge). For a closer approximation, layer two ellipses with separate 2-stop gradients -- one for the inner-to-mid fade, one for the mid-to-outer fade.
+**Warning signs:** Emblem glow is either a hard-edged spot or completely invisible.
+
 ## Code Examples
 
 ### Complete Widget Constructor Pattern (Target State)
 ```cpp
-// Source: AnalogLFO.cpp AnalogLFOWidget — target after Phase 19
+// Source: AnalogLFO.cpp AnalogLFOWidget -- target after Phase 19
 struct AnalogLFOWidget : ModuleWidget {
     AnalogLFOWidget(AnalogLFO* module) {
         setModule(module);
@@ -369,7 +453,7 @@ struct AnalogLFOWidget : ModuleWidget {
 
 ### nanosvg-Compatible Gradient SVG Pattern
 ```xml
-<!-- Source: VCV Rack SDK nanosvg.h gradient parser (lines 2551-2619) -->
+<!-- Source: VCV Rack SDK nanosvg.h gradient parser -->
 <!-- Gradients MUST be in <defs>. Max 2 stops per gradient. -->
 <defs>
   <!-- Linear gradient for accent bar -->
@@ -395,15 +479,8 @@ struct AnalogLFOWidget : ModuleWidget {
 
 ### Multi-Stop Gradient Simulation via Layering
 ```xml
-<!-- Simulate 3-color metallic ring effect with two 2-stop gradients -->
-<!-- Layer 1: bright center to mid-dark -->
-<circle cx="8" cy="8" r="7" fill="none" stroke-width="1.5">
-  <set attributeName="stroke" to="url(#ring-inner)"/>
-</circle>
-<!-- Layer 2: mid-dark to edge-dark (slightly smaller to overlap) -->
-<circle cx="8" cy="8" r="5.5" fill="url(#body-gradient)"/>
-
-<!-- Better approach: concentric circles with solid fills and opacity -->
+<!-- Simulate multi-band metallic ring with concentric solid circles -->
+<!-- Better than 2-stop gradient layering for this use case -->
 <circle cx="8" cy="8" r="8.5" fill="#1a1a1a"/>           <!-- outer dark -->
 <circle cx="8" cy="8" r="8.0" fill="#777777"/>            <!-- metallic ring bright -->
 <circle cx="8" cy="8" r="7.5" fill="#555555"/>            <!-- metallic ring mid -->
@@ -453,9 +530,13 @@ SCREWS (hex bolts):
 ### Component SVG Dimension Reference
 ```
 Hero knob SVG:       16.38mm x 16.38mm  (82px / 5.0056 px/mm)
+Hero knob bg SVG:    ~18.00mm x 18.00mm (90px -- slightly larger for shadow + ring)
 Secondary knob SVG:  11.99mm x 11.99mm  (60px / 5.0056)
+Secondary knob bg:   ~13.50mm x 13.50mm (68px)
 Utility knob SVG:     9.19mm x  9.19mm  (46px / 5.0056)
+Utility knob bg:     ~10.50mm x 10.50mm (53px)
 Trimpot SVG:          3.60mm x  3.60mm  (18px / 5.0056)
+Trimpot bg SVG:      ~4.20mm x  4.20mm  (21px)
 Input jack SVG:       7.19mm x  7.19mm  (36px / 5.0056)
 Output jack SVG:      8.39mm x  8.39mm  (42px / 5.0056)
 Hex bolt SVG:         3.20mm x  3.20mm  (16px / 5.0056)
@@ -476,65 +557,153 @@ Hex bolt SVG:         3.20mm x  3.20mm  (16px / 5.0056)
 ## Discretion Recommendations
 
 ### D-08: Knob Indicator Glow Approach
-**Recommendation:** Solid ember line with semi-transparent halo circle. In SVG, render the indicator as two elements: (1) a narrow rect filled with linear gradient from ember to metallic, and (2) a wider semi-transparent ember circle at the indicator tip. The solid line provides readability; the halo adds the premium glow effect. This is achievable purely in SVG with `fill-opacity`.
+**Recommendation:** Solid ember line with semi-transparent halo circle. In SVG, render the indicator as two elements: (1) a narrow rect filled with linear gradient from `#f08040` (outer/top) to `#c04020` (inner/bottom), and (2) a semi-transparent ember circle at the indicator tip (r=1.2mm hero, 0.9mm secondary, 0.7mm utility, fill `#e85d26`, opacity 0.25). The solid line provides readability; the halo adds the premium glow effect. This is achievable purely in SVG with `fill-opacity` and already documented in the UI-SPEC.
 
 ### D-12: Emblem Symmetry Method
-**Recommendation:** Manual duplication. The emblem is authored once, then manually mirror all x-coordinates about the center axis (35.56mm). For each left-side element at x_left, create a corresponding element at x_right = 71.12 - x_left. This avoids build tooling complexity for a one-time operation. The number of emblem elements (~30-40 paths/circles) is manageable.
+**Recommendation:** Manual duplication. The emblem is authored once, then manually mirror all x-coordinates about the center axis (35.56mm). For each left-side element at x_left, create a corresponding element at x_right = 71.12 - x_left. For paths, also invert horizontal control point directions. This avoids build tooling complexity for a one-time operation. The number of emblem elements (~30-40 paths/circles) is manageable.
 
 ### D-13: Forge Rune Detail Level
-**Recommendation:** Full rune with concentric power rings at decreasing opacity. The HTML rune has clear geometric structure (diamonds, lines, circles) that translates directly to nanosvg. Skip only the Gaussian blur filter -- use wider strokes at lower opacity to approximate the glow aura. The power rings (simple circles) add atmospheric depth at almost zero rendering cost.
+**Recommendation:** Full rune with concentric power rings at decreasing opacity. The HTML rune has clear geometric structure (diamonds, lines, circles) that translates directly to nanosvg. Skip only the Gaussian blur filter and the `<use>` element -- use wider strokes at lower opacity to approximate the glow aura. The power rings (simple circles with stroke) add atmospheric depth at almost zero rendering cost.
 
 ### Font Glyph to SVG Path Conversion
-**Recommendation:** Use Inkscape for conversion. Workflow: (1) Create text elements using the target fonts (FoundationLogo, Bebas Neue, Chakra Petch, JetBrains Mono). (2) Apply "Object to Path" in Inkscape. (3) Extract the `d` attribute from resulting `<path>` elements. (4) Position and scale in the panel SVG. Alternative: The existing AnalogLFO.svg already has hand-crafted geometric block letter paths for "FORGE AUDIO" and "ANALOG LFO" -- these can be refined/extended rather than starting from scratch. For smaller labels (MORPH, CHARACTER, etc.) the geometric approach of the existing panel may be sufficient.
+**Recommendation:** Use Inkscape for conversion. Workflow: (1) Create text elements using the target fonts (FoundationLogo, Bebas Neue, Chakra Petch, JetBrains Mono). (2) Apply "Object to Path" in Inkscape. (3) Extract the `d` attribute from resulting `<path>` elements. (4) Position and scale in the panel SVG. Alternative: The existing AnalogLFO.svg already has hand-crafted geometric block letter paths for "FORGE AUDIO" and "ANALOG LFO" -- these can be refined/extended rather than starting from scratch. For smaller labels (MORPH, CHARACTER, etc.) the geometric approach of the existing panel may be sufficient since these appear at tiny sizes.
 
 ### Machined Groove Texture
-**Recommendation:** Concentric circles with alternating very-low-opacity strokes. In the HTML mockup, grooves use nested `box-shadow` with alternating light/dark at 0.01-0.025 opacity. In SVG, approximate with 3-4 concentric `<circle>` elements inside the knob body at `stroke-opacity="0.02"` to `stroke-opacity="0.03"`. At module scale these provide subtle texture without overwhelming the gradient depth effect.
+**Recommendation:** Concentric circles with alternating very-low-opacity strokes. In the HTML mockup, grooves use nested `box-shadow` with alternating light/dark at 0.01-0.025 opacity. In SVG, approximate with 3-4 concentric `<circle>` elements inside the knob body at `stroke-opacity="0.02"` to `stroke-opacity="0.03"`, alternating `#ffffff` and `#000000` strokes. At module scale these provide subtle texture without overwhelming the gradient depth effect.
 
 ### SVG File Organization
-**Recommendation:** `res/components/` subdirectory for all component SVGs. Panel SVG stays at `res/AnalogLFO.svg` (replacing the old one). Component naming follows `Forge{Type}{Variant}.svg` convention. Background/shadow layers use `_bg.svg` suffix per VCV convention.
+**Recommendation:** `res/components/` subdirectory for all component SVGs. Panel SVG stays at `res/AnalogLFO.svg` (replacing the old one). Component naming follows `Forge{Type}{Variant}.svg` convention. Background/shadow layers use `_bg.svg` suffix per VCV convention. Total: 12 SVG files (1 panel + 11 component files).
 
 ## Open Questions
 
 1. **minRackVersion in plugin.json**
-   - What we know: Using 2-stop gradients requires Rack 2.6.0+. Current plugin.json has no `minRackVersion` field.
+   - What we know: Using 2-stop gradients requires Rack 2.6.0+. Current plugin.json has no `minRackVersion` field (verified).
    - What's unclear: Whether omitting minRackVersion causes issues on older Rack installs (likely just fails to render gradients gracefully).
    - Recommendation: Add `"minRackVersion": "2.6.0"` to plugin.json to prevent loading on incompatible Rack versions.
 
 2. **Exact font glyph path data**
    - What we know: FoundationLogo font file exists at project root (`FoundationLogo.ttf`). Bebas Neue and other fonts are Google Fonts. The current panel already has geometric path letters.
    - What's unclear: Whether the existing geometric letter paths match the FoundationLogo font closely enough, or if proper font-to-path conversion will produce noticeably different results.
-   - Recommendation: Start with Inkscape font-to-path conversion for the brand text (FORGE, AUDIO) using FoundationLogo. If the result is too complex for nanosvg, fall back to the existing geometric block letter approach refined to match the font's character.
+   - Recommendation: Start with Inkscape font-to-path conversion for the brand text (FORGE, AUDIO) using FoundationLogo. If the result is too complex for nanosvg, fall back to the existing geometric block letter approach refined to match the font's character. For all other labels, adapt and extend the existing geometric block letter approach.
 
 3. **Knob background SVG sizing**
-   - What we know: The bg SVG renders statically behind the rotating knob. It typically includes the shadow and any outer ring.
-   - What's unclear: Whether the bg SVG must be the same dimensions as the main knob SVG, or if it can be larger (to extend the shadow beyond the knob body).
-   - Recommendation: Make bg SVG slightly larger than the knob body to accommodate shadow and outer ring effects. The SvgKnob class positions bg relative to the transform widget, so oversized bg will extend outward naturally. Test with a simple prototype first.
+   - What we know: The bg SVG renders statically behind the rotating knob. It includes the custom shadow and outer metallic ring. The UI-SPEC specifies bg SVG dimensions as slightly larger than the main SVG.
+   - What's unclear: The exact positioning behavior when bg SVG and main SVG have different dimensions.
+   - Recommendation: Make bg SVG slightly larger than the knob body per the UI-SPEC dimensions. The SvgWidget is positioned relative to the framebuffer, and `fb->addChildBelow(bg, tw)` places it behind the transform widget. Test with a simple prototype. If centering is off, adjust bg SVG viewport or add offset in the constructor.
 
 ## Environment Availability
 
 | Dependency | Required By | Available | Version | Fallback |
 |------------|------------|-----------|---------|----------|
-| VCV Rack 2 SDK | Build system, all widget headers | Checked | Present at ../Rack-SDK | -- |
-| C++17 compiler | Custom widget structs | Checked | Via Makefile/plugin.mk | -- |
-| make | Build (`make && make install`) | Checked | Standard macOS | -- |
+| VCV Rack 2 SDK | Build system, all widget headers | Present | ../Rack-SDK | -- |
+| C++17 compiler | Custom widget structs | Present | Via Makefile/plugin.mk | -- |
+| make | Build (`make && make install`) | Present | Standard macOS | -- |
 | Inkscape | Font-to-path conversion (optional) | Not checked | -- | Hand-craft paths or use FontForge CLI |
-| FoundationLogo.ttf | Brand text paths | Checked | Present at project root | -- |
+| FoundationLogo.ttf | Brand text paths | Present | Project root | -- |
 
 **Missing dependencies with no fallback:**
 - None -- all critical dependencies are available.
 
 **Missing dependencies with fallback:**
-- Inkscape (for font-to-path conversion): Can use FontForge CLI, or online converters, or refine existing hand-crafted paths.
+- Inkscape (for font-to-path conversion): Can use FontForge CLI, online converters, or refine existing hand-crafted paths.
+
+## Validation Architecture
+
+### Build Validation
+| Test | Command | Pass Criteria |
+|------|---------|---------------|
+| Build succeeds | `make` | Exit code 0, no errors |
+| Plugin loads | `make install` + open VCV Rack | Module appears in module browser |
+
+### File Existence Checks
+| Assertion | Command | Covers |
+|-----------|---------|--------|
+| Panel SVG exists with 14HP dimensions | `grep -q 'width="71.12mm"' res/AnalogLFO.svg && grep -q 'height="128.5mm"' res/AnalogLFO.svg` | PANEL-01 |
+| Panel background color is near-black | `grep -q '#0c0c0c' res/AnalogLFO.svg` | PANEL-01 |
+| Accent bar gradient present | `grep -q 'linearGradient' res/AnalogLFO.svg && grep -q '#e85d26' res/AnalogLFO.svg` | PANEL-01 |
+| All component SVG files exist | `ls res/components/ForgeKnobHero.svg res/components/ForgeKnobHero_bg.svg res/components/ForgeKnobSecondary.svg res/components/ForgeKnobSecondary_bg.svg res/components/ForgeKnobUtility.svg res/components/ForgeKnobUtility_bg.svg res/components/ForgeTrimpot.svg res/components/ForgeTrimpot_bg.svg res/components/ForgeJackInput.svg res/components/ForgeJackOutput.svg res/components/ForgeHexBolt.svg` | PANEL-03, PANEL-04, PANEL-05 |
+| No `<text>` elements in any SVG | `grep -rL '<text' res/AnalogLFO.svg res/components/*.svg` should find nothing | PANEL-07 |
+| No `<style>` blocks in any SVG | `! grep -rl '<style' res/AnalogLFO.svg res/components/*.svg` | nanosvg compliance |
+| No `<use>` element cloning | `! grep -rl '<use ' res/AnalogLFO.svg res/components/*.svg` | nanosvg compliance |
+| No 3+ stop gradients | Each gradient block has exactly 2 `<stop>` elements | nanosvg compliance |
+| minRackVersion set to 2.6.0 | `grep -q '"minRackVersion".*"2.6.0"' plugin.json` | PANEL-01 |
+
+### C++ Code Assertions
+| Assertion | Grep Pattern | Covers |
+|-----------|-------------|--------|
+| All 10 params registered | Count `addParam(` calls = 10 (5 knobs + 5 trimpots) | PANEL-02 |
+| All 7 inputs registered | Count `addInput(` calls = 7 | PANEL-02 |
+| 1 output registered | Count `addOutput(` calls = 1 | PANEL-02 |
+| ForgeKnobHero used for MORPH | `grep 'ForgeKnobHero.*MORPH_PARAM'` | PANEL-03 |
+| ForgeKnobSecondary used for CHAR/DRIFT | `grep 'ForgeKnobSecondary.*CHARACTER_PARAM\|DRIFT_PARAM'` | PANEL-03 |
+| ForgeKnobUtility used for RATE/PHASE | `grep 'ForgeKnobUtility.*RATE_PARAM\|PHASE_OFFSET_PARAM'` | PANEL-03 |
+| ForgeTrimpot used for all 5 atten | Count `ForgeTrimpot` in addParam calls = 5 | PANEL-04 |
+| ForgeJackInput for inputs | `grep 'ForgeJackInput.*INPUT'` | PANEL-05 |
+| ForgeJackOutput for output | `grep 'ForgeJackOutput.*OUTPUT'` | PANEL-05 |
+| ForgeHexBolt for all 4 screws | Count `ForgeHexBolt` = 4 | PANEL-01 |
+| shadow->opacity = 0.0 in all custom widgets | `grep 'shadow->opacity' src/AnalogLFO.cpp` | Pitfall 9 |
+
+### SVG Content Validation
+| Assertion | What to Check | Covers |
+|-----------|--------------|--------|
+| 3 knob sizes are distinct | Hero SVG viewBox width > Secondary > Utility | PANEL-03 |
+| Output jack has ember accent ring | `grep -q '#e85d26' res/components/ForgeJackOutput.svg` | PANEL-05 |
+| Input jack does NOT have ember ring | Output-specific stroke not present in ForgeJackInput.svg | PANEL-05 |
+| Trimpot is bright (contrast with knobs) | Trimpot SVG has brighter gradient stops (#6a6a6a) vs knob (#4a4a4a) | PANEL-04 |
+| Emblem elements present in panel SVG | `grep -c 'opacity="0.0[0-9]' res/AnalogLFO.svg` > 10 (many low-opacity elements) | PANEL-06 |
+| Brand text paths present | `grep -c '<path' res/AnalogLFO.svg` > 20 (many path elements for text) | PANEL-07 |
+| Component layer present | `grep -q 'id="components"' res/AnalogLFO.svg` | PANEL-02 |
+
+### Visual Validation (Manual -- Build + Load in Rack)
+| Assertion | What to Look For | Covers |
+|-----------|-----------------|--------|
+| No black rectangles | Module renders without missing elements | PANEL-01 |
+| Near-black background visible | Panel is dark but not pure black | PANEL-01 |
+| Ember accent bars at top/bottom | Orange gradient bars at panel edges | PANEL-01 |
+| Hex bolts in 4 corners | Hexagonal bolt heads, not round screws | PANEL-01 |
+| MORPH knob largest | Visual size hierarchy: MORPH > CHAR/DRIFT > RATE/PHASE | PANEL-03 |
+| Knobs rotate with drag | Indicator moves with mouse drag | PANEL-03 |
+| Trimpots brighter than knobs | Visual contrast between trimpot and knob bodies | PANEL-04 |
+| Output jack has orange ring | Only the output jack has the ember accent | PANEL-05 |
+| Output jack larger than inputs | Visible size difference | PANEL-05 |
+| Forge emblem subtle behind knobs | Faint atmospheric pattern, not distracting | PANEL-06 |
+| Brand text readable | "FORGE" and "AUDIO" in ember, "ANALOG LFO" in warm white | PANEL-07 |
+| All controls interactive | Every knob, trimpot, and jack responds to interaction | PANEL-02 |
+| Morph arc visible around MORPH | Dashed decorative circle around hero knob | PANEL-03 |
+| Rune glyph between FORGE/AUDIO | Diamond shape with center glow | PANEL-07 |
+
+### Interaction Validation
+| Assertion | How to Test | Covers |
+|-----------|-----------|--------|
+| Knob rotation range correct | Drag MORPH from min to max: ~300 degrees sweep | PANEL-03 |
+| Trimpot rotation range correct | Drag trimpot from min to max: ~270 degrees | PANEL-04 |
+| Cables connect to jacks | Drag cable from any jack: cable attaches | PANEL-05 |
+| Module width is 14HP | Module occupies 14HP width in rack | PANEL-01 |
+| Context menu still works | Right-click module: Swing submenu appears | PANEL-02 (no regression) |
+
+### Requirement Coverage Summary
+
+| Req ID | Build Checks | Code Checks | Visual Checks | Status |
+|--------|-------------|-------------|---------------|--------|
+| PANEL-01 | SVG dimensions, bg color, gradients, minRackVersion | ForgeHexBolt count = 4 | No black rects, accent bars, hex bolts | Fully covered |
+| PANEL-02 | -- | param/input/output counts, component layer | All controls interactive | Fully covered |
+| PANEL-03 | Component SVGs exist | Widget type per param | 3 distinct sizes, rotation works, morph arc | Fully covered |
+| PANEL-04 | Trimpot SVGs exist | ForgeTrimpot count = 5 | Bright metallic body, rotation range | Fully covered |
+| PANEL-05 | Jack SVGs exist | Widget types for I/O | Ember ring on output only, size difference | Fully covered |
+| PANEL-06 | Low-opacity element count in panel SVG | -- | Subtle atmospheric emblem | Fully covered |
+| PANEL-07 | No `<text>` elements, path count | -- | Brand text readable | Fully covered |
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- VCV Rack SDK headers: `componentlibrary.hpp`, `SvgKnob.hpp`, `SvgPort.hpp`, `SvgScrew.hpp` -- Verified widget class hierarchy, setSvg() API, bg layer pattern
-- VCV Rack SDK `nanosvg.h` (lines 2551-2898) -- Verified gradient parsing: `<defs>`, `<linearGradient>`, `<radialGradient>`, stop-color, stop-opacity, gradientTransform, gradientUnits all supported
-- VCV Rack 2.6.0 CHANGELOG -- "Render 2-stop linear/radial gradients with any stop offsets and transformations in SVG" ([GitHub CHANGELOG](https://raw.githubusercontent.com/VCVRack/Rack/v2/CHANGELOG.md))
-- Existing `res/AnalogLFO.svg` (331 lines) -- Current panel structure, path letterform patterns, nanosvg-compatible SVG conventions
-- `forge-noir.html` (893 lines) -- Canonical layout reference with all pixel positions
+- VCV Rack SDK headers: `componentlibrary.hpp` (RoundKnob line 280, Trimpot line 637, PJ301MPort line 757, ScrewSilver line 965, shadow->opacity pattern lines 801+), `SvgKnob.hpp` (CircularShadow member line 17), `SvgPort.hpp` (CircularShadow member line 16), `SvgScrew.hpp` (no shadow member), `Knob.hpp` (minAngle/maxAngle lines 33-34), `CircularShadow.hpp` -- Verified widget class hierarchy, setSvg() API, bg layer pattern, shadow management
+- VCV Rack SDK `nanosvg.h` -- Verified gradient parsing: `<defs>`, `<linearGradient>`, `<radialGradient>`, stop-color, stop-opacity, gradientTransform, gradientUnits all supported; 2-stop limit
+- VCV Rack 2.6.0 CHANGELOG -- "Render 2-stop linear/radial gradients with any stop offsets and transformations in SVG"
+- Existing `res/AnalogLFO.svg` -- Current 12HP panel structure, path letterform patterns, nanosvg-compatible SVG conventions
+- `forge-noir.html` (893 lines) -- Canonical layout reference with all pixel positions, verified coordinate mappings
 - `DESIGN-LANGUAGE.md` (274 lines) -- Complete color palette, typography, component specs, layout rules
+- `19-UI-SPEC.md` (473 lines) -- Checker-approved visual contract with component rendering details, position map, validation criteria
+- `plugin.json` -- Verified no minRackVersion field currently set; must add "2.6.0"
 
 ### Secondary (MEDIUM confidence)
 - [VCV Rack Manual - Panel Guide](https://vcvrack.com/manual/Panel) -- Confirms text-to-path requirement, mm dimensions, component layer conventions
@@ -548,9 +717,9 @@ Hex bolt SVG:         3.20mm x  3.20mm  (16px / 5.0056)
 
 **Confidence breakdown:**
 - Standard stack: HIGH -- Verified against SDK headers and source code directly
-- Architecture: HIGH -- Widget patterns confirmed in componentlibrary.hpp; coordinate conversion verified mathematically
-- Pitfalls: HIGH -- nanosvg constraints verified by reading the parser source code; gradient limits confirmed by changelog + community
-- Coordinate mapping: HIGH -- All 18 controls mapped with computed mm values; conversion factor mathematically derived from panel dimensions
+- Architecture: HIGH -- Widget patterns confirmed in componentlibrary.hpp; CircularShadow handling verified; coordinate conversion verified mathematically
+- Pitfalls: HIGH -- nanosvg constraints verified by reading the parser source code; gradient limits confirmed by changelog + community; shadow doubling verified by reading SvgKnob.hpp and componentlibrary.hpp
+- Coordinate mapping: HIGH -- All 18 controls mapped with computed mm values; conversion factor mathematically derived from panel dimensions; verified against UI-SPEC
 
 **Research date:** 2026-03-29
 **Valid until:** 2026-04-28 (stable -- VCV Rack SDK evolves slowly, nanosvg constraints unlikely to change)
