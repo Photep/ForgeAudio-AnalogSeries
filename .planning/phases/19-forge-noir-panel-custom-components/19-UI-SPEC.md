@@ -21,7 +21,7 @@ created: 2026-03-29
 | Preset | not applicable |
 | Component library | VCV Rack SDK: SvgKnob, SvgPort, SvgScrew base classes |
 | Icon library | none -- all glyphs are SVG path elements |
-| Font | All text as SVG `<path>` elements. Source fonts: FoundationLogo (brand), Bebas Neue (module name, output label), Chakra Petch (primary/secondary labels), JetBrains Mono (CV labels) |
+| Font | All text as SVG `<path>` elements. Source fonts: FoundationLogo (brand), Bebas Neue (module name, hero/output labels), Chakra Petch (primary/small labels), JetBrains Mono (CV small labels) |
 
 **Renderer constraints (nanosvg):**
 - Maximum 2 stops per gradient (linear or radial)
@@ -56,16 +56,19 @@ Exceptions:
 
 All text rendered as SVG `<path>` elements (nanosvg requirement per D-17). Font metrics below are authoring references for generating correct path data.
 
+**4 declared sizes, 2 weights:**
+
 | Role | Source Font | Size (5x px) | Size (mm) | Letter-spacing (5x px) | Color | Usage |
 |------|------------|---------------|-----------|------------------------|-------|-------|
 | Brand | FoundationLogo | 20px | 4.00mm | 5px | `#e85d26` | "FORGE" / "AUDIO" |
 | Module Name | Bebas Neue | 20px | 4.00mm | 7px | `#e8e4e0` | "ANALOG LFO" |
-| Hero Label | Bebas Neue | 16px | 3.20mm | 5px | `#f0ece8` | MORPH |
+| Hero/Output Label | Bebas Neue | 16px | 3.20mm | 5px | varies | MORPH (`#f0ece8`), OUTPUT (`#e85d26`) |
 | Primary Label | Chakra Petch 600 | 9px | 1.80mm | 2.5px | `#c0bbb5` | CHARACTER, DRIFT |
-| Secondary Label | Chakra Petch 500 | 8px | 1.60mm | 2px | `#888888` | RATE, PHASE |
-| CV Label | JetBrains Mono 500 | 7px | 1.40mm | 1.5px | `#777777` | MORPH, CHAR, DRIFT, FM, PHASE (CV row) |
-| I/O Label | Chakra Petch 600 | 8px | 1.60mm | 2px | `#999999` | CLK, RST |
-| Output Label | Bebas Neue | 14px | 2.80mm | 4px | `#e85d26` | OUTPUT |
+| Small Label | Chakra Petch 500 / JetBrains Mono 500 | 7px | 1.40mm | 1.5px | varies | RATE, PHASE (`#888888`); CLK, RST (`#999999`); MORPH, CHAR, DRIFT, FM, PHASE CV row (`#777777`) |
+
+**Size consolidation rationale:** The original design language specified 6 distinct sizes. Two merges reduce to 4 without perceptible loss at module scale: (1) Output Label (2.80mm, Bebas Neue) merged into Hero Label (3.20mm, Bebas Neue) -- same font family, 0.40mm difference imperceptible; (2) Secondary Label (1.60mm), I/O Label (1.60mm), and CV Label (1.40mm) unified at 1.40mm -- all serve the same "small supporting label" role and are differentiated by color, not size.
+
+**Weights used:** Regular (400-500) for small labels, SemiBold (600) for primary labels. Brand and hero/output use display fonts where weight is inherent to the typeface design.
 
 **Font-to-path conversion method:** Use Inkscape "Object to Path" for brand text (FoundationLogo). For smaller labels, the existing AnalogLFO.svg geometric block letter approach is acceptable. If Inkscape output is too complex, refine existing hand-crafted paths to match the target font's character.
 
@@ -91,12 +94,12 @@ All text rendered as SVG `<path>` elements (nanosvg requirement per D-17). Font 
 | Molten Gold | `#daa520` | Secondary accent -- rune power ring outermost, display readout warm details |
 | Hot Gold | `#f0a030` | Tertiary -- rune center mid-layer, highlight moments |
 | White Hot | `#ffe0a0` | Rune core peak brightness |
-| Warm White | `#e8e4e0` | Module name, hero label (MORPH) |
+| Warm White | `#e8e4e0` | Module name |
+| Hero Label | `#f0ece8` | MORPH label (warmer than warm white) |
 | Label Light | `#c0bbb5` | Primary control labels (CHARACTER, DRIFT) |
 | Label Mid | `#888888` | Secondary control labels (RATE, PHASE) |
 | Label Dim | `#777777` | CV labels |
 | Label I/O | `#999999` | CLK, RST labels |
-| Hero Label | `#f0ece8` | MORPH label (warmer than warm white) |
 | Knob Highlight | `#4a4a4a` | Knob body gradient bright stop |
 | Knob Dark | `#0a0a0a` | Knob body gradient dark stop |
 | Metallic Ring Bright | `#777777` | Knob outer metallic ring peak |
@@ -342,12 +345,12 @@ This phase is a VCV Rack hardware-style panel with fixed SVG labels, not a web a
 | Brand left | FORGE | FoundationLogo font paths, ember color |
 | Brand right | AUDIO | FoundationLogo font paths, ember color |
 | Module name | ANALOG LFO | Bebas Neue paths, warm white |
-| Hero label | MORPH | Bebas Neue paths, hero warm white |
-| Primary labels | CHARACTER, DRIFT | Chakra Petch paths, label light |
-| Secondary labels | RATE, PHASE | Chakra Petch paths, label mid |
-| CV labels | MORPH, CHAR, DRIFT, FM, PHASE | JetBrains Mono paths, label dim |
-| I/O labels | CLK, RST | Chakra Petch paths, label I/O gray |
-| Output label | OUTPUT | Bebas Neue paths, ember color |
+| Hero label | MORPH | Bebas Neue paths at 3.20mm, hero warm white |
+| Primary labels | CHARACTER, DRIFT | Chakra Petch paths at 1.80mm, label light |
+| Secondary labels | RATE, PHASE | Chakra Petch paths at 1.40mm, label mid |
+| CV labels | MORPH, CHAR, DRIFT, FM, PHASE | JetBrains Mono paths at 1.40mm, label dim |
+| I/O labels | CLK, RST | Chakra Petch paths at 1.40mm, label I/O gray |
+| Output label | OUTPUT | Bebas Neue paths at 3.20mm, ember color |
 | Footer brand | FORGE | FoundationLogo paths, opacity 0.25 |
 
 **Empty state:** Not applicable -- module always displays its panel when loaded.
@@ -416,9 +419,10 @@ These map to the 6 checker dimensions, adapted for VCV Rack SVG panel context.
 - Output jack has visible ember accent ring; input jacks do not
 
 ### Dimension 4: Typography
-- 8 typography roles are all present and visually distinguishable
-- Size hierarchy is correct: Brand/Module Name (largest) > Hero Label > Primary Label > Secondary Label > CV Label (smallest)
-- Color hierarchy is correct: ember (brand/output) > warm white (module name/hero) > label light > label mid > label dim
+- Exactly 4 distinct font sizes used across all labels: 4.00mm (brand/module name), 3.20mm (hero/output labels), 1.80mm (primary labels), 1.40mm (small labels: secondary, CV, I/O)
+- Size hierarchy is correct: Brand/Module Name (4.00mm) > Hero/Output Label (3.20mm) > Primary Label (1.80mm) > Small Label (1.40mm)
+- Color hierarchy differentiates roles within same-size tiers: ember (brand/output) > warm white (module name/hero) > label light (primary) > label mid/I-O/dim (small labels)
+- Maximum 2 font weights used: Regular (400-500) for small labels, SemiBold (600) for primary labels
 
 ### Dimension 5: Spacing
 - 2.00mm (10px) gap between every label and its component
@@ -456,6 +460,7 @@ These map to the 6 checker dimensions, adapted for VCV Rack SVG panel context.
 | Rendering approach (SVG-first, nanosvg constraints) | 19-CONTEXT.md D-01, D-02, D-03 |
 | Gradient support confirmation | 19-RESEARCH.md (Rack 2.6.0 changelog) |
 | Typography fonts and hierarchy | DESIGN-LANGUAGE.md Typography Hierarchy table |
+| Typography consolidation (6 to 4 sizes) | UI checker revision -- merged Output Label into Hero Label size, unified Secondary/I-O/CV into Small Label |
 | Emblem construction | DESIGN-LANGUAGE.md Forge Emblem section + 19-CONTEXT.md D-11, D-12 |
 | Rune glyph | DESIGN-LANGUAGE.md Forge Rune Glyph section + 19-CONTEXT.md D-13 |
 | Widget C++ patterns | 19-RESEARCH.md Architecture Patterns |
