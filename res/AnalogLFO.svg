@@ -1,331 +1,537 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="60.96mm" height="128.5mm"
-     viewBox="0 0 60.96 128.5">
+     width="71.12mm" height="128.5mm"
+     viewBox="0 0 71.12 128.5">
 
   <!-- ============================================================ -->
-  <!-- FORGE AUDIO - Analog LFO Module Panel                        -->
-  <!-- 12HP (60.96mm x 128.5mm) branded panel                       -->
-  <!-- All text rendered as geometric path letterforms (no <text>)   -->
-  <!-- nanosvg compatible: no use/defs/style/text/filters            -->
+  <!-- FORGE AUDIO - Analog LFO Module Panel (Forge Noir)           -->
+  <!-- 14HP (71.12mm x 128.5mm) branded panel                       -->
+  <!-- All labels rendered as geometric path letterforms (paths only) -->
+  <!-- nanosvg compatible: no use/defs/style/text/filters/clipPath   -->
   <!-- ============================================================ -->
 
-  <!-- ==================== BACKGROUND ==================== -->
-  <rect x="0" y="0" width="60.96" height="128.5" fill="#1a1a2e"/>
+  <!-- ==================== GRADIENT DEFINITIONS ==================== -->
+  <defs>
+    <!-- Accent bar gradients -->
+    <linearGradient id="accent-left" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1a0800"/>
+      <stop offset="1" stop-color="#e85d26"/>
+    </linearGradient>
+    <linearGradient id="accent-right" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e85d26"/>
+      <stop offset="1" stop-color="#1a0800"/>
+    </linearGradient>
 
-  <!-- Panel border -->
-  <rect x="0.15" y="0.15" width="60.66" height="128.2"
-        fill="none" stroke="#2d2d4a" stroke-width="0.3"/>
+    <!-- Panel warmth radial -->
+    <radialGradient id="panel-warmth" cx="50%" cy="35%" r="42%">
+      <stop offset="0" stop-color="#e85d26" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#e85d26" stop-opacity="0"/>
+    </radialGradient>
 
-  <!-- Top amber accent stripe -->
-  <rect x="0" y="0" width="60.96" height="1" fill="#e8a838"/>
+    <!-- Emblem core glow -->
+    <radialGradient id="emblem-core" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#e85d26" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#e85d26" stop-opacity="0"/>
+    </radialGradient>
 
-  <!-- Bottom amber accent stripe -->
-  <rect x="0" y="127.5" width="60.96" height="1" fill="#e8a838"/>
+    <!-- Emblem gold warmth -->
+    <radialGradient id="emblem-gold" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#daa520" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#daa520" stop-opacity="0"/>
+    </radialGradient>
 
+    <!-- Header slash fade -->
+    <linearGradient id="slash-fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e85d26" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#e85d26" stop-opacity="0"/>
+    </linearGradient>
 
-  <!-- ==================== "FORGE AUDIO" BRAND TEXT (top) ==================== -->
-  <!-- scale=0.24, cap height ~1.2mm, centered at x=30.48, y~6mm              -->
-  <!-- Letter base: h=5, widths: F=3 O=3 R=3 G=3 E=3 sp A=3 U=3 D=3 I=0.9 O=3 -->
-  <!-- Total units: 3+0.6+3+0.6+3+0.6+3+0.6+3 + 1.8 + 3+0.6+3+0.6+3+0.6+0.9+0.6+3 = 35.1 -->
-  <!-- Scaled: 35.1*0.24 = 8.424, startX = 30.48 - 8.424/2 = 26.268 -->
-  <g transform="translate(26.268, 4.8) scale(0.24)">
+    <!-- CV connecting line gradient -->
+    <linearGradient id="cv-line" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e85d26" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#e85d26" stop-opacity="0.08"/>
+    </linearGradient>
+
+    <!-- Section divider gradients (left half fades in, right half fades out) -->
+    <linearGradient id="divider-left" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e85d26" stop-opacity="0"/>
+      <stop offset="1" stop-color="#e85d26" stop-opacity="0.15"/>
+    </linearGradient>
+    <linearGradient id="divider-right" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e85d26" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#e85d26" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Module name decorative line gradients -->
+    <linearGradient id="name-line-left" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e85d26" stop-opacity="0"/>
+      <stop offset="1" stop-color="#e85d26" stop-opacity="0.25"/>
+    </linearGradient>
+    <linearGradient id="name-line-right" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e85d26" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#e85d26" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ==================== LAYER 1: BACKGROUND ==================== -->
+  <rect x="0" y="0" width="71.12" height="128.5" fill="#0c0c0c"/>
+  <rect x="0.15" y="0.15" width="70.82" height="128.2"
+        fill="none" stroke="#1a1a1a" stroke-width="0.3"/>
+
+  <!-- ==================== LAYER 2: ACCENT BARS ==================== -->
+  <!-- Top accent bar: two halves for 2-stop gradient approximation -->
+  <rect x="0" y="0" width="35.56" height="0.6" fill="url(#accent-left)"/>
+  <rect x="35.56" y="0" width="35.56" height="0.6" fill="url(#accent-right)"/>
+  <!-- Bottom accent bar -->
+  <rect x="0" y="127.9" width="35.56" height="0.6" fill="url(#accent-left)"/>
+  <rect x="35.56" y="127.9" width="35.56" height="0.6" fill="url(#accent-right)"/>
+
+  <!-- ==================== LAYER 3: PANEL WARMTH ==================== -->
+  <ellipse cx="35.56" cy="60" rx="30" ry="25" fill="url(#panel-warmth)"/>
+
+  <!-- ==================== LAYER 4: FORGE EMBLEM ==================== -->
+  <!-- Central heat column -->
+  <rect x="32.76" y="40" width="5.6" height="40" fill="#e85d26" opacity="0.03"/>
+
+  <!-- Core forge glow -->
+  <ellipse cx="35.56" cy="50" rx="15" ry="12" fill="url(#emblem-core)"/>
+
+  <!-- Secondary gold warmth -->
+  <ellipse cx="35.56" cy="55" rx="22" ry="18" fill="url(#emblem-gold)"/>
+
+  <!-- Heat shimmer waves (3 sinusoidal paths) -->
+  <path d="M10,52 C18,50 28,54 35.56,52 C43,50 53,54 61,52" fill="none" stroke="#e85d26" stroke-width="0.2" opacity="0.04"/>
+  <path d="M12,58 C20,56 28,60 35.56,58 C43,56 51,60 59,58" fill="none" stroke="#e85d26" stroke-width="0.2" opacity="0.03"/>
+  <path d="M14,64 C22,62 28,66 35.56,64 C43,62 49,66 57,64" fill="none" stroke="#e85d26" stroke-width="0.2" opacity="0.02"/>
+
+  <!-- Molten metal streams - LEFT SIDE -->
+  <!-- Stream 1 (widest, 3.20mm) -->
+  <path d="M35.56,48 C32,52 28,56 24,62 C22,66 23,70 25,74"
+        fill="none" stroke="#e85d26" stroke-width="3.20" opacity="0.055"/>
+  <!-- Stream 2 (medium, 1.40mm) -->
+  <path d="M35.56,50 C33,54 30,58 27,64 C25,68 24,72 22,76"
+        fill="none" stroke="#e85d26" stroke-width="1.40" opacity="0.045"/>
+  <!-- Stream 3 (thin, 0.50mm) -->
+  <path d="M35.56,46 C34,50 31,54 29,58 C27,62 26,66 24,70"
+        fill="none" stroke="#e85d26" stroke-width="0.50" opacity="0.10"/>
+
+  <!-- Molten metal streams - RIGHT SIDE (mirrored about x=35.56) -->
+  <!-- Stream 1 -->
+  <path d="M35.56,48 C39.12,52 43.12,56 47.12,62 C49.12,66 48.12,70 46.12,74"
+        fill="none" stroke="#e85d26" stroke-width="3.20" opacity="0.055"/>
+  <!-- Stream 2 -->
+  <path d="M35.56,50 C38.12,54 41.12,58 44.12,64 C46.12,68 47.12,72 49.12,76"
+        fill="none" stroke="#e85d26" stroke-width="1.40" opacity="0.045"/>
+  <!-- Stream 3 -->
+  <path d="M35.56,46 C37.12,50 40.12,54 42.12,58 C44.12,62 45.12,66 47.12,70"
+        fill="none" stroke="#e85d26" stroke-width="0.50" opacity="0.10"/>
+
+  <!-- Forge marks - LEFT SIDE -->
+  <!-- Chevron 1 (pointing inward/right) -->
+  <path d="M18,44 L21,47.35 L18,50.7" fill="none" stroke="#e85d26" stroke-width="0.2" opacity="0.08"/>
+  <!-- Chevron 2 -->
+  <path d="M16,45.5 L19,47.35 L16,49.2" fill="none" stroke="#e85d26" stroke-width="0.2" opacity="0.08"/>
+  <!-- Heat arcs -->
+  <path d="M14,42 C16,44 18,46 19,48" fill="none" stroke="#e85d26" stroke-width="0.15" opacity="0.06"/>
+  <path d="M13,44 C15,46 17,48 18,50" fill="none" stroke="#e85d26" stroke-width="0.15" opacity="0.06"/>
+  <path d="M12,46 C14,48 16,50 17,52" fill="none" stroke="#e85d26" stroke-width="0.15" opacity="0.06"/>
+  <!-- Horizontal dashes -->
+  <rect x="14" y="46.85" width="3" height="0.2" fill="#e85d26" opacity="0.08"/>
+  <rect x="15" y="48.85" width="2.5" height="0.2" fill="#e85d26" opacity="0.08"/>
+  <!-- Diamond -->
+  <path d="M16,43 L17.2,44.5 L16,46 L14.8,44.5 Z" fill="#e85d26" opacity="0.10"/>
+
+  <!-- Forge marks - RIGHT SIDE (mirrored about x=35.56) -->
+  <!-- Chevron 1 -->
+  <path d="M53.12,44 L50.12,47.35 L53.12,50.7" fill="none" stroke="#e85d26" stroke-width="0.2" opacity="0.08"/>
+  <!-- Chevron 2 -->
+  <path d="M55.12,45.5 L52.12,47.35 L55.12,49.2" fill="none" stroke="#e85d26" stroke-width="0.2" opacity="0.08"/>
+  <!-- Heat arcs -->
+  <path d="M57.12,42 C55.12,44 53.12,46 52.12,48" fill="none" stroke="#e85d26" stroke-width="0.15" opacity="0.06"/>
+  <path d="M58.12,44 C56.12,46 54.12,48 53.12,50" fill="none" stroke="#e85d26" stroke-width="0.15" opacity="0.06"/>
+  <path d="M59.12,46 C57.12,48 55.12,50 54.12,52" fill="none" stroke="#e85d26" stroke-width="0.15" opacity="0.06"/>
+  <!-- Horizontal dashes -->
+  <rect x="54.12" y="46.85" width="3" height="0.2" fill="#e85d26" opacity="0.08"/>
+  <rect x="53.62" y="48.85" width="2.5" height="0.2" fill="#e85d26" opacity="0.08"/>
+  <!-- Diamond -->
+  <path d="M55.12,43 L53.92,44.5 L55.12,46 L56.32,44.5 Z" fill="#e85d26" opacity="0.10"/>
+
+  <!-- Ember particles - LEFT SIDE -->
+  <circle cx="12.5" cy="43" r="0.25" fill="#e85d26" opacity="0.12"/>
+  <circle cx="15.8" cy="41" r="0.18" fill="#daa520" opacity="0.10"/>
+  <circle cx="11" cy="48" r="0.30" fill="#e85d26" opacity="0.14"/>
+  <circle cx="17" cy="52" r="0.14" fill="#f0a030" opacity="0.16"/>
+  <circle cx="13" cy="55" r="0.20" fill="#e85d26" opacity="0.08"/>
+  <circle cx="19" cy="57" r="0.35" fill="#daa520" opacity="0.10"/>
+  <circle cx="14" cy="60" r="0.16" fill="#e85d26" opacity="0.12"/>
+  <circle cx="16" cy="63" r="0.28" fill="#f0a030" opacity="0.14"/>
+  <circle cx="11.5" cy="66" r="0.22" fill="#e85d26" opacity="0.18"/>
+  <circle cx="18" cy="68" r="0.40" fill="#daa520" opacity="0.09"/>
+  <circle cx="13.5" cy="71" r="0.15" fill="#e85d26" opacity="0.11"/>
+
+  <!-- Ember particles - RIGHT SIDE (mirrored about x=35.56) -->
+  <circle cx="58.62" cy="43" r="0.25" fill="#e85d26" opacity="0.12"/>
+  <circle cx="55.32" cy="41" r="0.18" fill="#daa520" opacity="0.10"/>
+  <circle cx="60.12" cy="48" r="0.30" fill="#e85d26" opacity="0.14"/>
+  <circle cx="54.12" cy="52" r="0.14" fill="#f0a030" opacity="0.16"/>
+  <circle cx="58.12" cy="55" r="0.20" fill="#e85d26" opacity="0.08"/>
+  <circle cx="52.12" cy="57" r="0.35" fill="#daa520" opacity="0.10"/>
+  <circle cx="57.12" cy="60" r="0.16" fill="#e85d26" opacity="0.12"/>
+  <circle cx="55.12" cy="63" r="0.28" fill="#f0a030" opacity="0.14"/>
+  <circle cx="59.62" cy="66" r="0.22" fill="#e85d26" opacity="0.18"/>
+  <circle cx="53.12" cy="68" r="0.40" fill="#daa520" opacity="0.09"/>
+  <circle cx="57.62" cy="71" r="0.15" fill="#e85d26" opacity="0.11"/>
+
+  <!-- ==================== LAYER 5: HEADER SECTION ==================== -->
+  <!-- Rune power rings (behind rune, centered at 35.56, 5.0) -->
+  <circle cx="35.56" cy="5.0" r="6.20" fill="none" stroke="#daa520" stroke-width="0.20" opacity="0.035"/>
+  <circle cx="35.56" cy="5.0" r="5.00" fill="none" stroke="#e85d26" stroke-width="0.30" opacity="0.06"/>
+  <circle cx="35.56" cy="5.0" r="4.00" fill="none" stroke="#e85d26" stroke-width="0.40" opacity="0.09"/>
+  <circle cx="35.56" cy="5.0" r="3.20" fill="none" stroke="#e85d26" stroke-width="0.60" opacity="0.14"/>
+
+  <!-- Header slashes - LEFT SIDE (3 slashes, rotated -25deg) -->
+  <rect x="8" y="3.0" width="0.4" height="2.4" fill="url(#slash-fade)" transform="rotate(-25, 8.2, 4.2)"/>
+  <rect x="9.2" y="3.0" width="0.4" height="2.4" fill="url(#slash-fade)" transform="rotate(-25, 9.4, 4.2)"/>
+  <rect x="10.4" y="3.0" width="0.4" height="2.4" fill="url(#slash-fade)" transform="rotate(-25, 10.6, 4.2)"/>
+
+  <!-- Header slashes - RIGHT SIDE (3 slashes, rotated +25deg) -->
+  <rect x="60.32" y="3.0" width="0.4" height="2.4" fill="url(#slash-fade)" transform="rotate(25, 60.52, 4.2)"/>
+  <rect x="61.52" y="3.0" width="0.4" height="2.4" fill="url(#slash-fade)" transform="rotate(25, 61.72, 4.2)"/>
+  <rect x="62.72" y="3.0" width="0.4" height="2.4" fill="url(#slash-fade)" transform="rotate(25, 62.92, 4.2)"/>
+
+  <!-- "FORGE" brand text - left side, 4.0mm cap height -->
+  <!-- Letterforms: 5 units tall, scale 0.8 for 4.0mm cap height -->
+  <!-- F=3, O=3, R=3, G=3, E=3 with 1.25 unit letter spacing -->
+  <!-- Total units: 3+1.25+3+1.25+3+1.25+3+1.25+3 = 20.0 -->
+  <!-- Scaled width: 20.0*0.8 = 16.0mm -->
+  <!-- startX = 7.2 (left-aligned ~36px from left edge at 5x) -->
+  <g transform="translate(7.2, 2.5) scale(0.8)">
     <!-- F at x=0 -->
-    <path fill="#8888aa" d="M0,0 L3,0 L3,0.9 L0.9,0.9 L0.9,2.05 L2.4,2.05 L2.4,2.95 L0.9,2.95 L0.9,5 L0,5 Z"/>
-    <!-- O at x=3.6 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M4.2,0 L6,0 L6.6,0.6 L6.6,4.4 L6,5 L4.2,5 L3.6,4.4 L3.6,0.6 Z M4.5,0.9 L4.5,4.1 L5.7,4.1 L5.7,0.9 Z"/>
-    <!-- R at x=7.2 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M7.2,0 L9.6,0 L10.2,0.6 L10.2,2.1 L9.8,2.6 L10.2,3.2 L10.2,5 L9.3,5 L9.3,3.2 L8.1,3.2 L8.1,5 L7.2,5 Z M8.1,0.9 L8.1,2.3 L9.3,2.3 L9.3,0.9 Z"/>
-    <!-- G at x=10.8 -->
-    <path fill="#8888aa" d="M11.4,0 L13.8,0 L13.8,0.9 L11.7,0.9 L11.7,4.1 L12.9,4.1 L12.9,2.95 L12.3,2.95 L12.3,2.05 L13.8,2.05 L13.8,4.4 L13.2,5 L11.4,5 L10.8,4.4 L10.8,0.6 Z"/>
-    <!-- E at x=14.4 -->
-    <path fill="#8888aa" d="M14.4,0 L17.4,0 L17.4,0.9 L15.3,0.9 L15.3,2.05 L16.8,2.05 L16.8,2.95 L15.3,2.95 L15.3,4.1 L17.4,4.1 L17.4,5 L14.4,5 Z"/>
-    <!-- A at x=19.8 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M19.8,5 L19.8,0.9 L20.7,0 L21.9,0 L22.8,0.9 L22.8,5 L21.9,5 L21.9,2.8 L20.7,2.8 L20.7,5 Z M20.7,2 L21.9,2 L21.9,0.9 L20.7,0.9 Z"/>
-    <!-- U at x=23.4 -->
-    <path fill="#8888aa" d="M23.4,0 L24.3,0 L24.3,4.1 L25.5,4.1 L25.5,0 L26.4,0 L26.4,4.4 L25.8,5 L24,5 L23.4,4.4 Z"/>
-    <!-- D at x=27.0 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M27,0 L29.4,0 L30,0.6 L30,4.4 L29.4,5 L27,5 Z M27.9,0.9 L27.9,4.1 L29.1,4.1 L29.1,0.9 Z"/>
-    <!-- I at x=30.6 -->
-    <path fill="#8888aa" d="M30.6,0 L31.5,0 L31.5,5 L30.6,5 Z"/>
-    <!-- O at x=32.1 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M32.7,0 L34.5,0 L35.1,0.6 L35.1,4.4 L34.5,5 L32.7,5 L32.1,4.4 L32.1,0.6 Z M33,0.9 L33,4.1 L34.2,4.1 L34.2,0.9 Z"/>
-  </g>
-
-
-  <!-- ==================== "ANALOG LFO" MODULE NAME ==================== -->
-  <!-- scale=0.55, cap height ~2.75mm, centered at x=30.48, y~10mm       -->
-  <!-- A=3 N=3.5 A=3 L=3 O=3 G=3 sp L=3 F=3 O=3                        -->
-  <!-- spacing 0.6: 3+0.6+3.5+0.6+3+0.6+3+0.6+3+0.6+3 + 1.5 + 3+0.6+3+0.6+3 = 35.2 -->
-  <!-- Scaled: 35.2*0.55 = 19.36, startX = 30.48 - 19.36/2 = 20.8       -->
-  <g transform="translate(20.8, 9.0) scale(0.55)">
-    <!-- A at x=0 -->
-    <path fill="#e0e0e0" fill-rule="evenodd" d="M0,5 L0,0.9 L0.9,0 L2.1,0 L3,0.9 L3,5 L2.1,5 L2.1,2.8 L0.9,2.8 L0.9,5 Z M0.9,2 L2.1,2 L2.1,0.9 L0.9,0.9 Z"/>
-    <!-- N at x=3.6 -->
-    <path fill="#e0e0e0" d="M3.6,0 L4.5,0 L6.2,3.2 L6.2,0 L7.1,0 L7.1,5 L6.2,5 L4.5,1.8 L4.5,5 L3.6,5 Z"/>
-    <!-- A at x=7.7 -->
-    <path fill="#e0e0e0" fill-rule="evenodd" d="M7.7,5 L7.7,0.9 L8.6,0 L9.8,0 L10.7,0.9 L10.7,5 L9.8,5 L9.8,2.8 L8.6,2.8 L8.6,5 Z M8.6,2 L9.8,2 L9.8,0.9 L8.6,0.9 Z"/>
-    <!-- L at x=11.3 -->
-    <path fill="#e0e0e0" d="M11.3,0 L12.2,0 L12.2,4.1 L14.3,4.1 L14.3,5 L11.3,5 Z"/>
-    <!-- O at x=14.9 -->
-    <path fill="#e0e0e0" fill-rule="evenodd" d="M15.5,0 L17.3,0 L17.9,0.6 L17.9,4.4 L17.3,5 L15.5,5 L14.9,4.4 L14.9,0.6 Z M15.8,0.9 L15.8,4.1 L17,4.1 L17,0.9 Z"/>
-    <!-- G at x=18.5 -->
-    <path fill="#e0e0e0" d="M19.1,0 L21.5,0 L21.5,0.9 L19.4,0.9 L19.4,4.1 L20.6,4.1 L20.6,2.95 L20,2.95 L20,2.05 L21.5,2.05 L21.5,4.4 L20.9,5 L19.1,5 L18.5,4.4 L18.5,0.6 Z"/>
-    <!-- L at x=24.2 -->
-    <path fill="#e0e0e0" d="M24.2,0 L25.1,0 L25.1,4.1 L27.2,4.1 L27.2,5 L24.2,5 Z"/>
-    <!-- F at x=27.8 -->
-    <path fill="#e0e0e0" d="M27.8,0 L30.8,0 L30.8,0.9 L28.7,0.9 L28.7,2.05 L30.2,2.05 L30.2,2.95 L28.7,2.95 L28.7,5 L27.8,5 Z"/>
-    <!-- O at x=31.4 -->
-    <path fill="#e0e0e0" fill-rule="evenodd" d="M32,0 L33.8,0 L34.4,0.6 L34.4,4.4 L33.8,5 L32,5 L31.4,4.4 L31.4,0.6 Z M32.3,0.9 L32.3,4.1 L33.5,4.1 L33.5,0.9 Z"/>
-  </g>
-
-  <!-- Decorative amber line under module name -->
-  <line x1="10" y1="14.5" x2="51" y2="14.5"
-        stroke="#e8a838" stroke-width="0.3"/>
-
-
-  <!-- ==================== WAVEFORM DISPLAY AREA ==================== -->
-  <!-- Generous display area for Phase 3 waveform visualization -->
-  <!-- ~2mm side margins, starts right below title line, ~21% of panel height -->
-  <rect x="2" y="15" width="57" height="27" rx="1.5"
-        fill="#0d0d1a" stroke="#e8a838" stroke-width="0.2" stroke-opacity="0.3"/>
-
-
-  <!-- ==================== "MORPH" LABEL ==================== -->
-  <!-- scale=0.4, cap height ~2mm, centered at x=30.48, y=43mm (above knob) -->
-  <!-- M=4.5 O=3 R=3 P=3 H=3, spacing 0.5 => total 18.5 units -->
-  <!-- Scaled: 18.5*0.4 = 7.4, startX = 30.48 - 7.4/2 = 26.78 -->
-  <g transform="translate(26.78, 43.5) scale(0.4)">
-    <!-- M at x=0 -->
-    <path fill="#c0c0d0" d="M0,0 L0.9,0 L2.25,1.8 L3.6,0 L4.5,0 L4.5,5 L3.6,5 L3.6,2.2 L2.6,3.6 L1.9,3.6 L0.9,2.2 L0.9,5 L0,5 Z"/>
-    <!-- O at x=5.0 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M5.6,0 L7.4,0 L8,0.6 L8,4.4 L7.4,5 L5.6,5 L5,4.4 L5,0.6 Z M5.9,0.9 L5.9,4.1 L7.1,4.1 L7.1,0.9 Z"/>
+    <path fill="#e85d26" d="M0,0 L3,0 L3,0.9 L0.9,0.9 L0.9,2.05 L2.4,2.05 L2.4,2.95 L0.9,2.95 L0.9,5 L0,5 Z"/>
+    <!-- O at x=4.25 -->
+    <path fill="#e85d26" fill-rule="evenodd" d="M4.85,0 L6.65,0 L7.25,0.6 L7.25,4.4 L6.65,5 L4.85,5 L4.25,4.4 L4.25,0.6 Z M5.15,0.9 L5.15,4.1 L6.35,4.1 L6.35,0.9 Z"/>
     <!-- R at x=8.5 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M8.5,0 L10.9,0 L11.5,0.6 L11.5,2.1 L11.1,2.6 L11.5,3.2 L11.5,5 L10.6,5 L10.6,3.2 L9.4,3.2 L9.4,5 L8.5,5 Z M9.4,0.9 L9.4,2.3 L10.6,2.3 L10.6,0.9 Z"/>
-    <!-- P at x=12.0 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M12,0 L14.4,0 L15,0.6 L15,2.4 L14.4,3 L12.9,3 L12.9,5 L12,5 Z M12.9,0.9 L12.9,2.1 L14.1,2.1 L14.1,0.9 Z"/>
-    <!-- H at x=15.5 -->
-    <path fill="#c0c0d0" d="M15.5,0 L16.4,0 L16.4,2.05 L17.6,2.05 L17.6,0 L18.5,0 L18.5,5 L17.6,5 L17.6,2.95 L16.4,2.95 L16.4,5 L15.5,5 Z"/>
+    <path fill="#e85d26" fill-rule="evenodd" d="M8.5,0 L10.9,0 L11.5,0.6 L11.5,2.1 L11.1,2.6 L11.5,3.2 L11.5,5 L10.6,5 L10.6,3.2 L9.4,3.2 L9.4,5 L8.5,5 Z M9.4,0.9 L9.4,2.3 L10.6,2.3 L10.6,0.9 Z"/>
+    <!-- G at x=12.75 -->
+    <path fill="#e85d26" d="M13.35,0 L15.75,0 L15.75,0.9 L13.65,0.9 L13.65,4.1 L14.85,4.1 L14.85,2.95 L14.25,2.95 L14.25,2.05 L15.75,2.05 L15.75,4.4 L15.15,5 L13.35,5 L12.75,4.4 L12.75,0.6 Z"/>
+    <!-- E at x=17.0 -->
+    <path fill="#e85d26" d="M17.0,0 L20.0,0 L20.0,0.9 L17.9,0.9 L17.9,2.05 L19.4,2.05 L19.4,2.95 L17.9,2.95 L17.9,4.1 L20.0,4.1 L20.0,5 L17.0,5 Z"/>
   </g>
 
+  <!-- Forge Rune Glyph - centered at (35.56, 5.0) -->
+  <!-- Outer diamond (stroke only) -->
+  <path d="M35.56,2.5 L37.56,5.0 L35.56,7.5 L33.56,5.0 Z"
+        fill="none" stroke="#e85d26" stroke-width="0.15" stroke-opacity="0.6"/>
+  <!-- Inner diamond (filled) -->
+  <path d="M35.56,3.2 L36.96,5.0 L35.56,6.8 L34.16,5.0 Z"
+        fill="#e85d26" fill-opacity="0.18"/>
+  <!-- Vertical axis with forked arrow tips -->
+  <line x1="35.56" y1="1.8" x2="35.56" y2="8.2" stroke="#e85d26" stroke-width="0.1" opacity="0.5"/>
+  <!-- Forked arrow tip top -->
+  <path d="M35.56,1.8 L35.16,2.3 M35.56,1.8 L35.96,2.3" fill="none" stroke="#e85d26" stroke-width="0.1" opacity="0.5"/>
+  <!-- Forked arrow tip bottom -->
+  <path d="M35.56,8.2 L35.16,7.7 M35.56,8.2 L35.96,7.7" fill="none" stroke="#e85d26" stroke-width="0.1" opacity="0.5"/>
+  <!-- Horizontal extensions from diamond midpoints -->
+  <line x1="33.06" y1="5.0" x2="32.26" y2="5.0" stroke="#e85d26" stroke-width="0.1" opacity="0.5"/>
+  <line x1="38.06" y1="5.0" x2="38.86" y2="5.0" stroke="#e85d26" stroke-width="0.1" opacity="0.5"/>
+  <!-- Diagonal notch marks on diamond edges -->
+  <line x1="34.56" y1="3.75" x2="34.16" y2="3.35" stroke="#e85d26" stroke-width="0.08" opacity="0.4"/>
+  <line x1="36.56" y1="3.75" x2="36.96" y2="3.35" stroke="#e85d26" stroke-width="0.08" opacity="0.4"/>
+  <line x1="34.56" y1="6.25" x2="34.16" y2="6.65" stroke="#e85d26" stroke-width="0.08" opacity="0.4"/>
+  <line x1="36.56" y1="6.25" x2="36.96" y2="6.65" stroke="#e85d26" stroke-width="0.08" opacity="0.4"/>
+  <!-- Three-layer center glow -->
+  <circle cx="35.56" cy="5.0" r="0.5" fill="#e85d26" opacity="0.15"/>
+  <circle cx="35.56" cy="5.0" r="0.35" fill="#f0a030" opacity="0.85"/>
+  <circle cx="35.56" cy="5.0" r="0.2" fill="#ffe0a0" opacity="0.90"/>
 
-  <!-- ==================== "CHARACTER" LABEL ==================== -->
-  <!-- scale=0.32, cap height ~1.6mm, centered at x=18mm, y=61mm (above knob) -->
-  <!-- C=3 H=3 A=3 R=3 A=3 C=3 T=3 E=3 R=3, spacing 0.4 => total 30.2 units -->
-  <!-- Scaled: 30.2*0.32 = 9.664, startX = 18 - 9.664/2 = 13.168 -->
-  <g transform="translate(13.168, 60.5) scale(0.32)">
-    <!-- C at x=0 -->
-    <path fill="#c0c0d0" d="M0.6,0 L3,0 L3,0.9 L0.9,0.9 L0.9,4.1 L3,4.1 L3,5 L0.6,5 L0,4.4 L0,0.6 Z"/>
-    <!-- H at x=3.4 -->
-    <path fill="#c0c0d0" d="M3.4,0 L4.3,0 L4.3,2.05 L5.5,2.05 L5.5,0 L6.4,0 L6.4,5 L5.5,5 L5.5,2.95 L4.3,2.95 L4.3,5 L3.4,5 Z"/>
-    <!-- A at x=6.8 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M6.8,5 L6.8,0.9 L7.7,0 L8.9,0 L9.8,0.9 L9.8,5 L8.9,5 L8.9,2.8 L7.7,2.8 L7.7,5 Z M7.7,2 L8.9,2 L8.9,0.9 L7.7,0.9 Z"/>
-    <!-- R at x=10.2 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M10.2,0 L12.6,0 L13.2,0.6 L13.2,2.1 L12.8,2.6 L13.2,3.2 L13.2,5 L12.3,5 L12.3,3.2 L11.1,3.2 L11.1,5 L10.2,5 Z M11.1,0.9 L11.1,2.3 L12.3,2.3 L12.3,0.9 Z"/>
-    <!-- A at x=13.6 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M13.6,5 L13.6,0.9 L14.5,0 L15.7,0 L16.6,0.9 L16.6,5 L15.7,5 L15.7,2.8 L14.5,2.8 L14.5,5 Z M14.5,2 L15.7,2 L15.7,0.9 L14.5,0.9 Z"/>
-    <!-- C at x=17.0 -->
-    <path fill="#c0c0d0" d="M17.6,0 L20,0 L20,0.9 L17.9,0.9 L17.9,4.1 L20,4.1 L20,5 L17.6,5 L17,4.4 L17,0.6 Z"/>
-    <!-- T at x=20.4 -->
-    <path fill="#c0c0d0" d="M20.4,0 L23.4,0 L23.4,0.9 L22.35,0.9 L22.35,5 L21.45,5 L21.45,0.9 L20.4,0.9 Z"/>
-    <!-- E at x=23.8 -->
-    <path fill="#c0c0d0" d="M23.8,0 L26.8,0 L26.8,0.9 L24.7,0.9 L24.7,2.05 L26.2,2.05 L26.2,2.95 L24.7,2.95 L24.7,4.1 L26.8,4.1 L26.8,5 L23.8,5 Z"/>
-    <!-- R at x=27.2 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M27.2,0 L29.6,0 L30.2,0.6 L30.2,2.1 L29.8,2.6 L30.2,3.2 L30.2,5 L29.3,5 L29.3,3.2 L28.1,3.2 L28.1,5 L27.2,5 Z M28.1,0.9 L28.1,2.3 L29.3,2.3 L29.3,0.9 Z"/>
+  <!-- "AUDIO" brand text - right side, 4.0mm cap height -->
+  <!-- A=3, U=3, D=3, I=0.9, O=3 with 1.25 unit letter spacing -->
+  <!-- Total units: 3+1.25+3+1.25+3+1.25+0.9+1.25+3 = 17.9 -->
+  <!-- Scaled width: 17.9*0.8 = 14.32mm -->
+  <!-- Right-aligned: endX ~ 63.92 (18px/5x from right edge), startX = 63.92 - 14.32 = 49.60 -->
+  <g transform="translate(49.60, 2.5) scale(0.8)">
+    <!-- A at x=0 -->
+    <path fill="#e85d26" fill-rule="evenodd" d="M0,5 L0,0.9 L0.9,0 L2.1,0 L3,0.9 L3,5 L2.1,5 L2.1,2.8 L0.9,2.8 L0.9,5 Z M0.9,2 L2.1,2 L2.1,0.9 L0.9,0.9 Z"/>
+    <!-- U at x=4.25 -->
+    <path fill="#e85d26" d="M4.25,0 L5.15,0 L5.15,4.1 L6.35,4.1 L6.35,0 L7.25,0 L7.25,4.4 L6.65,5 L4.85,5 L4.25,4.4 Z"/>
+    <!-- D at x=8.5 -->
+    <path fill="#e85d26" fill-rule="evenodd" d="M8.5,0 L10.9,0 L11.5,0.6 L11.5,4.4 L10.9,5 L8.5,5 Z M9.4,0.9 L9.4,4.1 L10.6,4.1 L10.6,0.9 Z"/>
+    <!-- I at x=12.75 -->
+    <path fill="#e85d26" d="M12.75,0 L13.65,0 L13.65,5 L12.75,5 Z"/>
+    <!-- O at x=14.9 -->
+    <path fill="#e85d26" fill-rule="evenodd" d="M15.5,0 L17.3,0 L17.9,0.6 L17.9,4.4 L17.3,5 L15.5,5 L14.9,4.4 L14.9,0.6 Z M15.8,0.9 L15.8,4.1 L17.0,4.1 L17.0,0.9 Z"/>
   </g>
 
+  <!-- ==================== LAYER 6: MODULE NAME SECTION ==================== -->
+  <!-- Decorative line behind module name (y~10.5) -->
+  <rect x="0" y="10.45" width="35.56" height="0.1" fill="url(#name-line-left)"/>
+  <rect x="35.56" y="10.45" width="35.56" height="0.1" fill="url(#name-line-right)"/>
 
-  <!-- ==================== "DRIFT" LABEL ==================== -->
-  <!-- scale=0.35, cap height ~1.75mm, centered at x=43mm, y=61mm (above knob) -->
-  <!-- D=3 R=3 I=0.9 F=3 T=3, spacing 0.5 => total 14.9 units -->
-  <!-- Scaled: 14.9*0.35 = 5.215, startX = 42.96 - 5.215/2 = 40.353 -->
-  <g transform="translate(40.353, 60.5) scale(0.35)">
-    <!-- D at x=0 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,4.4 L2.4,5 L0,5 Z M0.9,0.9 L0.9,4.1 L2.1,4.1 L2.1,0.9 Z"/>
-    <!-- R at x=3.5 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M3.5,0 L5.9,0 L6.5,0.6 L6.5,2.1 L6.1,2.6 L6.5,3.2 L6.5,5 L5.6,5 L5.6,3.2 L4.4,3.2 L4.4,5 L3.5,5 Z M4.4,0.9 L4.4,2.3 L5.6,2.3 L5.6,0.9 Z"/>
-    <!-- I at x=7.0 -->
-    <path fill="#c0c0d0" d="M7,0 L7.9,0 L7.9,5 L7,5 Z"/>
-    <!-- F at x=8.4 -->
-    <path fill="#c0c0d0" d="M8.4,0 L11.4,0 L11.4,0.9 L9.3,0.9 L9.3,2.05 L10.8,2.05 L10.8,2.95 L9.3,2.95 L9.3,5 L8.4,5 Z"/>
-    <!-- T at x=11.9 -->
-    <path fill="#c0c0d0" d="M11.9,0 L14.9,0 L14.9,0.9 L13.85,0.9 L13.85,5 L12.95,5 L12.95,0.9 L11.9,0.9 Z"/>
+  <!-- "ANALOG LFO" text - centered, 4.0mm cap height, warm white -->
+  <!-- A=3, N=3.5, A=3, L=3, O=3, G=3, sp=1.875, L=3, F=3, O=3 -->
+  <!-- Letter spacing 1.75 units (1.40mm / 0.8 scale factor) -->
+  <!-- Total units: 3+1.75+3.5+1.75+3+1.75+3+1.75+3+1.75+3 + 1.875 + 3+1.75+3+1.75+3 = 44.375 -->
+  <!-- Scaled width: 44.375*0.8 = 35.50mm -->
+  <!-- startX = 35.56 - 35.50/2 = 17.81 -->
+  <g transform="translate(17.81, 8.0) scale(0.8)">
+    <!-- A at x=0 -->
+    <path fill="#e8e4e0" fill-rule="evenodd" d="M0,5 L0,0.9 L0.9,0 L2.1,0 L3,0.9 L3,5 L2.1,5 L2.1,2.8 L0.9,2.8 L0.9,5 Z M0.9,2 L2.1,2 L2.1,0.9 L0.9,0.9 Z"/>
+    <!-- N at x=4.75 -->
+    <path fill="#e8e4e0" d="M4.75,0 L5.65,0 L7.35,3.2 L7.35,0 L8.25,0 L8.25,5 L7.35,5 L5.65,1.8 L5.65,5 L4.75,5 Z"/>
+    <!-- A at x=10.0 -->
+    <path fill="#e8e4e0" fill-rule="evenodd" d="M10.0,5 L10.0,0.9 L10.9,0 L12.1,0 L13.0,0.9 L13.0,5 L12.1,5 L12.1,2.8 L10.9,2.8 L10.9,5 Z M10.9,2 L12.1,2 L12.1,0.9 L10.9,0.9 Z"/>
+    <!-- L at x=14.75 -->
+    <path fill="#e8e4e0" d="M14.75,0 L15.65,0 L15.65,4.1 L17.75,4.1 L17.75,5 L14.75,5 Z"/>
+    <!-- O at x=20.25 -->
+    <path fill="#e8e4e0" fill-rule="evenodd" d="M20.85,0 L22.65,0 L23.25,0.6 L23.25,4.4 L22.65,5 L20.85,5 L20.25,4.4 L20.25,0.6 Z M21.15,0.9 L21.15,4.1 L22.35,4.1 L22.35,0.9 Z"/>
+    <!-- G at x=25.0 -->
+    <path fill="#e8e4e0" d="M25.6,0 L28.0,0 L28.0,0.9 L25.9,0.9 L25.9,4.1 L27.1,4.1 L27.1,2.95 L26.5,2.95 L26.5,2.05 L28.0,2.05 L28.0,4.4 L27.4,5 L25.6,5 L25.0,4.4 L25.0,0.6 Z"/>
+    <!-- (space: 1.875 units) -->
+    <!-- L at x=31.625 -->
+    <path fill="#e8e4e0" d="M31.625,0 L32.525,0 L32.525,4.1 L34.625,4.1 L34.625,5 L31.625,5 Z"/>
+    <!-- F at x=37.125 -->
+    <path fill="#e8e4e0" d="M37.125,0 L40.125,0 L40.125,0.9 L38.025,0.9 L38.025,2.05 L39.525,2.05 L39.525,2.95 L38.025,2.95 L38.025,5 L37.125,5 Z"/>
+    <!-- O at x=42.625 -->
+    <path fill="#e8e4e0" fill-rule="evenodd" d="M43.225,0 L45.025,0 L45.625,0.6 L45.625,4.4 L45.025,5 L43.225,5 L42.625,4.4 L42.625,0.6 Z M43.525,0.9 L43.525,4.1 L44.725,4.1 L44.725,0.9 Z"/>
   </g>
 
+  <!-- ==================== LAYER 7: DISPLAY PLACEHOLDER ==================== -->
+  <rect x="3.60" y="13.19" width="63.93" height="17.98" fill="#030303" rx="0.5"/>
 
-  <!-- ==================== "RATE" LABEL ==================== -->
-  <!-- scale=0.35, cap height ~1.75mm, centered at x=18mm, y=79.5mm -->
-  <!-- R=3 A=3 T=3 E=3, spacing 0.5 => total 13.5 units -->
-  <!-- Scaled: 13.5*0.35 = 4.725, startX = 18 - 4.725/2 = 15.638 -->
-  <g transform="translate(15.638, 78.6) scale(0.35)">
-    <!-- R at x=0 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,2.1 L2.6,2.6 L3,3.2 L3,5 L2.1,5 L2.1,3.2 L0.9,3.2 L0.9,5 L0,5 Z M0.9,0.9 L0.9,2.3 L2.1,2.3 L2.1,0.9 Z"/>
-    <!-- A at x=3.5 -->
-    <path fill="#c0c0d0" fill-rule="evenodd" d="M3.5,5 L3.5,0.9 L4.4,0 L5.6,0 L6.5,0.9 L6.5,5 L5.6,5 L5.6,2.8 L4.4,2.8 L4.4,5 Z M4.4,2 L5.6,2 L5.6,0.9 L4.4,0.9 Z"/>
-    <!-- T at x=7.0 -->
-    <path fill="#c0c0d0" d="M7,0 L10,0 L10,0.9 L8.95,0.9 L8.95,5 L8.05,5 L8.05,0.9 L7,0.9 Z"/>
-    <!-- E at x=10.5 -->
-    <path fill="#c0c0d0" d="M10.5,0 L13.5,0 L13.5,0.9 L11.4,0.9 L11.4,2.05 L12.9,2.05 L12.9,2.95 L11.4,2.95 L11.4,4.1 L13.5,4.1 L13.5,5 L10.5,5 Z"/>
-  </g>
+  <!-- ==================== LAYER 8: CONTROL LABELS ==================== -->
 
-
-  <!-- ==================== "CLK" LABEL ==================== -->
-  <!-- scale=0.35, cap height ~1.75mm, centered at x=42.96mm, y=78.6mm (above CLK jack) -->
-  <!-- C=3 L=3 K=3, spacing 0.5 => total 10 units -->
-  <!-- Scaled: 10*0.35 = 3.5, startX = 42.96 - 3.5/2 = 41.21 -->
-  <g transform="translate(41.21, 78.6) scale(0.35)">
-    <!-- C -->
-    <path fill="#8888aa" d="M0.6,0 L3,0 L3,0.9 L0.9,0.9 L0.9,4.1 L3,4.1 L3,5 L0.6,5 L0,4.4 L0,0.6 Z"/>
-    <!-- L at x=3.5 -->
-    <path fill="#8888aa" d="M3.5,0 L4.4,0 L4.4,4.1 L6.5,4.1 L6.5,5 L3.5,5 Z"/>
-    <!-- K at x=7.0 -->
-    <path fill="#8888aa" d="M7,0 L7.9,0 L7.9,2 L9.4,0 L10.5,0 L8.6,2.3 L10.5,5 L9.4,5 L7.9,3 L7.9,5 L7,5 Z"/>
-  </g>
-
-
-  <!-- ==================== SECTION DIVIDER ==================== -->
-  <line x1="8" y1="92" x2="53" y2="92"
-        stroke="#e8a838" stroke-width="0.15" stroke-opacity="0.5"/>
-
-
-  <!-- ==================== CONNECTION LINES ==================== -->
-  <!-- Connection lines: trimpot to jack, broken around labels (y=101 to 102.4) -->
-  <line x1="10.0" y1="99.0" x2="10.0" y2="100.7"
-        stroke="#e8a838" stroke-width="0.2" stroke-opacity="0.4"/>
-  <line x1="10.0" y1="102.7" x2="10.0" y2="104.0"
-        stroke="#e8a838" stroke-width="0.2" stroke-opacity="0.4"/>
-  <line x1="24.0" y1="99.0" x2="24.0" y2="100.7"
-        stroke="#e8a838" stroke-width="0.2" stroke-opacity="0.4"/>
-  <line x1="24.0" y1="102.7" x2="24.0" y2="104.0"
-        stroke="#e8a838" stroke-width="0.2" stroke-opacity="0.4"/>
-  <line x1="38.0" y1="99.0" x2="38.0" y2="100.7"
-        stroke="#e8a838" stroke-width="0.2" stroke-opacity="0.4"/>
-  <line x1="38.0" y1="102.7" x2="38.0" y2="104.0"
-        stroke="#e8a838" stroke-width="0.2" stroke-opacity="0.4"/>
-
-  <!-- ==================== JACK LABELS ==================== -->
-  <!-- Labels in gap between trimpots (y=96) and jacks (y=108), rendered after connection lines -->
-
-  <!-- "MORPH CV" label centered at x=10mm, y=101mm -->
-  <!-- M=4.5 O=3 R=3 P=3 H=3 [gap] C=3 V=3, spacing 0.4, word gap 2.0 => total 26.5 units -->
-  <!-- scale=0.28, Scaled: 26.5*0.28 = 7.42, startX = 10 - 7.42/2 = 6.29 -->
-  <g transform="translate(6.29, 101.0) scale(0.28)">
+  <!-- "MORPH" label at (35.56, ~42.0), centered, 3.20mm cap height -->
+  <!-- M=4.5, O=3, R=3, P=3, H=3, spacing 0.625 units -->
+  <!-- Total: 4.5+0.625+3+0.625+3+0.625+3+0.625+3 = 19.0 units -->
+  <!-- Scaled: 19.0*0.64 = 12.16mm, startX = 35.56 - 12.16/2 = 29.48 -->
+  <g transform="translate(29.48, 40.4) scale(0.64)">
     <!-- M at x=0 -->
-    <path fill="#8888aa" d="M0,0 L0.9,0 L2.25,1.8 L3.6,0 L4.5,0 L4.5,5 L3.6,5 L3.6,2.2 L2.6,3.6 L1.9,3.6 L0.9,2.2 L0.9,5 L0,5 Z"/>
-    <!-- O at x=4.9 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M5.5,0 L7.3,0 L7.9,0.6 L7.9,4.4 L7.3,5 L5.5,5 L4.9,4.4 L4.9,0.6 Z M5.8,0.9 L5.8,4.1 L7.0,4.1 L7.0,0.9 Z"/>
-    <!-- R at x=8.3 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M8.3,0 L10.7,0 L11.3,0.6 L11.3,2.1 L10.9,2.6 L11.3,3.2 L11.3,5 L10.4,5 L10.4,3.2 L9.2,3.2 L9.2,5 L8.3,5 Z M9.2,0.9 L9.2,2.3 L10.4,2.3 L10.4,0.9 Z"/>
-    <!-- P at x=11.7 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M11.7,0 L14.1,0 L14.7,0.6 L14.7,2.4 L14.1,3 L12.6,3 L12.6,5 L11.7,5 Z M12.6,0.9 L12.6,2.1 L13.8,2.1 L13.8,0.9 Z"/>
-    <!-- H at x=15.1 -->
-    <path fill="#8888aa" d="M15.1,0 L16.0,0 L16.0,2.05 L17.2,2.05 L17.2,0 L18.1,0 L18.1,5 L17.2,5 L17.2,2.95 L16.0,2.95 L16.0,5 L15.1,5 Z"/>
-    <!-- C at x=20.1 -->
-    <path fill="#8888aa" d="M20.7,0 L23.1,0 L23.1,0.9 L21.0,0.9 L21.0,4.1 L23.1,4.1 L23.1,5 L20.7,5 L20.1,4.4 L20.1,0.6 Z"/>
-    <!-- V at x=23.5 -->
-    <path fill="#8888aa" d="M23.5,0 L24.4,0 L25.0,3.6 L25.6,0 L26.5,0 L25.4,5 L24.6,5 Z"/>
+    <path fill="#f0ece8" d="M0,0 L0.9,0 L2.25,1.8 L3.6,0 L4.5,0 L4.5,5 L3.6,5 L3.6,2.2 L2.6,3.6 L1.9,3.6 L0.9,2.2 L0.9,5 L0,5 Z"/>
+    <!-- O at x=5.125 -->
+    <path fill="#f0ece8" fill-rule="evenodd" d="M5.725,0 L7.525,0 L8.125,0.6 L8.125,4.4 L7.525,5 L5.725,5 L5.125,4.4 L5.125,0.6 Z M6.025,0.9 L6.025,4.1 L7.225,4.1 L7.225,0.9 Z"/>
+    <!-- R at x=8.75 -->
+    <path fill="#f0ece8" fill-rule="evenodd" d="M8.75,0 L11.15,0 L11.75,0.6 L11.75,2.1 L11.35,2.6 L11.75,3.2 L11.75,5 L10.85,5 L10.85,3.2 L9.65,3.2 L9.65,5 L8.75,5 Z M9.65,0.9 L9.65,2.3 L10.85,2.3 L10.85,0.9 Z"/>
+    <!-- P at x=12.375 -->
+    <path fill="#f0ece8" fill-rule="evenodd" d="M12.375,0 L14.775,0 L15.375,0.6 L15.375,2.4 L14.775,3 L13.275,3 L13.275,5 L12.375,5 Z M13.275,0.9 L13.275,2.1 L14.475,2.1 L14.475,0.9 Z"/>
+    <!-- H at x=16.0 -->
+    <path fill="#f0ece8" d="M16.0,0 L16.9,0 L16.9,2.05 L18.1,2.05 L18.1,0 L19.0,0 L19.0,5 L18.1,5 L18.1,2.95 L16.9,2.95 L16.9,5 L16.0,5 Z"/>
   </g>
 
-  <!-- "CHAR CV" label centered at x=24mm, y=101mm -->
-  <!-- C=3 H=3 A=3 R=3 [gap] C=3 V=3, spacing 0.4, word gap 2.0 => total 21.6 units -->
-  <!-- scale=0.28, Scaled: 21.6*0.28 = 6.048, startX = 24 - 6.048/2 = 20.976 -->
-  <g transform="translate(20.976, 101.0) scale(0.28)">
+  <!-- Morph arc: dashed circle around MORPH knob at (35.56, 47.35) r=10.39mm -->
+  <circle cx="35.56" cy="47.35" r="10.39" fill="none"
+          stroke="#e85d26" stroke-opacity="0.15" stroke-width="0.15"
+          stroke-dasharray="1.5 0.8"/>
+
+  <!-- "CHARACTER" label at (21.18, ~62.5), centered, 1.80mm cap height -->
+  <!-- C=3, H=3, A=3, R=3, A=3, C=3, T=3, E=3, R=3, spacing 0.5 units -->
+  <!-- Total: 9*3 + 8*0.5 = 31.0 units -->
+  <!-- Scale = 0.36, Scaled: 31.0*0.36 = 11.16mm, startX = 21.18 - 11.16/2 = 15.60 -->
+  <g transform="translate(15.60, 61.6) scale(0.36)">
     <!-- C at x=0 -->
-    <path fill="#8888aa" d="M0.6,0 L3,0 L3,0.9 L0.9,0.9 L0.9,4.1 L3,4.1 L3,5 L0.6,5 L0,4.4 L0,0.6 Z"/>
-    <!-- H at x=3.4 -->
-    <path fill="#8888aa" d="M3.4,0 L4.3,0 L4.3,2.05 L5.5,2.05 L5.5,0 L6.4,0 L6.4,5 L5.5,5 L5.5,2.95 L4.3,2.95 L4.3,5 L3.4,5 Z"/>
-    <!-- A at x=6.8 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M6.8,5 L6.8,0.9 L7.7,0 L8.9,0 L9.8,0.9 L9.8,5 L8.9,5 L8.9,2.8 L7.7,2.8 L7.7,5 Z M7.7,2 L8.9,2 L8.9,0.9 L7.7,0.9 Z"/>
-    <!-- R at x=10.2 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M10.2,0 L12.6,0 L13.2,0.6 L13.2,2.1 L12.8,2.6 L13.2,3.2 L13.2,5 L12.3,5 L12.3,3.2 L11.1,3.2 L11.1,5 L10.2,5 Z M11.1,0.9 L11.1,2.3 L12.3,2.3 L12.3,0.9 Z"/>
-    <!-- C at x=15.2 -->
-    <path fill="#8888aa" d="M15.8,0 L18.2,0 L18.2,0.9 L16.1,0.9 L16.1,4.1 L18.2,4.1 L18.2,5 L15.8,5 L15.2,4.4 L15.2,0.6 Z"/>
-    <!-- V at x=18.6 -->
-    <path fill="#8888aa" d="M18.6,0 L19.5,0 L20.1,3.6 L20.7,0 L21.6,0 L20.5,5 L19.7,5 Z"/>
+    <path fill="#c0bbb5" d="M0.6,0 L3,0 L3,0.9 L0.9,0.9 L0.9,4.1 L3,4.1 L3,5 L0.6,5 L0,4.4 L0,0.6 Z"/>
+    <!-- H at x=3.5 -->
+    <path fill="#c0bbb5" d="M3.5,0 L4.4,0 L4.4,2.05 L5.6,2.05 L5.6,0 L6.5,0 L6.5,5 L5.6,5 L5.6,2.95 L4.4,2.95 L4.4,5 L3.5,5 Z"/>
+    <!-- A at x=7.0 -->
+    <path fill="#c0bbb5" fill-rule="evenodd" d="M7.0,5 L7.0,0.9 L7.9,0 L9.1,0 L10.0,0.9 L10.0,5 L9.1,5 L9.1,2.8 L7.9,2.8 L7.9,5 Z M7.9,2 L9.1,2 L9.1,0.9 L7.9,0.9 Z"/>
+    <!-- R at x=10.5 -->
+    <path fill="#c0bbb5" fill-rule="evenodd" d="M10.5,0 L12.9,0 L13.5,0.6 L13.5,2.1 L13.1,2.6 L13.5,3.2 L13.5,5 L12.6,5 L12.6,3.2 L11.4,3.2 L11.4,5 L10.5,5 Z M11.4,0.9 L11.4,2.3 L12.6,2.3 L12.6,0.9 Z"/>
+    <!-- A at x=14.0 -->
+    <path fill="#c0bbb5" fill-rule="evenodd" d="M14.0,5 L14.0,0.9 L14.9,0 L16.1,0 L17.0,0.9 L17.0,5 L16.1,5 L16.1,2.8 L14.9,2.8 L14.9,5 Z M14.9,2 L16.1,2 L16.1,0.9 L14.9,0.9 Z"/>
+    <!-- C at x=17.5 -->
+    <path fill="#c0bbb5" d="M18.1,0 L20.5,0 L20.5,0.9 L18.4,0.9 L18.4,4.1 L20.5,4.1 L20.5,5 L18.1,5 L17.5,4.4 L17.5,0.6 Z"/>
+    <!-- T at x=21.0 -->
+    <path fill="#c0bbb5" d="M21.0,0 L24.0,0 L24.0,0.9 L22.95,0.9 L22.95,5 L22.05,5 L22.05,0.9 L21.0,0.9 Z"/>
+    <!-- E at x=24.5 -->
+    <path fill="#c0bbb5" d="M24.5,0 L27.5,0 L27.5,0.9 L25.4,0.9 L25.4,2.05 L26.9,2.05 L26.9,2.95 L25.4,2.95 L25.4,4.1 L27.5,4.1 L27.5,5 L24.5,5 Z"/>
+    <!-- R at x=28.0 -->
+    <path fill="#c0bbb5" fill-rule="evenodd" d="M28.0,0 L30.4,0 L31.0,0.6 L31.0,2.1 L30.6,2.6 L31.0,3.2 L31.0,5 L30.1,5 L30.1,3.2 L28.9,3.2 L28.9,5 L28.0,5 Z M28.9,0.9 L28.9,2.3 L30.1,2.3 L30.1,0.9 Z"/>
   </g>
 
-  <!-- "DRIFT CV" label centered at x=38mm, y=101mm -->
-  <!-- D=3 R=3 I=0.9 F=3 T=3 [gap] C=3 V=3, spacing 0.4, word gap 2.0 => total 22.9 units -->
-  <!-- scale=0.28, Scaled: 22.9*0.28 = 6.412, startX = 38 - 6.412/2 = 34.794 -->
-  <g transform="translate(34.794, 101.0) scale(0.28)">
+  <!-- "DRIFT" label at (49.94, ~62.5), centered, 1.80mm cap height -->
+  <!-- D=3, R=3, I=0.9, F=3, T=3, spacing 0.5 -->
+  <!-- Total: 14.9 units -->
+  <!-- Scale = 0.36, Scaled: 14.9*0.36 = 5.364mm, startX = 49.94 - 5.364/2 = 47.258 -->
+  <g transform="translate(47.258, 61.6) scale(0.36)">
     <!-- D at x=0 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,4.4 L2.4,5 L0,5 Z M0.9,0.9 L0.9,4.1 L2.1,4.1 L2.1,0.9 Z"/>
-    <!-- R at x=3.4 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M3.4,0 L5.8,0 L6.4,0.6 L6.4,2.1 L6.0,2.6 L6.4,3.2 L6.4,5 L5.5,5 L5.5,3.2 L4.3,3.2 L4.3,5 L3.4,5 Z M4.3,0.9 L4.3,2.3 L5.5,2.3 L5.5,0.9 Z"/>
-    <!-- I at x=6.8 -->
-    <path fill="#8888aa" d="M6.8,0 L7.7,0 L7.7,5 L6.8,5 Z"/>
-    <!-- F at x=8.1 -->
-    <path fill="#8888aa" d="M8.1,0 L11.1,0 L11.1,0.9 L9.0,0.9 L9.0,2.05 L10.5,2.05 L10.5,2.95 L9.0,2.95 L9.0,5 L8.1,5 Z"/>
-    <!-- T at x=11.5 -->
-    <path fill="#8888aa" d="M11.5,0 L14.5,0 L14.5,0.9 L13.45,0.9 L13.45,5 L12.55,5 L12.55,0.9 L11.5,0.9 Z"/>
-    <!-- C at x=16.5 -->
-    <path fill="#8888aa" d="M17.1,0 L19.5,0 L19.5,0.9 L17.4,0.9 L17.4,4.1 L19.5,4.1 L19.5,5 L17.1,5 L16.5,4.4 L16.5,0.6 Z"/>
-    <!-- V at x=19.9 -->
-    <path fill="#8888aa" d="M19.9,0 L20.8,0 L21.4,3.6 L22.0,0 L22.9,0 L21.8,5 L21.0,5 Z"/>
+    <path fill="#c0bbb5" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,4.4 L2.4,5 L0,5 Z M0.9,0.9 L0.9,4.1 L2.1,4.1 L2.1,0.9 Z"/>
+    <!-- R at x=3.5 -->
+    <path fill="#c0bbb5" fill-rule="evenodd" d="M3.5,0 L5.9,0 L6.5,0.6 L6.5,2.1 L6.1,2.6 L6.5,3.2 L6.5,5 L5.6,5 L5.6,3.2 L4.4,3.2 L4.4,5 L3.5,5 Z M4.4,0.9 L4.4,2.3 L5.6,2.3 L5.6,0.9 Z"/>
+    <!-- I at x=7.0 -->
+    <path fill="#c0bbb5" d="M7.0,0 L7.9,0 L7.9,5 L7.0,5 Z"/>
+    <!-- F at x=8.4 -->
+    <path fill="#c0bbb5" d="M8.4,0 L11.4,0 L11.4,0.9 L9.3,0.9 L9.3,2.05 L10.8,2.05 L10.8,2.95 L9.3,2.95 L9.3,5 L8.4,5 Z"/>
+    <!-- T at x=11.9 -->
+    <path fill="#c0bbb5" d="M11.9,0 L14.9,0 L14.9,0.9 L13.85,0.9 L13.85,5 L12.95,5 L12.95,0.9 L11.9,0.9 Z"/>
   </g>
 
-  <!-- "OUT" label centered at x=52mm, y=101mm (amber for output distinction) -->
-  <!-- O=3 U=3 T=3, spacing 0.4 => total 9.8 units -->
-  <!-- scale=0.28, Scaled: 9.8*0.28 = 2.744, startX = 52 - 2.744/2 = 50.628 -->
-  <g transform="translate(50.628, 101.0) scale(0.28)">
-    <!-- O at x=0 -->
-    <path fill="#e8a838" fill-rule="evenodd" d="M0.6,0 L2.4,0 L3,0.6 L3,4.4 L2.4,5 L0.6,5 L0,4.4 L0,0.6 Z M0.9,0.9 L0.9,4.1 L2.1,4.1 L2.1,0.9 Z"/>
-    <!-- U at x=3.4 -->
-    <path fill="#e8a838" d="M3.4,0 L4.3,0 L4.3,4.1 L5.5,4.1 L5.5,0 L6.4,0 L6.4,4.4 L5.8,5 L4,5 L3.4,4.4 Z"/>
+  <!-- Section divider at y~76 (between CHARACTER/DRIFT and RATE/PHASE) -->
+  <rect x="5.60" y="75.95" width="29.96" height="0.1" fill="url(#divider-left)"/>
+  <rect x="35.56" y="75.95" width="29.96" height="0.1" fill="url(#divider-right)"/>
+
+  <!-- "RATE" label at (21.18, ~79.5), centered, 1.40mm cap height -->
+  <!-- R=3, A=3, T=3, E=3, spacing 0.5 => total 13.5 units -->
+  <!-- Scale = 0.28, Scaled: 13.5*0.28 = 3.78mm, startX = 21.18 - 3.78/2 = 19.29 -->
+  <g transform="translate(19.29, 78.8) scale(0.28)">
+    <!-- R at x=0 -->
+    <path fill="#888888" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,2.1 L2.6,2.6 L3,3.2 L3,5 L2.1,5 L2.1,3.2 L0.9,3.2 L0.9,5 L0,5 Z M0.9,0.9 L0.9,2.3 L2.1,2.3 L2.1,0.9 Z"/>
+    <!-- A at x=3.5 -->
+    <path fill="#888888" fill-rule="evenodd" d="M3.5,5 L3.5,0.9 L4.4,0 L5.6,0 L6.5,0.9 L6.5,5 L5.6,5 L5.6,2.8 L4.4,2.8 L4.4,5 Z M4.4,2 L5.6,2 L5.6,0.9 L4.4,0.9 Z"/>
+    <!-- T at x=7.0 -->
+    <path fill="#888888" d="M7.0,0 L10.0,0 L10.0,0.9 L8.95,0.9 L8.95,5 L8.05,5 L8.05,0.9 L7.0,0.9 Z"/>
+    <!-- E at x=10.5 -->
+    <path fill="#888888" d="M10.5,0 L13.5,0 L13.5,0.9 L11.4,0.9 L11.4,2.05 L12.9,2.05 L12.9,2.95 L11.4,2.95 L11.4,4.1 L13.5,4.1 L13.5,5 L10.5,5 Z"/>
+  </g>
+
+  <!-- "PHASE" label at (49.94, ~79.5), centered, 1.40mm cap height -->
+  <!-- P=3, H=3, A=3, S=3, E=3, spacing 0.5 => total 17.0 units -->
+  <!-- Scale = 0.28, Scaled: 17.0*0.28 = 4.76mm, startX = 49.94 - 4.76/2 = 47.56 -->
+  <g transform="translate(47.56, 78.8) scale(0.28)">
+    <!-- P at x=0 -->
+    <path fill="#888888" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,2.4 L2.4,3 L0.9,3 L0.9,5 L0,5 Z M0.9,0.9 L0.9,2.1 L2.1,2.1 L2.1,0.9 Z"/>
+    <!-- H at x=3.5 -->
+    <path fill="#888888" d="M3.5,0 L4.4,0 L4.4,2.05 L5.6,2.05 L5.6,0 L6.5,0 L6.5,5 L5.6,5 L5.6,2.95 L4.4,2.95 L4.4,5 L3.5,5 Z"/>
+    <!-- A at x=7.0 -->
+    <path fill="#888888" fill-rule="evenodd" d="M7.0,5 L7.0,0.9 L7.9,0 L9.1,0 L10.0,0.9 L10.0,5 L9.1,5 L9.1,2.8 L7.9,2.8 L7.9,5 Z M7.9,2 L9.1,2 L9.1,0.9 L7.9,0.9 Z"/>
+    <!-- S at x=10.5 -->
+    <path fill="#888888" d="M11.1,0 L13.5,0 L13.5,0.9 L11.4,0.9 L11.4,2.05 L12.9,2.05 L13.5,2.65 L13.5,4.4 L12.9,5 L10.5,5 L10.5,4.1 L12.6,4.1 L12.6,2.95 L11.1,2.95 L10.5,2.35 L10.5,0.6 Z"/>
+    <!-- E at x=14.0 -->
+    <path fill="#888888" d="M14.0,0 L17.0,0 L17.0,0.9 L14.9,0.9 L14.9,2.05 L16.4,2.05 L16.4,2.95 L14.9,2.95 L14.9,4.1 L17.0,4.1 L17.0,5 L14.0,5 Z"/>
+  </g>
+
+  <!-- Section divider at y~89 (between RATE/PHASE and CV section) -->
+  <rect x="5.60" y="88.95" width="29.96" height="0.1" fill="url(#divider-left)"/>
+  <rect x="35.56" y="88.95" width="29.96" height="0.1" fill="url(#divider-right)"/>
+
+  <!-- CV row labels at y~93.5, 1.40mm cap height -->
+  <!-- "MORPH" at x=9.19 -->
+  <!-- M=4.5, O=3, R=3, P=3, H=3, spacing 0.4 => total 18.1 units -->
+  <!-- Scale = 0.28, Scaled: 18.1*0.28 = 5.068mm, startX = 9.19 - 5.068/2 = 6.656 -->
+  <g transform="translate(6.656, 92.4) scale(0.28)">
+    <path fill="#777777" d="M0,0 L0.9,0 L2.25,1.8 L3.6,0 L4.5,0 L4.5,5 L3.6,5 L3.6,2.2 L2.6,3.6 L1.9,3.6 L0.9,2.2 L0.9,5 L0,5 Z"/>
+    <path fill="#777777" fill-rule="evenodd" d="M5.5,0 L7.3,0 L7.9,0.6 L7.9,4.4 L7.3,5 L5.5,5 L4.9,4.4 L4.9,0.6 Z M5.8,0.9 L5.8,4.1 L7.0,4.1 L7.0,0.9 Z"/>
+    <path fill="#777777" fill-rule="evenodd" d="M8.3,0 L10.7,0 L11.3,0.6 L11.3,2.1 L10.9,2.6 L11.3,3.2 L11.3,5 L10.4,5 L10.4,3.2 L9.2,3.2 L9.2,5 L8.3,5 Z M9.2,0.9 L9.2,2.3 L10.4,2.3 L10.4,0.9 Z"/>
+    <path fill="#777777" fill-rule="evenodd" d="M11.7,0 L14.1,0 L14.7,0.6 L14.7,2.4 L14.1,3 L12.6,3 L12.6,5 L11.7,5 Z M12.6,0.9 L12.6,2.1 L13.8,2.1 L13.8,0.9 Z"/>
+    <path fill="#777777" d="M15.1,0 L16.0,0 L16.0,2.05 L17.2,2.05 L17.2,0 L18.1,0 L18.1,5 L17.2,5 L17.2,2.95 L16.0,2.95 L16.0,5 L15.1,5 Z"/>
+  </g>
+
+  <!-- "CHAR" at x=22.77 -->
+  <!-- C=3, H=3, A=3, R=3, spacing 0.4 => total 13.2 units -->
+  <!-- Scale = 0.28, Scaled: 13.2*0.28 = 3.696mm, startX = 22.77 - 3.696/2 = 20.922 -->
+  <g transform="translate(20.922, 92.4) scale(0.28)">
+    <path fill="#777777" d="M0.6,0 L3,0 L3,0.9 L0.9,0.9 L0.9,4.1 L3,4.1 L3,5 L0.6,5 L0,4.4 L0,0.6 Z"/>
+    <path fill="#777777" d="M3.4,0 L4.3,0 L4.3,2.05 L5.5,2.05 L5.5,0 L6.4,0 L6.4,5 L5.5,5 L5.5,2.95 L4.3,2.95 L4.3,5 L3.4,5 Z"/>
+    <path fill="#777777" fill-rule="evenodd" d="M6.8,5 L6.8,0.9 L7.7,0 L8.9,0 L9.8,0.9 L9.8,5 L8.9,5 L8.9,2.8 L7.7,2.8 L7.7,5 Z M7.7,2 L8.9,2 L8.9,0.9 L7.7,0.9 Z"/>
+    <path fill="#777777" fill-rule="evenodd" d="M10.2,0 L12.6,0 L13.2,0.6 L13.2,2.1 L12.8,2.6 L13.2,3.2 L13.2,5 L12.3,5 L12.3,3.2 L11.1,3.2 L11.1,5 L10.2,5 Z M11.1,0.9 L11.1,2.3 L12.3,2.3 L12.3,0.9 Z"/>
+  </g>
+
+  <!-- "DRIFT" at x=35.56 -->
+  <!-- D=3, R=3, I=0.9, F=3, T=3, spacing 0.4 => total 14.5 units -->
+  <!-- Scale = 0.28, Scaled: 14.5*0.28 = 4.06mm, startX = 35.56 - 4.06/2 = 33.53 -->
+  <g transform="translate(33.53, 92.4) scale(0.28)">
+    <path fill="#777777" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,4.4 L2.4,5 L0,5 Z M0.9,0.9 L0.9,4.1 L2.1,4.1 L2.1,0.9 Z"/>
+    <path fill="#777777" fill-rule="evenodd" d="M3.4,0 L5.8,0 L6.4,0.6 L6.4,2.1 L6.0,2.6 L6.4,3.2 L6.4,5 L5.5,5 L5.5,3.2 L4.3,3.2 L4.3,5 L3.4,5 Z M4.3,0.9 L4.3,2.3 L5.5,2.3 L5.5,0.9 Z"/>
+    <path fill="#777777" d="M6.8,0 L7.7,0 L7.7,5 L6.8,5 Z"/>
+    <path fill="#777777" d="M8.1,0 L11.1,0 L11.1,0.9 L9.0,0.9 L9.0,2.05 L10.5,2.05 L10.5,2.95 L9.0,2.95 L9.0,5 L8.1,5 Z"/>
+    <path fill="#777777" d="M11.5,0 L14.5,0 L14.5,0.9 L13.45,0.9 L13.45,5 L12.55,5 L12.55,0.9 L11.5,0.9 Z"/>
+  </g>
+
+  <!-- "FM" at x=48.75 -->
+  <!-- F=3, M=4.5, spacing 0.4 => total 7.9 units -->
+  <!-- Scale = 0.28, Scaled: 7.9*0.28 = 2.212mm, startX = 48.75 - 2.212/2 = 47.644 -->
+  <g transform="translate(47.644, 92.4) scale(0.28)">
+    <path fill="#777777" d="M0,0 L3,0 L3,0.9 L0.9,0.9 L0.9,2.05 L2.4,2.05 L2.4,2.95 L0.9,2.95 L0.9,5 L0,5 Z"/>
+    <path fill="#777777" d="M3.4,0 L4.3,0 L5.65,1.8 L7.0,0 L7.9,0 L7.9,5 L7.0,5 L7.0,2.2 L6.0,3.6 L5.3,3.6 L4.3,2.2 L4.3,5 L3.4,5 Z"/>
+  </g>
+
+  <!-- "PHASE" at x=61.93 -->
+  <!-- P=3, H=3, A=3, S=3, E=3, spacing 0.4 => total 16.6 units -->
+  <!-- Scale = 0.28, Scaled: 16.6*0.28 = 4.648mm, startX = 61.93 - 4.648/2 = 59.606 -->
+  <g transform="translate(59.606, 92.4) scale(0.28)">
+    <path fill="#777777" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,2.4 L2.4,3 L0.9,3 L0.9,5 L0,5 Z M0.9,0.9 L0.9,2.1 L2.1,2.1 L2.1,0.9 Z"/>
+    <path fill="#777777" d="M3.4,0 L4.3,0 L4.3,2.05 L5.5,2.05 L5.5,0 L6.4,0 L6.4,5 L5.5,5 L5.5,2.95 L4.3,2.95 L4.3,5 L3.4,5 Z"/>
+    <path fill="#777777" fill-rule="evenodd" d="M6.8,5 L6.8,0.9 L7.7,0 L8.9,0 L9.8,0.9 L9.8,5 L8.9,5 L8.9,2.8 L7.7,2.8 L7.7,5 Z M7.7,2 L8.9,2 L8.9,0.9 L7.7,0.9 Z"/>
+    <path fill="#777777" d="M10.2,0 L12.6,0 L12.6,0.9 L11.1,0.9 L11.1,2.05 L12.0,2.05 L12.6,2.65 L12.6,4.4 L12.0,5 L10.2,5 L10.2,4.1 L11.7,4.1 L11.7,2.95 L10.8,2.95 L10.2,2.35 L10.2,0.6 Z"/>
+    <path fill="#777777" d="M13.0,0 L16.0,0 L16.0,0.9 L13.9,0.9 L13.9,2.05 L15.4,2.05 L15.4,2.95 L13.9,2.95 L13.9,4.1 L16.0,4.1 L16.0,5 L13.0,5 Z"/>
+  </g>
+
+  <!-- CV connecting lines (5 vertical gradient lines from trimpots to jacks) -->
+  <rect x="9.09" y="97.69" width="0.20" height="3.59" fill="url(#cv-line)"/>
+  <rect x="22.67" y="97.69" width="0.20" height="3.59" fill="url(#cv-line)"/>
+  <rect x="35.46" y="97.69" width="0.20" height="3.59" fill="url(#cv-line)"/>
+  <rect x="48.65" y="97.69" width="0.20" height="3.59" fill="url(#cv-line)"/>
+  <rect x="61.83" y="97.69" width="0.20" height="3.59" fill="url(#cv-line)"/>
+
+  <!-- "CLK" label at (14.38, ~113.5), centered, 1.40mm cap height -->
+  <!-- C=3, L=3, K=3, spacing 0.4 => total 9.8 units -->
+  <!-- Scale = 0.28, Scaled: 9.8*0.28 = 2.744mm, startX = 14.38 - 2.744/2 = 13.008 -->
+  <g transform="translate(13.008, 112.8) scale(0.28)">
+    <path fill="#999999" d="M0.6,0 L3,0 L3,0.9 L0.9,0.9 L0.9,4.1 L3,4.1 L3,5 L0.6,5 L0,4.4 L0,0.6 Z"/>
+    <path fill="#999999" d="M3.4,0 L4.3,0 L4.3,4.1 L6.4,4.1 L6.4,5 L3.4,5 Z"/>
+    <path fill="#999999" d="M6.8,0 L7.7,0 L7.7,2 L9.2,0 L10.3,0 L8.4,2.3 L10.3,5 L9.2,5 L7.7,3 L7.7,5 L6.8,5 Z"/>
+  </g>
+
+  <!-- "RST" label at (35.56, ~113.5), centered, 1.40mm cap height -->
+  <!-- R=3, S=3, T=3, spacing 0.4 => total 9.8 units -->
+  <!-- Scale = 0.28, Scaled: 9.8*0.28 = 2.744mm, startX = 35.56 - 2.744/2 = 34.188 -->
+  <g transform="translate(34.188, 112.8) scale(0.28)">
+    <path fill="#999999" fill-rule="evenodd" d="M0,0 L2.4,0 L3,0.6 L3,2.1 L2.6,2.6 L3,3.2 L3,5 L2.1,5 L2.1,3.2 L0.9,3.2 L0.9,5 L0,5 Z M0.9,0.9 L0.9,2.3 L2.1,2.3 L2.1,0.9 Z"/>
+    <!-- S at x=3.4 -->
+    <path fill="#999999" d="M4.0,0 L6.4,0 L6.4,0.9 L4.3,0.9 L4.3,2.05 L5.8,2.05 L6.4,2.65 L6.4,4.4 L5.8,5 L3.4,5 L3.4,4.1 L5.5,4.1 L5.5,2.95 L4.0,2.95 L3.4,2.35 L3.4,0.6 Z"/>
     <!-- T at x=6.8 -->
-    <path fill="#e8a838" d="M6.8,0 L9.8,0 L9.8,0.9 L8.75,0.9 L8.75,5 L7.85,5 L7.85,0.9 L6.8,0.9 Z"/>
+    <path fill="#999999" d="M6.8,0 L9.8,0 L9.8,0.9 L8.75,0.9 L8.75,5 L7.85,5 L7.85,0.9 L6.8,0.9 Z"/>
   </g>
 
-  <!-- Output jack amber accent ring -->
-  <circle cx="52.0" cy="108.0" r="5.0" fill="none"
-          stroke="#e8a838" stroke-width="0.3" stroke-opacity="0.5"/>
-
-
-  <!-- ==================== "FORGE AUDIO" BRAND TEXT (bottom) ==================== -->
-  <!-- Same as top brand, centered at x=30.48, y~116mm -->
-  <g transform="translate(26.268, 114.8) scale(0.24)">
-    <!-- F at x=0 -->
-    <path fill="#8888aa" d="M0,0 L3,0 L3,0.9 L0.9,0.9 L0.9,2.05 L2.4,2.05 L2.4,2.95 L0.9,2.95 L0.9,5 L0,5 Z"/>
-    <!-- O at x=3.6 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M4.2,0 L6,0 L6.6,0.6 L6.6,4.4 L6,5 L4.2,5 L3.6,4.4 L3.6,0.6 Z M4.5,0.9 L4.5,4.1 L5.7,4.1 L5.7,0.9 Z"/>
-    <!-- R at x=7.2 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M7.2,0 L9.6,0 L10.2,0.6 L10.2,2.1 L9.8,2.6 L10.2,3.2 L10.2,5 L9.3,5 L9.3,3.2 L8.1,3.2 L8.1,5 L7.2,5 Z M8.1,0.9 L8.1,2.3 L9.3,2.3 L9.3,0.9 Z"/>
-    <!-- G at x=10.8 -->
-    <path fill="#8888aa" d="M11.4,0 L13.8,0 L13.8,0.9 L11.7,0.9 L11.7,4.1 L12.9,4.1 L12.9,2.95 L12.3,2.95 L12.3,2.05 L13.8,2.05 L13.8,4.4 L13.2,5 L11.4,5 L10.8,4.4 L10.8,0.6 Z"/>
-    <!-- E at x=14.4 -->
-    <path fill="#8888aa" d="M14.4,0 L17.4,0 L17.4,0.9 L15.3,0.9 L15.3,2.05 L16.8,2.05 L16.8,2.95 L15.3,2.95 L15.3,4.1 L17.4,4.1 L17.4,5 L14.4,5 Z"/>
-    <!-- A at x=19.8 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M19.8,5 L19.8,0.9 L20.7,0 L21.9,0 L22.8,0.9 L22.8,5 L21.9,5 L21.9,2.8 L20.7,2.8 L20.7,5 Z M20.7,2 L21.9,2 L21.9,0.9 L20.7,0.9 Z"/>
-    <!-- U at x=23.4 -->
-    <path fill="#8888aa" d="M23.4,0 L24.3,0 L24.3,4.1 L25.5,4.1 L25.5,0 L26.4,0 L26.4,4.4 L25.8,5 L24,5 L23.4,4.4 Z"/>
-    <!-- D at x=27.0 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M27,0 L29.4,0 L30,0.6 L30,4.4 L29.4,5 L27,5 Z M27.9,0.9 L27.9,4.1 L29.1,4.1 L29.1,0.9 Z"/>
-    <!-- I at x=30.6 -->
-    <path fill="#8888aa" d="M30.6,0 L31.5,0 L31.5,5 L30.6,5 Z"/>
-    <!-- O at x=32.1 -->
-    <path fill="#8888aa" fill-rule="evenodd" d="M32.7,0 L34.5,0 L35.1,0.6 L35.1,4.4 L34.5,5 L32.7,5 L32.1,4.4 L32.1,0.6 Z M33,0.9 L33,4.1 L34.2,4.1 L34.2,0.9 Z"/>
+  <!-- "OUTPUT" label at (56.74, ~113.5), centered, 3.20mm cap height, ember -->
+  <!-- O=3, U=3, T=3, P=3, U=3, T=3, spacing 0.625 => total 21.75 units -->
+  <!-- Scale = 0.64, Scaled: 21.75*0.64 = 13.92mm, startX = 56.74 - 13.92/2 = 49.78 -->
+  <g transform="translate(49.78, 112.3) scale(0.64)">
+    <!-- O at x=0 -->
+    <path fill="#e85d26" fill-rule="evenodd" d="M0.6,0 L2.4,0 L3,0.6 L3,4.4 L2.4,5 L0.6,5 L0,4.4 L0,0.6 Z M0.9,0.9 L0.9,4.1 L2.1,4.1 L2.1,0.9 Z"/>
+    <!-- U at x=3.625 -->
+    <path fill="#e85d26" d="M3.625,0 L4.525,0 L4.525,4.1 L5.725,4.1 L5.725,0 L6.625,0 L6.625,4.4 L6.025,5 L4.225,5 L3.625,4.4 Z"/>
+    <!-- T at x=7.25 -->
+    <path fill="#e85d26" d="M7.25,0 L10.25,0 L10.25,0.9 L9.2,0.9 L9.2,5 L8.3,5 L8.3,0.9 L7.25,0.9 Z"/>
+    <!-- P at x=10.875 -->
+    <path fill="#e85d26" fill-rule="evenodd" d="M10.875,0 L13.275,0 L13.875,0.6 L13.875,2.4 L13.275,3 L11.775,3 L11.775,5 L10.875,5 Z M11.775,0.9 L11.775,2.1 L12.975,2.1 L12.975,0.9 Z"/>
+    <!-- U at x=14.5 -->
+    <path fill="#e85d26" d="M14.5,0 L15.4,0 L15.4,4.1 L16.6,4.1 L16.6,0 L17.5,0 L17.5,4.4 L16.9,5 L15.1,5 L14.5,4.4 Z"/>
+    <!-- T at x=18.125 -->
+    <path fill="#e85d26" d="M18.125,0 L21.125,0 L21.125,0.9 L20.075,0.9 L20.075,5 L19.175,5 L19.175,0.9 L18.125,0.9 Z"/>
   </g>
 
+  <!-- ==================== LAYER 9: FOOTER ==================== -->
+  <!-- "FORGE" footer text at (35.56, ~124), centered, 4.0mm cap height, opacity 0.25 -->
+  <!-- Same letter paths as header FORGE, Scale = 0.8 -->
+  <!-- Total units: 20.0, Scaled: 16.0mm, startX = 35.56 - 16.0/2 = 27.56 -->
+  <g transform="translate(27.56, 122.0) scale(0.8)">
+    <path fill="#e85d26" opacity="0.25" d="M0,0 L3,0 L3,0.9 L0.9,0.9 L0.9,2.05 L2.4,2.05 L2.4,2.95 L0.9,2.95 L0.9,5 L0,5 Z"/>
+    <path fill="#e85d26" opacity="0.25" fill-rule="evenodd" d="M4.85,0 L6.65,0 L7.25,0.6 L7.25,4.4 L6.65,5 L4.85,5 L4.25,4.4 L4.25,0.6 Z M5.15,0.9 L5.15,4.1 L6.35,4.1 L6.35,0.9 Z"/>
+    <path fill="#e85d26" opacity="0.25" fill-rule="evenodd" d="M8.5,0 L10.9,0 L11.5,0.6 L11.5,2.1 L11.1,2.6 L11.5,3.2 L11.5,5 L10.6,5 L10.6,3.2 L9.4,3.2 L9.4,5 L8.5,5 Z M9.4,0.9 L9.4,2.3 L10.6,2.3 L10.6,0.9 Z"/>
+    <path fill="#e85d26" opacity="0.25" d="M13.35,0 L15.75,0 L15.75,0.9 L13.65,0.9 L13.65,4.1 L14.85,4.1 L14.85,2.95 L14.25,2.95 L14.25,2.05 L15.75,2.05 L15.75,4.4 L15.15,5 L13.35,5 L12.75,4.4 L12.75,0.6 Z"/>
+    <path fill="#e85d26" opacity="0.25" d="M17.0,0 L20.0,0 L20.0,0.9 L17.9,0.9 L17.9,2.05 L19.4,2.05 L19.4,2.95 L17.9,2.95 L17.9,4.1 L20.0,4.1 L20.0,5 L17.0,5 Z"/>
+  </g>
 
-  <!-- ==================== COMPONENTS LAYER (hidden) ==================== -->
-  <!-- Used for documentation and designer handoff. display:none hides from render. -->
-  <!-- Component positions MUST match mm2px coordinates in AnalogLFO.cpp widget. -->
+  <!-- ==================== LAYER 10: HIDDEN COMPONENT PLACEMENT LAYER ==================== -->
   <g id="components" style="display:none">
-      <!-- Params (red circles at center positions) -->
-      <circle cx="30.48" cy="54.0" r="7.62" fill="#ff0000"/>   <!-- Morph: RoundBigBlackKnob -->
-      <circle cx="18.0" cy="69.0" r="6.1" fill="#ff0000"/>     <!-- Character: RoundLargeBlackKnob -->
-      <circle cx="42.96" cy="69.0" r="6.1" fill="#ff0000"/>    <!-- Drift: RoundLargeBlackKnob -->
-      <circle cx="18.0" cy="86.0" r="4.8" fill="#ff0000"/>     <!-- Rate: RoundBlackKnob -->
-      <circle cx="10.0" cy="96.0" r="3.03" fill="#ff0000"/>    <!-- Morph CV Atten: Trimpot -->
-      <circle cx="24.0" cy="96.0" r="3.03" fill="#ff0000"/>    <!-- Character CV Atten: Trimpot -->
-      <circle cx="38.0" cy="96.0" r="3.03" fill="#ff0000"/>    <!-- Drift CV Atten: Trimpot -->
-      <!-- Inputs (green circles) -->
-      <circle cx="42.96" cy="86.0" r="4.0" fill="#00ff00"/>    <!-- CLK Input -->
-      <circle cx="10.0" cy="108.0" r="4.0" fill="#00ff00"/>    <!-- Morph CV -->
-      <circle cx="24.0" cy="108.0" r="4.0" fill="#00ff00"/>    <!-- Character CV -->
-      <circle cx="38.0" cy="108.0" r="4.0" fill="#00ff00"/>    <!-- Drift CV -->
-      <!-- Outputs (blue circles) -->
-      <circle cx="52.0" cy="108.0" r="4.0" fill="#0000ff"/>    <!-- Out -->
+    <circle cx="35.56" cy="47.35" r="8.19" fill="#ff0000"/><!-- MORPH knob -->
+    <circle cx="21.18" cy="67.32" r="6.0" fill="#ff0000"/><!-- CHARACTER knob -->
+    <circle cx="49.94" cy="67.32" r="6.0" fill="#ff0000"/><!-- DRIFT knob -->
+    <circle cx="21.18" cy="83.51" r="4.6" fill="#ff0000"/><!-- RATE knob -->
+    <circle cx="49.94" cy="83.51" r="4.6" fill="#ff0000"/><!-- PHASE knob -->
+    <circle cx="9.19" cy="95.89" r="1.8" fill="#00ff00"/><!-- MORPH trim -->
+    <circle cx="22.77" cy="95.89" r="1.8" fill="#00ff00"/><!-- CHAR trim -->
+    <circle cx="35.56" cy="95.89" r="1.8" fill="#00ff00"/><!-- DRIFT trim -->
+    <circle cx="48.75" cy="95.89" r="1.8" fill="#00ff00"/><!-- FM trim -->
+    <circle cx="61.93" cy="95.89" r="1.8" fill="#00ff00"/><!-- PHASE trim -->
+    <circle cx="9.19" cy="103.08" r="3.6" fill="#0000ff"/><!-- MORPH CV -->
+    <circle cx="22.77" cy="103.08" r="3.6" fill="#0000ff"/><!-- CHAR CV -->
+    <circle cx="35.56" cy="103.08" r="3.6" fill="#0000ff"/><!-- DRIFT CV -->
+    <circle cx="48.75" cy="103.08" r="3.6" fill="#0000ff"/><!-- FM CV -->
+    <circle cx="61.93" cy="103.08" r="3.6" fill="#0000ff"/><!-- PHASE CV -->
+    <circle cx="14.38" cy="117.47" r="3.6" fill="#0000ff"/><!-- CLK -->
+    <circle cx="35.56" cy="117.47" r="3.6" fill="#0000ff"/><!-- RST -->
+    <circle cx="56.74" cy="117.47" r="4.2" fill="#ffff00"/><!-- OUTPUT -->
+    <rect x="3.60" y="13.19" width="63.93" height="17.98" fill="#00ffff"/><!-- Display -->
   </g>
 
 </svg>
