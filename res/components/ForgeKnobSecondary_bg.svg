@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="13.50mm" height="13.50mm"
+     viewBox="0 0 13.5 13.5">
+  <defs>
+    <radialGradient id="secondary-bg-shadow">
+      <stop offset="0%" stop-color="#000000"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Drop shadow (offset 0.4mm down) -->
+  <circle cx="6.75" cy="7.15" r="6.0" fill="#000000" opacity="0.4"/>
+  <!-- Metallic ring: 4 concentric circles -->
+  <circle cx="6.75" cy="6.75" r="6.3" fill="none" stroke="#1a1a1a" stroke-width="0.4"/>
+  <circle cx="6.75" cy="6.75" r="5.9" fill="none" stroke="#4a4a4a" stroke-width="0.3"/>
+  <circle cx="6.75" cy="6.75" r="5.5" fill="none" stroke="#333333" stroke-width="0.3"/>
+  <circle cx="6.75" cy="6.75" r="5.1" fill="none" stroke="#1a1a1a" stroke-width="0.4"/>
+</svg>

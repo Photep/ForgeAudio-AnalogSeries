@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="9.19mm" height="9.19mm"
+     viewBox="0 0 9.19 9.19">
+  <defs>
+    <radialGradient id="utility-body" cx="38%" cy="28%">
+      <stop offset="0%" stop-color="#4a4a4a"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </radialGradient>
+    <radialGradient id="utility-cap" cx="44%" cy="38%">
+      <stop offset="0%" stop-color="#282828"/>
+      <stop offset="100%" stop-color="#080808"/>
+    </radialGradient>
+    <linearGradient id="utility-indicator" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f08040"/>
+      <stop offset="100%" stop-color="#c04020"/>
+    </linearGradient>
+  </defs>
+  <!-- Knob body -->
+  <circle cx="4.6" cy="4.6" r="4.2" fill="url(#utility-body)"/>
+  <!-- Machined groove texture -->
+  <circle cx="4.6" cy="4.6" r="3.6" fill="none" stroke="#ffffff" stroke-width="0.08" stroke-opacity="0.025"/>
+  <circle cx="4.6" cy="4.6" r="3.0" fill="none" stroke="#000000" stroke-width="0.08" stroke-opacity="0.025"/>
+  <circle cx="4.6" cy="4.6" r="2.4" fill="none" stroke="#ffffff" stroke-width="0.08" stroke-opacity="0.02"/>
+  <!-- Center cap indent -->
+  <circle cx="4.6" cy="4.6" r="1.1" fill="url(#utility-cap)"/>
+  <!-- Indicator line at 12 o'clock (0.6mm wide, 26% height = 2.39mm) -->
+  <rect x="4.3" y="0.50" width="0.6" height="2.39" rx="0.2" fill="url(#utility-indicator)"/>
+  <!-- Indicator glow halo -->
+  <circle cx="4.6" cy="0.85" r="0.7" fill="#e85d26" opacity="0.25"/>
+</svg>

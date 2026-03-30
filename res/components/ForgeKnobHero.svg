@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="16.38mm" height="16.38mm"
+     viewBox="0 0 16.38 16.38">
+  <defs>
+    <radialGradient id="hero-body" cx="38%" cy="28%">
+      <stop offset="0%" stop-color="#4a4a4a"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </radialGradient>
+    <radialGradient id="hero-cap" cx="44%" cy="38%">
+      <stop offset="0%" stop-color="#282828"/>
+      <stop offset="100%" stop-color="#080808"/>
+    </radialGradient>
+    <linearGradient id="hero-indicator" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f08040"/>
+      <stop offset="100%" stop-color="#c04020"/>
+    </linearGradient>
+  </defs>
+  <!-- Knob body -->
+  <circle cx="8.19" cy="8.19" r="7.5" fill="url(#hero-body)"/>
+  <!-- Machined groove texture -->
+  <circle cx="8.19" cy="8.19" r="6.5" fill="none" stroke="#ffffff" stroke-width="0.08" stroke-opacity="0.025"/>
+  <circle cx="8.19" cy="8.19" r="5.5" fill="none" stroke="#000000" stroke-width="0.08" stroke-opacity="0.025"/>
+  <circle cx="8.19" cy="8.19" r="4.5" fill="none" stroke="#ffffff" stroke-width="0.08" stroke-opacity="0.02"/>
+  <circle cx="8.19" cy="8.19" r="3.5" fill="none" stroke="#000000" stroke-width="0.08" stroke-opacity="0.03"/>
+  <!-- Center cap indent -->
+  <circle cx="8.19" cy="8.19" r="2.0" fill="url(#hero-cap)"/>
+  <!-- Indicator line at 12 o'clock (1mm wide, 32% height = 5.24mm) -->
+  <rect x="7.69" y="0.87" width="1.0" height="5.24" rx="0.3" fill="url(#hero-indicator)"/>
+  <!-- Indicator glow halo -->
+  <circle cx="8.19" cy="1.5" r="1.2" fill="#e85d26" opacity="0.25"/>
+</svg>
