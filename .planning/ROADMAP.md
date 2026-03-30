@@ -93,7 +93,7 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 19-01-PLAN.md -- Create custom SVG component files (knobs, trimpots, jacks, hex bolt)
+- [x] 19-01-PLAN.md -- Create custom SVG component files (knobs, trimpots, jacks, hex bolt)
 - [ ] 19-02-PLAN.md -- Create 14HP Forge Noir panel SVG with all decorative elements and typography
 - [ ] 19-03-PLAN.md -- Wire custom widgets into C++ codebase, update plugin.json and PANEL-SPEC.md
 - [ ] 19-04-PLAN.md -- Install and visual verification checkpoint in VCV Rack
@@ -145,6 +145,6 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21
 | 16. Swing and Shuffle | v1.2 | 1/1 | Complete | 2026-03-17 |
 | 17. Panel Redesign | v1.2 | - | Skipped | 2026-03-17 |
 | 18. PWM DSP Extension | v1.3 | 1/1 | Complete    | 2026-03-28 |
-| 19. Forge Noir Panel + Custom Components | v1.3 | 0/4 | Not started | - |
+| 19. Forge Noir Panel + Custom Components | v1.3 | 1/4 | In Progress|  |
 | 20. Display Layout + CRT Aesthetic | v1.3 | 0/0 | Not started | - |
 | 21. Animated SYNC Badge | v1.3 | 0/0 | Not started | - |

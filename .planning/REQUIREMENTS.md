@@ -19,9 +19,9 @@ Requirements for Forge Noir milestone. Each maps to roadmap phases.
 
 - [ ] **PANEL-01**: 14HP Forge Noir SVG panel with near-black background, ember accent bars, hex bolt screws
 - [ ] **PANEL-02**: All controls repositioned per Forge Noir mockup (5 main knobs, 5 CV trimpots+jacks, CLK/RST/OUTPUT)
-- [ ] **PANEL-03**: Custom SVG knob components (3 sizes: hero/secondary/utility) with machined metal appearance
-- [ ] **PANEL-04**: Custom SVG trimpot components (bright scalloped attenuverters)
-- [ ] **PANEL-05**: Custom SVG jack components (2 sizes: standard/output with ember accent ring)
+- [x] **PANEL-03**: Custom SVG knob components (3 sizes: hero/secondary/utility) with machined metal appearance
+- [x] **PANEL-04**: Custom SVG trimpot components (bright scalloped attenuverters)
+- [x] **PANEL-05**: Custom SVG jack components (2 sizes: standard/output with ember accent ring)
 - [ ] **PANEL-06**: Forge emblem background element
 - [ ] **PANEL-07**: Brand typography rendered as SVG paths (Forge Audio header, Analog LFO name)
 
@@ -75,9 +75,9 @@ Deferred to VCO module (v2.0).
 | WAVE-05 | Phase 18 | Complete |
 | PANEL-01 | Phase 19 | Pending |
 | PANEL-02 | Phase 19 | Pending |
-| PANEL-03 | Phase 19 | Pending |
-| PANEL-04 | Phase 19 | Pending |
-| PANEL-05 | Phase 19 | Pending |
+| PANEL-03 | Phase 19 | Complete |
+| PANEL-04 | Phase 19 | Complete |
+| PANEL-05 | Phase 19 | Complete |
 | PANEL-06 | Phase 19 | Pending |
 | PANEL-07 | Phase 19 | Pending |
 | DISP-01 | Phase 20 | Pending |
