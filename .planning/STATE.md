@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
-status: verifying
-stopped_at: Phase 19 UI-SPEC approved
-last_updated: "2026-03-29T05:26:59.001Z"
-last_activity: 2026-03-28
+status: executing
+stopped_at: Completed 19-02-PLAN.md
+last_updated: "2026-03-30T02:30:00Z"
+last_activity: 2026-03-30 -- Phase 19 plan 02 complete
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 0
+  total_plans: 4
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 18 — pwm-dsp-extension
+**Current focus:** Phase 19 — forge-noir-panel-custom-components
 
 ## Current Position
 
-Phase: 19
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-28
+Phase: 19 (forge-noir-panel-custom-components) — EXECUTING
+Plan: 2 of 4
+Status: Executing Phase 19
+Last activity: 2026-03-30 -- Plan 02 (panel SVG) complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [#####-----] 50%
 
 ## Performance Metrics
 
@@ -56,6 +56,8 @@ Key pending decisions for v1.3:
 - [Phase 18]: Pulse duty derived from morph position externally, not inside computePulse (D-08)
 - [Phase 18]: Backward compatibility dropped: morph*4.f replaces morph*3.f for 5-shape sweep (D-02)
 - [Phase 18]: Edge width clamped via min(duty,1-duty)*0.8 to prevent amplitude collapse at narrow duty
+- [Phase 19]: Emblem mirroring via manual coordinate duplication (nanosvg has no use/transform support)
+- [Phase 19]: Letterform scale factors: 0.8=4.0mm, 0.64=3.20mm, 0.36=1.80mm, 0.28=1.40mm
 
 ### Pending Todos
 
@@ -69,6 +71,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-29T05:26:58.997Z
-Stopped at: Phase 19 UI-SPEC approved
-Resume file: .planning/phases/19-forge-noir-panel-custom-components/19-UI-SPEC.md
+Last session: 2026-03-30T02:30:00Z
+Stopped at: Completed 19-02-PLAN.md
+Resume file: .planning/phases/19-forge-noir-panel-custom-components/19-02-SUMMARY.md
