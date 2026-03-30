@@ -1292,53 +1292,145 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	}
 };
 
+// ============================================================
+// Forge Noir Custom Widget Components
+// ============================================================
+
+struct ForgeKnobHero : app::SvgKnob {
+	widget::SvgWidget* bg;
+	ForgeKnobHero() {
+		minAngle = -0.83 * M_PI;
+		maxAngle = 0.83 * M_PI;
+		shadow->opacity = 0.0;
+		bg = new widget::SvgWidget;
+		fb->addChildBelow(bg, tw);
+		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobHero.svg")));
+		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobHero_bg.svg")));
+	}
+};
+
+struct ForgeKnobSecondary : app::SvgKnob {
+	widget::SvgWidget* bg;
+	ForgeKnobSecondary() {
+		minAngle = -0.83 * M_PI;
+		maxAngle = 0.83 * M_PI;
+		shadow->opacity = 0.0;
+		bg = new widget::SvgWidget;
+		fb->addChildBelow(bg, tw);
+		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobSecondary.svg")));
+		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobSecondary_bg.svg")));
+	}
+};
+
+struct ForgeKnobUtility : app::SvgKnob {
+	widget::SvgWidget* bg;
+	ForgeKnobUtility() {
+		minAngle = -0.83 * M_PI;
+		maxAngle = 0.83 * M_PI;
+		shadow->opacity = 0.0;
+		bg = new widget::SvgWidget;
+		fb->addChildBelow(bg, tw);
+		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobUtility.svg")));
+		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobUtility_bg.svg")));
+	}
+};
+
+struct ForgeTrimpot : app::SvgKnob {
+	widget::SvgWidget* bg;
+	ForgeTrimpot() {
+		minAngle = -0.75 * M_PI;
+		maxAngle = 0.75 * M_PI;
+		shadow->opacity = 0.0;
+		bg = new widget::SvgWidget;
+		fb->addChildBelow(bg, tw);
+		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeTrimpot.svg")));
+		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeTrimpot_bg.svg")));
+	}
+};
+
+struct ForgeJackInput : app::SvgPort {
+	ForgeJackInput() {
+		shadow->opacity = 0.0;
+		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeJackInput.svg")));
+	}
+};
+
+struct ForgeJackOutput : app::SvgPort {
+	ForgeJackOutput() {
+		shadow->opacity = 0.0;
+		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeJackOutput.svg")));
+	}
+};
+
+struct ForgeHexBolt : app::SvgScrew {
+	ForgeHexBolt() {
+		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeHexBolt.svg")));
+	}
+};
+
 struct AnalogLFOWidget : ModuleWidget {
 	AnalogLFOWidget(AnalogLFO* module) {
 		setModule(module);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/AnalogLFO.svg")));
 
-		// Screws
-		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		// Hex bolt screws (4 corners)
+		addChild(createWidget<ForgeHexBolt>(Vec(RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ForgeHexBolt>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ForgeHexBolt>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ForgeHexBolt>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		// Waveform display -- positioned to match SVG placeholder rect
-		// ~2mm side margins, starts right below title line, ~27% of panel height
-		// per CONTEXT.md: "generous window 25-35%", "no gap below title", "~2mm each side"
+		// Waveform display (repositioned for 14HP Forge Noir layout)
 		{
 			WaveformDisplay* display = new WaveformDisplay();
 			display->module = module;
-			display->box.pos = mm2px(Vec(2.f, 15.f));
-			display->box.size = mm2px(Vec(57.f, 27.f));
+			display->box.pos = mm2px(Vec(3.60f, 13.19f));
+			display->box.size = mm2px(Vec(63.93f, 17.98f));
 			addChild(display);
 		}
 
-		// Params
-		addParam(createParamCentered<RoundBigBlackKnob>(mm2px(Vec(30.48, 54.0)), module, AnalogLFO::MORPH_PARAM));
-		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(18.0, 69.0)), module, AnalogLFO::CHARACTER_PARAM));
-		addParam(createParamCentered<RoundLargeBlackKnob>(mm2px(Vec(42.96, 69.0)), module, AnalogLFO::DRIFT_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(18.0, 86.0)), module, AnalogLFO::RATE_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(42.96, 86.0)), module, AnalogLFO::CLK_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.0, 86.0)), module, AnalogLFO::RESET_INPUT));
-		// Bottom section: Trimpots (upper row at y=96mm)
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(10.0, 96.0)), module, AnalogLFO::MORPH_ATTEN_PARAM));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(24.0, 96.0)), module, AnalogLFO::CHARACTER_ATTEN_PARAM));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(38.0, 96.0)), module, AnalogLFO::DRIFT_ATTEN_PARAM));
-		// Bottom section: Jacks (lower row at y=108mm)
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.0, 108.0)), module, AnalogLFO::MORPH_CV_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(24.0, 108.0)), module, AnalogLFO::CHARACTER_CV_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(38.0, 108.0)), module, AnalogLFO::DRIFT_CV_INPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.0, 108.0)), module, AnalogLFO::OUTPUT));
-		// Phase Offset controls (TEMPORARY positions -- Phase 17 finalizes layout)
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.48, 86.0)), module, AnalogLFO::PHASE_OFFSET_PARAM));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(52.0, 96.0)), module, AnalogLFO::PHASE_OFFSET_ATTEN_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.0, 118.0)), module, AnalogLFO::PHASE_OFFSET_CV_INPUT));
-		// FM controls (TEMPORARY positions -- Phase 17 finalizes layout)
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(8.0, 118.0)),
+		// Main knobs
+		addParam(createParamCentered<ForgeKnobHero>(mm2px(Vec(35.56f, 47.35f)),
+		         module, AnalogLFO::MORPH_PARAM));
+		addParam(createParamCentered<ForgeKnobSecondary>(mm2px(Vec(21.18f, 67.32f)),
+		         module, AnalogLFO::CHARACTER_PARAM));
+		addParam(createParamCentered<ForgeKnobSecondary>(mm2px(Vec(49.94f, 67.32f)),
+		         module, AnalogLFO::DRIFT_PARAM));
+		addParam(createParamCentered<ForgeKnobUtility>(mm2px(Vec(21.18f, 83.51f)),
+		         module, AnalogLFO::RATE_PARAM));
+		addParam(createParamCentered<ForgeKnobUtility>(mm2px(Vec(49.94f, 83.51f)),
+		         module, AnalogLFO::PHASE_OFFSET_PARAM));
+
+		// CV trimpots
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(9.19f, 95.89f)),
+		         module, AnalogLFO::MORPH_ATTEN_PARAM));
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(22.77f, 95.89f)),
+		         module, AnalogLFO::CHARACTER_ATTEN_PARAM));
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(35.56f, 95.89f)),
+		         module, AnalogLFO::DRIFT_ATTEN_PARAM));
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(48.75f, 95.89f)),
 		         module, AnalogLFO::FM_ATTEN_PARAM));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.0, 118.0)),
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(61.93f, 95.89f)),
+		         module, AnalogLFO::PHASE_OFFSET_ATTEN_PARAM));
+
+		// CV input jacks
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(9.19f, 103.08f)),
+		         module, AnalogLFO::MORPH_CV_INPUT));
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(22.77f, 103.08f)),
+		         module, AnalogLFO::CHARACTER_CV_INPUT));
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(35.56f, 103.08f)),
+		         module, AnalogLFO::DRIFT_CV_INPUT));
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(48.75f, 103.08f)),
 		         module, AnalogLFO::FM_INPUT));
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(61.93f, 103.08f)),
+		         module, AnalogLFO::PHASE_OFFSET_CV_INPUT));
+
+		// Bottom I/O row
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(14.38f, 117.47f)),
+		         module, AnalogLFO::CLK_INPUT));
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(35.56f, 117.47f)),
+		         module, AnalogLFO::RESET_INPUT));
+		addOutput(createOutputCentered<ForgeJackOutput>(mm2px(Vec(56.74f, 117.47f)),
+		          module, AnalogLFO::OUTPUT));
 	}
 
 	void appendContextMenu(Menu* menu) override {
