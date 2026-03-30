@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="3.20mm" height="3.20mm"
+     viewBox="0 0 3.2 3.2">
+  <defs>
+    <linearGradient id="bolt-face" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0%" stop-color="#333333"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer hexagon (r=1.4 from center, 6-point regular hexagon) -->
+  <polygon points="1.6,0.2 2.81,0.9 2.81,2.3 1.6,3.0 0.39,2.3 0.39,0.9" fill="url(#bolt-face)"/>
+  <!-- Inner hex socket (44% of outer diameter = r=0.62) -->
+  <polygon points="1.6,0.98 2.13,1.29 2.13,1.91 1.6,2.22 1.07,1.91 1.07,1.29" fill="#0a0a0a"/>
+</svg>

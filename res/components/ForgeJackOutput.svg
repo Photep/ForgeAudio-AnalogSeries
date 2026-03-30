@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="8.39mm" height="8.39mm"
+     viewBox="0 0 8.39 8.39">
+  <defs>
+    <radialGradient id="output-flange" cx="50%" cy="50%">
+      <stop offset="0%" stop-color="#555555"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </radialGradient>
+  </defs>
+  <!-- Outer ember glow -->
+  <circle cx="4.2" cy="4.2" r="4.0" fill="none" stroke="#e85d26" stroke-width="1.2" stroke-opacity="0.15"/>
+  <!-- Ember accent ring -->
+  <circle cx="4.2" cy="4.2" r="3.8" fill="none" stroke="#e85d26" stroke-width="0.6" stroke-opacity="0.5"/>
+  <!-- Flange -->
+  <circle cx="4.2" cy="4.2" r="4.0" fill="url(#output-flange)"/>
+  <!-- Outer metallic ring -->
+  <circle cx="4.2" cy="4.2" r="3.5" fill="none" stroke="#cccccc" stroke-width="0.3"/>
+  <!-- Inner metallic ring -->
+  <circle cx="4.2" cy="4.2" r="3.0" fill="none" stroke="#999999" stroke-width="0.2"/>
+  <!-- Center hole -->
+  <circle cx="4.2" cy="4.2" r="1.2" fill="#020202"/>
+  <!-- Inset shadow in hole -->
+  <circle cx="4.2" cy="4.1" r="1.1" fill="#010101"/>
+  <!-- Specular highlight -->
+  <ellipse cx="3.3" cy="3.3" rx="1.4" ry="0.9" fill="#ffffff" opacity="0.12" transform="rotate(-30 3.3 3.3)"/>
+  <!-- Ember accent ring (on top of flange for visibility) -->
+  <circle cx="4.2" cy="4.2" r="3.8" fill="none" stroke="#e85d26" stroke-width="0.6" stroke-opacity="0.5"/>
+  <!-- Outer ember glow (on top for visibility) -->
+  <circle cx="4.2" cy="4.2" r="4.1" fill="none" stroke="#e85d26" stroke-width="1.2" stroke-opacity="0.15"/>
+</svg>

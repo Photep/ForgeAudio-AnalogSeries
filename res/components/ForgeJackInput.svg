@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="7.19mm" height="7.19mm"
+     viewBox="0 0 7.19 7.19">
+  <defs>
+    <radialGradient id="jack-flange" cx="50%" cy="50%">
+      <stop offset="0%" stop-color="#555555"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </radialGradient>
+  </defs>
+  <!-- Flange -->
+  <circle cx="3.6" cy="3.6" r="3.4" fill="url(#jack-flange)"/>
+  <!-- Outer metallic ring -->
+  <circle cx="3.6" cy="3.6" r="3.0" fill="none" stroke="#cccccc" stroke-width="0.3"/>
+  <!-- Inner metallic ring -->
+  <circle cx="3.6" cy="3.6" r="2.5" fill="none" stroke="#999999" stroke-width="0.2"/>
+  <!-- Center hole (28% of 7.19mm diameter = ~2.0mm diameter = r=1.0) -->
+  <circle cx="3.6" cy="3.6" r="1.0" fill="#020202"/>
+  <!-- Inset shadow in hole -->
+  <circle cx="3.6" cy="3.5" r="0.9" fill="#010101"/>
+  <!-- Specular highlight -->
+  <ellipse cx="2.8" cy="2.8" rx="1.2" ry="0.8" fill="#ffffff" opacity="0.12" transform="rotate(-30 2.8 2.8)"/>
+</svg>
