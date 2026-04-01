@@ -857,10 +857,26 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	float hzFadeAlpha = 1.f;  // starts visible (free-running mode default)
 	float swingFadeAlpha = 0.f;  // swing overlay (bottom-left)
 
+	// CRT scanline state (used by Plan 03)
+	int scanlineImage = -1;
+	float scanlineScrollPhase = 0.f;
+
+	// Dedicated 2Hz blink accumulator for SYNC ACQUIRING indicator (Plan 02 uses this)
+	// Separate from breathePhase so border glow (0.2Hz) and blink (2Hz) are independent
+	float blinkPhase = 0.f;
+
 	void step() override {
-		// Advance breathe animation (~0.8Hz cycle)
-		breathePhase += 2.f * (float)M_PI * 0.8f / 60.f;
+		// Advance breathe animation (0.2Hz = 5-second cycle, per D-13)
+		breathePhase += 2.f * (float)M_PI * 0.2f / 60.f;
 		if (breathePhase > 2.f * (float)M_PI) breathePhase -= 2.f * (float)M_PI;
+
+		// 2Hz blink for SYNC ACQUIRING indicator (independent of border glow rate)
+		blinkPhase += 2.f * (float)M_PI * 2.f / 60.f;
+		if (blinkPhase > 100.f * (float)M_PI) blinkPhase -= 100.f * (float)M_PI;  // prevent float overflow
+
+		// Advance scanline scroll (~1px/sec at 60fps)
+		scanlineScrollPhase += 1.f / 60.f;
+		scanlineScrollPhase = fmodf(scanlineScrollPhase, 4.f);  // wrap at tile height
 
 		// Advance fade timers for text overlays (200ms transitions)
 		if (module) {
@@ -912,26 +928,89 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 	void drawBackground(NVGcontext* vg) {
 		nvgBeginPath(vg);
-		nvgRoundedRect(vg, 0, 0, box.size.x, box.size.y, 2.0f);
-		nvgFillColor(vg, nvgRGBAf(0.051f, 0.051f, 0.102f, 1.f));
+		nvgRoundedRect(vg, 0, 0, box.size.x, box.size.y, 4.0f);
+		nvgFillColor(vg, nvgRGBAf(0.012f, 0.012f, 0.012f, 1.f));
 		nvgFill(vg);
 	}
 
-	void drawInsetFrame(NVGcontext* vg) {
+	void drawBorder(NVGcontext* vg) {
 		float w = box.size.x;
 		float h = box.size.y;
 
-		// Outer shadow: dark border suggesting depth
+		// Breathing glow: 0.08 to 0.18 opacity, 5s cycle (per D-13)
+		float glowAlpha = 0.08f + 0.10f * (0.5f + 0.5f * std::sin(breathePhase));
+
+		// Outer glow (inner cutout approach to stay within scissor bounds — per Pitfall 7)
 		nvgBeginPath(vg);
-		nvgRoundedRect(vg, 0, 0, w, h, 2.0f);
-		nvgStrokeColor(vg, nvgRGBAf(0.f, 0.f, 0.f, 0.3f));
+		nvgRoundedRect(vg, -2.f, -2.f, w + 4.f, h + 4.f, 6.f);
+		nvgRoundedRect(vg, 0, 0, w, h, 4.f);
+		nvgPathWinding(vg, NVG_HOLE);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, glowAlpha));
+		nvgFill(vg);
+
+		// Solid 1.5px ember border
+		nvgBeginPath(vg);
+		nvgRoundedRect(vg, 0, 0, w, h, 4.f);
+		nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.3f));
+		nvgStrokeWidth(vg, 1.5f);
+		nvgStroke(vg);
+	}
+
+	void drawCornerBrackets(NVGcontext* vg) {
+		float inset = 3.f;   // ~5px mockup * 0.59 scale
+		float size = 5.f;    // ~8px mockup * 0.59 scale
+		float w = box.size.x;
+		float h = box.size.y;
+
+		nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.4f));
 		nvgStrokeWidth(vg, 1.0f);
+		nvgLineCap(vg, NVG_BUTT);
+
+		// Top-left
+		nvgBeginPath(vg);
+		nvgMoveTo(vg, inset, inset + size);
+		nvgLineTo(vg, inset, inset);
+		nvgLineTo(vg, inset + size, inset);
 		nvgStroke(vg);
 
-		// Inner highlight: faint amber border
+		// Top-right
 		nvgBeginPath(vg);
-		nvgRoundedRect(vg, 0.5f, 0.5f, w - 1.f, h - 1.f, 1.5f);
-		nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, 0.15f));
+		nvgMoveTo(vg, w - inset - size, inset);
+		nvgLineTo(vg, w - inset, inset);
+		nvgLineTo(vg, w - inset, inset + size);
+		nvgStroke(vg);
+
+		// Bottom-left
+		nvgBeginPath(vg);
+		nvgMoveTo(vg, inset, h - inset - size);
+		nvgLineTo(vg, inset, h - inset);
+		nvgLineTo(vg, inset + size, h - inset);
+		nvgStroke(vg);
+
+		// Bottom-right
+		nvgBeginPath(vg);
+		nvgMoveTo(vg, w - inset - size, h - inset);
+		nvgLineTo(vg, w - inset, h - inset);
+		nvgLineTo(vg, w - inset, h - inset - size);
+		nvgStroke(vg);
+	}
+
+	void drawZeroCrossing(NVGcontext* vg) {
+		float centerY = box.size.y / 2.f;
+		float xStart = box.size.x * 0.20f;  // CENTER_START
+		float xEnd = box.size.x * 0.80f;    // CENTER_END
+		float dashLen = 2.f;
+		float gapLen = 3.f;
+		float x = xStart;
+
+		nvgBeginPath(vg);
+		while (x < xEnd) {
+			float end = std::min(x + dashLen, xEnd);
+			nvgMoveTo(vg, x, centerY);
+			nvgLineTo(vg, end, centerY);
+			x = end + gapLen;
+		}
+		nvgStrokeColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.06f));
 		nvgStrokeWidth(vg, 0.5f);
 		nvgStroke(vg);
 	}
@@ -1309,10 +1388,17 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		if (layer == 1) {
 			NVGcontext* vg = args.vg;
 			nvgSave(vg);
-			nvgScissor(vg, 0, 0, box.size.x, box.size.y);
+
+			// Expanded scissor for border glow (extends 2px beyond widget bounds)
+			nvgScissor(vg, -2.f, -2.f, box.size.x + 4.f, box.size.y + 4.f);
 
 			drawBackground(vg);
-			drawInsetFrame(vg);
+			drawBorder(vg);
+
+			// Tight scissor for display content
+			nvgScissor(vg, 0, 0, box.size.x, box.size.y);
+
+			drawCornerBrackets(vg);
 
 			if (module) {
 				int readIdx = module->displayReadIdx.load(std::memory_order_acquire);
@@ -1322,6 +1408,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 				bool isStill = (rate <= 0.001f);  // effectively zero rate
 				float dimFactor = (module->isBypassed() || isStill) ? 0.25f : 1.f;
 
+				drawZeroCrossing(vg);
 				drawWaveformTrace(vg, buffer, dimFactor);
 				drawPhaseDot(vg, buffer, phase, dimFactor);
 				drawTextOverlays(vg);
