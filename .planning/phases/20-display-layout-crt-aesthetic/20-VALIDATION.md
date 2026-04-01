@@ -2,8 +2,8 @@
 phase: 20
 slug: display-layout-crt-aesthetic
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-04-01
 ---
 
@@ -38,11 +38,12 @@ created: 2026-04-01
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 20-01-01 | 01 | 1 | DISP-01 | manual-visual | Load patch, verify pill positions in left/right columns | N/A | ⬜ pending |
-| 20-01-02 | 01 | 1 | DISP-02 | manual-visual | Load patch, verify waveform in center 60% | N/A | ⬜ pending |
-| 20-02-01 | 02 | 1 | DISP-03 | manual-visual | Visual check for L-shaped brackets at all 4 corners | N/A | ⬜ pending |
-| 20-02-02 | 02 | 1 | DISP-04 | manual-visual | Look for faint scanline bands, verify slow scroll | N/A | ⬜ pending |
-| 20-02-03 | 02 | 1 | DISP-05 | manual-visual | Watch idle module 10+ seconds, verify border glow pulse | N/A | ⬜ pending |
+| 20-01-01 | 01 | 1 | (D-07 font asset) | automated | `test -f res/fonts/JetBrainsMonoNL-Regular.ttf && test -s res/fonts/JetBrainsMonoNL-Regular.ttf` | N/A | ⬜ pending |
+| 20-01-02 | 01 | 1 | DISP-03, DISP-05 | manual-visual + grep | Load patch, verify corner brackets and breathing border glow; `grep -c drawBorder src/AnalogLFO.cpp` returns 2 | N/A | ⬜ pending |
+| 20-02-01 | 02 | 2 | DISP-02 | manual-visual + grep | Load patch, verify waveform in center 60%; `grep "box.size.x \* 0.20f" src/AnalogLFO.cpp` | N/A | ⬜ pending |
+| 20-02-02 | 02 | 2 | DISP-01 | manual-visual + grep | Load patch, verify pill positions in left/right columns; `grep -c nvgBoxGradient src/AnalogLFO.cpp` returns 0 | N/A | ⬜ pending |
+| 20-03-01 | 03 | 3 | DISP-04 | manual-visual + grep | Load patch, verify faint scanline bands with slow scroll; `grep -c drawScanlines src/AnalogLFO.cpp` returns 3+; `awk '/drawTextOverlays/,/drawScanlines/' src/AnalogLFO.cpp \| grep -c drawScanlines` returns 1 | N/A | ⬜ pending |
+| 20-03-02 | 03 | 3 | DISP-01..05 | checkpoint:human-verify | Full visual verification of all 5 DISP requirements in VCV Rack | N/A | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -50,7 +51,7 @@ created: 2026-04-01
 
 ## Wave 0 Requirements
 
-- [ ] `res/fonts/JetBrainsMonoNL-Regular.ttf` -- font file must be downloaded and placed before any text rendering changes
+- [x] `res/fonts/JetBrainsMonoNL-Regular.ttf` -- font file must be downloaded and placed before any text rendering changes (handled by Plan 01, Task 1)
 - No automated test infrastructure -- all verification is visual. This is standard for VCV Rack NanoVG rendering.
 
 ---
@@ -69,11 +70,11 @@ created: 2026-04-01
 
 ## Validation Sign-Off
 
-- [ ] All tasks have manual-visual verification instructions
-- [ ] Sampling continuity: visual check after every task commit
-- [ ] Wave 0 covers font dependency
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have manual-visual verification instructions
+- [x] Sampling continuity: visual check after every task commit
+- [x] Wave 0 covers font dependency
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** pending
