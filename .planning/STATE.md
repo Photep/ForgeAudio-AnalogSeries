@@ -1,36 +1,41 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Deep Analog
-status: completed
-stopped_at: Milestone complete
-last_updated: "2026-03-18T00:00:00.000Z"
-last_activity: 2026-03-18 -- v1.2 milestone archived
+milestone: v1.3
+milestone_name: Forge Noir
+status: executing
+stopped_at: Completed 19-03 (Wave 2)
+last_updated: "2026-03-30T10:09:00Z"
+last_activity: 2026-03-30 -- Wave 2 plan 19-03 complete (custom widget structs + C++ integration)
 progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_phases: 4
+  completed_phases: 1
+  total_plans: 4
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-18)
+See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Planning next milestone
+**Current focus:** Phase 19 — forge-noir-panel-custom-components
 
 ## Current Position
 
-Milestone: v1.2 Deep Analog — SHIPPED 2026-03-17
-Status: Milestone archived, ready for next milestone
+Phase: 19 (forge-noir-panel-custom-components) — EXECUTING
+Plan: 3 of 4
+Status: Executing Phase 19
+Last activity: 2026-03-30 -- Wave 2 plan 19-03 complete (custom widget structs + C++ integration)
+
+Progress: [########--] 75%
 
 ## Performance Metrics
 
 **Velocity (cumulative):**
+
 - v1.0: 12 plans in 58 min (4.8 min avg)
 - v1.1: 6 plans in 6 days (includes human verification sessions)
 - v1.2: 8 plans in ~97 min
@@ -40,19 +45,38 @@ Status: Milestone archived, ready for next milestone
 ### Decisions
 
 All decisions logged in PROJECT.md Key Decisions table.
-v1.0 decisions archived in milestones/v1.0-ROADMAP.md.
-v1.1 decisions archived in milestones/v1.1-ROADMAP.md.
-v1.2 decisions archived in milestones/v1.2-ROADMAP.md.
+v1.0-v1.2 decisions archived in milestones/ ROADMAP files.
+
+Key pending decisions for v1.3:
+
+- PWM as morph extension [0.75, 1.0] preserving backward compat
+- Forge Noir design language (near-black, ember orange, gold accents)
+- Panel expansion 12HP to 14HP (shifts modules in existing patches)
+- Bleed ring topology for 5 shapes (open-ended vs ring -- decide in Phase 18)
+- [Phase 18]: Pulse duty derived from morph position externally, not inside computePulse (D-08)
+- [Phase 18]: Backward compatibility dropped: morph*4.f replaces morph*3.f for 5-shape sweep (D-02)
+- [Phase 18]: Edge width clamped via min(duty,1-duty)*0.8 to prevent amplitude collapse at narrow duty
+- [Phase 19-01]: Trimpot scalloped edge as 8 small circles (nanosvg-simple approach)
+- [Phase 19-01]: Output jack dual-layer ember rings (behind + on top of flange) for depth
+- [Phase 19-01]: Machined groove texture via alternating white/black strokes at 0.02-0.03 opacity
+- [Phase 19-02]: Emblem mirroring via manual coordinate duplication (nanosvg has no use/transform support)
+- [Phase 19-02]: Letterform scale factors: 0.8=4.0mm, 0.64=3.20mm, 0.36=1.80mm, 0.28=1.40mm
+- [Phase 19-03]: All knob widgets use -0.83*PI rotation range; trimpots at -0.75*PI per UI-SPEC
+- [Phase 19-03]: CircularShadow disabled on all custom widgets (SVG includes own shadows in _bg.svg)
+- [Phase 19-03]: minRackVersion 2.6.0 enforces gradient rendering support
 
 ### Pending Todos
 
-2 pending todos (see `.planning/todos/pending/`)
+1 pending todo (see `.planning/todos/pending/`)
+
+- Separate display pills from waveform visualiser (addressed by Phase 20 three-column layout)
 
 ### Blockers/Concerns
 
-- Panel controls at temporary positions — requires modulation routing system redesign (deferred from Phase 17)
+None.
 
 ## Session Continuity
 
-Last session: 2026-03-18
-Stopped at: v1.2 milestone archived
+Last session: 2026-03-30T10:09:00Z
+Stopped at: Completed 19-03 (Wave 2)
+Resume file: .planning/phases/19-forge-noir-panel-custom-components/19-04-PLAN.md
