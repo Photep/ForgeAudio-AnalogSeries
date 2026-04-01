@@ -52,7 +52,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 ### Active
 
 - ✓ LFO: Morph range extension — Sine → Tri → Saw → Square → Narrow Pulse (PWM integrated into morph) — v1.3
-- [ ] LFO: Forge Noir panel implementation (new SVG + NanoVG rendering)
+- ✓ LFO: Forge Noir panel implementation (14HP SVG panel + custom widget components) — v1.3 (Phase 19)
 - [ ] LFO: Display layout per Forge Noir design (pills in left/right margins, waveform in center column)
 - [ ] LFO: Animated sync badge (clock-pulse flash)
 
@@ -87,7 +87,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ## Context
 
-**Current state:** v1.3 Forge Noir in progress. ~1,400 lines of C++, 14HP panel redesign underway (Forge Noir mockup at v19), three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, swing timing, and 5-shape morph sweep (sine-tri-saw-square-pulse).
+**Current state:** v1.3 Forge Noir in progress. ~1,600 lines of C++, 14HP Forge Noir panel complete (Phase 19) with custom SVG components, three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, swing timing, and 5-shape morph sweep (sine-tri-saw-square-pulse). Display layout and SYNC badge remaining.
 **Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
 **Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
 **Brand identity:** Forge Noir — near-black panel (#0c0c0c), ember orange (#e85d26), gold accent (#daa520), warm white text (#e8e4e0). Fonts: Bebas Neue (brand/hero), Chakra Petch (labels), JetBrains Mono (data).
