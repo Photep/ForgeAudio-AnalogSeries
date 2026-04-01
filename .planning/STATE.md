@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
 status: executing
-stopped_at: Completed 19-01 and 19-02 (Wave 1)
-last_updated: "2026-03-30T07:51:00Z"
-last_activity: 2026-03-30 -- Wave 1 complete (plans 19-01, 19-02)
+stopped_at: Completed 19-03 (Wave 2)
+last_updated: "2026-03-30T10:09:00Z"
+last_activity: 2026-03-30 -- Wave 2 complete (plan 19-03, C++ widget wiring)
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 4
-  completed_plans: 2
-  percent: 50
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Current Position
 
 Phase: 19 (forge-noir-panel-custom-components) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Executing Phase 19
-Last activity: 2026-03-30 -- Wave 1 complete (plans 19-01, 19-02)
+Last activity: 2026-03-30 -- Wave 2 complete (plan 19-03, C++ widget wiring)
 
-Progress: [#####-----] 50%
+Progress: [########--] 75%
 
 ## Performance Metrics
 
@@ -61,6 +61,9 @@ Key pending decisions for v1.3:
 - [Phase 19-01]: Machined groove texture via alternating white/black strokes at 0.02-0.03 opacity
 - [Phase 19-02]: Emblem mirroring via manual coordinate duplication (nanosvg has no use/transform support)
 - [Phase 19-02]: Letterform scale factors: 0.8=4.0mm, 0.64=3.20mm, 0.36=1.80mm, 0.28=1.40mm
+- [Phase 19-03]: All knob widgets use -0.83*PI rotation range; trimpots at -0.75*PI per UI-SPEC
+- [Phase 19-03]: CircularShadow disabled on all custom widgets (SVG includes own shadows in _bg.svg)
+- [Phase 19-03]: minRackVersion 2.6.0 enforces gradient rendering support
 
 ### Pending Todos
 
@@ -74,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-30T07:51:00Z
-Stopped at: Completed Wave 1 (19-01, 19-02)
-Resume file: .planning/phases/19-forge-noir-panel-custom-components/19-03-PLAN.md
+Last session: 2026-03-30T10:09:00Z
+Stopped at: Completed 19-03 (Wave 2)
+Resume file: .planning/phases/19-forge-noir-panel-custom-components/19-04-PLAN.md
