@@ -906,8 +906,10 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 	// Coordinate helpers
 	float phaseToX(float phase) const {
-		float margin = 4.f;
-		return margin + phase * (box.size.x - 2.f * margin);
+		// Center column: 20% to 80% of display width (per D-02)
+		float centerStart = box.size.x * 0.20f;
+		float centerWidth = box.size.x * 0.60f;
+		return centerStart + phase * centerWidth;
 	}
 
 	float valueToY(float value) const {
@@ -1016,11 +1018,11 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	}
 
 	void drawWaveformTrace(NVGcontext* vg, const std::array<float, 256>& buffer, float dimFactor) {
-		// Four-pass glow rendering
-		const float widths[]  = {6.0f, 4.0f, 2.5f, 1.5f};
-		const float alphas[] = {0.04f, 0.08f, 0.15f, 0.85f};
+		// 3-layer glow per design language (D-09): wide diffuse, medium, sharp core
+		const float widths[]  = {7.0f, 3.5f, 2.0f};
+		const float alphas[] = {0.06f, 0.15f, 0.85f};
 
-		for (int pass = 0; pass < 4; pass++) {
+		for (int pass = 0; pass < 3; pass++) {
 			nvgBeginPath(vg);
 			for (int i = 0; i < 256; i++) {
 				float p = (float)i / 256.f;
@@ -1033,7 +1035,8 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			}
 			nvgLineCap(vg, NVG_ROUND);
 			nvgLineJoin(vg, NVG_ROUND);
-			nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alphas[pass] * dimFactor));
+			// Ember color #e85d26 per D-11 (replaces amber 0.91, 0.66, 0.22)
+			nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alphas[pass] * dimFactor));
 			nvgStrokeWidth(vg, widths[pass]);
 			nvgStroke(vg);
 		}
@@ -1088,7 +1091,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 			nvgBeginPath(vg);
 			nvgCircle(vg, tx, ty, trailRadius);
-			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, trailAlpha));
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, trailAlpha));
 			nvgFill(vg);
 		}
 
@@ -1104,20 +1107,24 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		}
 
 		float haloJitter = 1.f + driftLevel * 0.75f * std::sin(breathePhase * 2.3f);
-		float haloRadius = dotRadius * 3.f * haloJitter;
-		float haloAlpha = (0.3f + driftLevel * 0.25f) * dimFactor * breatheFactor;
-		NVGpaint halo = nvgRadialGradient(vg, x, y, 0.f, haloRadius,
-			nvgRGBAf(1.f, 0.9f, 0.5f, haloAlpha),
-			nvgRGBAf(1.f, 0.9f, 0.5f, 0.f));
+
+		// 3-circle concentric phase dot (replaces radial gradient halo)
+		// Outer glow: ember, 3x radius, 0.08 opacity
 		nvgBeginPath(vg);
-		nvgCircle(vg, x, y, haloRadius);
-		nvgFillPaint(vg, halo);
+		nvgCircle(vg, x, y, dotRadius * 3.f * haloJitter);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.08f * dimFactor * breatheFactor));
 		nvgFill(vg);
 
-		// Bright center dot
+		// Mid ring: ember, 2x radius, 0.22 opacity
+		nvgBeginPath(vg);
+		nvgCircle(vg, x, y, dotRadius * 2.f * haloJitter);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.22f * dimFactor * breatheFactor));
+		nvgFill(vg);
+
+		// Core: hot gold #f0a030, 1x radius, 0.95 opacity (per D-11)
 		nvgBeginPath(vg);
 		nvgCircle(vg, x, y, dotRadius);
-		nvgFillColor(vg, nvgRGBAf(1.f, 0.91f, 0.63f, 1.f * dimFactor * breatheFactor));
+		nvgFillColor(vg, nvgRGBAf(0.941f, 0.627f, 0.188f, 0.95f * dimFactor * breatheFactor));
 		nvgFill(vg);
 	}
 
@@ -1378,7 +1385,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			else
 				nvgLineTo(vg, x, y);
 		}
-		nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, 0.5f));
+		nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.5f));
 		nvgStrokeWidth(vg, 1.5f);
 		nvgLineCap(vg, NVG_ROUND);
 		nvgStroke(vg);
