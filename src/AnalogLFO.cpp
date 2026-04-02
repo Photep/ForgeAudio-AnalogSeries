@@ -1017,6 +1017,40 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgStroke(vg);
 	}
 
+	void drawScanlines(NVGcontext* vg) {
+		// Lazy-create scanline image on first call (per Pitfall 1: must be in drawLayer, not constructor)
+		if (scanlineImage < 0) {
+			// 1px wide x 4px tall RGBA tile: 2px transparent + 2px dark band
+			unsigned char scanlineTile[1 * 4 * 4]; // 1x4 pixels, 4 bytes each (RGBA)
+			memset(scanlineTile, 0, sizeof(scanlineTile));
+			// Rows 0-1: fully transparent (alpha=0, already zeroed)
+			// Rows 2-3: very faint dark band (~0.04 opacity = 10/255) per D-04
+			scanlineTile[2 * 4 + 3] = 10;  // row 2 alpha
+			scanlineTile[3 * 4 + 3] = 10;  // row 3 alpha
+			scanlineImage = nvgCreateImageRGBA(vg, 1, 4,
+				NVG_IMAGE_REPEATX | NVG_IMAGE_REPEATY | NVG_IMAGE_NEAREST,
+				scanlineTile);
+		}
+
+		if (scanlineImage < 0) return;  // GPU not ready, skip
+
+		// Scroll offset from scanlineScrollPhase (updated in step())
+		float scrollOffset = scanlineScrollPhase;
+
+		// Image pattern: 1px wide, 4px tall, tiled across display, offset for scroll
+		NVGpaint scanPaint = nvgImagePattern(vg,
+			0.f, scrollOffset,     // pattern origin (x, y with scroll)
+			1.f, 4.f,             // pattern size (matches tile dimensions)
+			0.f,                   // angle
+			scanlineImage,         // image handle
+			1.f);                  // overall alpha
+
+		nvgBeginPath(vg);
+		nvgRect(vg, 0, 0, box.size.x, box.size.y);
+		nvgFillPaint(vg, scanPaint);
+		nvgFill(vg);
+	}
+
 	void drawWaveformTrace(NVGcontext* vg, const std::array<float, 256>& buffer, float dimFactor) {
 		// 3-layer glow per design language (D-09): wide diffuse, medium, sharp core
 		const float widths[]  = {7.0f, 3.5f, 2.0f};
@@ -1419,8 +1453,10 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 				drawWaveformTrace(vg, buffer, dimFactor);
 				drawPhaseDot(vg, buffer, phase, dimFactor);
 				drawTextOverlays(vg);
+				drawScanlines(vg);
 			} else {
 				drawPlaceholder(vg);
+				drawScanlines(vg);
 			}
 
 			nvgResetScissor(vg);
