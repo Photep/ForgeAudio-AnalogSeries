@@ -29,9 +29,9 @@ Requirements for Forge Noir milestone. Each maps to roadmap phases.
 
 - [ ] **DISP-01**: Three-column display layout (left pills, center waveform, right pills)
 - [ ] **DISP-02**: Waveform rendering constrained to center ~60% of display width
-- [ ] **DISP-03**: Corner bracket decorations on display border
+- [x] **DISP-03**: Corner bracket decorations on display border
 - [ ] **DISP-04**: CRT scanline aesthetic overlay
-- [ ] **DISP-05**: Breathing display border glow animation
+- [x] **DISP-05**: Breathing display border glow animation
 
 ### Animation
 
@@ -82,9 +82,9 @@ Deferred to VCO module (v2.0).
 | PANEL-07 | Phase 19 | Complete |
 | DISP-01 | Phase 20 | Pending |
 | DISP-02 | Phase 20 | Pending |
-| DISP-03 | Phase 20 | Pending |
+| DISP-03 | Phase 20 | Complete |
 | DISP-04 | Phase 20 | Pending |
-| DISP-05 | Phase 20 | Pending |
+| DISP-05 | Phase 20 | Complete |
 | ANIM-01 | Phase 21 | Pending |
 | ANIM-02 | Phase 21 | Pending |
 

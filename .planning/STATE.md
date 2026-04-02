@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
 status: executing
-stopped_at: Phase 20 UI-SPEC approved
-last_updated: "2026-04-01T09:53:43.759Z"
-last_activity: 2026-04-01
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-04-02T02:24:33Z"
+last_activity: 2026-04-02
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 8
+  completed_plans: 6
   percent: 75
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 19 — forge-noir-panel-custom-components
+**Current focus:** Phase 20 — display-layout-crt-aesthetic
 
 ## Current Position
 
 Phase: 20
-Plan: Not started
-Status: Executing Phase 19
-Last activity: 2026-04-01
+Plan: 01 complete, 02 next
+Status: Executing Phase 20
+Last activity: 2026-04-02
 
-Progress: [########--] 75%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -64,6 +64,9 @@ Key pending decisions for v1.3:
 - [Phase 19-03]: All knob widgets use -0.83*PI rotation range; trimpots at -0.75*PI per UI-SPEC
 - [Phase 19-03]: CircularShadow disabled on all custom widgets (SVG includes own shadows in _bg.svg)
 - [Phase 19-03]: minRackVersion 2.6.0 enforces gradient rendering support
+- [Phase 20-01]: breathePhase slowed to 0.2Hz (5s cycle) for border glow; also affects phase dot idle breathe
+- [Phase 20-01]: Separate blinkPhase accumulator at 2Hz for SYNC ACQUIRING blink (independent of border glow)
+- [Phase 20-01]: Border glow uses NVG_HOLE inner-cutout fill to stay within scissor bounds
 
 ### Pending Todos
 
@@ -77,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-01T09:53:43.756Z
-Stopped at: Phase 20 UI-SPEC approved
-Resume file: .planning/phases/20-display-layout-crt-aesthetic/20-UI-SPEC.md
+Last session: 2026-04-02T02:24:33Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: .planning/phases/20-display-layout-crt-aesthetic/20-02-PLAN.md

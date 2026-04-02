@@ -112,7 +112,7 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 20-01-PLAN.md -- Download JetBrains Mono NL font, overhaul display container (background, border, brackets, zero-crossing)
+- [x] 20-01-PLAN.md -- Download JetBrains Mono NL font, overhaul display container (background, border, brackets, zero-crossing)
 - [ ] 20-02-PLAN.md -- Three-column layout with phaseToX constraint, pill restyling, waveform/dot color update
 - [ ] 20-03-PLAN.md -- CRT scanline overlay with image pattern + visual verification checkpoint
 
@@ -151,5 +151,5 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21
 | 17. Panel Redesign | v1.2 | - | Skipped | 2026-03-17 |
 | 18. PWM DSP Extension | v1.3 | 1/1 | Complete    | 2026-03-28 |
 | 19. Forge Noir Panel + Custom Components | v1.3 | 3/4 | Complete    | 2026-04-01 |
-| 20. Display Layout + CRT Aesthetic | v1.3 | 0/3 | Not started | - |
+| 20. Display Layout + CRT Aesthetic | v1.3 | 1/3 | In Progress|  |
 | 21. Animated SYNC Badge | v1.3 | 0/0 | Not started | - |
