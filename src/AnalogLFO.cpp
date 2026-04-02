@@ -1134,63 +1134,52 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgFontSize(vg, fontSize);
 		nvgTextAlign(vg, align);
 
-		// Pass 1: Glow (blurred, lower alpha)
-		nvgFontBlur(vg, 3.0f);
-		nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha * 0.4f));
+		// Glow pass (reduced blur for small fonts)
+		nvgFontBlur(vg, 2.0f);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alpha * 0.3f));
 		nvgText(vg, x, y, text, NULL);
 
-		// Pass 2: Sharp text on top
+		// Sharp pass
 		nvgFontBlur(vg, 0.0f);
-		nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha));
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alpha));
 		nvgText(vg, x, y, text, NULL);
 	}
 
 	void drawPillText(NVGcontext* vg, int fontHandle, float x, float y,
 	                  const char* text, float fontSize, int align, float alpha) {
-		// Set font state for measurement (must match drawing state)
 		nvgFontFaceId(vg, fontHandle);
 		nvgFontSize(vg, fontSize);
 		nvgTextAlign(vg, align);
 
-		// Measure text bounds
-		float bounds[4]; // [xmin, ymin, xmax, ymax]
+		float bounds[4];
 		nvgTextBounds(vg, x, y, text, NULL, bounds);
 
-		// Pill dimensions with padding
-		float pad = 4.f;
-		float feather = 3.f;
-		float cornerRadius = 3.f;
+		float pad = 3.f;
+		float cornerRadius = 2.f;  // per D-08: 2-2.5px
 		float px = bounds[0] - pad;
 		float py = bounds[1] - pad;
 		float pw = (bounds[2] - bounds[0]) + 2.f * pad;
 		float ph = (bounds[3] - bounds[1]) + 2.f * pad;
 
-		// Draw feathered pill background using box gradient
-		// Inner color: dark navy at 80% opacity scaled by alpha
-		// Outer color: fade to transparent for soft edges
-		NVGpaint pillPaint = nvgBoxGradient(vg,
-			px, py, pw, ph,
-			cornerRadius, feather,
-			nvgRGBAf(0.102f, 0.102f, 0.180f, 0.80f * alpha),
-			nvgRGBAf(0.102f, 0.102f, 0.180f, 0.0f));
+		// Ember-tinted fill (per D-06)
 		nvgBeginPath(vg);
-		// Path must be larger than gradient bounds by feather distance
-		// to prevent clipping of feathered edges
-		nvgRoundedRect(vg, px - feather, py - feather,
-		               pw + 2.f * feather, ph + 2.f * feather,
-		               cornerRadius + feather);
-		nvgFillPaint(vg, pillPaint);
+		nvgRoundedRect(vg, px, py, pw, ph, cornerRadius);
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.10f * alpha));
 		nvgFill(vg);
 
-		// Draw 2-pass glow text on top of pill
-		// Pass 1: Glow (blurred, lower alpha)
-		nvgFontBlur(vg, 3.0f);
-		nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha * 0.4f));
+		// Ember stroke border (per D-06/D-08)
+		nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.25f * alpha));
+		nvgStrokeWidth(vg, 0.5f);
+		nvgStroke(vg);
+
+		// Glow text pass
+		nvgFontBlur(vg, 2.0f);  // reduced from 3.0 for small font sizes
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alpha * 0.3f));
 		nvgText(vg, x, y, text, NULL);
 
-		// Pass 2: Sharp text on top
+		// Sharp text pass
 		nvgFontBlur(vg, 0.0f);
-		nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha));
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alpha));
 		nvgText(vg, x, y, text, NULL);
 	}
 
@@ -1199,10 +1188,8 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		float period = module->displaySmoothedPeriod.load(std::memory_order_relaxed);
 		if (ratioIdx < 0 || period <= 0.f) return;
 
-		float margin = 4.f;
-		float pad = 4.f;
-		float feather = 3.f;
-		float cornerRadius = 3.f;
+		float pad = 3.f;
+		float cornerRadius = 2.f;
 
 		// Calculate BPM values
 		float rawBPM = 60.f / period;
@@ -1216,15 +1203,15 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		else
 			bpmText = rack::string::f("%d BPM", (int)std::round(effectiveBPM));
 
-		// Position: bottom-right corner
-		float bpmFontSize = 10.f;
-		float bpmX = box.size.x - margin;
-		float bpmY = box.size.y - margin;
+		// Position: right column bottom
+		float bpmFontSize = 3.5f;
+		float bpmX = box.size.x * 0.89f;
+		float bpmY = box.size.y - 4.f;
 
 		if (isX1) {
 			// Single line: just effective BPM with pill
 			drawPillText(vg, fontHandle, bpmX, bpmY, bpmText.c_str(),
-			             bpmFontSize, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, alpha);
+			             bpmFontSize, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, alpha);
 		} else {
 			// Dual line: CLK on top, BPM below, shared pill
 
@@ -1235,13 +1222,13 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			else
 				clkText = rack::string::f("%d CLK", (int)std::round(rawBPM));
 
-			float clkFontSize = 8.f;
+			float clkFontSize = 2.9f;
 			float clkAlpha = alpha * 0.6f;
 
-			// Measure BPM line bounds (10px, right-bottom aligned)
+			// Measure BPM line bounds (center-bottom aligned)
 			nvgFontFaceId(vg, fontHandle);
 			nvgFontSize(vg, bpmFontSize);
-			nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+			nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
 			float bpmBounds[4];
 			nvgTextBounds(vg, bpmX, bpmY, bpmText.c_str(), NULL, bpmBounds);
 
@@ -1253,9 +1240,9 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			float clkY = bpmBounds[1] - 2.f; // top of BPM bounds minus gap
 			float clkX = bpmX;
 
-			// Measure CLK line bounds (8px, right-bottom aligned)
+			// Measure CLK line bounds (center-bottom aligned)
 			nvgFontSize(vg, clkFontSize);
-			nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+			nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
 			float clkBounds[4];
 			nvgTextBounds(vg, clkX, clkY, clkText.c_str(), NULL, clkBounds);
 
@@ -1271,104 +1258,117 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			float pw = (unionRight - unionLeft) + 2.f * pad;
 			float ph = (unionBottom - unionTop) + 2.f * pad;
 
-			// Draw shared feathered pill background
-			NVGpaint pillPaint = nvgBoxGradient(vg,
-				px, py, pw, ph,
-				cornerRadius, feather,
-				nvgRGBAf(0.102f, 0.102f, 0.180f, 0.80f * alpha),
-				nvgRGBAf(0.102f, 0.102f, 0.180f, 0.0f));
+			// Shared pill -- ember-tinted fill + stroke (replaces navy box gradient)
 			nvgBeginPath(vg);
-			nvgRoundedRect(vg, px - feather, py - feather,
-			               pw + 2.f * feather, ph + 2.f * feather,
-			               cornerRadius + feather);
-			nvgFillPaint(vg, pillPaint);
+			nvgRoundedRect(vg, px, py, pw, ph, cornerRadius);
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.10f * alpha));
 			nvgFill(vg);
+			nvgStrokeColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.25f * alpha));
+			nvgStrokeWidth(vg, 0.5f);
+			nvgStroke(vg);
 
 			// Draw CLK text (smaller, dimmer) on top of pill
 			nvgFontFaceId(vg, fontHandle);
 			nvgFontSize(vg, clkFontSize);
-			nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+			nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
 
 			// CLK glow pass
-			nvgFontBlur(vg, 3.0f);
-			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, clkAlpha * 0.4f));
+			nvgFontBlur(vg, 2.0f);
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, clkAlpha * 0.3f));
 			nvgText(vg, clkX, clkY, clkText.c_str(), NULL);
 
 			// CLK sharp pass
 			nvgFontBlur(vg, 0.0f);
-			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, clkAlpha));
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, clkAlpha));
 			nvgText(vg, clkX, clkY, clkText.c_str(), NULL);
 
 			// Draw BPM text (standard size, full alpha) on top of pill
 			nvgFontSize(vg, bpmFontSize);
-			nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+			nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
 
 			// BPM glow pass
-			nvgFontBlur(vg, 3.0f);
-			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha * 0.4f));
+			nvgFontBlur(vg, 2.0f);
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alpha * 0.3f));
 			nvgText(vg, bpmX, bpmY, bpmText.c_str(), NULL);
 
 			// BPM sharp pass
 			nvgFontBlur(vg, 0.0f);
-			nvgFillColor(vg, nvgRGBAf(0.91f, 0.66f, 0.22f, alpha));
+			nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alpha));
 			nvgText(vg, bpmX, bpmY, bpmText.c_str(), NULL);
 		}
 	}
 
 	void drawTextOverlays(NVGcontext* vg) {
+		// Load JetBrains Mono NL font per D-07
 		std::shared_ptr<Font> font = APP->window->loadFont(
-			asset::system("res/fonts/ShareTechMono-Regular.ttf"));
+			asset::plugin(pluginInstance, "res/fonts/JetBrainsMonoNL-Regular.ttf"));
 		if (!font) return;
 
-		float margin = 4.f;
-		float fontSize = 10.f;
+		// Column positions (proportional, per UI-SPEC spacing scale)
+		float leftColX = box.size.x * 0.11f;   // center of left column
+		float rightColX = box.size.x * 0.89f;  // center of right column
+		float topY = 6.f;                       // top row baseline
+		float bottomY = box.size.y - 4.f;       // bottom row baseline
+
+		// Font sizes at widget scale (from UI-SPEC Typography section)
+		float pillLabelSize = 4.1f;   // ratio, SYNC
+		float pillValueSize = 3.5f;   // BPM value
+		float pillSmallSize = 3.2f;   // swing percentage
+		float pillMicroSize = 2.9f;   // Hz, SWING label, CLK/LFO sub-labels
 
 		int clockState = module->displayClockState.load(std::memory_order_relaxed);
 		int ratioIdx = module->displayRatioIndex.load(std::memory_order_relaxed);
 
-		// Hz readout (free-running mode, top-left)
+		// === LEFT COLUMN ===
+
+		// Hz readout (free-running mode, left column top)
 		if (hzFadeAlpha > 0.001f) {
 			float rate = module->params[AnalogLFO::RATE_PARAM].getValue();
-			std::string hzText = rack::string::f("%.2f Hz", rate);
-			drawPillText(vg, font->handle, margin, margin + fontSize,
-			             hzText.c_str(), fontSize,
-			             NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, hzFadeAlpha);
+			std::string hzText;
+			if (rate < 10.f)
+				hzText = rack::string::f("%.1f Hz", rate);
+			else
+				hzText = rack::string::f("%d Hz", (int)std::round(rate));
+			drawPillText(vg, font->handle, leftColX, topY + pillMicroSize,
+			             hzText.c_str(), pillMicroSize,
+			             NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, hzFadeAlpha);
 		}
 
-		// Ratio label (clocked mode, top-left)
+		// Ratio label (clocked mode, left column top)
 		if (ratioFadeAlpha > 0.001f && ratioIdx >= 0) {
-			drawPillText(vg, font->handle, margin, margin + fontSize,
-			             AnalogLFO::RATIO_LABELS[ratioIdx], fontSize,
-			             NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, ratioFadeAlpha);
+			drawPillText(vg, font->handle, leftColX, topY + pillLabelSize,
+			             AnalogLFO::RATIO_LABELS[ratioIdx], pillLabelSize,
+			             NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, ratioFadeAlpha);
 		}
 
-		// SYNC badge (clocked mode, top-right)
-		if (syncFadeAlpha > 0.001f) {
-			float effectiveAlpha = syncFadeAlpha;
-			if (clockState == AnalogLFO::ACQUIRING) {
-				// Blink at ~2Hz: breathePhase runs at 0.8Hz, scale by 2.5
-				float blink = 0.5f + 0.5f * std::sin(breathePhase * 2.5f);
-				effectiveAlpha *= blink;
-			}
-			drawPillText(vg, font->handle, box.size.x - margin, margin + fontSize,
-			             "SYNC", fontSize,
-			             NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM, effectiveAlpha);
-		}
-
-		// BPM stack (clocked mode, bottom-right)
-		// Dual-line CLK/BPM at non-x1 ratios, single BPM at x1
-		if (bpmFadeAlpha > 0.001f) {
-			drawBpmStack(vg, font->handle, bpmFadeAlpha);
-		}
-
-		// Swing overlay (clocked mode, bottom-left, only when swing > Straight)
+		// Swing overlay (clocked mode, left column bottom)
 		if (swingFadeAlpha > 0.001f) {
 			int swingIdx = module->displaySwingIndex.load(std::memory_order_relaxed);
 			if (swingIdx > 0 && swingIdx <= 5) {
-				drawPillText(vg, font->handle, margin, box.size.y - margin,
-				             AnalogLFO::SWING_OVERLAY_LABELS[swingIdx], fontSize,
-				             NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM, swingFadeAlpha);
+				drawPillText(vg, font->handle, leftColX, bottomY,
+				             AnalogLFO::SWING_OVERLAY_LABELS[swingIdx], pillSmallSize,
+				             NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, swingFadeAlpha);
 			}
+		}
+
+		// === RIGHT COLUMN ===
+
+		// SYNC badge (clocked mode, right column top)
+		// Uses blinkPhase (2Hz) for ACQUIRING blink -- NOT breathePhase (0.2Hz)
+		if (syncFadeAlpha > 0.001f) {
+			float effectiveAlpha = syncFadeAlpha;
+			if (clockState == AnalogLFO::ACQUIRING) {
+				float blink = 0.5f + 0.5f * std::sin(blinkPhase);
+				effectiveAlpha *= blink;
+			}
+			drawPillText(vg, font->handle, rightColX, topY + pillLabelSize,
+			             "SYNC", pillLabelSize,
+			             NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, effectiveAlpha);
+		}
+
+		// BPM stack (clocked mode, right column bottom)
+		if (bpmFadeAlpha > 0.001f) {
+			drawBpmStack(vg, font->handle, bpmFadeAlpha);
 		}
 	}
 
