@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
 status: executing
-stopped_at: Completed 20-01-PLAN.md
-last_updated: "2026-04-02T02:24:33Z"
+stopped_at: Completed 20-02-PLAN.md
+last_updated: "2026-04-02T04:21:22Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 8
-  completed_plans: 6
-  percent: 75
+  completed_plans: 7
+  percent: 88
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Current Position
 
 Phase: 20
-Plan: 01 complete, 02 next
+Plan: 02 complete, 03 next
 Status: Executing Phase 20
 Last activity: 2026-04-02
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 88%
 
 ## Performance Metrics
 
@@ -67,6 +67,9 @@ Key pending decisions for v1.3:
 - [Phase 20-01]: breathePhase slowed to 0.2Hz (5s cycle) for border glow; also affects phase dot idle breathe
 - [Phase 20-01]: Separate blinkPhase accumulator at 2Hz for SYNC ACQUIRING blink (independent of border glow)
 - [Phase 20-01]: Border glow uses NVG_HOLE inner-cutout fill to stay within scissor bounds
+- [Phase 20-02]: phaseToX uses proportional 0.20/0.60 fractions for zoom-compatible center-column constraint
+- [Phase 20-02]: Hz readout format: 1 decimal <10Hz, integer otherwise (UI-SPEC copywriting contract)
+- [Phase 20-02]: Font blur reduced 3.0 to 2.0 for all glow text at sub-5px font sizes
 
 ### Pending Todos
 
@@ -80,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-02T02:24:33Z
-Stopped at: Completed 20-01-PLAN.md
-Resume file: .planning/phases/20-display-layout-crt-aesthetic/20-02-PLAN.md
+Last session: 2026-04-02T04:21:22Z
+Stopped at: Completed 20-02-PLAN.md
+Resume file: .planning/phases/20-display-layout-crt-aesthetic/20-03-PLAN.md
