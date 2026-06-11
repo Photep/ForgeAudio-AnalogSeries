@@ -939,12 +939,12 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		float w = box.size.x;
 		float h = box.size.y;
 
-		// Breathing glow: 0.08 to 0.18 opacity, 5s cycle (per D-13)
-		float glowAlpha = 0.08f + 0.10f * (0.5f + 0.5f * std::sin(breathePhase));
+		// Breathing glow: 0.15 to 0.40 opacity, 5s cycle (per D-13, boosted for visibility)
+		float glowAlpha = 0.15f + 0.25f * (0.5f + 0.5f * std::sin(breathePhase));
 
 		// Outer glow (inner cutout approach to stay within scissor bounds — per Pitfall 7)
 		nvgBeginPath(vg);
-		nvgRoundedRect(vg, -2.f, -2.f, w + 4.f, h + 4.f, 6.f);
+		nvgRoundedRect(vg, -4.f, -4.f, w + 8.f, h + 8.f, 8.f);
 		nvgRoundedRect(vg, 0, 0, w, h, 4.f);
 		nvgPathWinding(vg, NVG_HOLE);
 		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, glowAlpha));
@@ -1018,36 +1018,15 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	}
 
 	void drawScanlines(NVGcontext* vg) {
-		// Lazy-create scanline image on first call (per Pitfall 1: must be in drawLayer, not constructor)
-		if (scanlineImage < 0) {
-			// 1px wide x 4px tall RGBA tile: 2px transparent + 2px dark band
-			unsigned char scanlineTile[1 * 4 * 4]; // 1x4 pixels, 4 bytes each (RGBA)
-			memset(scanlineTile, 0, sizeof(scanlineTile));
-			// Rows 0-1: fully transparent (alpha=0, already zeroed)
-			// Rows 2-3: very faint dark band (~0.04 opacity = 10/255) per D-04
-			scanlineTile[2 * 4 + 3] = 10;  // row 2 alpha
-			scanlineTile[3 * 4 + 3] = 10;  // row 3 alpha
-			scanlineImage = nvgCreateImageRGBA(vg, 1, 4,
-				NVG_IMAGE_REPEATX | NVG_IMAGE_REPEATY | NVG_IMAGE_NEAREST,
-				scanlineTile);
-		}
-
-		if (scanlineImage < 0) return;  // GPU not ready, skip
-
-		// Scroll offset from scanlineScrollPhase (updated in step())
-		float scrollOffset = scanlineScrollPhase;
-
-		// Image pattern: 1px wide, 4px tall, tiled across display, offset for scroll
-		NVGpaint scanPaint = nvgImagePattern(vg,
-			0.f, scrollOffset,     // pattern origin (x, y with scroll)
-			1.f, 4.f,             // pattern size (matches tile dimensions)
-			0.f,                   // angle
-			scanlineImage,         // image handle
-			1.f);                  // overall alpha
+		// CRT phosphor-row effect: faint bright ember lines on dark background
+		float spacing = 2.5f;
+		float scrollOffset = fmodf(scanlineScrollPhase * spacing, spacing);
 
 		nvgBeginPath(vg);
-		nvgRect(vg, 0, 0, box.size.x, box.size.y);
-		nvgFillPaint(vg, scanPaint);
+		for (float y = -spacing + scrollOffset; y < box.size.y + spacing; y += spacing) {
+			nvgRect(vg, 0, y, box.size.x, 0.5f);
+		}
+		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, 0.10f));
 		nvgFill(vg);
 	}
 
@@ -1430,8 +1409,8 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			NVGcontext* vg = args.vg;
 			nvgSave(vg);
 
-			// Expanded scissor for border glow (extends 2px beyond widget bounds)
-			nvgScissor(vg, -2.f, -2.f, box.size.x + 4.f, box.size.y + 4.f);
+			// Expanded scissor for border glow (extends 4px beyond widget bounds)
+			nvgScissor(vg, -4.f, -4.f, box.size.x + 8.f, box.size.y + 8.f);
 
 			drawBackground(vg);
 			drawBorder(vg);
@@ -1449,7 +1428,6 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 				bool isStill = (rate <= 0.001f);  // effectively zero rate
 				float dimFactor = (module->isBypassed() || isStill) ? 0.25f : 1.f;
 
-				drawZeroCrossing(vg);
 				drawWaveformTrace(vg, buffer, dimFactor);
 				drawPhaseDot(vg, buffer, phase, dimFactor);
 				drawTextOverlays(vg);
