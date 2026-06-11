@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
-status: executing
-stopped_at: Completed 20-03-PLAN.md — Phase 20 complete
-last_updated: "2026-06-12T00:00:00Z"
+status: completed
+stopped_at: Completed 20-02-PLAN.md
+last_updated: "2026-06-11T23:10:23.921Z"
 last_activity: 2026-06-12
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 3
   total_plans: 8
   completed_plans: 8
-  percent: 100
+  percent: 60
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 20 complete — next: Phase 21 (Animated SYNC Badge)
+**Current focus:** Phase 20.1 — Panel Redesign (18HP Fresh Layout), inserted before Phase 21
 
 ## Current Position
 
-Phase: 20 complete
-Plan: 03 complete (all 3 plans done)
-Status: Phase 20 complete — 21 next
+Phase: 20.1 (inserted, not planned yet)
+Plan: none yet — next: /gsd:plan-phase 20.1
+Status: Phase 20 complete; 20.1 panel redesign next, then 21 Animated SYNC Badge
 Last activity: 2026-06-12
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -41,6 +41,10 @@ Progress: [██████████] 100%
 - v1.2: 8 plans in ~97 min
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 20.1 inserted after Phase 20: Panel Redesign 18HP Fresh Layout — swap to res/AnalogLFO-fresh.svg, remap widgets, before Animated SYNC Badge (URGENT)
 
 ### Decisions
 

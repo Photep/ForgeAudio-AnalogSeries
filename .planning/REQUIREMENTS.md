@@ -24,13 +24,18 @@ Requirements for Forge Noir milestone. Each maps to roadmap phases.
 - [x] **PANEL-05**: Custom SVG jack components (2 sizes: standard/output with ember accent ring)
 - [x] **PANEL-06**: Forge emblem background element
 - [x] **PANEL-07**: Brand typography rendered as SVG paths (Forge Audio header, Analog LFO name)
+- [ ] **PANEL-08**: Module renders at 18HP (91.44mm) using the new `res/AnalogLFO-fresh.svg` panel artwork
+- [ ] **PANEL-09**: MORPH hero knob + four equal-sized secondary knobs (CHARACTER/DRIFT/RATE/PHASE) repositioned to the new single-row layout
+- [ ] **PANEL-10**: Trimpot attenuverters, CV input jacks, and CLK/RST/OUTPUT repositioned to the new grouped clock-box layout
+- [ ] **PANEL-11**: Waveform display repositioned/resized (81.44×26.00mm) with internal three-column rendering re-tuned, no Phase 20 regressions
+- [ ] **PANEL-12**: All controls align exactly with artwork anchors at 100%/200% zoom; existing functionality unchanged
 
 ### Display
 
 - [x] **DISP-01**: Three-column display layout (left pills, center waveform, right pills)
 - [x] **DISP-02**: Waveform rendering constrained to center ~60% of display width
 - [x] **DISP-03**: Corner bracket decorations on display border
-- [ ] **DISP-04**: CRT scanline aesthetic overlay
+- [x] **DISP-04**: CRT scanline aesthetic overlay
 - [x] **DISP-05**: Breathing display border glow animation
 
 ### Animation
@@ -83,14 +88,19 @@ Deferred to VCO module (v2.0).
 | DISP-01 | Phase 20 | Complete |
 | DISP-02 | Phase 20 | Complete |
 | DISP-03 | Phase 20 | Complete |
-| DISP-04 | Phase 20 | Pending |
+| DISP-04 | Phase 20 | Complete |
 | DISP-05 | Phase 20 | Complete |
+| PANEL-08 | Phase 20.1 | Pending |
+| PANEL-09 | Phase 20.1 | Pending |
+| PANEL-10 | Phase 20.1 | Pending |
+| PANEL-11 | Phase 20.1 | Pending |
+| PANEL-12 | Phase 20.1 | Pending |
 | ANIM-01 | Phase 21 | Pending |
 | ANIM-02 | Phase 21 | Pending |
 
 **Coverage:**
-- v1.3 requirements: 19 total
-- Mapped to phases: 19
+- v1.3 requirements: 24 total
+- Mapped to phases: 24
 - Unmapped: 0
 
 ---

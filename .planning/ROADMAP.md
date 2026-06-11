@@ -116,9 +116,40 @@ Plans:
 - [x] 20-02-PLAN.md -- Three-column layout with phaseToX constraint, pill restyling, waveform/dot color update
 - [x] 20-03-PLAN.md -- CRT scanline overlay with image pattern + visual verification checkpoint
 
+### Phase 20.1: Panel Redesign 18HP Fresh Layout (INSERTED)
+
+**Goal:** The Analog LFO ships on the new 18HP Forge Noir "fresh" panel — every control, jack, and the waveform display sits exactly on its new artwork anchor, with the reorganized single-row secondary knobs and grouped clock section, and no loss of existing functionality or Phase 20 display polish.
+**Depends on:** Phase 20 (display content/styling carries forward onto the new panel)
+**Requirements**: PANEL-08, PANEL-09, PANEL-10, PANEL-11, PANEL-12
+**Success Criteria** (what must be TRUE):
+  1. The module renders at 18HP (91.44mm) using `res/AnalogLFO-fresh.svg` as the production panel artwork
+  2. Every knob, trimpot, input jack, and the output jack sits exactly on its artwork anchor (no visible offset) at both 100% and 200% zoom
+  3. The four secondary knobs are equal-sized in a single horizontal row — CHARACTER, DRIFT, RATE, PHASE (RATE/PHASE upgraded from the smaller utility size)
+  4. The waveform display fills the new larger box (81.44×26.00mm) with readable three-column pills and no text clipping or overflow
+  5. All existing functionality works unchanged after repositioning — params, CV attenuverters, CLK/RST inputs, and OUTPUT
+  6. No visual regression to Phase 20 display content (ember waveform, scanlines, breathing glow, corner brackets)
+**Plans:** TBD (run /gsd:plan-phase 20.1 to break down)
+**UI hint**: yes
+
+**Technical reference** (anchors extracted from `res/AnalogLFO-fresh.svg`, mm; panel center x=45.72):
+| Element | mm anchor(s) |
+|---------|--------------|
+| Display box | pos (5.00, 19.00), size (81.44, 26.00) |
+| MORPH hero knob | (45.72, 61.00) |
+| Secondary knobs (row, y=87) | CHARACTER 18.00 · DRIFT 36.24 · RATE 54.48 · PHASE 72.72 |
+| Trimpot attenuverters (row, y=108.5) | 7.70 · 18.56 · 29.43 · 40.29 · 51.15 |
+| CV input jacks (row, y=119.5) | 7.70 · 18.56 · 29.43 · 40.29 · 51.15 |
+| CLK / RST / OUTPUT (y=119.5) | 62.01 / 72.88 / 83.74 |
+| Hex bolts | (4.60,4.60) (86.84,4.60) (4.60,123.90) (86.84,123.90) — derive from box.size.x |
+
+Source design renders: `forge-panel-compare.png`, `fresh-full.png`. Current widget positions live in `src/AnalogLFO.cpp` `AnalogLFOWidget` ctor (~line 1523). Panel set via `setPanel(createPanel(... "res/AnalogLFO.svg"))` — swap to fresh.svg.
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 20.1 to break down)
+
 ### Phase 21: Animated SYNC Badge
 **Goal**: The SYNC badge visually pulses on each incoming clock edge, giving immediate feedback that the module is receiving and responding to clock signals
-**Depends on**: Phase 20 (SYNC badge must be in its final three-column position)
+**Depends on**: Phase 20.1 (SYNC badge must be in its final position on the 18HP redesigned panel)
 **Requirements**: ANIM-01, ANIM-02
 **Success Criteria** (what must be TRUE):
   1. Each clock edge triggers a visible bright flash on the SYNC badge that is distinct from the steady-state badge appearance
