@@ -60,7 +60,7 @@ See: `.planning/milestones/v1.2-ROADMAP.md` for full details.
 
 - [x] **Phase 18: PWM DSP Extension** - Extend morph sweep past square into variable-width pulse with analog character (completed 2026-03-28)
 - [x] **Phase 19: Forge Noir Panel + Custom Components** - 14HP Forge Noir SVG panel with custom knobs, jacks, trimpots, and brand elements (completed 2026-04-01)
-- [ ] **Phase 20: Display Layout + CRT Aesthetic** - Three-column display with left/right pills, center waveform, CRT scanlines, and border glow
+- [x] **Phase 20: Display Layout + CRT Aesthetic** - Three-column display with left/right pills, center waveform, CRT scanlines, and border glow (completed 2026-06-11)
 - [ ] **Phase 21: Animated SYNC Badge** - Clock-pulse flash on SYNC badge with exponential decay
 
 ## Phase Details
@@ -114,7 +114,7 @@ Plans:
 Plans:
 - [x] 20-01-PLAN.md -- Download JetBrains Mono NL font, overhaul display container (background, border, brackets, zero-crossing)
 - [x] 20-02-PLAN.md -- Three-column layout with phaseToX constraint, pill restyling, waveform/dot color update
-- [ ] 20-03-PLAN.md -- CRT scanline overlay with image pattern + visual verification checkpoint
+- [x] 20-03-PLAN.md -- CRT scanline overlay with image pattern + visual verification checkpoint
 
 ### Phase 21: Animated SYNC Badge
 **Goal**: The SYNC badge visually pulses on each incoming clock edge, giving immediate feedback that the module is receiving and responding to clock signals
@@ -151,5 +151,5 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21
 | 17. Panel Redesign | v1.2 | - | Skipped | 2026-03-17 |
 | 18. PWM DSP Extension | v1.3 | 1/1 | Complete    | 2026-03-28 |
 | 19. Forge Noir Panel + Custom Components | v1.3 | 3/4 | Complete    | 2026-04-01 |
-| 20. Display Layout + CRT Aesthetic | v1.3 | 2/3 | In Progress|  |
+| 20. Display Layout + CRT Aesthetic | v1.3 | 3/3 | Complete   | 2026-06-11 |
 | 21. Animated SYNC Badge | v1.3 | 0/0 | Not started | - |
