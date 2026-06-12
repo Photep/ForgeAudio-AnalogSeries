@@ -128,7 +128,7 @@ Plans:
   4. The waveform display fills the new larger box (81.44×26.00mm) with readable three-column pills and no text clipping or overflow
   5. All existing functionality works unchanged after repositioning — params, CV attenuverters, CLK/RST inputs, and OUTPUT
   6. No visual regression to Phase 20 display content (ember waveform, scanlines, breathing glow, corner brackets)
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 **UI hint**: yes
 
 **Technical reference** (anchors extracted from `res/AnalogLFO-fresh.svg`, mm; panel center x=45.72):
@@ -147,7 +147,7 @@ Source design renders: `forge-panel-compare.png`, `fresh-full.png`. Current widg
 Plans:
 - [x] 20.1-01-PLAN.md — Wave 0: capture pre-change 14HP display baseline screenshots (Phase-20 regression reference)
 - [x] 20.1-02-PLAN.md — Wave 1: strip metal knob bodies from fresh.svg, promote to AnalogLFO.svg, delete dead artwork
-- [ ] 20.1-03-PLAN.md — Wave 1: reposition all ctor anchors to 18HP, upgrade RATE/PHASE to Secondary, resize display box, verify hex bolts
+- [x] 20.1-03-PLAN.md — Wave 1: reposition all ctor anchors to 18HP, upgrade RATE/PHASE to Secondary, resize display box, verify hex bolts
 - [ ] 20.1-04-PLAN.md — Wave 2: re-tune WaveformDisplay px constants for the 81.44x26.00mm box (no Phase-20 regression)
 - [ ] 20.1-05-PLAN.md — Wave 3: clean reinstall + in-Rack visual alignment gate at 100%/200% with proof screenshots
 
