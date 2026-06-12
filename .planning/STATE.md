@@ -4,14 +4,14 @@ milestone: v1.3
 milestone_name: Forge Noir
 status: executing
 stopped_at: Phase 20.1 UI-SPEC approved
-last_updated: "2026-06-12T01:17:33.453Z"
+last_updated: "2026-06-12T01:31:05.565Z"
 last_activity: 2026-06-12
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 13
-  completed_plans: 11
-  percent: 60
+  completed_plans: 12
+  percent: 92
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 ## Current Position
 
 Phase: 20.1 (panel-redesign-18hp-fresh-layout) — EXECUTING
-Plan: 3 of 5
+Plan: 5 of 5 (Plan 04 complete — next: Plan 05 in-Rack verification gate)
 Status: Ready to execute
 Last activity: 2026-06-12
 
-Progress: [█████████░] 85%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Key pending decisions for v1.3:
 - [Phase 20-02]: Font blur reduced 3.0 to 2.0 for all glow text at sub-5px font sizes
 - [Phase 20.1-02]: Stripped all metal knob/trimpot bodies from 18HP fresh.svg (widget owns the knob); kept soft shadows + scallop ticks as recessed-socket read (D-01)
 - [Phase 20.1-02]: Promoted fresh.svg to production res/AnalogLFO.svg; Rack auto-derives 18HP from viewBox 91.44mm, no plugin.json width field (D-03, D-05)
+- [Phase ?]: [Phase 20.1-04]: Re-tuned only hardcoded px in WaveformDisplay (margin 6->8, brackets 3/5->4/6, pills bumped ~12%, bpm 3.5->4.0, clk 2.9->3.3, topY 6->7); proportional box.size math left to re-flow; pillValueSize [[maybe_unused]] clears prior warning (D-06)
 
 ### Pending Todos
 
@@ -89,6 +90,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-12T01:17:33.444Z
+Last session: 2026-06-12T01:29:26.298Z
 Stopped at: Phase 20.1 UI-SPEC approved
 Resume file: None
