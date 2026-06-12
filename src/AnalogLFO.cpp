@@ -1531,57 +1531,57 @@ struct AnalogLFOWidget : ModuleWidget {
 		addChild(createWidget<ForgeHexBolt>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		addChild(createWidget<ForgeHexBolt>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		// Waveform display (repositioned for 14HP Forge Noir layout)
+		// Waveform display (repositioned for 18HP Forge Noir layout)
 		{
 			WaveformDisplay* display = new WaveformDisplay();
 			display->module = module;
-			display->box.pos = mm2px(Vec(3.60f, 13.19f));
-			display->box.size = mm2px(Vec(63.93f, 17.98f));
+			display->box.pos = mm2px(Vec(5.00f, 19.00f));
+			display->box.size = mm2px(Vec(81.44f, 26.00f));
 			addChild(display);
 		}
 
 		// Main knobs
-		addParam(createParamCentered<ForgeKnobHero>(mm2px(Vec(35.56f, 47.35f)),
+		addParam(createParamCentered<ForgeKnobHero>(mm2px(Vec(45.72f, 61.00f)),
 		         module, AnalogLFO::MORPH_PARAM));
-		addParam(createParamCentered<ForgeKnobSecondary>(mm2px(Vec(21.18f, 67.32f)),
+		addParam(createParamCentered<ForgeKnobSecondary>(mm2px(Vec(18.00f, 87.00f)),
 		         module, AnalogLFO::CHARACTER_PARAM));
-		addParam(createParamCentered<ForgeKnobSecondary>(mm2px(Vec(49.94f, 67.32f)),
+		addParam(createParamCentered<ForgeKnobSecondary>(mm2px(Vec(36.24f, 87.00f)),
 		         module, AnalogLFO::DRIFT_PARAM));
-		addParam(createParamCentered<ForgeKnobUtility>(mm2px(Vec(21.18f, 83.51f)),
+		addParam(createParamCentered<ForgeKnobSecondary>(mm2px(Vec(54.48f, 87.00f)),
 		         module, AnalogLFO::RATE_PARAM));
-		addParam(createParamCentered<ForgeKnobUtility>(mm2px(Vec(49.94f, 83.51f)),
+		addParam(createParamCentered<ForgeKnobSecondary>(mm2px(Vec(72.72f, 87.00f)),
 		         module, AnalogLFO::PHASE_OFFSET_PARAM));
 
 		// CV trimpots
-		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(9.19f, 95.89f)),
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(7.70f, 108.50f)),
 		         module, AnalogLFO::MORPH_ATTEN_PARAM));
-		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(22.77f, 95.89f)),
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(18.56f, 108.50f)),
 		         module, AnalogLFO::CHARACTER_ATTEN_PARAM));
-		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(35.56f, 95.89f)),
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(29.43f, 108.50f)),
 		         module, AnalogLFO::DRIFT_ATTEN_PARAM));
-		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(48.75f, 95.89f)),
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(40.29f, 108.50f)),
 		         module, AnalogLFO::FM_ATTEN_PARAM));
-		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(61.93f, 95.89f)),
+		addParam(createParamCentered<ForgeTrimpot>(mm2px(Vec(51.15f, 108.50f)),
 		         module, AnalogLFO::PHASE_OFFSET_ATTEN_PARAM));
 
 		// CV input jacks
-		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(9.19f, 103.08f)),
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(7.70f, 119.50f)),
 		         module, AnalogLFO::MORPH_CV_INPUT));
-		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(22.77f, 103.08f)),
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(18.56f, 119.50f)),
 		         module, AnalogLFO::CHARACTER_CV_INPUT));
-		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(35.56f, 103.08f)),
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(29.43f, 119.50f)),
 		         module, AnalogLFO::DRIFT_CV_INPUT));
-		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(48.75f, 103.08f)),
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(40.29f, 119.50f)),
 		         module, AnalogLFO::FM_INPUT));
-		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(61.93f, 103.08f)),
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(51.15f, 119.50f)),
 		         module, AnalogLFO::PHASE_OFFSET_CV_INPUT));
 
 		// Bottom I/O row
-		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(14.38f, 117.47f)),
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(62.01f, 119.50f)),
 		         module, AnalogLFO::CLK_INPUT));
-		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(35.56f, 117.47f)),
+		addInput(createInputCentered<ForgeJackInput>(mm2px(Vec(72.88f, 119.50f)),
 		         module, AnalogLFO::RESET_INPUT));
-		addOutput(createOutputCentered<ForgeJackOutput>(mm2px(Vec(56.74f, 117.47f)),
+		addOutput(createOutputCentered<ForgeJackOutput>(mm2px(Vec(83.74f, 119.50f)),
 		          module, AnalogLFO::OUTPUT));
 	}
 
