@@ -1451,8 +1451,8 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 struct ForgeKnobHero : app::SvgKnob {
 	widget::SvgWidget* bg;
 	ForgeKnobHero() {
-		minAngle = -0.83 * M_PI;
-		maxAngle = 0.83 * M_PI;
+		minAngle = -0.75 * M_PI;
+		maxAngle = 0.75 * M_PI;
 		shadow->opacity = 0.0;
 		bg = new widget::SvgWidget;
 		fb->addChildBelow(bg, tw);
@@ -1467,8 +1467,8 @@ struct ForgeKnobHero : app::SvgKnob {
 struct ForgeKnobSecondary : app::SvgKnob {
 	widget::SvgWidget* bg;
 	ForgeKnobSecondary() {
-		minAngle = -0.83 * M_PI;
-		maxAngle = 0.83 * M_PI;
+		minAngle = -0.75 * M_PI;
+		maxAngle = 0.75 * M_PI;
 		shadow->opacity = 0.0;
 		bg = new widget::SvgWidget;
 		fb->addChildBelow(bg, tw);
@@ -1482,8 +1482,8 @@ struct ForgeKnobSecondary : app::SvgKnob {
 struct ForgeKnobUtility : app::SvgKnob {
 	widget::SvgWidget* bg;
 	ForgeKnobUtility() {
-		minAngle = -0.83 * M_PI;
-		maxAngle = 0.83 * M_PI;
+		minAngle = -0.75 * M_PI;
+		maxAngle = 0.75 * M_PI;
 		shadow->opacity = 0.0;
 		bg = new widget::SvgWidget;
 		fb->addChildBelow(bg, tw);
