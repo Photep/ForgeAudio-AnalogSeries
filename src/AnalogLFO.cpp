@@ -1534,11 +1534,12 @@ struct AnalogLFOWidget : ModuleWidget {
 		setModule(module);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/AnalogLFO.svg")));
 
-		// Hex bolt screws (4 corners)
-		addChild(createWidget<ForgeHexBolt>(Vec(RACK_GRID_WIDTH, 0)));
-		addChild(createWidget<ForgeHexBolt>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-		addChild(createWidget<ForgeHexBolt>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-		addChild(createWidget<ForgeHexBolt>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		// Hex bolt screws (4 corners) — centered on the 18HP art bolt-holes,
+		// pushed into the corners so the bottom-right bolt clears OUTPUT's ember rings (D-09).
+		addChild(createWidgetCentered<ForgeHexBolt>(mm2px(Vec(2.60f, 2.60f))));
+		addChild(createWidgetCentered<ForgeHexBolt>(mm2px(Vec(88.84f, 2.60f))));
+		addChild(createWidgetCentered<ForgeHexBolt>(mm2px(Vec(2.60f, 125.90f))));
+		addChild(createWidgetCentered<ForgeHexBolt>(mm2px(Vec(88.84f, 125.90f))));
 
 		// Waveform display (repositioned for 18HP Forge Noir layout)
 		{
