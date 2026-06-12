@@ -913,7 +913,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	}
 
 	float valueToY(float value) const {
-		float margin = 6.f;
+		float margin = 8.f;  // 14HP=6f; bumped for the taller 18HP box (Plan 04, D-06) so the trace breathes
 		return box.size.y / 2.f - value * (box.size.y / 2.f - margin);
 	}
 
@@ -959,8 +959,8 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	}
 
 	void drawCornerBrackets(NVGcontext* vg) {
-		float inset = 3.f;   // ~5px mockup * 0.59 scale
-		float size = 5.f;    // ~8px mockup * 0.59 scale
+		float inset = 4.f;   // 14HP=3f; bumped ~+33% for the larger 18HP box (Plan 04, D-06)
+		float size = 6.f;    // 14HP=5f; bumped ~+20% in step
 		float w = box.size.x;
 		float h = box.size.y;
 
@@ -1217,7 +1217,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			bpmText = rack::string::f("%d BPM", (int)std::round(effectiveBPM));
 
 		// Position: right column bottom
-		float bpmFontSize = 3.5f;
+		float bpmFontSize = 4.0f;  // 14HP=3.5f; bumped ~+14% for the larger 18HP box (Plan 04, D-06)
 		float bpmX = box.size.x * 0.89f;
 		float bpmY = box.size.y - 4.f;
 
@@ -1235,7 +1235,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			else
 				clkText = rack::string::f("%d CLK", (int)std::round(rawBPM));
 
-			float clkFontSize = 2.9f;
+			float clkFontSize = 3.3f;  // 14HP=2.9f; bumped in step with bpmFontSize (Plan 04, D-06)
 			float clkAlpha = alpha * 0.6f;
 
 			// Measure BPM line bounds (center-bottom aligned)
@@ -1320,14 +1320,14 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		// Column positions (proportional, per UI-SPEC spacing scale)
 		float leftColX = box.size.x * 0.11f;   // center of left column
 		float rightColX = box.size.x * 0.89f;  // center of right column
-		float topY = 6.f;                       // top row baseline
-		float bottomY = box.size.y - 4.f;       // bottom row baseline
+		float topY = 7.f;                       // top row baseline (14HP=6f; +1px so the larger top pills clear the top edge, Plan 04 D-06)
+		float bottomY = box.size.y - 4.f;       // bottom row baseline (kept; the BPM/swing stacks grow upward from here, no bottom clip in the taller box)
 
 		// Font sizes at widget scale (from UI-SPEC Typography section)
-		float pillLabelSize = 4.1f;   // ratio, SYNC
-		float pillValueSize = 3.5f;   // BPM value
-		float pillSmallSize = 3.2f;   // swing percentage
-		float pillMicroSize = 2.9f;   // Hz, SWING label, CLK/LFO sub-labels
+		float pillLabelSize = 4.6f;   // ratio, SYNC (14HP=4.1f; bumped ~+12% for 18HP box, Plan 04 D-06)
+		[[maybe_unused]] float pillValueSize = 4.0f;   // BPM value (14HP=3.5f; bumped in step; drawBpmStack owns its own bpmFontSize)
+		float pillSmallSize = 3.6f;   // swing percentage (14HP=3.2f; bumped ~+12%)
+		float pillMicroSize = 3.3f;   // Hz, SWING label, CLK/LFO sub-labels (14HP=2.9f; bumped ~+14%)
 
 		int clockState = module->displayClockState.load(std::memory_order_relaxed);
 		int ratioIdx = module->displayRatioIndex.load(std::memory_order_relaxed);
