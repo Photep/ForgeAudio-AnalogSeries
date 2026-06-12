@@ -87,7 +87,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ## Context
 
-**Current state:** v1.3 Forge Noir in progress. ~1,600 lines of C++, 14HP Forge Noir panel complete (Phase 19) with custom SVG components, three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, swing timing, and 5-shape morph sweep (sine-tri-saw-square-pulse). Display layout and SYNC badge remaining.
+**Current state:** v1.3 Forge Noir in progress. ~1,600 lines of C++, 18HP Forge Noir "fresh" panel complete (Phase 20.1 — redesigned from 14HP, single-row equal secondary knobs, grouped clock section, corner bolts, widget-owned knob art) with custom SVG components, CRT-aesthetic display layout (Phase 20), three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, swing timing, and 5-shape morph sweep (sine-tri-saw-square-pulse). Animated SYNC badge (Phase 21) remaining.
 **Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
 **Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
 **Brand identity:** Forge Noir — near-black panel (#0c0c0c), ember orange (#e85d26), gold accent (#daa520), warm white text (#e8e4e0). Fonts: Bebas Neue (brand/hero), Chakra Petch (labels), JetBrains Mono (data).
@@ -146,4 +146,4 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Panel expansion to 14HP | Forge Noir layout needs breathing room for 5 main knobs + display | — Pending |
 
 ---
-*Last updated: 2026-03-28 after Phase 18 (PWM DSP Extension) completion*
+*Last updated: 2026-06-12 after Phase 20.1 (Panel Redesign 18HP Fresh Layout) completion*
