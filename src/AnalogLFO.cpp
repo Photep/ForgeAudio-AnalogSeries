@@ -1458,6 +1458,9 @@ struct ForgeKnobHero : app::SvgKnob {
 		fb->addChildBelow(bg, tw);
 		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobHero.svg")));
 		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobHero_bg.svg")));
+		// bg art is larger than the foreground (which sizes box). Center it so the
+		// knob body sits on its panel socket art instead of offset down-right.
+		bg->box.pos = box.size.minus(bg->box.size).div(2);
 	}
 };
 
@@ -1471,6 +1474,8 @@ struct ForgeKnobSecondary : app::SvgKnob {
 		fb->addChildBelow(bg, tw);
 		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobSecondary.svg")));
 		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobSecondary_bg.svg")));
+		// Center the larger bg art on the foreground-sized box (see ForgeKnobHero).
+		bg->box.pos = box.size.minus(bg->box.size).div(2);
 	}
 };
 
@@ -1484,6 +1489,8 @@ struct ForgeKnobUtility : app::SvgKnob {
 		fb->addChildBelow(bg, tw);
 		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobUtility.svg")));
 		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobUtility_bg.svg")));
+		// Center the larger bg art on the foreground-sized box (see ForgeKnobHero).
+		bg->box.pos = box.size.minus(bg->box.size).div(2);
 	}
 };
 
@@ -1497,6 +1504,8 @@ struct ForgeTrimpot : app::SvgKnob {
 		fb->addChildBelow(bg, tw);
 		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeTrimpot.svg")));
 		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeTrimpot_bg.svg")));
+		// Center the larger bg art on the foreground-sized box (see ForgeKnobHero).
+		bg->box.pos = box.size.minus(bg->box.size).div(2);
 	}
 };
 

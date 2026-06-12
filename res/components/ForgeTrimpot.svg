@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="3.60mm" height="3.60mm"
-     viewBox="0 0 3.6 3.6">
+     width="5.40mm" height="5.40mm"
+     viewBox="0 0 5.4 5.4">
   <defs>
     <radialGradient id="trimpot-body" cx="38%" cy="28%">
       <stop offset="0%" stop-color="#6a6a6a"/>
@@ -12,17 +12,20 @@
       <stop offset="100%" stop-color="#888888"/>
     </linearGradient>
   </defs>
-  <!-- Bright metallic body -->
-  <circle cx="1.8" cy="1.8" r="1.6" fill="url(#trimpot-body)"/>
-  <!-- Scalloped edge notches (8 positions at 45-degree intervals) -->
-  <circle cx="3.3" cy="1.8" r="0.15" fill="#000000" opacity="0.15"/>
-  <circle cx="2.86" cy="0.74" r="0.15" fill="#000000" opacity="0.15"/>
-  <circle cx="1.8" cy="0.3" r="0.15" fill="#000000" opacity="0.15"/>
-  <circle cx="0.74" cy="0.74" r="0.15" fill="#000000" opacity="0.15"/>
-  <circle cx="0.3" cy="1.8" r="0.15" fill="#000000" opacity="0.15"/>
-  <circle cx="0.74" cy="2.86" r="0.15" fill="#000000" opacity="0.15"/>
-  <circle cx="1.8" cy="3.3" r="0.15" fill="#000000" opacity="0.15"/>
-  <circle cx="2.86" cy="2.86" r="0.15" fill="#000000" opacity="0.15"/>
-  <!-- Indicator slot at 12 o'clock (0.4mm wide, 30% height = 1.08mm) -->
-  <rect x="1.6" y="0.35" width="0.4" height="1.08" rx="0.1" fill="url(#trimpot-slot)"/>
+  <!-- Scaled 1.5x to fill the panel socket-tick ring (Plan 05 gate feedback). -->
+  <g transform="scale(1.5)">
+    <!-- Bright metallic body -->
+    <circle cx="1.8" cy="1.8" r="1.6" fill="url(#trimpot-body)"/>
+    <!-- Scalloped edge notches (8 positions at 45-degree intervals) -->
+    <circle cx="3.3" cy="1.8" r="0.15" fill="#000000" opacity="0.15"/>
+    <circle cx="2.86" cy="0.74" r="0.15" fill="#000000" opacity="0.15"/>
+    <circle cx="1.8" cy="0.3" r="0.15" fill="#000000" opacity="0.15"/>
+    <circle cx="0.74" cy="0.74" r="0.15" fill="#000000" opacity="0.15"/>
+    <circle cx="0.3" cy="1.8" r="0.15" fill="#000000" opacity="0.15"/>
+    <circle cx="0.74" cy="2.86" r="0.15" fill="#000000" opacity="0.15"/>
+    <circle cx="1.8" cy="3.3" r="0.15" fill="#000000" opacity="0.15"/>
+    <circle cx="2.86" cy="2.86" r="0.15" fill="#000000" opacity="0.15"/>
+    <!-- Indicator slot at 12 o'clock (0.4mm wide, 30% height = 1.08mm) -->
+    <rect x="1.6" y="0.35" width="0.4" height="1.08" rx="0.1" fill="url(#trimpot-slot)"/>
+  </g>
 </svg>

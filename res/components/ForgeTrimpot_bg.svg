@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="4.20mm" height="4.20mm"
-     viewBox="0 0 4.2 4.2">
-  <!-- Shadow ring (offset 0.2mm down) -->
-  <circle cx="2.1" cy="2.3" r="1.8" fill="#000000" opacity="0.3"/>
+     width="6.30mm" height="6.30mm"
+     viewBox="0 0 6.3 6.3">
+  <!-- Scaled 1.5x in step with ForgeTrimpot.svg (Plan 05 gate feedback). -->
+  <g transform="scale(1.5)">
+    <!-- Shadow ring (offset 0.2mm down) -->
+    <circle cx="2.1" cy="2.3" r="1.8" fill="#000000" opacity="0.3"/>
+  </g>
 </svg>
