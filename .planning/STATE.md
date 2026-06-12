@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
-status: completed
-stopped_at: Phase 20.1 context gathered
-last_updated: "2026-06-11T23:42:54.478Z"
+status: executing
+stopped_at: Phase 20.1 UI-SPEC approved
+last_updated: "2026-06-12T01:07:49.545Z"
 last_activity: 2026-06-12
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 13
+  completed_plans: 10
   percent: 60
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 20.1 — Panel Redesign (18HP Fresh Layout), inserted before Phase 21
+**Current focus:** Phase 20.1 — panel-redesign-18hp-fresh-layout
 
 ## Current Position
 
-Phase: 20.1 (inserted, not planned yet)
-Plan: none yet — next: /gsd:plan-phase 20.1
-Status: Phase 20 complete; 20.1 panel redesign next, then 21 Animated SYNC Badge
+Phase: 20.1 (panel-redesign-18hp-fresh-layout) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
 Last activity: 2026-06-12
 
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 77%
 
 ## Performance Metrics
 
@@ -74,6 +74,8 @@ Key pending decisions for v1.3:
 - [Phase 20-02]: phaseToX uses proportional 0.20/0.60 fractions for zoom-compatible center-column constraint
 - [Phase 20-02]: Hz readout format: 1 decimal <10Hz, integer otherwise (UI-SPEC copywriting contract)
 - [Phase 20-02]: Font blur reduced 3.0 to 2.0 for all glow text at sub-5px font sizes
+- [Phase 20.1-02]: Stripped all metal knob/trimpot bodies from 18HP fresh.svg (widget owns the knob); kept soft shadows + scallop ticks as recessed-socket read (D-01)
+- [Phase 20.1-02]: Promoted fresh.svg to production res/AnalogLFO.svg; Rack auto-derives 18HP from viewBox 91.44mm, no plugin.json width field (D-03, D-05)
 
 ### Pending Todos
 
@@ -87,6 +89,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-11T23:42:54.470Z
-Stopped at: Phase 20.1 context gathered
-Resume file: .planning/phases/20.1-panel-redesign-18hp-fresh-layout/20.1-CONTEXT.md
+Last session: 2026-06-12T01:07:34.142Z
+Stopped at: Phase 20.1 UI-SPEC approved
+Resume file: None
