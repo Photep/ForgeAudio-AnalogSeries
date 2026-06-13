@@ -61,7 +61,7 @@ See: `.planning/milestones/v1.2-ROADMAP.md` for full details.
 - [x] **Phase 18: PWM DSP Extension** - Extend morph sweep past square into variable-width pulse with analog character (completed 2026-03-28)
 - [x] **Phase 19: Forge Noir Panel + Custom Components** - 14HP Forge Noir SVG panel with custom knobs, jacks, trimpots, and brand elements (completed 2026-04-01)
 - [x] **Phase 20: Display Layout + CRT Aesthetic** - Three-column display with left/right pills, center waveform, CRT scanlines, and border glow (completed 2026-06-11)
-- [ ] **Phase 21: Animated SYNC Badge** - Clock-pulse flash on SYNC badge with exponential decay
+- [x] **Phase 21: Animated SYNC Badge** - Clock-pulse flash on SYNC badge with exponential decay (completed 2026-06-13)
 
 ## Phase Details
 
@@ -161,7 +161,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 21-01-PLAN.md — Add LOCKED-gated edge counter, widget flash envelope, and flash-modulated drawPillText for the SYNC badge
+- [x] 21-01-PLAN.md — Add LOCKED-gated edge counter, widget flash envelope, and flash-modulated drawPillText for the SYNC badge
 
 ## Progress
 
@@ -190,4 +190,4 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21
 | 18. PWM DSP Extension | v1.3 | 1/1 | Complete    | 2026-03-28 |
 | 19. Forge Noir Panel + Custom Components | v1.3 | 3/4 | Complete    | 2026-04-01 |
 | 20. Display Layout + CRT Aesthetic | v1.3 | 3/3 | Complete   | 2026-06-11 |
-| 21. Animated SYNC Badge | v1.3 | 1/1 | Human-Verify | - |
+| 21. Animated SYNC Badge | v1.3 | 1/1 | Complete   | 2026-06-13 |

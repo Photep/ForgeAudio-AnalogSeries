@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
-status: awaiting-human-verify
-stopped_at: Phase 21-01 Tasks 1-3 complete; Task 4 in-Rack visual UAT (human-verify gate) PENDING
-last_updated: "2026-06-13T07:13:21.221Z"
-last_activity: 2026-06-13 -- Phase 21-01 Tasks 1-3 implemented + compiled; Task 4 human-verify gate pending
+status: phase-complete
+stopped_at: Phase 21-01 complete; Task 4 in-Rack visual UAT approved (fresh dylib loaded after stale-install flush)
+last_updated: "2026-06-13T17:41:00.000Z"
+last_activity: 2026-06-13 -- Phase 21-01 approved at human-verify gate (ANIM-01/ANIM-02 satisfied); SYNC badge flash live
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 14
-  completed_plans: 13
-  percent: 92
+  completed_plans: 14
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Phase: 21 (animated-sync-badge) — AWAITING HUMAN-VERIFY
+Phase: 21 (animated-sync-badge) — COMPLETE
 Plan: 1 of 1
-Status: Phase 21-01 implementation complete (Tasks 1-3, compile gate green); Task 4 in-Rack visual UAT pending human approval
-Last activity: 2026-06-13 -- Phase 21-01 Tasks 1-3 implemented + compiled; Task 4 human-verify gate pending
+Status: Phase 21-01 complete; human-verify gate approved (ANIM-01/ANIM-02 satisfied). Flash confirmed live in Rack after stale-install flush.
+Last activity: 2026-06-13 -- Phase 21-01 approved at human-verify gate; SYNC badge per-edge white-hot flash shipped
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 

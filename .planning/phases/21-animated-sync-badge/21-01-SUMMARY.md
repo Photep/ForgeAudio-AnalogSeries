@@ -38,7 +38,7 @@ patterns-established:
   - "Monotonic atomic counter for cross-thread edge signalling (never a bool mailbox the widget clears -- avoids read-modify-write race)"
   - "Flash envelope re-peaks on observed counter change, naturally coalescing multiple edges per frame"
 
-requirements-completed: []  # ANIM-01, ANIM-02 implemented but NOT yet verified -- pending the Task 4 human-verify gate
+requirements-completed: [ANIM-01, ANIM-02]  # verified at the Task 4 human-verify gate (approved 2026-06-13, fresh dylib loaded after stale-install flush)
 
 # Metrics
 duration: ~7min (Tasks 1-3; Task 4 human-verify pending)
@@ -49,7 +49,10 @@ completed: 2026-06-13
 
 **Per-edge white-hot SYNC badge flash while LOCKED, driven by a lock-free atomic edge counter and a 0.92x/frame exponential decay envelope; ember-to-white-hot color lerp plus glow bloom on both NanoVG text passes. Code + compile gate complete; in-Rack visual acceptance is the pending human gate.**
 
-## Status: Tasks 1-3 COMPLETE, Task 4 (human-verify) PENDING
+## Status: COMPLETE — all 4 tasks done (Task 4 human-verify APPROVED 2026-06-13)
+
+> **Task 4 resolution:** The initial in-Rack UAT reported ANIM-01/ANIM-02 as failing (no flash). Root cause was a **stale install**, not a code defect — Rack was loading the Jun-12 Phase-20.1 `plugin.dylib` (hash `622d92e`), not the fresh Phase-21 build (hash `9d47a77`). After syncing the fresh dylib into the extracted plugins dir and fully relaunching Rack, the per-edge white-hot flash was confirmed and **approved with no peak-constant tuning changes** (UI-SPEC starting values accepted).
+
 
 Tasks 1, 2, and 3 are implemented, committed atomically, and pass the compile gate (`make RACK_DIR=../Rack-SDK` exits 0, produces `plugin.dylib`). Task 4 is a `checkpoint:human-verify` gate (`gate="blocking"`) — install + in-Rack visual UAT + peak-constant tuning — and has been intentionally handed back to the orchestrator for the human. It was NOT auto-completed: no `make install`, no Rack relaunch, no self-approval of the visual UAT.
 

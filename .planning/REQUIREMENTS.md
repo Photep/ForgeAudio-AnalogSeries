@@ -40,8 +40,8 @@ Requirements for Forge Noir milestone. Each maps to roadmap phases.
 
 ### Animation
 
-- [ ] **ANIM-01**: SYNC badge flashes on each clock edge with bright pulse
-- [ ] **ANIM-02**: Flash uses exponential decay (~0.92x per frame) back to steady state
+- [x] **ANIM-01**: SYNC badge flashes on each clock edge with bright pulse
+- [x] **ANIM-02**: Flash uses exponential decay (~0.92x per frame) back to steady state
 
 ## Future Requirements
 
@@ -95,8 +95,8 @@ Deferred to VCO module (v2.0).
 | PANEL-10 | Phase 20.1 | Complete |
 | PANEL-11 | Phase 20.1 | Complete |
 | PANEL-12 | Phase 20.1 | Complete |
-| ANIM-01 | Phase 21 | Pending |
-| ANIM-02 | Phase 21 | Pending |
+| ANIM-01 | Phase 21 | Complete |
+| ANIM-02 | Phase 21 | Complete |
 
 **Coverage:**
 - v1.3 requirements: 24 total
