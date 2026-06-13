@@ -18,7 +18,7 @@ Requirements for Forge Noir milestone. Each maps to roadmap phases.
 ### Panel Design
 
 - [x] **PANEL-01**: 14HP Forge Noir SVG panel with near-black background, ember accent bars, hex bolt screws
-- [ ] **PANEL-02**: All controls repositioned per Forge Noir mockup (5 main knobs, 5 CV trimpots+jacks, CLK/RST/OUTPUT)
+- [x] **PANEL-02**: All controls repositioned per Forge Noir mockup (5 main knobs, 5 CV trimpots+jacks, CLK/RST/OUTPUT)
 - [x] **PANEL-03**: Custom SVG knob components (3 sizes: hero/secondary/utility) with machined metal appearance
 - [x] **PANEL-04**: Custom SVG trimpot components (bright scalloped attenuverters)
 - [x] **PANEL-05**: Custom SVG jack components (2 sizes: standard/output with ember accent ring)
@@ -79,7 +79,7 @@ Deferred to VCO module (v2.0).
 | WAVE-04 | Phase 18 | Complete |
 | WAVE-05 | Phase 18 | Complete |
 | PANEL-01 | Phase 19 | Complete |
-| PANEL-02 | Phase 19 | Pending |
+| PANEL-02 | Phase 19 / 20.1 | Complete |
 | PANEL-03 | Phase 19 | Complete |
 | PANEL-04 | Phase 19 | Complete |
 | PANEL-05 | Phase 19 | Complete |
