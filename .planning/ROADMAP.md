@@ -6,15 +6,15 @@ The Forge Audio Analog Series is a collection of VCV Rack 2 modules featuring an
 
 ## Milestones
 
-- ✅ **v1.0 Analog Series LFO** -- Phases 1-6 (shipped 2026-03-07)
-- ✅ **v1.1 Clock Sync** -- Phases 7-10 (shipped 2026-03-13)
-- ✅ **v1.2 Deep Analog** -- Phases 11-17 (shipped 2026-03-17)
-- 🚧 **v1.3 Forge Noir** -- Phases 18-21 (in progress)
+- â **v1.0 Analog Series LFO** -- Phases 1-6 (shipped 2026-03-07)
+- â **v1.1 Clock Sync** -- Phases 7-10 (shipped 2026-03-13)
+- â **v1.2 Deep Analog** -- Phases 11-17 (shipped 2026-03-17)
+- ð§ **v1.3 Forge Noir** -- Phases 18-21 (in progress)
 
 ## Phases
 
 <details>
-<summary>✅ v1.0 Analog Series LFO (Phases 1-6) -- SHIPPED 2026-03-07</summary>
+<summary>â v1.0 Analog Series LFO (Phases 1-6) -- SHIPPED 2026-03-07</summary>
 
 - [x] Phase 1: Plugin Scaffold and Panel (2/2 plans) -- completed 2026-02-25
 - [x] Phase 2: Waveform Engine (2/2 plans) -- completed 2026-02-25
@@ -28,7 +28,7 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
 </details>
 
 <details>
-<summary>✅ v1.1 Clock Sync (Phases 7-10) -- SHIPPED 2026-03-13</summary>
+<summary>â v1.1 Clock Sync (Phases 7-10) -- SHIPPED 2026-03-13</summary>
 
 - [x] Phase 7: Clock Input and Period Tracking (2/2 plans) -- completed 2026-03-07
 - [x] Phase 8: Frequency Override and Ratio Table (1/1 plans) -- completed 2026-03-10
@@ -40,7 +40,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 </details>
 
 <details>
-<summary>✅ v1.2 Deep Analog (Phases 11-17) -- SHIPPED 2026-03-17</summary>
+<summary>â v1.2 Deep Analog (Phases 11-17) -- SHIPPED 2026-03-17</summary>
 
 - [x] Phase 11: Display Polish (1/1 plan) -- completed 2026-03-13
 - [x] Phase 12: RESET and Phase Offset (2/2 plans) -- completed 2026-03-15
@@ -54,7 +54,7 @@ See: `.planning/milestones/v1.2-ROADMAP.md` for full details.
 
 </details>
 
-### 🚧 v1.3 Forge Noir (In Progress)
+### ð§ v1.3 Forge Noir (In Progress)
 
 **Milestone Goal:** Extend morph sweep through pulse/PWM, replace the 12HP panel with the 14HP Forge Noir design language, restructure the display into a three-column layout with CRT aesthetic, and add animated SYNC badge flash.
 
@@ -118,15 +118,15 @@ Plans:
 
 ### Phase 20.1: Panel Redesign 18HP Fresh Layout (INSERTED)
 
-**Goal:** The Analog LFO ships on the new 18HP Forge Noir "fresh" panel — every control, jack, and the waveform display sits exactly on its new artwork anchor, with the reorganized single-row secondary knobs and grouped clock section, and no loss of existing functionality or Phase 20 display polish.
+**Goal:** The Analog LFO ships on the new 18HP Forge Noir "fresh" panel â every control, jack, and the waveform display sits exactly on its new artwork anchor, with the reorganized single-row secondary knobs and grouped clock section, and no loss of existing functionality or Phase 20 display polish.
 **Depends on:** Phase 20 (display content/styling carries forward onto the new panel)
 **Requirements**: PANEL-08, PANEL-09, PANEL-10, PANEL-11, PANEL-12
 **Success Criteria** (what must be TRUE):
   1. The module renders at 18HP (91.44mm) using `res/AnalogLFO-fresh.svg` as the production panel artwork
   2. Every knob, trimpot, input jack, and the output jack sits exactly on its artwork anchor (no visible offset) at both 100% and 200% zoom
-  3. The four secondary knobs are equal-sized in a single horizontal row — CHARACTER, DRIFT, RATE, PHASE (RATE/PHASE upgraded from the smaller utility size)
-  4. The waveform display fills the new larger box (81.44×26.00mm) with readable three-column pills and no text clipping or overflow
-  5. All existing functionality works unchanged after repositioning — params, CV attenuverters, CLK/RST inputs, and OUTPUT
+  3. The four secondary knobs are equal-sized in a single horizontal row â CHARACTER, DRIFT, RATE, PHASE (RATE/PHASE upgraded from the smaller utility size)
+  4. The waveform display fills the new larger box (81.44Ã26.00mm) with readable three-column pills and no text clipping or overflow
+  5. All existing functionality works unchanged after repositioning â params, CV attenuverters, CLK/RST inputs, and OUTPUT
   6. No visual regression to Phase 20 display content (ember waveform, scanlines, breathing glow, corner brackets)
 **Plans:** 5/5 plans complete
 **UI hint**: yes
@@ -136,20 +136,20 @@ Plans:
 |---------|--------------|
 | Display box | pos (5.00, 19.00), size (81.44, 26.00) |
 | MORPH hero knob | (45.72, 61.00) |
-| Secondary knobs (row, y=87) | CHARACTER 18.00 · DRIFT 36.24 · RATE 54.48 · PHASE 72.72 |
-| Trimpot attenuverters (row, y=108.5) | 7.70 · 18.56 · 29.43 · 40.29 · 51.15 |
-| CV input jacks (row, y=119.5) | 7.70 · 18.56 · 29.43 · 40.29 · 51.15 |
+| Secondary knobs (row, y=87) | CHARACTER 18.00 Â· DRIFT 36.24 Â· RATE 54.48 Â· PHASE 72.72 |
+| Trimpot attenuverters (row, y=108.5) | 7.70 Â· 18.56 Â· 29.43 Â· 40.29 Â· 51.15 |
+| CV input jacks (row, y=119.5) | 7.70 Â· 18.56 Â· 29.43 Â· 40.29 Â· 51.15 |
 | CLK / RST / OUTPUT (y=119.5) | 62.01 / 72.88 / 83.74 |
-| Hex bolts | (4.60,4.60) (86.84,4.60) (4.60,123.90) (86.84,123.90) — derive from box.size.x |
+| Hex bolts | (4.60,4.60) (86.84,4.60) (4.60,123.90) (86.84,123.90) â derive from box.size.x |
 
-Source design renders: `forge-panel-compare.png`, `fresh-full.png`. Current widget positions live in `src/AnalogLFO.cpp` `AnalogLFOWidget` ctor (~line 1523). Panel set via `setPanel(createPanel(... "res/AnalogLFO.svg"))` — swap to fresh.svg.
+Source design renders: `forge-panel-compare.png`, `fresh-full.png`. Current widget positions live in `src/AnalogLFO.cpp` `AnalogLFOWidget` ctor (~line 1523). Panel set via `setPanel(createPanel(... "res/AnalogLFO.svg"))` â swap to fresh.svg.
 
 Plans:
-- [x] 20.1-01-PLAN.md — Wave 0: capture pre-change 14HP display baseline screenshots (Phase-20 regression reference)
-- [x] 20.1-02-PLAN.md — Wave 1: strip metal knob bodies from fresh.svg, promote to AnalogLFO.svg, delete dead artwork
-- [x] 20.1-03-PLAN.md — Wave 1: reposition all ctor anchors to 18HP, upgrade RATE/PHASE to Secondary, resize display box, verify hex bolts
-- [x] 20.1-04-PLAN.md — Wave 2: re-tune WaveformDisplay px constants for the 81.44x26.00mm box (no Phase-20 regression)
-- [x] 20.1-05-PLAN.md — Wave 3: clean reinstall + in-Rack visual alignment gate at 100%/200% with proof screenshots
+- [x] 20.1-01-PLAN.md â Wave 0: capture pre-change 14HP display baseline screenshots (Phase-20 regression reference)
+- [x] 20.1-02-PLAN.md â Wave 1: strip metal knob bodies from fresh.svg, promote to AnalogLFO.svg, delete dead artwork
+- [x] 20.1-03-PLAN.md â Wave 1: reposition all ctor anchors to 18HP, upgrade RATE/PHASE to Secondary, resize display box, verify hex bolts
+- [x] 20.1-04-PLAN.md â Wave 2: re-tune WaveformDisplay px constants for the 81.44x26.00mm box (no Phase-20 regression)
+- [x] 20.1-05-PLAN.md â Wave 3: clean reinstall + in-Rack visual alignment gate at 100%/200% with proof screenshots
 
 ### Phase 21: Animated SYNC Badge
 **Goal**: The SYNC badge visually pulses on each incoming clock edge, giving immediate feedback that the module is receiving and responding to clock signals
@@ -158,7 +158,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Each clock edge triggers a visible bright flash on the SYNC badge that is distinct from the steady-state badge appearance
   2. The flash decays smoothly back to the normal SYNC badge brightness over roughly 200ms with no abrupt transitions
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 21-01-PLAN.md — Add LOCKED-gated edge counter, widget flash envelope, and flash-modulated drawPillText for the SYNC badge
 
 ## Progress
 
@@ -187,4 +190,4 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21
 | 18. PWM DSP Extension | v1.3 | 1/1 | Complete    | 2026-03-28 |
 | 19. Forge Noir Panel + Custom Components | v1.3 | 3/4 | Complete    | 2026-04-01 |
 | 20. Display Layout + CRT Aesthetic | v1.3 | 3/3 | Complete   | 2026-06-11 |
-| 21. Animated SYNC Badge | v1.3 | 0/0 | Not started | - |
+| 21. Animated SYNC Badge | v1.3 | 0/1 | Planned | - |
