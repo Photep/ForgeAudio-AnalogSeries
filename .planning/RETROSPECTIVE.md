@@ -137,6 +137,48 @@
 
 ---
 
+## Milestone: v1.3 — Forge Noir
+
+**Shipped:** 2026-06-13
+**Phases:** 5 (incl. 20.1 inserted) | **Plans:** 14 | **Timeline:** 2026-03-28 → 2026-06-13
+
+### What Was Built
+- Five-shape PWM morph sweep (Sine→Tri→Saw→Square→Pulse) with tanh edge softening, 50%→5% duty, and 5-shape bleed ring wrap
+- Forge Noir custom-component panel: 11 nanosvg skins (3 knob sizes, scalloped trimpots, ember-ring jacks, hex bolts) as 7 widget structs
+- Near-black panel artwork with 110+ path letterforms, forge emblem, rune glyph, gradient placement
+- Three-column CRT display: margin pills, center ember waveform, corner brackets, scrolling scanlines, breathing border glow
+- 18HP "fresh" panel redesign (inserted Phase 20.1) with widget-owned knobs and grouped clock section
+- Per-edge animated SYNC badge flash via lock-free atomic counter + exponential decay
+
+### What Worked
+- SUMMARY.md `one_liner` fields were finally populated — `summary-extract` returned clean data, closing the recurring v1.1/v1.2 gap and letting milestone close auto-generate accomplishments
+- The v1.0 atomic audio-to-GUI bridge pattern extended once more for Phase 21's `displayClockEdge` with zero new races on the audio thread
+- The 18HP redesign as an explicitly inserted phase (20.1) cleanly contained a mid-milestone art change without disrupting numbering
+- Milestone audit caught accumulated verification/doc debt (stale VERIFICATION statuses, WAVE-05 contradiction, dead code) and it was resolved inline before archive rather than shipped silently
+
+### What Was Inefficient
+- Panel size churned 12HP → 14HP → 18HP across the milestone; Phase 19 built and verified a 14HP panel that Phase 20.1 then replaced, wasting the 14HP visual-UAT effort. Earlier commitment to final HP would have avoided a full panel rebuild — the same "design for final size" lesson from v1.0, recurring.
+- Several phase VERIFICATION.md statuses were left at `human_needed` after the human gate was actually performed — bookkeeping lag that only the audit caught (recurring roadmap/status-tracking gap from v1.1/v1.2).
+- WAVE-05 was written as "preserve backward compat" but the implementation intentionally broke it (D-02); the requirement text and the code diverged until the audit forced a rewrite. Requirement wording should track scope decisions as they happen.
+
+### Patterns Established
+- Inserted decimal phase (20.1) for a mid-milestone redesign that supersedes an earlier phase's artifact, with the superseded phase's UAT explicitly marked superseded rather than failed
+- Widget-owned knob rendering (strip metal bodies from SVG, keep only recessed-socket shadows) as the canonical convention
+- Single production panel file auto-deriving HP from viewBox (no plugin.json width) to prevent art/code drift
+- Color/glow-driven animation (not alpha) for badge flash, keeping the rest-state render byte-identical via defaulted params
+
+### Key Lessons
+1. "Design for final component count" is now a thrice-confirmed lesson (v1.0 bottom row, v1.2 temp positions, v1.3 HP churn) — lock panel dimensions before building custom components against them
+2. The milestone audit is the safety net that catches verification/doc debt accumulated during fast (and slow, gap-filled) execution — it earned its keep again
+3. When a scope decision breaks a stated requirement, rewrite the requirement at decision time, not at milestone close
+4. Populating SUMMARY one_liners pays off immediately at milestone close — the long-standing gap is worth closing per-plan
+
+### Cost Observations
+- Model mix: quality profile throughout (Opus planning, Sonnet execution/verification)
+- Notable: calendar timeline was long (~2.5 months) but sparse — real work was a handful of focused sessions; the panel redesign drove most of the added scope
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -146,6 +188,7 @@
 | v1.0 | 10 days | 6 | 12 | Established visual verification pattern |
 | v1.1 | 6 days | 4 | 6 | Layered DSP approach; zero rework post-verification |
 | v1.2 | 5 days | 6 (+1 skip) | 8 | Phase skip pattern; right-click menu for panel overflow |
+| v1.3 | ~2.5 mo (sparse) | 5 (+1 insert) | 14 | Inserted redesign phase; audit-driven debt cleanup before archive |
 
 ### Cumulative Stats
 
@@ -154,11 +197,14 @@
 | v1.0 | 552 | 552 | 23/23 |
 | v1.1 | 890 | 338 | 18/18 |
 | v1.2 | 1,374 | 484 | 15/17 (2 deferred) |
+| v1.3 | 1,641 | 267 | 24/24 |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Visual verification plans are essential for UI-heavy modules — catches issues code review misses (v1.0 confirmed, v1.1 reconfirmed)
 2. Research before planning produces first-pass implementations that pass verification without rework (v1.0 character amplitudes exception, v1.1 and v1.2 fully validated)
-3. Atomic bridge pattern for audio-to-GUI data scales cleanly across milestones — declare, store, load
+3. Atomic bridge pattern for audio-to-GUI data scales cleanly across milestones — declare, store, load (v1.3: 6th atomic added cleanly)
 4. Phase skip is a valid and valuable outcome when context gathering reveals fundamental approach problems (v1.2 Phase 17)
-5. SUMMARY.md one_liner fields need to be populated during plan completion (recurring gap v1.1 + v1.2)
+5. Design for final panel dimensions before building components — incremental HP/layout expansion causes rework every milestone (v1.0, v1.2, v1.3)
+6. The milestone audit reliably surfaces verification/doc debt before it ships — run it every milestone (v1.0 displayDrift gap, v1.3 stale statuses + WAVE-05)
+7. SUMMARY.md one_liner fields: gap finally closed in v1.3 — keep populating per-plan

@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
-status: phase-complete
-stopped_at: Phase 21-01 complete; Task 4 in-Rack visual UAT approved (fresh dylib loaded after stale-install flush)
-last_updated: "2026-06-13T17:41:00.000Z"
-last_activity: 2026-06-13 -- Phase 21-01 approved at human-verify gate (ANIM-01/ANIM-02 satisfied); SYNC badge flash live
+status: Awaiting next milestone
+stopped_at: v1.3 Forge Noir shipped and archived; ready for v2.0 (VCO module)
+last_updated: "2026-06-13T12:05:29.184Z"
+last_activity: 2026-06-13 — Milestone v1.3 completed and archived
 progress:
   total_phases: 5
   completed_phases: 5
@@ -18,19 +18,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-28)
+See: .planning/PROJECT.md (updated 2026-06-13)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 21 — animated-sync-badge
+**Current focus:** Planning next milestone — v2.0 VCO module (LFO is feature-complete as of v1.3)
 
 ## Current Position
 
-Phase: 21 (animated-sync-badge) — COMPLETE
-Plan: 1 of 1
-Status: Phase 21-01 complete; human-verify gate approved (ANIM-01/ANIM-02 satisfied). Flash confirmed live in Rack after stale-install flush.
-Last activity: 2026-06-13 -- Phase 21-01 approved at human-verify gate; SYNC badge per-edge white-hot flash shipped
-
-Progress: [██████████] 100%
+Phase: Milestone v1.3 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-13 — Milestone v1.3 completed and archived
 
 ## Performance Metrics
 
@@ -44,53 +42,32 @@ Progress: [██████████] 100%
 
 ### Roadmap Evolution
 
-- Phase 20.1 inserted after Phase 20: Panel Redesign 18HP Fresh Layout — swap to res/AnalogLFO-fresh.svg, remap widgets, before Animated SYNC Badge (URGENT)
+- v1.3 Forge Noir shipped: Phases 18 (PWM), 19 (Forge Noir panel), 20 (CRT display), 20.1 (18HP redesign, inserted), 21 (animated SYNC). 24/24 requirements complete.
 
 ### Decisions
 
 All decisions logged in PROJECT.md Key Decisions table.
-v1.0-v1.2 decisions archived in milestones/ ROADMAP files.
+v1.0–v1.3 phase-level decisions archived in `milestones/` ROADMAP files.
 
-Key pending decisions for v1.3:
+### Carried Forward (deferred from v1.3, non-blockers)
 
-- PWM as morph extension [0.75, 1.0] preserving backward compat
-- Forge Noir design language (near-black, ember orange, gold accents)
-- Panel expansion 12HP to 14HP (shifts modules in existing patches)
-- Bleed ring topology for 5 shapes (open-ended vs ring -- decide in Phase 18)
-- [Phase 18]: Pulse duty derived from morph position externally, not inside computePulse (D-08)
-- [Phase 18]: Backward compatibility dropped: morph*4.f replaces morph*3.f for 5-shape sweep (D-02)
-- [Phase 18]: Edge width clamped via min(duty,1-duty)*0.8 to prevent amplitude collapse at narrow duty
-- [Phase 19-01]: Trimpot scalloped edge as 8 small circles (nanosvg-simple approach)
-- [Phase 19-01]: Output jack dual-layer ember rings (behind + on top of flange) for depth
-- [Phase 19-01]: Machined groove texture via alternating white/black strokes at 0.02-0.03 opacity
-- [Phase 19-02]: Emblem mirroring via manual coordinate duplication (nanosvg has no use/transform support)
-- [Phase 19-02]: Letterform scale factors: 0.8=4.0mm, 0.64=3.20mm, 0.36=1.80mm, 0.28=1.40mm
-- [Phase 19-03]: All knob widgets use -0.83*PI rotation range; trimpots at -0.75*PI per UI-SPEC
-- [Phase 19-03]: CircularShadow disabled on all custom widgets (SVG includes own shadows in _bg.svg)
-- [Phase 19-03]: minRackVersion 2.6.0 enforces gradient rendering support
-- [Phase 20-01]: breathePhase slowed to 0.2Hz (5s cycle) for border glow; also affects phase dot idle breathe
-- [Phase 20-01]: Separate blinkPhase accumulator at 2Hz for SYNC ACQUIRING blink (independent of border glow)
-- [Phase 20-01]: Border glow uses NVG_HOLE inner-cutout fill to stay within scissor bounds
-- [Phase 20-02]: phaseToX uses proportional 0.20/0.60 fractions for zoom-compatible center-column constraint
-- [Phase 20-02]: Hz readout format: 1 decimal <10Hz, integer otherwise (UI-SPEC copywriting contract)
-- [Phase 20-02]: Font blur reduced 3.0 to 2.0 for all glow text at sub-5px font sizes
-- [Phase 20.1-02]: Stripped all metal knob/trimpot bodies from 18HP fresh.svg (widget owns the knob); kept soft shadows + scallop ticks as recessed-socket read (D-01)
-- [Phase 20.1-02]: Promoted fresh.svg to production res/AnalogLFO.svg; Rack auto-derives 18HP from viewBox 91.44mm, no plugin.json width field (D-03, D-05)
-- [Phase ?]: [Phase 20.1-04]: Re-tuned only hardcoded px in WaveformDisplay (margin 6->8, brackets 3/5->4/6, pills bumped ~12%, bpm 3.5->4.0, clk 2.9->3.3, topY 6->7); proportional box.size math left to re-flow; pillValueSize [[maybe_unused]] clears prior warning (D-06)
-- [Phase 21-01]: SYNC badge per-edge flash uses a lock-free atomic<int> edge counter (audio increments, widget reads); flash drives ember->white-hot color + glow bloom on both passes (not alpha, D-01); first locked beat flashes on the next edge (LOCKED-gated at increment site)
+- `swingIndex` GUI→audio non-atomic write (pre-existing, predates Phase 18; common VCV menu-param pattern)
+- Manual-only Nyquist validation on phases 18/19/20.1/21 (inherently human-gated visual/audio behaviors)
 
 ### Pending Todos
 
-1 pending todo (see `.planning/todos/pending/`)
-
-- Separate display pills from waveform visualiser (addressed by Phase 20 three-column layout)
+None — all v1.3 todos resolved (see `.planning/todos/done/`).
 
 ### Blockers/Concerns
 
-- Phase 21-01 Task 4 is a blocking human-verify gate: install plugin (main tree, stale-flush + relaunch Rack), run in-Rack visual UAT (per-edge white-hot flash while LOCKED, smooth ~200ms decay, ACQUIRING blink-only, no scope creep), tune peak constants; resume signal 'approved'
+None.
 
 ## Session Continuity
 
-Last session: 2026-06-13T07:12:21.220Z
-Stopped at: Phase 21-01 Tasks 1-3 complete; Task 4 in-Rack visual UAT (human-verify gate) PENDING
-Resume file: .planning/phases/21-animated-sync-badge/21-01-PLAN.md
+Last session: 2026-06-13 — v1.3 Forge Noir milestone completed and archived.
+Stopped at: Milestone close complete; tagged v1.3.
+Resume: start the next milestone with `/gsd-new-milestone`.
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

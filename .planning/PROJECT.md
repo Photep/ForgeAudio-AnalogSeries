@@ -48,13 +48,14 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - ✓ Per-instance component spread with serialized seed — v1.2
 - ✓ Waveform bleed (neighbor crosstalk) during morph — v1.2
 - ✓ CV control of division ratio (via Rate CV in clocked mode) — v1.1
+- ✓ Morph range extension: Sine → Tri → Saw → Square → Narrow Pulse (PWM integrated into morph, even 5-shape rescale per D-02) — v1.3
+- ✓ Forge Noir panel: near-black 18HP SVG panel with custom machined-metal knobs, scalloped trimpots, ember-ring jacks, forge emblem, path typography — v1.3
+- ✓ Three-column CRT display: pills in left/right margins, ember waveform in center, corner brackets, scanlines, breathing border glow — v1.3
+- ✓ Animated SYNC badge: per-edge white-hot flash while LOCKED with exponential decay — v1.3
 
 ### Active
 
-- ✓ LFO: Morph range extension — Sine → Tri → Saw → Square → Narrow Pulse (PWM integrated into morph) — v1.3
-- ✓ LFO: Forge Noir panel implementation (14HP SVG panel + custom widget components) — v1.3 (Phase 19)
-- [ ] LFO: Display layout per Forge Noir design (pills in left/right margins, waveform in center column)
-- [ ] LFO: Animated sync badge (clock-pulse flash)
+(LFO complete — v1.3 was the final LFO milestone. Next active work is the VCO module, v2.0.)
 
 **Deferred (future milestones):**
 - [ ] VCO module: V/Oct pitch input with 1V/octave tracking
@@ -87,13 +88,13 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ## Context
 
-**Current state:** v1.3 Forge Noir in progress. ~1,600 lines of C++, 18HP Forge Noir "fresh" panel complete (Phase 20.1 — redesigned from 14HP, single-row equal secondary knobs, grouped clock section, corner bolts, widget-owned knob art) with custom SVG components, CRT-aesthetic display layout (Phase 20), three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, swing timing, and 5-shape morph sweep (sine-tri-saw-square-pulse). Animated SYNC badge (Phase 21) remaining.
+**Current state:** v1.3 Forge Noir SHIPPED (2026-06-13). 1,641 lines of C++. 18HP Forge Noir "fresh" panel (Phase 20.1 — redesigned from 14HP, single-row equal secondary knobs, grouped clock section, corner bolts, widget-owned knob art) with custom SVG components, three-column CRT-aesthetic display (Phase 20), per-edge animated SYNC badge flash (Phase 21), three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, swing timing, and 5-shape morph sweep (sine-tri-saw-square-pulse). The LFO is feature-complete; the VCO module (v2.0) is the next milestone.
 **Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
 **Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
 **Brand identity:** Forge Noir — near-black panel (#0c0c0c), ember orange (#e85d26), gold accent (#daa520), warm white text (#e8e4e0). Fonts: Bebas Neue (brand/hero), Chakra Petch (labels), JetBrains Mono (data).
 **Prior work:** POC LFO at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` — clean digital implementation, no analog modeling.
-**Release strategy:** v1.3 Forge Noir is the final LFO milestone. VCO module (v2.0) planned after LFO completion.
-**Known tech debt:** FM, RESET, Phase Offset controls at temporary panel positions — resolved by Forge Noir panel redesign.
+**Release strategy:** v1.3 Forge Noir is the final LFO milestone — shipped. VCO module (v2.0) is next.
+**Known tech debt:** `swingIndex` is a plain int written from the GUI context-menu lambda and read from the audio thread (pre-existing non-atomic write, predates Phase 18; worst case one-frame latency on swing change — common VCV menu-param pattern). Four v1.3 phases (18/19/20.1/21) carry manual-only Nyquist validation (inherently human-gated visual/audio behaviors, no automated harness). Both deferred from v1.3 as non-blockers.
 
 ## Constraints
 
@@ -101,7 +102,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - **Panel rendering:** SVG via nanosvg — limited subset (no filters, no CSS, text as paths)
 - **Real-time:** All DSP in process() callback at sample rate — no allocation, no blocking
 - **Display:** NanoVG on FramebufferWidget — must not drop frames
-- **Panel size:** 14HP (71.12mm) × 128.5mm height (expanded from 12HP in Forge Noir redesign)
+- **Panel size:** 18HP (91.44mm) × 128.5mm height (12HP → 14HP → 18HP across the Forge Noir redesign)
 - **Designer handoff:** SVG panel structured for easy redesign
 
 ## Key Decisions
@@ -142,8 +143,12 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Swing via right-click menu (not knob) | Preserves panel density | ✓ Good — functional within 12HP |
 | Skip Phase 17 Panel Redesign | 12HP density at limit; Surge-style modulation routing abandoned | Closed — panel will evolve with Forge Noir design language instead |
 | PWM as morph extension (not separate control) | Extends natural harmonic progression past square into pulse; no new knob needed | ✓ Good — smooth duty interpolation, no staircase artifacts |
-| Forge Noir design language | Near-black panel, ember orange accents, machined metal knobs, scalloped trimpots, forge emblem | — Pending |
-| Panel expansion to 14HP | Forge Noir layout needs breathing room for 5 main knobs + display | — Pending |
+| Forge Noir design language | Near-black panel, ember orange accents, machined metal knobs, scalloped trimpots, forge emblem | ✓ Good — cohesive premium identity, shipped v1.3 |
+| Panel expansion to 18HP | Forge Noir layout needs breathing room for 5 main knobs + display; 14HP too tight in practice | ✓ Good — 18HP fresh layout resolved all density issues |
+| Even 5-shape morph rescale (morph×4), drop v1.2 backward compat (D-02) | Clean 20%-per-shape sweep beats preserving old patch positions for a niche LFO | ✓ Good — smooth sweep; existing patches shift on load (accepted) |
+| Widget-owned knob art, strip metal bodies from SVG (D-01) | Eliminates double-rendered knob bodies; SVG keeps only recessed-socket shadows + scallop ticks | ✓ Good — clean single source of knob rendering |
+| Promote fresh.svg to production res/AnalogLFO.svg, no plugin.json width (D-03/D-05) | Rack auto-derives 18HP from viewBox; one canonical panel file | ✓ Good — no width drift between art and code |
+| SYNC flash via lock-free atomic edge counter, color/glow not alpha (Phase 21 D-01) | Audio thread increments, widget reads; white-hot lerp + bloom reads better than alpha fade | ✓ Good — per-edge flash, zero audio-thread coupling |
 
 ---
-*Last updated: 2026-06-12 after Phase 20.1 (Panel Redesign 18HP Fresh Layout) completion*
+*Last updated: 2026-06-13 after v1.3 Forge Noir milestone completion*
