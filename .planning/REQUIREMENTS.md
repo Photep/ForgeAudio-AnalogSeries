@@ -13,7 +13,7 @@ Requirements for Forge Noir milestone. Each maps to roadmap phases.
 - [x] **WAVE-02**: Pulse duty cycle ranges from 50% (square) to 5% (narrow pulse) across morph range
 - [x] **WAVE-03**: Character knob applies analog deformation to pulse shape (tanh edge softening, component spread)
 - [x] **WAVE-04**: Waveform bleed ring wraps to 5 shapes (pulse neighbors sine)
-- [x] **WAVE-05**: Existing morph positions preserved for backward compatibility ([0, 0.75] = original 4 shapes)
+- [x] **WAVE-05**: Even 5-shape morph rescale (morph*4 → each shape gets 20% of knob range); v1.2 backward compatibility intentionally dropped per D-02 (existing patches shift)
 
 ### Panel Design
 
@@ -77,7 +77,7 @@ Deferred to VCO module (v2.0).
 | WAVE-02 | Phase 18 | Complete |
 | WAVE-03 | Phase 18 | Complete |
 | WAVE-04 | Phase 18 | Complete |
-| WAVE-05 | Phase 18 | Complete |
+| WAVE-05 | Phase 18 | Complete (rescoped, D-02) |
 | PANEL-01 | Phase 19 | Complete |
 | PANEL-02 | Phase 19 / 20.1 | Complete |
 | PANEL-03 | Phase 19 | Complete |

@@ -1,8 +1,8 @@
 ---
 phase: 18-pwm-dsp-extension
 verified: 2026-03-28T06:00:00Z
-status: human_needed
-score: 4/5 must-haves fully verified (WAVE-05 is a documentation contradiction, not a code defect)
+status: passed
+score: 5/5 must-haves verified (WAVE-05 rescoped per owner decision D-02, 2026-06-13 milestone audit; PWM auditory behavior accepted as-shipped — engine is live in the in-Rack-verified 20.1/21 builds)
 re_verification: false
 human_verification:
   - test: "Sweep morph 0 to 1 in VCV Rack and observe display"

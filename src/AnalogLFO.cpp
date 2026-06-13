@@ -1522,21 +1522,6 @@ struct ForgeKnobSecondary : app::SvgKnob {
 	}
 };
 
-struct ForgeKnobUtility : app::SvgKnob {
-	widget::SvgWidget* bg;
-	ForgeKnobUtility() {
-		minAngle = -0.75 * M_PI;
-		maxAngle = 0.75 * M_PI;
-		shadow->opacity = 0.0;
-		bg = new widget::SvgWidget;
-		fb->addChildBelow(bg, tw);
-		setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobUtility.svg")));
-		bg->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/ForgeKnobUtility_bg.svg")));
-		// Center the larger bg art on the foreground-sized box (see ForgeKnobHero).
-		bg->box.pos = box.size.minus(bg->box.size).div(2);
-	}
-};
-
 struct ForgeTrimpot : app::SvgKnob {
 	widget::SvgWidget* bg;
 	ForgeTrimpot() {
