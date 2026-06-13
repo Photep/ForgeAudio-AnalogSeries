@@ -874,6 +874,12 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	// Separate from breathePhase so border glow (0.2Hz) and blink (2Hz) are independent
 	float blinkPhase = 0.f;
 
+	// SYNC badge per-edge flash envelope (ANIM-01/ANIM-02, Phase 21).
+	// prevClockEdge caches the last-seen edge counter; flashIntensity re-arms to 1.0 on a
+	// new LOCKED edge then decays *= 0.92f per frame. Widget reads the atomic only.
+	int prevClockEdge = 0;
+	float flashIntensity = 0.f;
+
 	void step() override {
 		// Advance breathe animation (0.2Hz = 5-second cycle, per D-13)
 		breathePhase += 2.f * (float)M_PI * 0.2f / 60.f;
@@ -908,6 +914,17 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			bool showSwing = showClocked && (swingIdx > 0);
 			float swingTarget = showSwing ? 1.f : 0.f;
 			swingFadeAlpha += rack::math::clamp(swingTarget - swingFadeAlpha, -fadeSpeed, fadeSpeed);
+
+			// SYNC badge flash envelope (ANIM-01/ANIM-02): re-arm to peak on each new LOCKED
+			// edge, then exponential decay. Advanced exactly once per step() (frame-paced,
+			// matching breathePhase/blinkPhase); the widget only reads the atomic.
+			int edge = module->displayClockEdge.load(std::memory_order_relaxed);
+			if (edge != prevClockEdge) {
+				flashIntensity = 1.f;  // re-peak (clean retrigger even mid-decay)
+				prevClockEdge = edge;
+			}
+			flashIntensity *= 0.92f;  // ANIM-02 locked decay -- do NOT change this factor
+			if (flashIntensity < 0.001f) flashIntensity = 0.f;  // snap to steady state
 		}
 
 		TransparentWidget::step();
@@ -1168,7 +1185,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	}
 
 	void drawPillText(NVGcontext* vg, int fontHandle, float x, float y,
-	                  const char* text, float fontSize, int align, float alpha) {
+	                  const char* text, float fontSize, int align, float alpha, float flash = 0.f) {
 		nvgFontFaceId(vg, fontHandle);
 		nvgFontSize(vg, fontSize);
 		nvgTextAlign(vg, align);
@@ -1194,14 +1211,25 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgStrokeWidth(vg, 0.5f);
 		nvgStroke(vg);
 
+		// Flash modulation (Phase 21, ANIM-01 / D-01): lerp ember -> white-hot and bloom the
+		// glow, driven by flash in [0,1]. Brightness comes from color + glow, NOT alpha.
+		// Peak constants (white-hot hue, peak blur, peak glow alpha) are gate-tuned per D-03;
+		// these are the UI-SPEC starting values. At flash == 0 this is byte-for-byte the prior
+		// steady-state render (and every other caller passes the default, so unchanged).
+		float r = 0.91f  + flash * (1.00f - 0.91f);   // ember -> white-hot (1.0, 0.93, 0.78)
+		float g = 0.365f + flash * (0.93f - 0.365f);
+		float b = 0.149f + flash * (0.78f - 0.149f);
+		float glowBlur  = 2.0f + flash * (5.0f - 2.0f);   // 2.0 steady -> ~5.0 peak bloom
+		float glowAlpha = alpha * (0.3f + flash * (0.9f - 0.3f));  // 0.3 -> ~0.9 stronger bloom
+
 		// Glow text pass
-		nvgFontBlur(vg, 2.0f);  // reduced from 3.0 for small font sizes
-		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alpha * 0.3f));
+		nvgFontBlur(vg, glowBlur);  // base 2.0 (reduced from 3.0 for small font sizes)
+		nvgFillColor(vg, nvgRGBAf(r, g, b, glowAlpha));
 		nvgText(vg, x, y, text, NULL);
 
-		// Sharp text pass
+		// Sharp text pass (same lerped color; alpha stays full per D-01)
 		nvgFontBlur(vg, 0.0f);
-		nvgFillColor(vg, nvgRGBAf(0.91f, 0.365f, 0.149f, alpha));
+		nvgFillColor(vg, nvgRGBAf(r, g, b, alpha));
 		nvgText(vg, x, y, text, NULL);
 	}
 
