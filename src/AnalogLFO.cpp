@@ -1408,12 +1408,18 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		if (syncFadeAlpha > 0.001f) {
 			float effectiveAlpha = syncFadeAlpha;
 			if (clockState == AnalogLFO::ACQUIRING) {
+				// ACQUIRING: 2Hz blink only, NO per-edge flash (D-02 -- untouched)
 				float blink = 0.5f + 0.5f * std::sin(blinkPhase);
 				effectiveAlpha *= blink;
+				drawPillText(vg, font->handle, rightColX, topY + pillLabelSize,
+				             "SYNC", pillLabelSize,
+				             NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, effectiveAlpha);
+			} else {
+				// LOCKED (and any non-ACQUIRING clocked path): per-edge white-hot flash (D-02)
+				drawPillText(vg, font->handle, rightColX, topY + pillLabelSize,
+				             "SYNC", pillLabelSize,
+				             NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, effectiveAlpha, flashIntensity);
 			}
-			drawPillText(vg, font->handle, rightColX, topY + pillLabelSize,
-			             "SYNC", pillLabelSize,
-			             NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, effectiveAlpha);
 		}
 
 		// BPM stack (clocked mode, right column bottom)
