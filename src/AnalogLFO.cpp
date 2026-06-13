@@ -126,6 +126,7 @@ struct AnalogLFO : Module {
 	ClockState clockState = FREE;
 	bool prevClkConnected = false;
 	std::atomic<int> displayClockState{0};
+	std::atomic<int> displayClockEdge{0};  // ANIM-01: incremented once per LOCKED clock edge (audio write-only; widget read-only)
 	std::atomic<int> displayRatioIndex{-1};  // -1 = free-running, 0-14 = ratio index
 	std::atomic<float> displaySmoothedPeriod{0.f};
 
@@ -530,6 +531,14 @@ struct AnalogLFO : Module {
 					clockBeatCount = 0;
 					resetBlanking.trigger(0.001f);  // Bidirectional blanking
 				}
+			}
+
+			// ANIM-01: re-arm the SYNC badge flash once per edge, LOCKED state only (D-02).
+			// clockState already reflects this edge's ACQUIRING->LOCKED promotion above, so the
+			// first locked beat flashes on the next edge (clean handoff, no acquiring collision).
+			// Audio thread is write-only on this counter; the widget owns all envelope state.
+			if (clockState == LOCKED) {
+				displayClockEdge.fetch_add(1, std::memory_order_relaxed);
 			}
 		}
 	}
