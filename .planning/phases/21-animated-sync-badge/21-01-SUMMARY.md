@@ -112,6 +112,13 @@ This is a `checkpoint:human-verify` gate (`gate="blocking"`). The human must ins
 - ANIM-01 and ANIM-02 are implemented and compile clean; final acceptance (and any peak-constant tuning) is gated on the human visual UAT above.
 - Phase 21 is the last plan of the phase; once the human gate is approved, the phase is ready for `/gsd:verify-work`.
 
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/21-animated-sync-badge/21-01-SUMMARY.md`
+- FOUND: `src/AnalogLFO.cpp`
+- FOUND: `plugin.dylib` (compile gate artifact)
+- FOUND: commits 771ed94, 92f779e, 413081f, 8327d8c
+
 ---
 *Phase: 21-animated-sync-badge*
 *Tasks 1-3 completed: 2026-06-13 (Task 4 human-verify pending)*

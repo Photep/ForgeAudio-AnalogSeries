@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Forge Noir
-status: executing
-stopped_at: Phase 21 UI-SPEC approved
-last_updated: "2026-06-13T06:42:47.322Z"
-last_activity: 2026-06-13 -- Phase 21 planning complete
+status: awaiting-human-verify
+stopped_at: Phase 21-01 Tasks 1-3 complete; Task 4 in-Rack visual UAT (human-verify gate) PENDING
+last_updated: "2026-06-13T07:13:21.221Z"
+last_activity: 2026-06-13 -- Phase 21-01 Tasks 1-3 implemented + compiled; Task 4 human-verify gate pending
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 14
   completed_plans: 13
-  percent: 80
+  percent: 92
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 21 — animated sync badge
+**Current focus:** Phase 21 — animated-sync-badge
 
 ## Current Position
 
-Phase: 21
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-13 -- Phase 21 planning complete
+Phase: 21 (animated-sync-badge) — AWAITING HUMAN-VERIFY
+Plan: 1 of 1
+Status: Phase 21-01 implementation complete (Tasks 1-3, compile gate green); Task 4 in-Rack visual UAT pending human approval
+Last activity: 2026-06-13 -- Phase 21-01 Tasks 1-3 implemented + compiled; Task 4 human-verify gate pending
 
 Progress: [█████████░] 92%
 
@@ -77,6 +77,7 @@ Key pending decisions for v1.3:
 - [Phase 20.1-02]: Stripped all metal knob/trimpot bodies from 18HP fresh.svg (widget owns the knob); kept soft shadows + scallop ticks as recessed-socket read (D-01)
 - [Phase 20.1-02]: Promoted fresh.svg to production res/AnalogLFO.svg; Rack auto-derives 18HP from viewBox 91.44mm, no plugin.json width field (D-03, D-05)
 - [Phase ?]: [Phase 20.1-04]: Re-tuned only hardcoded px in WaveformDisplay (margin 6->8, brackets 3/5->4/6, pills bumped ~12%, bpm 3.5->4.0, clk 2.9->3.3, topY 6->7); proportional box.size math left to re-flow; pillValueSize [[maybe_unused]] clears prior warning (D-06)
+- [Phase 21-01]: SYNC badge per-edge flash uses a lock-free atomic<int> edge counter (audio increments, widget reads); flash drives ember->white-hot color + glow bloom on both passes (not alpha, D-01); first locked beat flashes on the next edge (LOCKED-gated at increment site)
 
 ### Pending Todos
 
@@ -86,10 +87,10 @@ Key pending decisions for v1.3:
 
 ### Blockers/Concerns
 
-None.
+- Phase 21-01 Task 4 is a blocking human-verify gate: install plugin (main tree, stale-flush + relaunch Rack), run in-Rack visual UAT (per-edge white-hot flash while LOCKED, smooth ~200ms decay, ACQUIRING blink-only, no scope creep), tune peak constants; resume signal 'approved'
 
 ## Session Continuity
 
-Last session: 2026-06-13T06:26:53.965Z
-Stopped at: Phase 21 UI-SPEC approved
-Resume file: .planning/phases/21-animated-sync-badge/21-UI-SPEC.md
+Last session: 2026-06-13T07:12:21.220Z
+Stopped at: Phase 21-01 Tasks 1-3 complete; Task 4 in-Rack visual UAT (human-verify gate) PENDING
+Resume file: .planning/phases/21-animated-sync-badge/21-01-PLAN.md
