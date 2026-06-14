@@ -541,15 +541,17 @@ jobs:
 | A5 | Re-implemented primitives reproduce SDK behavior bit-for-bit | Code Examples | Medium — sources were read verbatim this session; the extraction-correctness gate (golden capture step 2) catches any miss |
 | A6 | `std::normal_distribution<float>` produces identical sequences across libstdc++/libc++/MSVC for the same Xoroshiro stream | Determinism | **HIGH RISK** — `std::normal_distribution` is NOT specified to be portable across standard library implementations. See Open Question 1. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Is `std::normal_distribution<float>` output portable across platforms?**
    - What we know: D-07 locks `std::normal_distribution`. Xoroshiro is now bit-identical, so the RNG *stream* matches across platforms.
    - What's unclear: The C++ standard does NOT require `std::normal_distribution` to produce the same values across libstdc++ (Linux), libc++ (macOS), and MSVC STL (Windows) even given an identical underlying RNG stream — the Box-Muller vs Marsaglia-polar choice and internal caching differ. This means the **drift-on golden reference may be bit-exact only on the libstd implementation it was captured with.**
    - Recommendation: This REINFORCES Pitfall 6's verdict — capture the drift-on golden on ONE canonical OS and run drift-on golden bit-exact ONLY there; on the other two matrix legs, run the drift-on path with an epsilon tolerance (or run only drift-OFF goldens bit-exact cross-platform, where no normal_distribution is involved). The same-platform same-seed determinism invariant remains bit-exact everywhere. Planner should make this split explicit in the test design. (If perfect cross-platform bit-identity of drift were required, the only fix would be re-implementing the normal transform too — out of scope for this phase and not requested.)
+   - RESOLVED: drift-on golden captured on one canonical OS and replayed bit-exact there only; epsilon 1e-5 on other OS legs (Pitfall 6 mitigation). Same-platform same-seed determinism is bit-exact on every OS. Implemented in Plan 04 Task 2 (golden replay) + Task 3 (CI matrix gating).
 
 2. **Golden capture seed source.** The module seeds from `random_device` (non-deterministic) and derives `spreadSeed` from it. For golden capture the core must be seeded with a FIXED `(s0,s1)` AND a fixed `spreadSeed` so component-spread coefficients are reproducible.
    - Recommendation: `LfoCore` exposes both `seed(s0,s1)` (drift RNG) and an explicit spread-seed setter (or computes spread from the same fixed seed). Document the exact seeds used for each golden file in the sidecar `.txt`. The `initComponentSpread()` logic (src/AnalogLFO.cpp:198-216) uses a SEPARATE `Xoroshiro128Plus spreadRng` seeded from `spreadSeed[0/1]` — the core must reproduce this exactly, so spread coefficients are part of the extracted surface.
+   - RESOLVED: LfoCore exposes explicit seed(s0,s1) and setSpreadSeed(s0,s1); the exact seeds used for golden capture are documented in tests/golden/freerun_seeds.txt per Plan 03 Task 3.
 
 ## Environment Availability
 
