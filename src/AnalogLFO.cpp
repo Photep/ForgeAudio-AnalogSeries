@@ -322,7 +322,10 @@ struct AnalogLFO : Module {
 		displayDrift.store(t.drift, std::memory_order_relaxed);
 		displayPhase.store(t.displayPhase, std::memory_order_relaxed);
 		displaySwingIndex.store(swingIndex, std::memory_order_relaxed);
-		displaySwingFraction.store(t.swingFrac, std::memory_order_relaxed);
+		// BUG-03: store the EFFECTIVE (gated) swing — free-run stores 0.5 (no warp),
+		// clocked stores swingFrac. Mirrors the buffer-gen gate at L332 so drawPhaseDot
+		// warps the dot with the same value the trace/audio uses (no free-run desync).
+		displaySwingFraction.store(t.isClocked ? t.swingFrac : 0.5f, std::memory_order_relaxed);
 		// ANIM-01: re-arm SYNC badge flash once per LOCKED clock edge (AnalogLFO.cpp:540-542).
 		if (t.lockedEdge) displayClockEdge.fetch_add(1, std::memory_order_relaxed);
 
