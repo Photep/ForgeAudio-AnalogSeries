@@ -1,5 +1,6 @@
 #include "plugin.hpp"
 #include "dsp/LfoCore.hpp"   // forge::LfoCore — the extracted DSP core the shell delegates to
+#include "dsp/PatchParse.hpp"  // forge::parseSeedHex — non-throwing seed parse (BUG-04)
 #include <cmath>
 #include <atomic>
 #include <array>
@@ -241,9 +242,17 @@ struct AnalogLFO : Module {
 		// Type-check, not just presence: a hand-edited patch with non-string
 		// nodes makes json_string_value() return NULL -> std::stoull(NULL) is UB (CR-02).
 		if (json_is_string(s0J) && json_is_string(s1J)) {
-			spreadSeed[0] = std::stoull(json_string_value(s0J), nullptr, 16);
-			spreadSeed[1] = std::stoull(json_string_value(s1J), nullptr, 16);
-			initComponentSpread();  // regenerate deterministic offsets from restored seed
+			// BUG-04: non-throwing parse — a malformed/over-long/empty seed string can no
+			// longer throw and crash Rack on load. Parse into temporaries and only commit
+			// the restored seed (+ regenerate spread) when BOTH succeed; otherwise keep the
+			// constructor-seeded spread (the CODE-REVIEW #4 safe fallback).
+			uint64_t s0 = 0, s1 = 0;
+			if (forge::parseSeedHex(json_string_value(s0J), s0) &&
+			    forge::parseSeedHex(json_string_value(s1J), s1)) {
+				spreadSeed[0] = s0;
+				spreadSeed[1] = s1;
+				initComponentSpread();  // regenerate deterministic offsets from restored seed
+			}
 		}
 		// Swing preset (PHASE-03)
 		json_t* swingJ = json_object_get(rootJ, "swingIndex");
