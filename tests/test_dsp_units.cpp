@@ -98,24 +98,34 @@ TEST_CASE("RackCompat: exp2_taylor5 matches the Rack polynomial") {
 // Waveshape.hpp  (D-05 bleedLfo lift)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Waveshape: morph x character sweep stays in [-1,1] pre-scale") {
+TEST_CASE("Waveshape: full morph x character x phase grid stays in pre-scale band (TEST-03)") {
 	forge::Waveshape ws;                 // zero spreads
+	// TEST-03 widens the Phase 22 SCAFFOLD (morph/character at 21 steps, 64 phase
+	// samples) to the FULL grid: morph and character swept finely across all of
+	// [0,1], phase across [0,1).
+	//
 	// Pre-scale bound: the adjacent-shape bleed crosstalk (computeMorphedWave,
 	// AnalogLFO.cpp:360-385) can push past +/-1 before the +/-5V scaling. A fine
 	// grid sweep of the VERBATIM shipped math gives a true range of about
 	// [-1.048, +1.106] at bleedLfo=0, so the ideal "[-1,1]" is only approximate
-	// for this DSP. This SCAFFOLD bound (+/-1.15) catches gross/runaway excursions
-	// without false-failing on the shipped bleed behavior; the strict post-scale
-	// +/-5V invariant is Phase 23's test_invariants.cpp (RESEARCH.md L586,L590,L602).
+	// for this DSP. This band (+/-1.15) catches gross/runaway excursions without
+	// false-failing on the shipped bleed behavior. The strict post-scale +/-5V
+	// invariant lives in test_invariants.cpp — do NOT duplicate it here
+	// (RESEARCH.md L400 Wave 0 Gaps; PATTERNS.md L142).
 	const float lo = -1.15f, hi = 1.15f;
-	for (int mi = 0; mi <= 20; ++mi) {
-		float morph = (float)mi / 20.f;          // morph in [0,1]
-		for (int ci = 0; ci <= 20; ++ci) {
-			float character = (float)ci / 20.f;  // character in [0,1]
-			for (int pi = 0; pi < 64; ++pi) {
-				float phase = (float)pi / 64.f;  // phase in [0,1)
-				// bleedLfo=0 reproduces the no-drift bleed path.
+	const int MSTEPS = 50;               // morph step 0.02 across [0,1]
+	const int CSTEPS = 50;               // character step 0.02 across [0,1]
+	const int PSTEPS = 128;              // phase step ~0.0078 across [0,1)
+	for (int mi = 0; mi <= MSTEPS; ++mi) {
+		float morph = (float)mi / (float)MSTEPS;         // morph in [0,1]
+		for (int ci = 0; ci <= CSTEPS; ++ci) {
+			float character = (float)ci / (float)CSTEPS; // character in [0,1]
+			for (int pi = 0; pi < PSTEPS; ++pi) {
+				float phase = (float)pi / (float)PSTEPS; // phase in [0,1)
+				// bleedLfo=0 reproduces the no-drift bleed path; every output
+				// stays finite and inside the documented pre-scale band.
 				float v = ws.morphedWave(phase, morph, character, 0.f);
+				CHECK(std::isfinite(v));
 				CHECK(v >= lo);
 				CHECK(v <= hi);
 			}
@@ -208,4 +218,44 @@ TEST_CASE("Swing: swingPhaseMultiplier gates and warp values") {
 	      == doctest::Approx(0.5 / (double)0.66f));
 	CHECK(forge::swingPhaseMultiplier(0.75, 0.66f, true)
 	      == doctest::Approx(0.5 / (1.0 - (double)0.66f)));
+}
+
+TEST_CASE("Swing: free-run gate returns 1.0 for every SWING_FRACTIONS edge (TEST-03)") {
+	// PHASE-04 free-run gate: with isClocked=false the multiplier is ALWAYS 1.0,
+	// regardless of swing fraction or phase — swing is inactive in free-running
+	// mode. Cover every preset (Straight..Max) at several phases spanning both
+	// halves of the cycle (RESEARCH.md L400; Swing.hpp L33-39).
+	const double phases[] = {0.0, 0.1, 0.25, 0.49, 0.5, 0.51, 0.75, 0.99};
+	for (int si = 0; si < 6; ++si) {
+		float swingFrac = forge::SWING_FRACTIONS[si];
+		for (double phase : phases) {
+			CHECK(forge::swingPhaseMultiplier(phase, swingFrac, /*isClocked*/false)
+			      == doctest::Approx(1.0));
+		}
+	}
+}
+
+TEST_CASE("Swing: clocked Straight edge ~1.0 across cycle; Heavy deviates (TEST-03)") {
+	// Straight edge: SWING_FRACTIONS[0] == 0.5 sits inside the `> 0.5001f` straight
+	// fast-path, so a CLOCKED Straight setting still yields no warp (~1.0) at any
+	// phase across the cycle.
+	REQUIRE(forge::SWING_FRACTIONS[0] == doctest::Approx(0.50f));
+	const double phases[] = {0.0, 0.2, 0.45, 0.5, 0.55, 0.8, 0.99};
+	for (double phase : phases) {
+		CHECK(forge::swingPhaseMultiplier(phase, forge::SWING_FRACTIONS[0], /*isClocked*/true)
+		      == doctest::Approx(1.0));
+	}
+
+	// Heavy swing (SWING_FRACTIONS[4] == 0.71) DOES warp when clocked: the first
+	// half accumulates slower (< 1.0) and the second half faster (> 1.0). Use
+	// inequality bands — never == on the warp output (PATTERNS.md L268-270).
+	const float heavy = forge::SWING_FRACTIONS[4];
+	REQUIRE(heavy == doctest::Approx(0.71f));
+	double firstHalf  = forge::swingPhaseMultiplier(0.25, heavy, /*isClocked*/true);
+	double secondHalf = forge::swingPhaseMultiplier(0.75, heavy, /*isClocked*/true);
+	CHECK(firstHalf  < 0.999);    // first half slower than straight 1.0
+	CHECK(secondHalf > 1.001);    // second half faster than straight 1.0
+	// Exact warp values match the closed-form (0.5/frac, 0.5/(1-frac)).
+	CHECK(firstHalf  == doctest::Approx(0.5 / (double)heavy));
+	CHECK(secondHalf == doctest::Approx(0.5 / (1.0 - (double)heavy)));
 }
