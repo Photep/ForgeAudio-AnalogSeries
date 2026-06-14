@@ -1,6 +1,9 @@
 RACK_DIR ?= ../Rack-SDK
 
-FLAGS +=
+# -Isrc lets the shell's #include "dsp/LfoCore.hpp" and the headers' internal
+# #include "dsp/*.hpp" resolve (the extracted core is consumed by both the plugin
+# and the Rack-free test target, which already passes -Isrc).
+FLAGS += -Isrc
 CFLAGS +=
 CXXFLAGS +=
 LDFLAGS +=

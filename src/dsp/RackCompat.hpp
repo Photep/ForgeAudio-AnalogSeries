@@ -90,8 +90,12 @@ struct OnePole {
 	}
 };
 
-// clamp — std::clamp wrapper (replaces rack::math::clamp). C++17.
-inline float clamp(float x, float lo, float hi) { return std::clamp(x, lo, hi); }
+// clamp — replaces rack::math::clamp. Written without std::clamp so the header
+// compiles under both the C++17 test target AND the plugin's C++11 toolchain
+// (the plugin now includes this header via LfoCore). Bit-identical to the inline
+// std::clamp/rack::math::clamp result for finite inputs.
+inline float clamp(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
+inline int   clampi(int x, int lo, int hi)       { return x < lo ? lo : (x > hi ? hi : x); }
 
 // exp2_taylor5 — Source: ../Rack-SDK/include/dsp/approx.hpp (float path only).
 // Needed bit-identical for the FM path (Pitfall 2). The int32-reinterpret bit

@@ -75,6 +75,20 @@ struct LfoCore {
 	float crossfadeDuration = 0.003f;
 	float lastOutputVoltage = 0.f;
 
+	// --- Last-step telemetry (shell reads these to feed display atomics; NOT part
+	//     of the audio path). Populated by step() each sample. ---
+	struct Telemetry {
+		int   clockState = 0;        // FREE/ACQUIRING/LOCKED (int form for the display atomic)
+		float smoothedPeriod = 0.f;
+		int   ratioIdx = -1;         // -1 free-running, 0..14 clocked
+		bool  isClocked = false;
+		float swingFrac = 0.5f;
+		float drift = 0.f;           // clamped drift level (display)
+		float displayPhase = 0.f;    // phase + offset, wrapped (dot position)
+		bool  lockedEdge = false;    // a LOCKED clock edge fired this sample (badge flash)
+	};
+	Telemetry tel;
+
 	LfoCore() {
 		// Match the AnalogLFO ctor slew init (AnalogLFO.cpp:590-595).
 		freqSlew.setLambda(20.f);
@@ -105,7 +119,7 @@ struct LfoCore {
 		// --- Step 1: clock + reset (AnalogLFO.cpp:661-662) ---
 		// Compute the ratio index the inline processClockInput would derive from the
 		// rate-knob scaled value (AnalogLFO.cpp:509-512), pass it into the tracker.
-		int clkRatioIdx = std::clamp((int)std::round(in.ratioScaled * 14.f), 0, 14);
+		int clkRatioIdx = clampi((int)std::round(in.ratioScaled * 14.f), 0, 14);
 		ClockTracker::Result ck = clock.step(in.clkVoltage, sampleTime, in.clkConnected, clkRatioIdx);
 		if (ck.resetWanted) {
 			// Shell-equivalent reset action (AnalogLFO.cpp:456-460 / 528-532).
@@ -128,12 +142,15 @@ struct LfoCore {
 			}
 		}
 
+		// Display badge: a LOCKED clock edge fired this sample (AnalogLFO.cpp:540-542).
+		tel.lockedEdge = (ck.edgeFired && ck.state == LOCKED);
+
 		// --- Step 2: dual-mode frequency (AnalogLFO.cpp:664-680) ---
 		float targetFreq;
 		int ratioIdx = -1;
 		bool isClocked = (ck.state == ACQUIRING || ck.state == LOCKED) && ck.smoothedPeriod > 0.f;
 		if (isClocked) {
-			ratioIdx = std::clamp((int)std::round(in.ratioScaled * 14.f), 0, 14);
+			ratioIdx = clampi((int)std::round(in.ratioScaled * 14.f), 0, 14);
 			float clockFreq = 1.f / ck.smoothedPeriod;
 			targetFreq = clockFreq * RATIO_TABLE[ratioIdx];
 		} else {
@@ -180,7 +197,7 @@ struct LfoCore {
 		float bleedLfo = dr.bleedLfo;
 
 		// --- Step 9: Swing warp (AnalogLFO.cpp:767-773) ---
-		float swingFrac = SWING_FRACTIONS[std::clamp(in.swingIndex, 0, 5)];
+		float swingFrac = SWING_FRACTIONS[clampi(in.swingIndex, 0, 5)];
 		deltaPhase *= swingPhaseMultiplier(phase, swingFrac, isClocked);
 
 		// --- Step 10: phase accumulate + wrap (AnalogLFO.cpp:779-780) ---
@@ -215,6 +232,16 @@ struct LfoCore {
 		}
 		lastOutputVoltage = outputVoltage;
 		outputVoltage += dcOffsetV;
+
+		// --- Telemetry for the shell's display atomics (AnalogLFO.cpp:691, 720-721,
+		//     776-777, 827-830). displayPhase uses the offset phase `p`. ---
+		tel.clockState = (int)ck.state;
+		tel.smoothedPeriod = ck.smoothedPeriod;
+		tel.ratioIdx = ratioIdx;
+		tel.isClocked = isClocked;
+		tel.swingFrac = swingFrac;
+		tel.drift = drift_;
+		tel.displayPhase = p;
 
 		return outputVoltage;
 	}

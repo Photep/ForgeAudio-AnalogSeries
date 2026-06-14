@@ -1,0 +1,39 @@
+# Golden reference provenance — Phase 22 Plan 03 (D-08)
+#
+# These freerun_<rate>.f32 blocks are the frozen extraction-preserved-behavior
+# baseline. They were captured from the VALIDATED forge::LfoCore AFTER the
+# extraction-correctness gate (tests/test_extraction.cpp) proved the core
+# reproduces the still-live inline DSP bit-for-bit at all three rates (D-08
+# ordering: validate -> freeze goldens -> THEN delete inline). The permanent
+# golden-replay test lands in Plan 04 and pins LfoCore against these files.
+#
+# Storage format: raw little-endian float32, one file per sample rate, 8192
+# samples each (32768 bytes). Tracked in git (NOT gitignored).
+
+scenario        = free-run (clkConnected=false, resetConnected=false, fmConnected=false)
+rate_hz         = 2.0       # forge::Inputs.rate (free-run knob Hz)
+morph           = 0.4       # forge::Inputs.morph
+character       = 0.6       # forge::Inputs.character (already includes characterSpread folding)
+drift           = 0.5       # forge::Inputs.drift (drift ON — exercises real stochastic OU)
+phase_offset    = 0.0
+swing_index     = 0         # Straight
+
+drift_seed_s0   = 0x0000000000C0FFEE   # LfoCore::seed(s0, s1)  -> DriftEngine drift RNG
+drift_seed_s1   = 0x000000000BADF00D
+spread_seed_s0  = 0x000000009E3779B9   # LfoCore::setSpreadSeed(sp0, sp1) -> component spread
+spread_seed_s1  = 0x000000007F4A7C15   # NOTE: must be non-zero — Xoroshiro128Plus (0,0) is a
+                                       # fixed point that emits an all-zero stream, which makes
+                                       # std::normal_distribution loop forever.
+
+sample_count    = 8192
+files           = freerun_44100.f32 (sr=44100), freerun_48000.f32 (sr=48000), freerun_96000.f32 (sr=96000)
+
+# Canonical capture OS (Pitfall 6 / Open Q1): macOS (Apple clang, libc++).
+# The drift-on golden is bit-exact ONLY on this canonical OS because
+# std::normal_distribution is not portable across standard-library
+# implementations even given an identical Xoroshiro stream. Plan 04 gates the
+# bit-exact replay to the canonical OS and uses an epsilon (1e-5) tolerance on
+# the other CI legs (drift-on); same-platform same-seed determinism is bit-exact
+# everywhere.
+canonical_os    = macos (Apple clang / libc++)
+captured_by     = tools: build-test/capture (one-shot generator, not part of `make test`)

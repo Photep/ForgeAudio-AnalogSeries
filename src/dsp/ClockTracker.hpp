@@ -156,7 +156,7 @@ struct ClockTracker {
 				// the injected `ratioIdx` (-1 when not clocked-ready).
 				int currentRatioIdx = -1;
 				if ((clockState == ACQUIRING || clockState == LOCKED) && smoothedPeriod > 0.f) {
-					currentRatioIdx = std::clamp(ratioIdx, 0, 14);
+					currentRatioIdx = clampi(ratioIdx, 0, 14);
 				}
 
 				// Reset beat counter if ratio changed (AnalogLFO.cpp:515-518)
