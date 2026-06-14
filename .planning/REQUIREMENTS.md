@@ -15,15 +15,15 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 - [x] **TEST-02**: Pure DSP logic is extracted into a Rack-independent header-only core (`src/dsp/*.hpp`) consumed by the plugin shell
 - [ ] **TEST-03**: Unit tests cover waveshaping output ranges, the clock ratio/alignment table, consecutive-outlier clock recovery, and swing math
 - [x] **TEST-04**: A headless block-driver harness runs the DSP core over sample blocks and asserts on output invariants (frequency accuracy, phase continuity at reset, ±5V output bounds, fixed-seed determinism)
-- [ ] **TEST-05**: Each functional bug fix (#1–#3) is pinned by a regression test that fails before the fix and passes after
+- [x] **TEST-05**: Each functional bug fix (#1–#3) is pinned by a regression test that fails before the fix and passes after
 - [ ] **TEST-06**: The full test suite runs green and is wired as a GitHub Actions CI check on push
 
 ### Bug Fixes
 
 - [ ] **BUG-01**: Clock tracker recovers from >3× / <⅓× tempo jumps via consecutive-outlier counting — no permanent lockout (CODE-REVIEW #1)
 - [ ] **BUG-02**: x1.5 and ÷1.5 ratios align on correct beat boundaries without mid-cycle truncation, after an in-Rack audition confirms the change is desirable (CODE-REVIEW #2)
-- [ ] **BUG-03**: Phase dot tracks the trace and audio in free-running mode when swing is set (store effective display swing) (CODE-REVIEW #3)
-- [ ] **BUG-04**: Patch load survives malformed/corrupt JSON without crashing (type-guard + non-throwing parse, fall back to existing seed) (CODE-REVIEW #4)
+- [x] **BUG-03**: Phase dot tracks the trace and audio in free-running mode when swing is set (store effective display swing) (CODE-REVIEW #3)
+- [x] **BUG-04**: Patch load survives malformed/corrupt JSON without crashing (type-guard + non-throwing parse, fall back to existing seed) (CODE-REVIEW #4)
 
 ### Cleanup
 
@@ -97,12 +97,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 | TEST-02 | Phase 22 (scaffold) + Phase 24 (full extraction) | Complete |
 | TEST-03 | Phase 23 | Pending |
 | TEST-04 | Phase 22 | Complete |
-| TEST-05 | Phase 23 | Pending |
+| TEST-05 | Phase 23 | Complete |
 | TEST-06 | Phase 26 | Pending |
 | BUG-01 | Phase 23 | Pending |
 | BUG-02 | Phase 23 (audition-gated) | Pending |
-| BUG-03 | Phase 23 | Pending |
-| BUG-04 | Phase 23 | Pending |
+| BUG-03 | Phase 23 | Complete |
+| BUG-04 | Phase 23 | Complete |
 | CLEAN-01 | Phase 24 | Pending |
 | CLEAN-02 | Phase 24 | Pending |
 | CLEAN-03 | Phase 24 | Pending |
