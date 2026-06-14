@@ -131,8 +131,8 @@ struct ClockTracker {
 						// BUG-01: a lone outlier is a glitch and is still discarded, but a
 						// SUSTAINED run of outliers is a genuine tempo change. Without this
 						// counter the tracker locks out forever on a >3x speedup (every fast
-						// edge rejected, and each rejected edge already reset clockTimer at
-						// L105 so the no-pulse timeout never fires).
+						// edge rejected, and the per-edge clockTimer.reset() earlier in this
+						// branch keeps the no-pulse timeout from ever firing).
 						consecutiveOutliers++;
 						if (consecutiveOutliers >= OUTLIER_THRESHOLD) {
 							// Real tempo change: drop to ACQUIRING and re-learn from this edge

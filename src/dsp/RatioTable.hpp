@@ -4,14 +4,11 @@
 // Pure musical-ratio tables + the division-aware beat-reset decision, lifted
 // VERBATIM from src/AnalogLFO.cpp L42-65 (tables) and L520-524 (reset decision).
 //
-// Shape-for-P23 (D-04 / deferred): shouldReset is structured so a per-ratio
-// BEATS_PER_ALIGN[15] table can replace the round(1/RATIO_TABLE[idx]) divisor
-// math later WITHOUT an API change. The x1.5 / ÷1.5 alignment fix lands in
-// Phase 23 — behavior here is UNCHANGED.
+// Phase 23 (BUG-02 / SC4): shouldReset now reads a per-ratio BEATS_PER_ALIGN[15]
+// table instead of round(1/RATIO_TABLE[idx]), fixing the x1.5/÷1.5 mid-cycle
+// truncation. The API was kept stable across the change (CR-03 single home).
 //
 // Include hygiene (Pitfall 1 / TEST-02): ZERO Rack-SDK includes.
-
-#include <cmath>
 
 namespace forge {
 
@@ -61,7 +58,7 @@ static constexpr int BEATS_PER_ALIGN[15] = {
 // alignment boundary; unlocked (ratioIdx < 0) resets every beat (unchanged).
 // Signature FROZEN — ClockTracker.hpp delegates here (CR-03, single home).
 inline bool shouldReset(int ratioIdx, int beatCount) {
-	if (ratioIdx < 0) return true;                  // unlocked: every beat
+	if (ratioIdx < 0 || ratioIdx > 14) return true; // unlocked / out-of-range: every beat (no OOB read)
 	return beatCount >= BEATS_PER_ALIGN[ratioIdx];  // div AND non-int ratios uniform
 }
 
