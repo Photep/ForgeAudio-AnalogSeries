@@ -76,7 +76,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 
 **Milestone Goal:** Take the feature-complete Analog LFO to a publishable, VCV-Library-ready plugin — bugs fixed, tested, package compliant, manual written, source published. The LFO is feature-frozen; no new DSP features.
 
-- [ ] **Phase 22: Test Harness Foundation** — Stand up the doctest target, the Rack-independent DSP core scaffold, and the headless block-driver harness before any code changes
+- [x] **Phase 22: Test Harness Foundation** — Stand up the doctest target, the Rack-independent DSP core scaffold, and the headless block-driver harness before any code changes (completed 2026-06-14)
 - [ ] **Phase 23: Functional Bug Fixes** — Fix the four CODE-REVIEW functional bugs, each pinned by a regression test; #2 (x1.5/÷1.5) is audition-gated
 - [ ] **Phase 24: DSP Extraction + Display Refactors** — Complete the `src/dsp/*.hpp` core extraction, thin the Rack shell, and land the display/thread cleanups behind the green harness
 - [ ] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance
@@ -99,7 +99,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] 22-01-PLAN.md — Rack-free doctest harness skeleton (`make test` + vendored doctest + smoke test) (TEST-01)
 - [x] 22-02-PLAN.md — Extract RackCompat primitives + pure leaf headers (Waveshape w/ bleedLfo lift, RatioTable, Swing) (TEST-02)
 - [x] 22-03-PLAN.md — Extract ClockTracker/DriftEngine/LfoCore, capture goldens, delegate shell, delete inline DSP (TEST-02, D-08)
-- [ ] 22-04-PLAN.md — BlockDriver + invariants @ 44.1/48/96 kHz + golden replay + GitHub Actions CI (TEST-04, D-09)
+- [x] 22-04-PLAN.md — BlockDriver + invariants @ 44.1/48/96 kHz + golden replay + GitHub Actions CI (TEST-04, D-09)
 **Notes**: Per CONTEXT D-03/D-04 the FULL DSP core extraction (incl. DriftEngine) now lands in THIS phase, not Phase 24 — TEST-02 is effectively satisfied here. ⚠ Requirement-ownership update for Phase 24 / TEST-02 is surfaced for human confirmation in the 22-03 SUMMARY (do not assume re-scope silently). Load-bearing prerequisite per research Constraint A: the harness must exist before any DSP refactor or bug fix.
 
 ### Phase 23: Functional Bug Fixes
@@ -185,7 +185,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 22. Test Harness Foundation | v1.4 | 3/4 | In Progress|  |
+| 22. Test Harness Foundation | v1.4 | 4/4 | Complete   | 2026-06-14 |
 | 23. Functional Bug Fixes | v1.4 | 0/TBD | Not started | - |
 | 24. DSP Extraction + Display Refactors | v1.4 | 0/TBD | Not started | - |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 0/TBD | Not started | - |
