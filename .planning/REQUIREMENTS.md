@@ -12,7 +12,7 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 ### Testing
 
 - [x] **TEST-01**: A `make test` target builds and runs a standalone doctest binary without disturbing the existing plugin build
-- [ ] **TEST-02**: Pure DSP logic is extracted into a Rack-independent header-only core (`src/dsp/*.hpp`) consumed by the plugin shell
+- [x] **TEST-02**: Pure DSP logic is extracted into a Rack-independent header-only core (`src/dsp/*.hpp`) consumed by the plugin shell
 - [ ] **TEST-03**: Unit tests cover waveshaping output ranges, the clock ratio/alignment table, consecutive-outlier clock recovery, and swing math
 - [ ] **TEST-04**: A headless block-driver harness runs the DSP core over sample blocks and asserts on output invariants (frequency accuracy, phase continuity at reset, ±5V output bounds, fixed-seed determinism)
 - [ ] **TEST-05**: Each functional bug fix (#1–#3) is pinned by a regression test that fails before the fix and passes after
@@ -94,7 +94,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | TEST-01 | Phase 22 | Complete |
-| TEST-02 | Phase 22 (scaffold) + Phase 24 (full extraction) | Pending |
+| TEST-02 | Phase 22 (scaffold) + Phase 24 (full extraction) | Complete |
 | TEST-03 | Phase 23 | Pending |
 | TEST-04 | Phase 22 | Pending |
 | TEST-05 | Phase 23 | Pending |

@@ -4,13 +4,13 @@ milestone: v1.4
 milestone_name: Tempered
 status: executing
 stopped_at: Phase 22 context gathered
-last_updated: "2026-06-14T08:42:03.685Z"
+last_updated: "2026-06-14T08:50:50.400Z"
 last_activity: 2026-06-14
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 22 (test-harness-foundation) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-06-14
 
-Progress: [███░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Decisions pending at phase start (from research):
 - Phase 25: SVG font-outline provenance (Bebas Neue / Chakra Petch — confirm OFL cuts).
 - Phase 26: `minRackVersion` (lower 2.6.0 → 2.0.0 unless a 2.6 API is required); "Forge" slug collision check.
 - [Phase ?]: Phase 22: vendored doctest 2.4.11 harness; make test additive/Rack-free
+- [Phase ?]: Phase 22 P02: Pure DSP leaf headers (RackCompat/Waveshape/RatioTable/Swing) extracted to src/dsp/ — verbatim, rack-free, D-05 bleed lifted to bleedLfo param
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -82,10 +83,11 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 | Tech debt | `swingIndex` non-atomic GUI→audio write | Carried (non-blocker) | v1.3 close |
 | Verification | Manual-only Nyquist validation (Phases 18/19/20.1/21) | Carried (human-gated) | v1.3 close |
 | Phase 22 P01 | 3min | 3 tasks | 5 files |
+| Phase 22 P02 | 8min | 4 tasks | 5 files |
 
 ## Session Continuity
 
-Last session: 2026-06-14T08:41:53.716Z
+Last session: 2026-06-14T08:50:40.088Z
 Stopped at: Phase 22 context gathered
 Resume: plan Phase 22 with `/gsd:plan-phase 22`.
 
