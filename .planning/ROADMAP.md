@@ -185,7 +185,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 22. Test Harness Foundation | v1.4 | 4/4 | Complete   | 2026-06-14 |
+| 22. Test Harness Foundation | v1.4 | 4/4 | Complete    | 2026-06-14 |
 | 23. Functional Bug Fixes | v1.4 | 0/TBD | Not started | - |
 | 24. DSP Extraction + Display Refactors | v1.4 | 0/TBD | Not started | - |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 0/TBD | Not started | - |
