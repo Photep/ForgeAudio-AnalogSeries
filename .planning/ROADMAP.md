@@ -115,7 +115,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 **Plans**: 5 plans
 - [x] 23-01-PLAN.md — BUG-01 clock consecutive-outlier recovery + RED→GREEN re-lock regression (Wave A)
 - [x] 23-02-PLAN.md — BUG-04 non-throwing parseSeedHex + dataFromJson hardening + BUG-03 gated display-swing store (Wave A)
-- [ ] 23-03-PLAN.md — TEST-03 unit coverage: waveshape range grid, ratio/alignment table, swing math (Wave A)
+- [x] 23-03-PLAN.md — TEST-03 unit coverage: waveshape range grid, ratio/alignment table, swing math (Wave A)
 - [ ] 23-04-PLAN.md — BUG-02 in-Rack x1.5/÷1.5 audition gate (BLOCKING human-verify; logs decision to STATE.md) (Wave B)
 - [ ] 23-05-PLAN.md — BUG-02 BEATS_PER_ALIGN alignment change + cadence regression, gated by the audition decision (Wave C)
 **Human verification gate**: yes — BUG-02 cannot be implemented until the in-Rack audition decision is logged (research Pitfall 7).
@@ -191,7 +191,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 22. Test Harness Foundation | v1.4 | 4/4 | Complete    | 2026-06-14 |
-| 23. Functional Bug Fixes | v1.4 | 2/5 | In Progress|  |
+| 23. Functional Bug Fixes | v1.4 | 3/5 | In Progress|  |
 | 24. DSP Extraction + Display Refactors | v1.4 | 0/TBD | Not started | - |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 0/TBD | Not started | - |
 | 26. VCV Library Compliance + Packaging | v1.4 | 0/TBD | Not started | - |

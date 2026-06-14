@@ -5,13 +5,13 @@ milestone_name: Tempered
 status: executing
 stopped_at: Phase 22 context gathered
 last_updated: "2026-06-14T10:31:50.085Z"
-last_activity: 2026-06-14 -- Plan 23-02 complete (BUG-04 + BUG-03)
+last_activity: 2026-06-14 -- Plan 23-03 complete (TEST-03 pure/table coverage)
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 9
-  completed_plans: 4
-  percent: 14
+  completed_plans: 5
+  percent: 18
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 23 (functional-bug-fixes) — EXECUTING
-Plan: 3 of 5
-Status: Executing Phase 23 (plans 23-01, 23-02 complete)
-Last activity: 2026-06-14 -- Plan 23-02 complete: BUG-04 patch-load crash guard (parseSeedHex, red->green) + BUG-03 free-run phase-dot swing gate
+Plan: 4 of 5
+Status: Executing Phase 23 (plans 23-01, 23-02, 23-03 complete)
+Last activity: 2026-06-14 -- Plan 23-03 complete: TEST-03 pure/table coverage — full waveshape range grid, 13 un-gated ratio cadences, swing-math edges (free-run gate + clocked Straight/Heavy); idx6/idx8 cadence deferred to 23-05
 
 Progress: [██████████] 100%
 
@@ -64,6 +64,7 @@ Decisions pending at phase start (from research):
 - [Phase ?]: Phase 22 P02: Pure DSP leaf headers (RackCompat/Waveshape/RatioTable/Swing) extracted to src/dsp/ — verbatim, rack-free, D-05 bleed lifted to bleedLfo param
 - [Phase ?]: Phase 22 P03: full LfoCore extraction (ClockTracker+DriftEngine+orchestrator) proven bit-exact vs inline via the D-08 extraction gate; shell delegates process() to core.step(), inline DSP deleted in the same change; goldens frozen from the validated core. D-04: TEST-02 full extraction effectively landed in Phase 22 (not Phase 24) — REQUIREMENTS ownership-table update flagged for human confirmation.
 - [Phase 23]: BUG-01 fix — consecutive-outlier counter (threshold 3) in ClockTracker.hpp breaks the >3x speedup / fast-slowdown-band lockout; recovery via drop-to-ACQUIRING (reuses fast-track re-acquire), not snap-to-raw. Pinned by a demonstrated red->green regression (TEST-05). Lone glitch edge still rejected (no jitter).
+- [Phase 23]: TEST-03 pure/table coverage (plan 23-03) — widened the waveshape SCAFFOLD to a full 50x50x128 morph×character×phase grid (pre-scale band + isfinite); pinned shouldReset cadence at the 13 un-gated ratios (division boundary-sweep, multiply every-beat, unlocked always); covered swing math (free-run gate==1.0 for all 6 fractions, clocked Straight ~1.0, Heavy warp). idx6 (/1.5) / idx8 (x1.5) cadence DELIBERATELY excluded — audition-gated, pinned by plan 23-05; only their RATIO_TABLE values/labels asserted here. Consecutive-outlier recovery lives in 23-01, not duplicated.
 - [Phase 23]: BUG-04 fix — extracted Rack-free forge::parseSeedHex (src/dsp/PatchParse.hpp, strtoull + ERANGE/endptr) replacing throwing std::stoull in dataFromJson; parse into temporaries behind the json_is_string guard, commit seeds + initComponentSpread() only when BOTH succeed, else keep constructor-seeded spread (CODE-REVIEW #4 fallback). Demonstrated red->green via tests/test_regression.cpp (RED = TU unbuildable until header exists). BUG-03 consumer — L316 displaySwingFraction store gated to the effective value (t.isClocked ? t.swingFrac : 0.5f), mirroring the L332 buffer gate.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
