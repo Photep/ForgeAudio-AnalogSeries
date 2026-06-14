@@ -4,14 +4,14 @@ milestone: v1.4
 milestone_name: Tempered
 status: executing
 stopped_at: Phase 22 context gathered
-last_updated: "2026-06-14T10:31:50.085Z"
-last_activity: 2026-06-14 -- Plan 23-03 complete (TEST-03 pure/table coverage)
+last_updated: "2026-06-15T00:00:00.000Z"
+last_activity: 2026-06-15 -- Plan 23-05 complete (BUG-02 x1.5/÷1.5 BEATS_PER_ALIGN swap, red→green pinned)
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
-  percent: 18
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 23 (functional-bug-fixes) — EXECUTING
-Plan: 4 of 5
-Status: Executing Phase 23 (plans 23-01, 23-02, 23-03 complete)
-Last activity: 2026-06-14 -- Plan 23-03 complete: TEST-03 pure/table coverage — full waveshape range grid, 13 un-gated ratio cadences, swing-math edges (free-run gate + clocked Straight/Heavy); idx6/idx8 cadence deferred to 23-05
+Plan: 5 of 5 (complete)
+Status: Phase 23 plans 23-01..23-05 complete — all four functional bugs fixed and pinned
+Last activity: 2026-06-15 -- Plan 23-05 complete: BUG-02 x1.5/÷1.5 alignment — adopt-table BEATS_PER_ALIGN[15] swap (idx6 /1.5 → 3 beats, idx8 x1.5 → 2; 13 others bit-identical), pinned by a deterministic reset-cadence regression (red→green). Goldens unaffected (free-run); ClockTracker untouched (CR-03)
 
 Progress: [██████████] 100%
 
@@ -67,6 +67,7 @@ Decisions pending at phase start (from research):
 - [Phase 23]: TEST-03 pure/table coverage (plan 23-03) — widened the waveshape SCAFFOLD to a full 50x50x128 morph×character×phase grid (pre-scale band + isfinite); pinned shouldReset cadence at the 13 un-gated ratios (division boundary-sweep, multiply every-beat, unlocked always); covered swing math (free-run gate==1.0 for all 6 fractions, clocked Straight ~1.0, Heavy warp). idx6 (/1.5) / idx8 (x1.5) cadence DELIBERATELY excluded — audition-gated, pinned by plan 23-05; only their RATIO_TABLE values/labels asserted here. Consecutive-outlier recovery lives in 23-01, not duplicated.
 - [Phase 23]: BUG-04 fix — extracted Rack-free forge::parseSeedHex (src/dsp/PatchParse.hpp, strtoull + ERANGE/endptr) replacing throwing std::stoull in dataFromJson; parse into temporaries behind the json_is_string guard, commit seeds + initComponentSpread() only when BOTH succeed, else keep constructor-seeded spread (CODE-REVIEW #4 fallback). Demonstrated red->green via tests/test_regression.cpp (RED = TU unbuildable until header exists). BUG-03 consumer — L316 displaySwingFraction store gated to the effective value (t.isClocked ? t.swingFrac : 0.5f), mirroring the L332 buffer gate.
 - [Phase 23]: x1.5/÷1.5 audition — DECISION: adopt-table — rationale: in-Rack listening (operator, fresh-flushed CURRENT build, install hashes matched 3bb6fba before audition) confirmed the current cadence truncates mid-cycle — x1.5 retriggers every beat (chops ½ cycle) and ÷1.5 resets every 2 beats (truncates ⅓ cycle); the proposed BEATS_PER_ALIGN table (x1.5 → every 2 beats, ÷1.5 → every 3 beats) is preferred. Gates plan 23-05: apply the two-cell table swap (idx 8 → 2, idx 6 → 3) and pin with the deterministic cadence regression.
+- [Phase 23]: BUG-02 fix (plan 23-05) — APPLIED adopt-table: added `static constexpr int BEATS_PER_ALIGN[15]` to RatioTable.hpp; shouldReset reads it uniformly (round(1/ratio) guard removed, signature frozen). Two-cell behavioral change only — idx 6 (/1.5) 2→3, idx 8 (x1.5) 1→2; the 13 other ratios bit-identical. Pinned by a deterministic reset-cadence regression in test_regression.cpp reading EXPECTED[15] from this decision (RED on pre-swap header: 1 case / 2 assertions → GREEN, make test 43/43). Goldens NOT regenerated (free-run, never reach shouldReset — all golden cases stayed green); ClockTracker.hpp untouched (delegates via forge::shouldReset, CR-03 single home); plugin still builds against ../Rack-SDK.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 

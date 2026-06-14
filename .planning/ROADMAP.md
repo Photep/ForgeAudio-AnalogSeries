@@ -77,7 +77,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 **Milestone Goal:** Take the feature-complete Analog LFO to a publishable, VCV-Library-ready plugin — bugs fixed, tested, package compliant, manual written, source published. The LFO is feature-frozen; no new DSP features.
 
 - [x] **Phase 22: Test Harness Foundation** — Stand up the doctest target, the Rack-independent DSP core scaffold, and the headless block-driver harness before any code changes (completed 2026-06-14)
-- [ ] **Phase 23: Functional Bug Fixes** — Fix the four CODE-REVIEW functional bugs, each pinned by a regression test; #2 (x1.5/÷1.5) is audition-gated
+- [x] **Phase 23: Functional Bug Fixes** — Fix the four CODE-REVIEW functional bugs, each pinned by a regression test; #2 (x1.5/÷1.5) is audition-gated (completed 2026-06-14)
 - [ ] **Phase 24: DSP Extraction + Display Refactors** — Complete the `src/dsp/*.hpp` core extraction, thin the Rack shell, and land the display/thread cleanups behind the green harness
 - [ ] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance
 - [ ] **Phase 26: VCV Library Compliance + Packaging** — Populate/validate the manifest, build the verified `.vcvplugin`, wire CI green
@@ -117,7 +117,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] 23-02-PLAN.md — BUG-04 non-throwing parseSeedHex + dataFromJson hardening + BUG-03 gated display-swing store (Wave A)
 - [x] 23-03-PLAN.md — TEST-03 unit coverage: waveshape range grid, ratio/alignment table, swing math (Wave A)
 - [x] 23-04-PLAN.md — BUG-02 in-Rack x1.5/÷1.5 audition gate (BLOCKING human-verify; logs decision to STATE.md) (Wave B)
-- [ ] 23-05-PLAN.md — BUG-02 BEATS_PER_ALIGN alignment change + cadence regression, gated by the audition decision (Wave C)
+- [x] 23-05-PLAN.md — BUG-02 BEATS_PER_ALIGN alignment change + cadence regression, gated by the audition decision (Wave C)
 **Human verification gate**: yes — BUG-02 cannot be implemented until the in-Rack audition decision is logged (research Pitfall 7).
 
 ### Phase 24: DSP Extraction + Display Refactors
@@ -191,7 +191,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 22. Test Harness Foundation | v1.4 | 4/4 | Complete    | 2026-06-14 |
-| 23. Functional Bug Fixes | v1.4 | 4/5 | In Progress|  |
+| 23. Functional Bug Fixes | v1.4 | 5/5 | Complete   | 2026-06-14 |
 | 24. DSP Extraction + Display Refactors | v1.4 | 0/TBD | Not started | - |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 0/TBD | Not started | - |
 | 26. VCV Library Compliance + Packaging | v1.4 | 0/TBD | Not started | - |
