@@ -95,8 +95,12 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
   2. A Rack-independent `src/dsp/` core (with `RackCompat.hpp` shims) exists and is consumed by the plugin shell — the plugin still builds and loads unchanged
   3. A headless block-driver harness (`tests/BlockDriver.hpp`) runs the DSP core over sample blocks and asserts invariants: ±5V output bounds, frequency accuracy, phase continuity at reset, fixed-seed determinism
   4. Invariant tests pass at 44.1 / 48 / 96 kHz, establishing the behavioral baseline for later refactors
-**Plans**: TBD
-**Notes**: TEST-02 is split — this phase extracts only the minimal core needed to drive the harness (e.g. `ClockTracker.hpp`, `RatioTable.hpp`, waveshape entry points). The full extraction + shell-thinning lands in Phase 24. Load-bearing prerequisite per research Constraint A: the harness must exist before any DSP refactor or bug fix.
+**Plans**: 4 plans
+- [ ] 22-01-PLAN.md — Rack-free doctest harness skeleton (`make test` + vendored doctest + smoke test) (TEST-01)
+- [ ] 22-02-PLAN.md — Extract RackCompat primitives + pure leaf headers (Waveshape w/ bleedLfo lift, RatioTable, Swing) (TEST-02)
+- [ ] 22-03-PLAN.md — Extract ClockTracker/DriftEngine/LfoCore, capture goldens, delegate shell, delete inline DSP (TEST-02, D-08)
+- [ ] 22-04-PLAN.md — BlockDriver + invariants @ 44.1/48/96 kHz + golden replay + GitHub Actions CI (TEST-04, D-09)
+**Notes**: Per CONTEXT D-03/D-04 the FULL DSP core extraction (incl. DriftEngine) now lands in THIS phase, not Phase 24 — TEST-02 is effectively satisfied here. ⚠ Requirement-ownership update for Phase 24 / TEST-02 is surfaced for human confirmation in the 22-03 SUMMARY (do not assume re-scope silently). Load-bearing prerequisite per research Constraint A: the harness must exist before any DSP refactor or bug fix.
 
 ### Phase 23: Functional Bug Fixes
 **Goal**: All four CODE-REVIEW functional bugs are fixed, each pinned by a regression test that fails on the old code and passes on the new — with the x1.5/÷1.5 behavior change confirmed by an in-Rack listening test first.
@@ -181,7 +185,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 22. Test Harness Foundation | v1.4 | 0/TBD | Not started | - |
+| 22. Test Harness Foundation | v1.4 | 0/4 | Planned | - |
 | 23. Functional Bug Fixes | v1.4 | 0/TBD | Not started | - |
 | 24. DSP Extraction + Display Refactors | v1.4 | 0/TBD | Not started | - |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 0/TBD | Not started | - |
