@@ -1,379 +1,352 @@
-# Domain Pitfalls: v1.3 Forge Noir
+# Pitfalls Research
 
-**Domain:** Adding morph-integrated PWM, Forge Noir panel redesign (12HP to 14HP), display layout restructuring, and animated sync badge to an existing 1,374-line VCV Rack 2 LFO module
-**Researched:** 2026-03-27
-**Confidence:** HIGH (based on direct source code analysis of AnalogLFO.cpp, VCV Rack 2 SDK documentation, VCV Rack GitHub source for patch serialization, nanosvg limitations documentation, FramebufferWidget API reference, and community-documented PWM click artifacts)
+**Domain:** Releasing / hardening a VCV Rack 2 plugin (private working repo → public GPL source → VCV Library submission)
+**Researched:** 2026-06-14
+**Confidence:** HIGH (git-filter-repo, VCV Manifest, VCV submission rules verified against official sources; repo state verified directly via git/gh)
+
+---
+
+## Repo-state facts that change the standard advice (verified this session)
+
+These were checked directly and override generic guidance:
+
+- **`origin` already exists and history is already pushed.** Remote: `https://github.com/Photep/ForgeAudio-AnalogSeries.git`. `gh repo view` reports `"visibility":"PRIVATE"`, `pushedAt 2026-06-13`, `forkCount 0`, `isFork false`. The trial fonts are **already on GitHub's servers** inside commit `e486ce1` ("design: add Forge Noir panel mockup and design language"). So the framing is *not* "purge before first push" — it is **"purge from local history AND force-push the rewritten history to the existing private remote, BEFORE the repo is ever flipped to public."**
+- **Both trial fonts entered in exactly one commit:** `e486ce1`. `BCBarellTEST-Regular.otf` and `FoundationLogo.ttf` are tracked at repo root; only that one commit ever touched them. This makes the purge surgically simple (one filter pass, one commit affected) but the file must still be scrubbed from *every* commit reachable after `e486ce1`.
+- **`res/fonts/JetBrainsMonoNL-Regular.ttf` is the ONLY font referenced by source** (`src/AnalogLFO.cpp:1354`). It is JetBrains Mono = OFL (SIL Open Font License) = redistributable. The trial fonts are mockup-only and unreferenced by code — safe to delete outright, not just untrack.
+- **No `LICENSE` file, no `.gitignore` font rule, no `tests/` dir, no `CHANGELOG`** currently exist.
+- **`plugin.json` version is `2.0.0`, not `1.4.x`.** This is *correct* for VCV (MAJOR must equal the target Rack major version = 2) but collides with the internal milestone label "v1.4" — see Pitfall 8.
+- **Manifest URLs (`authorUrl`/`pluginUrl`/`sourceUrl`) are all empty;** tags present (`Low-frequency oscillator`, `Waveshaper`), slug `ForgeAudio-AnalogSeries`, module slug `ForgeAnalogLFO`.
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, broken patches, audible artifacts, or architectural dead-ends. These MUST be addressed in the phase that introduces the relevant feature.
-
----
-
-### Pitfall 1: Morph Continuity Break at the Square-to-Pulse Boundary
-
-**What goes wrong:** The current morph sweep is `Sine -> Tri -> Saw -> Square` mapped to [0, 1] via `float scaled = morph * 3.f` (line 308), producing 3 crossfade segments of equal width (0.333 each). Extending to `Sine -> Tri -> Saw -> Square -> Narrow Pulse` adds a 4th segment, changing the math to `morph * 4.f` with 4 equal segments (0.25 each). This means every existing morph CV mapping and knob position shifts: what was "pure square" at morph=1.0 is now somewhere at morph=0.75, and the top 25% of the knob is the new pulse territory. Every existing patch that stores a morph parameter value breaks its sound -- a user who carefully dialed in a saw/square blend at morph=0.85 now gets something between square and pulse.
-
-**Why it happens:** The morph param is stored as a normalized 0-1 float in patch JSON. VCV Rack restores parameter values directly on patch load. If the mapping of morph values to waveform regions changes, the same stored value produces a different waveform.
-
-**Consequences:** Every existing patch with a non-zero morph setting sounds different after the update. Users who have dialed in specific morph positions for modulation targets lose their sounds. CV sequences mapped to morph shift their entire tonal palette.
-
-**Prevention:**
-1. Keep the existing [0, 1] range for `Sine -> Tri -> Saw -> Square` completely intact. The square waveform must remain at morph=1.0.
-2. Extend the morph range beyond 1.0 for the pulse region. The new morph range becomes [0, 1.333] or similar, where [1.0, 1.333] maps square (50% duty) to narrow pulse. The param config changes from `configParam(MORPH_PARAM, 0.f, 1.f, ...)` to `configParam(MORPH_PARAM, 0.f, 1.333f, ...)`.
-3. Alternatively (and better for knob feel): remap the internal morph value so that the 4-segment mapping uses unequal segment widths. The first three segments each get 25% of knob travel (unchanged positions within those segments), and the last 25% of knob travel covers square-to-pulse. The math: for `morph <= 0.75`, use `scaled = morph * (3.0/0.75) = morph * 4.0` which maps [0, 0.75] to [0, 3.0] -- same 3 crossfade segments. For `morph > 0.75`, the fourth segment maps [0.75, 1.0] to the square-to-pulse range. This preserves morph=0.0 as sine, morph=0.25 as tri, morph=0.5 as saw, morph=0.75 as square -- and adds morph > 0.75 as pulse territory.
-4. **Critical check:** Verify that the existing `computeMorphedWave` `shapes[4]` array and segment indexing via `int segment = std::min((int)scaled, 2)` adapts correctly to 5 shapes and 4 segments. The clamp becomes `std::min((int)scaled, 3)`.
-
-**Detection:** A/B test: save a patch at morph=0.5 (pure saw) before and after the change. If the output waveform differs, the mapping is broken.
-
-**Phase to address:** The very first phase that modifies the morph range or adds the pulse waveform.
-
-**Confidence:** HIGH (direct analysis of morph mapping at AnalogLFO.cpp lines 299-343; patch serialization confirmed to store raw param values)
-
----
-
-### Pitfall 2: Pulse Wave Amplitude Collapse at Extreme Duty Cycles
-
-**What goes wrong:** As duty cycle narrows from 50% toward very low values (5-10%), the pulse wave becomes a series of narrow spikes. The RMS energy drops proportional to the square root of the duty cycle. At 10% duty, the wave is at +1 for 10% of the cycle and -1 for 90% -- still bipolar, still peak +/-1. But at 5% duty, the positive spike is so narrow that it is perceived as much quieter than a 50% square wave, even though peak amplitude is the same. Users sweeping morph from square into pulse will hear the output "disappear." Worse, when this feeds downstream modules expecting consistent amplitude, the modulation depth appears to collapse.
-
-**Why it happens:** A mathematically correct pulse wave with constant +/-1 amplitude and narrowing duty cycle has decreasing RMS. The DC offset also shifts: at 50% duty, DC=0. At 10% duty, DC = 0.1*(+1) + 0.9*(-1) = -0.8V normalized. The output biases heavily negative.
-
-**Consequences:** Non-uniform loudness across the morph sweep. DC offset shift at narrow duty cycles. Downstream VCAs and filters behave inconsistently.
-
-**Prevention:**
-1. Limit minimum duty cycle to 10-15% (never approach 0%). At morph=1.0 the pulse is narrow but still energetic. The existing `squareDutySpread` component spread (line 282) adds up to +/-1% variation, so the effective minimum is safe at 10%.
-2. Consider DC-compensated pulse generation: shift the waveform so the DC component stays near zero regardless of duty cycle. For duty cycle `d`, the high level = `(1-d)` and low level = `-d`, which maintains zero mean. This changes the spectral character slightly but eliminates DC shift.
-3. Alternatively, accept the DC shift as authentic (real analog pulse waves have DC offset) but document it, and ensure the Drift knob's DC offset wander (line 794) doesn't compound with the pulse's inherent DC offset to exceed the +/-5V output range.
-4. The 5V output scaling (line 778 `float outputVoltage = 5.f * sample`) will produce +5V/-5V peaks regardless of duty cycle. Verify that `sample` stays in [-1, +1] even with bleed (line 316-340) and DC offset (line 794) active simultaneously during pulse operation.
-
-**Detection:** Sweep morph slowly from 0.75 (square) to 1.0 (narrow pulse) while monitoring output voltage on a scope module. Watch for: amplitude perceived drop, DC offset shift, output exceeding +/-5V.
-
-**Phase to address:** Pulse waveform implementation phase.
-
-**Confidence:** HIGH (standard DSP engineering; duty cycle / RMS relationship is well-established)
-
----
-
-### Pitfall 3: Panel Width Change Causes Module Overlap on Existing Patch Load
-
-**What goes wrong:** The VCV Rack patch JSON stores module position as grid coordinates `[x, y]` via `pos = pos.div(RACK_GRID_SIZE).round()` (confirmed from RackWidget.cpp source). Module width is NOT stored in the patch -- it is derived from the SVG panel at load time. When the module changes from 12HP (60.96mm) to 14HP (71.12mm), loading an old patch places the module at its saved grid position, but the module is now 2HP wider. Any module to the right that was placed flush against the old 12HP boundary now overlaps. VCV Rack calls `setModulePosForce()` during patch load, which pushes overlapping modules to the right. This cascading push can shift an entire rack row, breaking carefully laid-out patches.
-
-**Why it happens:** VCV Rack's patch format deliberately does not store module width -- it trusts that the module's code/SVG defines the width. This is normally fine because module widths do not change. The 12HP to 14HP change is unusual. The `setModulePosForce()` function handles collisions by displacement, not by error.
-
-**Consequences:** Patches load successfully but with shifted module positions. Users who arranged modules tightly (a common Eurorack practice) find their layout disrupted. Cables remain connected (they are stored by module/port ID, not position), so functionality is preserved, but the visual layout is damaged. Users may not notice the shift immediately if it only affects modules far to the right.
-
-**Prevention:**
-1. **Accept and document the shift.** This is a one-time migration cost. The module loads, cables work, parameters are preserved. Only the visual layout shifts. Document in release notes: "Analog LFO is now 14HP (was 12HP). Existing patches will load correctly but modules to the right may shift by 2HP."
-2. **Do NOT change the module slug** (`ForgeAnalogLFO` in plugin.json line 14). Changing the slug would make the module unrecognizable to existing patches, which is far worse than a 2HP layout shift. The slug MUST remain identical.
-3. **Do NOT change param/input/output enum values or ordering.** The current enums (lines 8-37) define param, input, and output IDs by order. Adding new params (e.g., a PWM-related param) must append to the end of the enum, not insert into the middle. Inserting shifts all subsequent IDs and breaks stored parameter values in patches.
-4. **Test with an existing patch file.** Before release, save a patch with the 12HP module, then load it with the 14HP build. Verify: (a) module loads at correct position, (b) all params restore correctly, (c) cables reconnect, (d) right-neighbor modules push rather than overlap.
-
-**Detection:** Load a saved 12HP patch with the 14HP build. Check if the module overlaps its right neighbor. Check if parameter values are preserved (especially morph, character, drift).
-
-**Phase to address:** The panel redesign phase, immediately on first SVG swap.
-
-**Confidence:** HIGH (confirmed from VCV Rack source: position stored as grid coords, width derived from SVG, `setModulePosForce` handles collisions)
-
----
-
-### Pitfall 4: nanosvg Rendering Limitations Silently Breaking the Forge Noir Panel
-
-**What goes wrong:** The Forge Noir design language (DESIGN-LANGUAGE.md) specifies features that nanosvg cannot render: CSS classes, gradients with more than 2 stops, SVG `<use>` elements for symmetry mirroring, `<text>` elements, SVG filters (Gaussian blur for the forge rune glow), linear-gradient syntax from CSS, `<defs>` blocks, and opacity via CSS properties. Designing the panel in HTML/CSS (as the mockup demonstrates) and then exporting to SVG will produce an SVG file that looks correct in a browser or Inkscape but renders as a black rectangle with scattered colored shapes in VCV Rack.
-
-**Why it happens:** VCV Rack uses nanosvg (a minimal SVG parser) for panel rendering, not a full SVG renderer. nanosvg supports: basic shapes (rect, circle, ellipse, line, polyline, polygon, path), fill/stroke colors, opacity via `fill-opacity`/`stroke-opacity` attributes, and simple 2-stop linear/radial gradients. It does NOT support: `<text>`, `<use>`, `<defs>`, `<filter>`, `<clipPath>`, CSS stylesheets, `<style>` blocks, multi-stop gradients, elliptical radial gradients (only circular), or `transform` on gradient definitions.
-
-**Consequences:** The panel renders incorrectly or as a blank rectangle. Elements that depend on unsupported features silently disappear. The module becomes unusable because the panel shows no labels or component positions. Since the SVG also defines component placeholder positions (colored circles/rects at specific coordinates), incorrect rendering can misplace knobs and jacks.
-
-**Prevention:**
-1. **Convert ALL text to paths** in Inkscape (Path > Object to Path) before saving. The current panel SVG (res/AnalogLFO.svg) already does this correctly -- every letter is a `<path>` element.
-2. **Replace `<use>` mirror transforms with duplicated geometry.** The DESIGN-LANGUAGE.md specifies `<use href="#forge-half" transform="translate(panelWidth, 0) scale(-1, 1)">` for perfect symmetry. nanosvg does not support `<use>`. Instead, duplicate the left-half paths and manually mirror their coordinates. This is verbose but guaranteed to render.
-3. **Replace multi-stop gradients with layered 2-stop gradients** or solid colors with opacity. The forge ember accent bar (`linear-gradient(90deg, #1a0800, #e85d26 25%, #daa520 50%, #e85d26 75%, #1a0800)`) has 5 stops. Replace with 2-3 overlapping rectangles with 2-stop gradients, or use a single solid color with opacity that approximates the effect.
-4. **Remove all SVG filter elements.** The forge rune's Gaussian blur glow (`stdDeviation 1.8`) will not render. Approximate the glow effect by layering multiple paths with decreasing opacity and increasing stroke width (the same technique already used for the waveform trace glow in the display, lines 896-917).
-5. **Remove all `<defs>` blocks.** Inline gradient definitions directly on elements using `fill="url(#gradientId)"` syntax where the gradient is defined as a sibling element, not inside `<defs>`.
-6. **Test the SVG in VCV Rack early and often.** Do not design the entire panel in Inkscape and test at the end. After each major element (brand text, knob positions, display area, CV section), load the SVG in VCV Rack to verify rendering.
-7. **Validate radial gradients are circular, not elliptical.** nanosvg has a hardcoded radius value (160px) for radial gradients that can cause incorrect proportions with elliptical gradients. Use only `r` (not `rx`/`ry`) for radial gradient radius. As of VCV Rack 2.6, gradient handling has improved, but circular is still safest.
-
-**Detection:** Load the SVG in VCV Rack. If any element is missing, miscolored, or positioned wrong compared to Inkscape preview, the element uses an unsupported feature. Compare VCV Rack rendering against Inkscape rendering side-by-side.
-
-**Phase to address:** Panel SVG creation phase -- the FIRST time the new SVG is authored.
-
-**Confidence:** HIGH (confirmed from VCV Rack Panel Guide and community documentation of nanosvg limitations; verified against existing AnalogLFO.svg which correctly uses paths-only approach)
-
----
-
-### Pitfall 5: FramebufferWidget Dirty Flagging Causing Stale or CPU-Draining Animation
-
-**What goes wrong:** The current WaveformDisplay (line 802) is a `TransparentWidget` that redraws every frame via `drawLayer` (line 1264). This works because NanoVG rendering is lightweight for the current display. The Forge Noir design adds an animated sync badge (clock-pulse flash) and potentially the CRT scanline overlay, corner bracket accents, and three-column pill layout from the design language. If the display is placed inside a `FramebufferWidget` for performance (caching static elements), the animated sync badge will only update when the framebuffer is marked dirty. Two failure modes:
-
-  **(a) Never marking dirty:** The sync badge appears frozen. The pulse flash animation never plays. The phase dot stops moving. The waveform trace becomes static.
-
-  **(b) Always marking dirty:** Calling `setDirty()` every frame defeats the purpose of the FramebufferWidget. The display re-renders from scratch every frame, using MORE GPU than a plain TransparentWidget (because FramebufferWidget adds framebuffer management overhead on top of the NanoVG draw calls).
-
-**Why it happens:** The FramebufferWidget is designed for widgets that change rarely (knob positions, static labels). Animated widgets that change every frame should NOT be inside a FramebufferWidget. The temptation is to wrap the entire display in one for "performance" without understanding when it helps versus hurts.
-
-**Consequences:** Mode (a): Visual bugs where animations appear frozen. Mode (b): Higher CPU/GPU usage than before, possibly causing audio dropouts. Community developers have documented that reducing render frame rates from 60fps to 30fps or 15fps significantly reduces audio dropouts, confirming that rendering performance directly impacts audio stability.
-
-**Prevention:**
-1. **Keep the WaveformDisplay as a TransparentWidget** (current approach). The display is inherently animated -- the phase dot moves, overlays fade, the breathe animation runs continuously. It should redraw every frame. The current implementation is correct for this use case.
-2. **If performance becomes an issue, optimize the NanoVG draw calls themselves** rather than adding a FramebufferWidget. Specific optimizations: (a) Skip pill text rendering when alpha < 0.001f (already done at lines 1200, 1209, 1216, 1230, 1235), (b) Reduce waveform path complexity from 256 points to 128 when the display is small (zoomed out), (c) Skip the comet trail (5 extra circles per frame) when the module is not focused/visible.
-3. **For the animated sync badge specifically:** The current SYNC badge already blinks during ACQUIRING state (lines 1218-1221) via the breathe phase. A clock-pulse flash animation can be implemented the same way: store the timestamp of the last clock edge, compute flash intensity as `exp(-decay * timeSinceEdge)`, and render with that alpha. This is a single float computation per frame, negligible cost.
-4. **The `step()` method (line 816) runs at widget frame rate (~60fps) regardless of FramebufferWidget.** Animation state updates in `step()` are cheap. The expensive part is NanoVG path rendering in `drawLayer()`. If performance is an issue, the right approach is to reduce draw complexity, not to cache an inherently dynamic widget.
-
-**Detection:** Profile with VCV Rack's built-in performance meters. If the module's GUI thread time is disproportionate (>5% of frame time), investigate which NanoVG calls are expensive. Font loading via `APP->window->loadFont()` (line 1189) should be cached by VCV Rack internally, but verify it is not reloading from disk every frame.
-
-**Phase to address:** Display layout restructuring phase -- when the display widget is modified for the three-column Forge Noir layout.
-
-**Confidence:** HIGH (confirmed from VCV Rack FramebufferWidget API docs; current TransparentWidget approach validated against animated display requirements)
-
----
-
-### Pitfall 6: Enum Reordering Breaking Patch Parameter Restoration
-
-**What goes wrong:** VCV Rack serializes parameter values by their integer ID (the position in the ParamId enum). The current enum (lines 8-19) defines 10 params: MORPH_PARAM=0 through FM_ATTEN_PARAM=9. If a new parameter for PWM (e.g., a pulse width knob or internal state) is inserted anywhere except at the end, every subsequent param ID shifts. A patch saved with the old ordering where RATE_PARAM=3 stored value 0.7 Hz will now assign that 0.7 to whatever param is at ID=3 in the new enum, which could be something completely different.
-
-**Why it happens:** C++ enums assign sequential integer values. Inserting a new entry before the terminal `PARAMS_LEN` shifts `PARAMS_LEN` up by 1 but does not shift existing entries -- unless the insertion is before them. The temptation when extending the morph range is to add a `PWM_PARAM` alongside `MORPH_PARAM` at the top of the enum for code readability.
-
-**Consequences:** All parameter values in existing patches load into wrong parameters. Morph gets drift's value, character gets rate's value, etc. The module sounds completely wrong and the user cannot figure out why.
-
-**Prevention:**
-1. **ALWAYS append new params/inputs/outputs at the end of their respective enums**, immediately before `PARAMS_LEN` / `INPUTS_LEN` / `OUTPUTS_LEN`. Never insert in the middle.
-2. The morph-integrated PWM design (from PROJECT.md) explicitly avoids needing a new PWM param -- PWM is part of the morph sweep, not a separate control. This is a design advantage: no new param enum entry needed for PWM itself.
-3. If future needs require a new param (unlikely for v1.3 but possible), add it as: `NEW_PARAM, PARAMS_LEN` -- replacing the old `PARAMS_LEN` position with the new param and putting `PARAMS_LEN` after it.
-4. Similarly for InputId: if any new input jack is added, it goes at the end before `INPUTS_LEN`. The Forge Noir redesign does not add new I/O jacks (per the active requirements in PROJECT.md), so this should not be an issue for v1.3.
-
-**Detection:** Save a patch with the old build. Load it with the new build. Check that every knob position matches what was saved. Specifically verify: Morph at a non-default value, Rate at a non-default Hz, Phase Offset at a non-zero angle.
-
-**Phase to address:** ANY phase that modifies the Module struct's enums.
-
-**Confidence:** HIGH (standard VCV Rack development practice; enum ordering is the #1 backward compatibility pitfall documented by the community)
-
----
-
-## Moderate Pitfalls
-
----
-
-### Pitfall 7: Waveform Bleed Ring Topology Breaks with 5 Shapes
-
-**What goes wrong:** The current waveform bleed implementation (lines 316-340) uses a 4-element wrapping ring: `shapes[4] = { sine, tri, saw, sqr }` with neighbor access via `(segment - 1 + 4) % 4` and `(segment + 2) % 4`. Adding a 5th shape (pulse) changes the ring size to 5. The modular arithmetic must change from `% 4` to `% 5`, the `shapes` array grows to 5 elements, and the neighbor identification logic changes because `segment + 2` no longer always points to the shape "right of segment end" -- with 5 shapes and 4 segments, the boundary conditions are different.
-
-**What goes wrong specifically:** With 4 shapes and 3 segments, `segment` ranges [0, 2]. The "right neighbor" at `(segment + 2) % 4` correctly gives shape index 2, 3, or 0 (wrapping). With 5 shapes and 4 segments, `segment` ranges [0, 3]. The "right neighbor" at `(segment + 2) % 5` gives 2, 3, 4, or 0. This is actually correct for a 5-element ring -- but the `leftIdx = (segment - 1 + 5) % 5` needs verification. At segment=0 (sine-to-tri crossfade), leftIdx would be 4 (pulse). Is pulse bleeding into a sine/tri crossfade the desired behavior? In the 4-shape ring, square bleeds into sine, which is musically reasonable (adjacent in a circular topology). In the 5-shape ring, pulse (a narrow spike) bleeding into the sine region produces a sharp artifact.
-
-**Prevention:**
-1. Decide whether the ring should wrap (pulse neighbors sine) or be open-ended (sine has no left neighbor, pulse has no right neighbor). For a morph sweep that extends linearly from sine to pulse, an open-ended topology makes more sense: no bleed at the extremes, maximum bleed in the middle.
-2. If using a ring topology, reduce the bleed intensity for the pulse shape because its extreme waveform character (narrow spikes) will produce disproportionate bleed artifacts compared to the smoother sine/tri/saw shapes.
-3. Update the `shapes` array size, ring modulus, and neighbor index math atomically -- do not partially update.
-
-**Phase to address:** Pulse waveform implementation phase.
-
-**Confidence:** HIGH (direct analysis of bleed implementation at lines 316-340)
-
----
-
-### Pitfall 8: Display Buffer Not Updated for Pulse Waveform Region
-
-**What goes wrong:** The display buffer update function `updateDisplayBuffer` (line 345) calls `computeMorphedWave(p, morph, character)` for 256 phase samples. When the morph range extends to include pulse, `computeMorphedWave` must correctly compute the pulse waveform for morph values in the new pulse region. If `computeMorphedWave` is updated but `updateDisplayBuffer` still passes morph values clamped to [0, 1], the display never shows the pulse waveform -- it caps at square.
-
-**Prevention:**
-1. Ensure `updateDisplayBuffer` passes the full morph range (including pulse territory) to `computeMorphedWave`.
-2. Verify that the display phase dot and comet trail correctly interpolate the buffer at pulse waveform positions.
-3. The display update trigger logic (lines 742-757) uses `std::fabs(morph - prevDisplayMorph) > 0.002f` for change detection. This works regardless of morph range as long as the morph value is passed correctly.
-4. If using the unequal-segment approach (Pitfall 1, option 3), the internal morph value passed to `computeMorphedWave` may differ from the knob value. Ensure the display uses the same internal morph value as the audio path.
-
-**Phase to address:** Same phase as pulse waveform implementation.
-
-**Confidence:** HIGH (direct analysis of display buffer path at line 345-360)
-
----
-
-### Pitfall 9: SVG Component Placeholders Misaligned After 12HP-to-14HP Conversion
-
-**What goes wrong:** VCV Rack reads colored circles/rects in the SVG to determine component (knob, jack, port) positions when using `createPanel()` and position-from-SVG helpers. The current panel uses hardcoded `mm2px(Vec(...))` positions in the widget constructor (lines 1296-1341), NOT SVG placeholders. However, if the Forge Noir panel SVG includes position placeholders (as is best practice per VCV Panel Guide), and those positions do not exactly match the `mm2px` calls in the C++ code, knobs and jacks will appear offset from their SVG labels.
-
-**Prevention:**
-1. Decide on ONE source of truth for component positions: either the C++ code with `mm2px(Vec(...))` or the SVG placeholders. The current code uses C++ positions exclusively. For the Forge Noir redesign, switching to SVG-driven positions would be cleaner but requires converting all `addParam`/`addInput`/`addOutput` calls to use `createParamCentered<>(mm2px(Vec(x, y)), ...)` where x, y match the SVG.
-2. When switching from 12HP (60.96mm width) to 14HP (71.12mm width), ALL x-coordinate positions must be recalculated. The current positions (e.g., morph knob at x=30.48, which is center of 60.96mm) must shift to x=35.56 (center of 71.12mm) or to whatever the Forge Noir layout specifies.
-3. The DESIGN-LANGUAGE.md specifies exact positions at 5x scale: panel center at x=178px (which is 35.56mm at 1x, confirming 14HP center). Secondary columns at x=106, 250 (21.2mm, 50mm). CV columns at x=46, 114, 178, 244, 310 (9.2mm, 22.8mm, 35.56mm, 48.8mm, 62mm). These must be transcribed precisely to mm2px calls.
-4. **Screws:** The current screw positions (lines 1301-1304) use `box.size.x` which auto-adjusts to panel width. These are safe.
-
-**Phase to address:** Panel SVG creation and widget constructor update.
-
-**Confidence:** HIGH (direct analysis of widget constructor at lines 1296-1341)
-
----
-
-### Pitfall 10: Font Loading in drawLayer Causing Per-Frame Disk Access
-
-**What goes wrong:** The current `drawTextOverlays` method (line 1189) calls `APP->window->loadFont(asset::system("res/fonts/ShareTechMono-Regular.ttf"))` every time it is invoked. While VCV Rack caches fonts internally, this call still involves a hash lookup and shared_ptr reference counting every frame. The Forge Noir design language specifies THREE different fonts: Bebas Neue (brand/hero), Chakra Petch (labels), JetBrains Mono (data). If each font is loaded per-frame via `loadFont()`, the overhead triples.
-
-**Prevention:**
-1. Store font handles as member variables of the display widget, loaded once in the constructor or on first draw.
-2. Note: VCV Rack's font loading requires a valid NVGcontext, which is only available during draw calls, not in the constructor. The standard pattern is to load on first draw and cache:
-   ```cpp
-   int jetbrainsFont = -1;
-   void drawLayer(const DrawArgs& args, int layer) override {
-       if (jetbrainsFont < 0) {
-           auto font = APP->window->loadFont(asset::plugin(pluginInstance, "res/fonts/JetBrainsMono.ttf"));
-           if (font) jetbrainsFont = font->handle;
-       }
-       // ... use jetbrainsFont
-   }
+### Pitfall 1: Removing the trial fonts only from HEAD, leaving them in history
+
+**What goes wrong:**
+You `git rm BCBarellTEST-Regular.otf FoundationLogo.ttf`, commit, and call it done. The files are gone from the working tree and from the tip commit, but they remain fully downloadable from commit `e486ce1` (and every commit between it and the deletion). The moment the GitHub repo is flipped to **public**, anyone can `git checkout e486ce1` or browse the tree at that SHA and pull the trial/proprietary font binaries — which is exactly the redistribution the trial license prohibits and which violates VCV's "do not misuse intellectual property (legally or morally)" acceptance rule.
+
+**Why it happens:**
+Git's mental model is "the latest commit is the state of the repo." Deleting from HEAD *feels* complete. Developers forget that public repos expose the **entire reachable object graph**, not just `HEAD`.
+
+**How to avoid — exact, ordered procedure (repo is private+pushed, so this is the safe path):**
+
+1. **Confirm the repo is still PRIVATE before doing anything destructive.** It is today; do not flip to public until step 9.
+   `gh repo view Photep/ForgeAudio-AnalogSeries --json visibility`
+2. **Finish/commit/stash all real work first.** History rewrite changes every commit SHA from `e486ce1` onward; do it on a quiet tree with nothing else in flight, ideally as its own milestone phase.
+3. **Operate on a FRESH clone, not the working repo.** `git filter-repo` refuses to run on a repo that has a remote unless `--force`, specifically to protect you. Honour that:
+   ```bash
+   cd /tmp
+   git clone --no-local "/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series" forge-clean
+   cd forge-clean
    ```
-3. The Forge Noir display design uses JetBrains Mono for pills (Hz, BPM, SYNC, ratio labels) and the current code uses ShareTechMono. This font change must be reflected in the actual font file bundled in `res/fonts/`.
-4. Ensure font files are bundled in the plugin's `res/fonts/` directory, not loaded from system fonts. Use `asset::plugin()` not `asset::system()` for custom fonts. System fonts may not exist on all platforms.
+4. **Verify git-filter-repo is installed** (`pip install git-filter-repo` or `brew install git-filter-repo`): `git filter-repo --version`.
+5. **Purge the two files from ALL history:**
+   ```bash
+   git filter-repo \
+     --path BCBarellTEST-Regular.otf \
+     --path FoundationLogo.ttf \
+     --invert-paths
+   ```
+   `--invert-paths` keeps everything *except* the listed paths, deleting them from every commit. (Equivalent: `--path-glob '*.otf'` only if you are certain no shippable .otf exists — here the OFL font is `.ttf`, so the explicit two-path form is preferred for auditability.)
+6. **Re-add the remote** (filter-repo deletes `origin` by design, to stop you accidentally mixing old + rewritten history):
+   ```bash
+   git remote add origin https://github.com/Photep/ForgeAudio-AnalogSeries.git
+   ```
+7. **Force-push the rewritten history to the still-private remote** (overwrites the contaminated server-side history):
+   ```bash
+   git push --force --all origin
+   git push --force --tags origin
+   ```
+8. **Re-point the real working repo at the rewritten history.** Because SHAs changed, the original repo is now divergent. Simplest safe move: re-clone the rewritten remote into a fresh working dir and continue there, OR in the existing repo `git fetch origin && git reset --hard origin/main` (only after confirming no un-pushed local work exists).
+9. **Only now flip to public:** `gh repo edit Photep/ForgeAudio-AnalogSeries --visibility public --accept-visibility-change-consequences`.
 
-**Phase to address:** Display layout restructuring phase.
+**Verifying the purge (do all four):**
+```bash
+# 1. No commit touches that path anywhere in history:
+git log --all --oneline -- BCBarellTEST-Regular.otf FoundationLogo.ttf   # → empty
+# 2. Not in any tree at any commit:
+git rev-list --all --objects | grep -iE 'Barell|FoundationLogo'          # → empty
+# 3. The (now re-hashed) introducing commit no longer carries them:
+git show <new-sha-of-e486ce1> --stat | grep -iE 'otf|FoundationLogo'     # → empty
+# 4. After force-push, confirm server-side via a throwaway fresh clone:
+git clone https://github.com/Photep/ForgeAudio-AnalogSeries.git /tmp/verify && \
+  cd /tmp/verify && git rev-list --all --objects | grep -iE 'Barell|FoundationLogo'   # → empty
+```
+Note: GitHub may keep unreachable objects cached and accessible by exact SHA via the API until GC. **Doing the purge while still PRIVATE sidesteps this entirely** because no third party ever had access — the single biggest reason to purge-before-public rather than purge-after.
 
-**Confidence:** MEDIUM (VCV Rack's internal font caching may make this a non-issue in practice, but the 3-font overhead is worth optimizing proactively)
+**BFG alternative:** `bfg --delete-files '{BCBarellTEST-Regular.otf,FoundationLogo.ttf}'` then `git reflog expire --expire=now --all && git gc --prune=now --aggressive`. BFG is faster on huge repos, but git-filter-repo is the officially recommended tool (git's own docs deprecate `filter-branch` in its favour), is already path-precise here, and auto-removes the remote as a guardrail. **Recommend git-filter-repo.**
 
----
+**Warning signs:** "I deleted the fonts" with no mention of a history rewrite; a PR that only modifies HEAD; the repo being made public before a verification clone was checked.
 
-### Pitfall 11: Crossfade Artifacts When PWM Duty Cycle Is Modulated by Morph CV
-
-**What goes wrong:** The existing anti-click crossfade (lines 780-789) fires on clock-edge phase resets with a 3ms cosine crossfade. When morph CV rapidly sweeps through the square-to-pulse transition, the duty cycle changes dramatically within a single LFO cycle. If the duty cycle changes mid-cycle such that the waveform's transition edge (where it flips from +1 to -1) moves past the current phase position, the waveform value can jump discontinuously within a single cycle -- no phase reset involved, so the crossfade never fires.
-
-**Why it happens:** The square/pulse waveform is computed per-sample based on the current phase and current duty cycle. If duty = 0.5 at sample N and duty = 0.3 at sample N+1, and the phase is at 0.4, the output jumps from +1 (phase < 0.5) to -1 (phase > 0.3). This is a 2-unit (10V) discontinuity with no crossfade protection.
-
-**Prevention:**
-1. This is primarily an audio-rate concern (VCOs), not an LFO concern. At LFO rates (0.01-20Hz), the morph CV would need to change the duty cycle faster than the LFO frequency for this to be audible. At 20Hz, a duty cycle change within 50ms would matter. At 0.5Hz, only a change within 2 seconds matters, which is unlikely to be abrupt.
-2. However, with FM input modulating the frequency up to much higher values (exponential FM can push the effective frequency above 100Hz), this becomes relevant.
-3. The existing `computeSquare` (line 276) uses `tanh` sigmoid softening (line 294) when character > 0. At character=0 (pure digital), the edge is a hard step function, and the discontinuity from duty cycle change is maximally sharp. At higher character values, the `tanh` smoothing provides implicit anti-aliasing of the duty cycle transition.
-4. **Simplest prevention:** Ensure the pulse waveform computation always applies minimum edge softening, even at character=0, when computing the pulse region. A subtle `tanh` with sharpness=50 (producing ~0.5% edge width) is inaudible as smoothing but prevents clicks from duty cycle modulation.
-
-**Phase to address:** Pulse waveform implementation phase.
-
-**Confidence:** MEDIUM (edge case that depends on morph CV rate and LFO frequency; the tanh character smoothing provides natural mitigation at non-zero character values)
-
----
-
-### Pitfall 12: Three-Column Display Layout Breaking at Small Zoom Levels
-
-**What goes wrong:** The Forge Noir design specifies a three-column display layout: left column (ratio pill, Hz readout, swing label), center column (waveform + phase dot), right column (SYNC badge, CLK/BPM stack). At 5x scale (356px panel width, display ~320px wide), the columns have generous spacing. But VCV Rack renders at multiple zoom levels, and at 50% zoom the display is only ~32px wide. Three columns of text pills at 5px font size become illegible at low zoom, and text elements overlap each other.
-
-**Prevention:**
-1. The current pill text implementation (lines 1018-1065) uses `nvgTextBounds` for measurement and positions pills at fixed margin offsets from display edges. This approach scales correctly with zoom because NanoVG handles coordinate transforms. Text at 10px font size is 10px regardless of zoom -- zoom is a viewport transform, not a font size change.
-2. However, verify that pill backgrounds (the feathered box gradient at lines 1041-1053) do not overlap the waveform trace at narrow display widths. The `nvgScissor` call (line 1268) clips to display bounds, preventing overdraw, but overlapping pills look messy.
-3. For the three-column layout, test at 50%, 75%, 100%, 150%, and 200% zoom. If pills overlap at low zoom, add a zoom-aware threshold that hides secondary information (swing label, CLK BPM) when the display is below a certain pixel width.
-4. The design language specifies specific x-coordinates for columns (left: 16-55, center: 64-256, right: 262-302 at 5x scale). These translate to mm coordinates that work at any zoom. Verify these do not overlap at 1x scale.
-
-**Phase to address:** Display layout restructuring phase.
-
-**Confidence:** MEDIUM (NanoVG scaling handles most cases; the risk is primarily visual overlap at extreme zoom levels)
-
----
-
-### Pitfall 13: Animated Sync Badge Consuming CPU When Not Visible
-
-**What goes wrong:** Adding a clock-pulse flash animation to the SYNC badge means computing the flash decay curve every frame, even when: (a) the module is not clocked (badge not visible), (b) the module is off-screen (not in viewport), (c) the module is bypassed. If the animation updates an atomic variable from the audio thread and a timer in the GUI thread, both threads do unnecessary work.
-
-**Prevention:**
-1. Gate the animation computation on visibility. The current code already skips SYNC rendering when `syncFadeAlpha <= 0.001f` (line 1216). The flash animation should be gated the same way.
-2. For the audio thread: store the last clock edge timestamp as an `std::atomic<float>` only when the clock state is ACQUIRING or LOCKED. The GUI thread reads this atomic and computes `exp(-decay * (currentTime - edgeTime))` only when drawing the badge.
-3. The `step()` method (line 816) already checks `if (module)` before updating fade timers. The flash animation fits naturally into this pattern.
-4. When the module is bypassed, `dimFactor` is set to 0.25f (line 1279). The flash animation should respect this dim factor to avoid a bright flash on a dimmed display.
-
-**Phase to address:** Animated sync badge implementation phase.
-
-**Confidence:** HIGH (standard optimization pattern; gating is already demonstrated in the existing code)
+**Phase to address:** Dedicated **"Release IP hardening / history purge"** phase, executed while repo is still private, BEFORE the "publish public repo" phase. Must be its own phase because it rewrites every SHA and gates publication.
 
 ---
 
-## Minor Pitfalls
+### Pitfall 2: Going public (or submitting) before the purge is *verified*, not just performed
+
+**What goes wrong:**
+The publish step and the purge step get bundled into one phase, the force-push silently pushes only `main` (not `--all`/`--tags`), and the repo is flipped public with contaminated history still on a stale branch/tag.
+
+**Why it happens:**
+`git push --force origin main` only rewrites one ref. Other branches/tags created before the rewrite still point at old commits that contain the fonts.
+
+**How to avoid:**
+- Force-push with `--all` and `--tags`, not a single branch.
+- Treat publication as a **separate phase gated on the four-step verification above passing against a fresh clone of the remote.**
+- Make "fresh-clone grep returns empty" a hard release-blocker checklist item.
+
+**Warning signs:** Extra branches/tags on the remote; verification done against the local clone only, never against a re-clone of the remote.
+
+**Phase to address:** "Publish public repo" phase — entry criterion = purge verification passed.
 
 ---
 
-### Pitfall 14: Custom Font Files Not Bundled in Plugin Distribution
+### Pitfall 3: Shipping or crediting incompatible third-party assets (license/IP traps)
 
-**What goes wrong:** The Forge Noir design specifies Bebas Neue, Chakra Petch, and JetBrains Mono fonts. If these font files are not included in the plugin's `res/fonts/` directory, the module will crash or render with fallback fonts on machines that do not have these fonts installed system-wide. The current code uses `asset::system("res/fonts/ShareTechMono-Regular.ttf")` which loads from VCV Rack's built-in fonts. Custom fonts must use `asset::plugin(pluginInstance, "res/fonts/FontName.ttf")`.
+**What goes wrong:**
+GPL-3.0-or-later requires everything distributed *as part of the work* to be GPL-compatible, properly licensed, and attributed. Risks for this repo:
+- **Trial fonts** (`BCBarellTEST-Regular.otf` "TEST" suffix, `FoundationLogo.ttf`): trial/eval licenses almost universally forbid redistribution → cannot live in a public repo at all (covered by Pitfalls 1–2).
+- **JetBrains Mono (OFL):** redistributable and GPL-compatible, BUT OFL requires the license text be included and the font not be sold by itself. Shipping it inside a GPL plugin is fine; still include the OFL license text / attribution.
+- **Panel SVG / knob art:** `res/AnalogLFO.svg` and `res/components/*` must be your own work or licensed for redistribution under terms compatible with GPL-3.0. Any traced logo, borrowed knob graphic, or export of a copyrighted glyph is an IP risk. If panel text was converted to outlines from a non-OFL font, those *paths* may be a derivative requiring a redistribution license.
+- **Bebas Neue / Chakra Petch:** named as brand fonts in PROJECT.md. Confirm they were used only to render *mockups* (PNGs, not committed source), OR — if their outlines were baked into the production SVG — that the *specific files used were the OFL versions* (both are OFL on Google Fonts), not a trial/commercial cut.
 
-**Prevention:**
-1. Bundle all three font files (.ttf or .otf) in `res/fonts/`.
-2. Check font licenses: Bebas Neue (SIL OFL), Chakra Petch (SIL OFL), JetBrains Mono (SIL OFL / Apache 2.0) -- all permissively licensed for bundling.
-3. Use `asset::plugin()` not `asset::system()` for all custom font loads.
-4. Note: These fonts are for the NanoVG display only. The panel SVG uses text-as-paths, so panel rendering does not depend on font files.
+**Why it happens:**
+"It builds and looks right" hides licensing status. The same typeface ships under wildly different licenses (free OFL vs paid foundry cut vs trial). The "TEST" suffix here is the giveaway.
 
-**Phase to address:** Display layout restructuring phase, when fonts are first loaded.
+**How to avoid:**
+- Inventory every binary/art asset in `res/` and at repo root; record each asset's license in a `LICENSE` + `NOTICES` (or `res/fonts/README`) file.
+- Keep only OFL/CC-BY/own-work assets; purge trial/commercial ones from history.
+- Add the OFL license text for JetBrains Mono (and any other OFL font whose outlines ship in the SVG) alongside the GPL `LICENSE`.
+- Confirm via `grep` that source references only OFL assets (already verified: only `JetBrainsMonoNL-Regular.ttf` is referenced).
 
-**Confidence:** HIGH (standard VCV Rack plugin pattern; straightforward to get right if remembered)
+**Warning signs:** Font filenames with "TEST"/"Trial"/"Demo"/foundry names; SVG with embedded base64 fonts; logo art with no provenance note.
 
----
-
-### Pitfall 15: Component Spread Seed Incompatibility After Adding Pulse Shape
-
-**What goes wrong:** The `initComponentSpread()` function (lines 196-212) generates deterministic random offsets from the stored seed. It calls `d(spreadRng)` in a specific order to produce `ouWeightSpread[0..3]`, `characterSpread`, `sawCurvatureSpread`, `squareDutySpread`, `triAsymmetrySpread`, and `bleedSpread`. If a new spread parameter is added for the pulse waveform (e.g., `pulseMinDutySpread`) and the call is inserted before `bleedSpread`, then `bleedSpread` (and any subsequent values) will receive a different random value from the same seed. Existing patches with stored seeds will have their component spread characteristics change subtly.
-
-**Prevention:**
-1. Append any new spread parameter calls at the END of `initComponentSpread()`, after `bleedSpread`. This preserves all existing spread values from the same seed.
-2. Since PWM is an extension of the morph range, the existing `squareDutySpread` may already cover the pulse region's behavior. If so, no new spread parameter is needed.
-3. If a new parameter IS needed (e.g., minimum pulse width variation), add it after `bleedSpread = d(spreadRng) * 0.02f;` (line 211).
-
-**Phase to address:** Pulse waveform implementation phase, if spread is added.
-
-**Confidence:** HIGH (deterministic RNG ordering is a known concern; documented in v1.2 pitfalls as well)
+**Phase to address:** "Release IP hardening" phase (same one that does the purge) — produces the asset inventory + NOTICES file. LICENSE file creation (finding #5) also lands here.
 
 ---
 
-### Pitfall 16: Panel SVG Cache Interference When Testing Multiple Versions
+### Pitfall 4: Trademark / brand-naming traps in the VCV Library
 
-**What goes wrong:** VCV Rack caches loaded SVGs by filename. During development, if you save a modified `AnalogLFO.svg` and reload VCV Rack, the cache may serve the old version. More insidiously, if you have both the old 12HP and new 14HP SVG with the same filename in different build directories, the cache might serve the wrong one.
+**What goes wrong:**
+VCV's acceptance rule is explicit: plugins that "misuse intellectual property (legally or morally)" are rejected. Naming or marketing a module after trademarked hardware ("Minimoog", "Moog", "Roland", "Juno", "Prophet", "SH-101", "MPC") in user-facing strings (module name, keywords, description, panel text, preset names) invites takedown. PROJECT.md's character knob *targets* those synths internally — fine as engineering intent — but the **shipped** name/description/panel must not claim or imply endorsement or use the trademarks as product identifiers.
 
-**Prevention:**
-1. After modifying the SVG, fully quit and restart VCV Rack to clear the cache.
-2. During development, use the VCV Rack `-d` (developer mode) flag if available, which may disable caching.
-3. If testing both 12HP and 14HP versions, use different filenames temporarily during development, then rename to `AnalogLFO.svg` for final build.
+**Why it happens:**
+The character modeling genuinely references those synths, so it feels natural to name them in the UI/manual for clarity.
 
-**Phase to address:** Panel SVG creation phase.
+**How to avoid:**
+- Keep "Minimoog/Roland/Moog/Prophet" out of `plugin.json` `name`/`description`/`keywords`, panel text, and preset names. Generic descriptors ("classic ladder character", "vintage transistor saw") are safe.
+- "Forge Audio" / "Analog LFO" / "Forge Noir" appear original — do a quick marketplace + USPTO/EUIPO name search to confirm no collision with an existing VCV plugin slug or brand (search the VCV Library + the library GitHub issue tracker for "Forge").
+- The Notion manual *may* describe reference synths in prose ("inspired by vintage transistor LFO character") but must avoid trademark-as-feature-name.
 
-**Confidence:** MEDIUM (cache behavior documented by community; exact invalidation behavior may vary by VCV Rack version)
+**Warning signs:** Trademarked names in any user-facing string; "official"/"authentic Moog" style claims.
 
----
-
-## Phase-Specific Warnings
-
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| PWM via morph extension | Pitfall 1 (morph continuity), Pitfall 2 (amplitude collapse), Pitfall 6 (enum ordering) | Preserve existing morph mapping, limit min duty cycle, append new enums |
-| Forge Noir panel SVG | Pitfall 3 (width change overlap), Pitfall 4 (nanosvg limitations), Pitfall 9 (placeholder alignment) | Document 2HP shift, text-as-paths only, test SVG in Rack early |
-| Display layout restructuring | Pitfall 5 (FramebufferWidget misuse), Pitfall 10 (font loading), Pitfall 12 (zoom levels), Pitfall 14 (font bundling) | Keep TransparentWidget, cache fonts, test at multiple zoom levels |
-| Animated sync badge | Pitfall 5 (dirty flagging), Pitfall 13 (CPU when hidden) | Gate animation on visibility, use decay curve from atomic timestamp |
-| Waveform bleed update | Pitfall 7 (ring topology), Pitfall 8 (display buffer) | Update ring modulus and neighbor logic atomically, pass full morph range |
-| Backward compatibility | Pitfall 1 (morph mapping), Pitfall 3 (panel width), Pitfall 6 (enum ordering), Pitfall 15 (spread seed) | Preserve all existing numeric mappings, append-only changes |
+**Phase to address:** "VCV Library compliance" phase (manifest/strings audit) + "Manual" phase (prose review).
 
 ---
 
-## Integration Pitfalls
+### Pitfall 5: VCV Library manifest / submission rejection causes
 
-These are not about any single feature but about how the features interact when combined.
+**What goes wrong (concrete, mapped to this repo):**
 
-### Integration Pitfall A: PWM + Character + Bleed Triple Interaction
+| Cause | This repo's status | Fix |
+|---|---|---|
+| Missing `sourceUrl` (no way to fetch source) | **EMPTY** — blocker | Fill after public repo exists |
+| Empty `authorUrl`/`pluginUrl`/`manualUrl` | empty (optional, but fill `pluginUrl`/`manualUrl`→Notion) | populate |
+| `version` MAJOR ≠ Rack major | `2.0.0` is **correct** (Rack 2). Do NOT change to `1.4.x` | leave at 2.x; bump REVISION |
+| Slug changed after release | slug `ForgeAudio-AnalogSeries`, module `ForgeAnalogLFO` — **must never change** once submitted | freeze slugs now |
+| Slug illegal chars | only `a-zA-Z0-9-_` allowed; current slugs legal | ok |
+| Missing/invalid tags | tags must match VCV's fixed list, case-insensitive; `Low-frequency oscillator` + `Waveshaper` both valid | ok |
+| Panel SVG path mismatch | panel is `res/AnalogLFO.svg`, module slug is `ForgeAnalogLFO`; Rack loads whatever path the code passes to `createPanel` — verify the load path matches and the SVG renders in the official build | verify load path |
+| Unsupported SVG (filters/CSS/blur/live text) | PROJECT.md constrains to nanosvg subset; re-verify no `<filter>`, gradients-on-text, or live `<text>` survive in production SVG | lint SVG |
+| Build fails on official toolchain | must build clean with the Rack SDK on Mac/Win/Linux | CI build all three |
+| Commit hash not provided / branch name given | submission needs exact `git rev-parse HEAD`, not "main" | record SHA at submit |
+| Makefile `VERSION` not incremented | VCV reads Makefile `VERSION` for updates | keep Makefile VERSION == plugin.json |
+| Closed-source / proprietary license declared but no LICENSE | declared `GPL-3.0-or-later` but no `LICENSE` ships | add LICENSE (finding #5) |
+| IP misuse (trial fonts, trademarks) | trial fonts in history (Pitfall 1), trademark strings (Pitfall 4) | purge + string audit |
 
-The pulse waveform with character-modeled edge softening (tanh shaping) AND waveform bleed from adjacent shapes creates a complex interaction. At high character, the pulse edges are soft (tanh smoothing), the bleed adds saw/square crosstalk, and the DC offset from the drift engine shifts the baseline. Test the combined effect at: morph=0.9 (square/pulse crossfade), character=1.0 (max analog), drift=1.0 (max imperfection). Verify output stays within +/-5.5V and no NaN/inf occurs.
+**Why it happens:**
+The manifest "looks complete" but several fields are empty or only matter at submission time; SVG renders in the dev build but not under the official renderer.
 
-### Integration Pitfall B: Panel Resize + Display Resize Coordinate Mismatch
+**How to avoid:**
+- Validate `plugin.json` against the Manifest spec field-by-field; fill all submission-required URLs.
+- Build with the official Rack SDK and load the panel in a real Rack build (not just the dev shortcut) to catch SVG render issues.
+- One issue thread titled with the **slug** (`ForgeAudio-AnalogSeries`); post sourceUrl + commit hash + license + version.
+- Keep Makefile `VERSION` == `plugin.json` `version`.
 
-The display widget position is set in mm2px coordinates in the widget constructor (line 1312: `display->box.pos = mm2px(Vec(2.f, 15.f))`). When the panel changes from 12HP to 14HP, the display position and size must be updated to match the Forge Noir layout. If the display size changes but the internal NanoVG drawing coordinates (used for phaseToX, valueToY at lines 848-856) are based on `box.size`, they will auto-scale. However, pill text positions that use absolute offsets (e.g., `float margin = 4.f` at line 1193) may need adjustment if the display aspect ratio changes significantly.
+**Warning signs:** Empty URL fields; panel that looks different in dev preview vs a fresh Rack install; SVG containing `<filter>`/`feGaussianBlur`/live text.
 
-### Integration Pitfall C: dataFromJson Migration for New Features
-
-The `dataFromJson` method (lines 592-604) currently restores `spreadSeed` and `swingIndex`. If v1.3 adds new serialized state (e.g., animation preferences, display mode), the `dataFromJson` must gracefully handle loading patches from v1.2 that lack these fields. The current pattern of checking `if (swingJ)` before accessing the value is correct -- apply the same null-check pattern for any new fields.
+**Phase to address:** "VCV Library compliance" phase (manifest + LICENSE + SVG lint + build verify) and a final "Submission" phase (issue thread + commit hash).
 
 ---
+
+### Pitfall 6: Regression when refactoring DSP for testability (findings #11, #12)
+
+**What goes wrong:**
+- **#12 (move display-buffer generation off the audio thread):** `updateDisplayBuffer()` currently runs in `process()`. Moving its 256× `computeMorphedWave` to `WaveformDisplay::step()` (GUI thread) introduces a **thread boundary** the code didn't have. Risks: reading morph/character/swing without the existing atomic bridges (tearing / stale frame); display lagging audio by a variable number of frames; the buffer being read by the widget while half-written (needs the existing lock-free double-buffer discipline, not a naive shared array); behavior diverging clocked vs unclocked because the swing-zeroing gate (`isClocked ? swingFrac : 0.5f`, see finding #3) must move with it.
+- **#11 (frame-rate-independent timing via `getLastFrameDuration`):** Replacing fixed `1/60` ticks with wall-clock deltas changes breathe/blink/scanline math. Risks: a huge `dt` on the first frame or after a stall (window unfocused, patch load) causing a visible jump/flash; SYNC blink rate drifting if `dt` is sampled inconsistently; tests that assumed 60 ticks/sec breaking.
+
+**Why it happens:**
+Refactoring "for testability" touches timing and threading — the two areas with the least deterministic, hardest-to-eyeball behavior. The code "has shipped fine through four milestones," so the safety margin masking #12 is invisible until instance count or sample rate changes.
+
+**How to avoid — guard with the NEW tests this milestone adds:**
+- **Extract pure functions first, test, then move.** Pull `computeMorphedWave` / buffer generation into a side-effect-free function unit-tested for identical output given the same morph/character/swing — *before* relocating the call site. The test pins behavior so the move is provably output-preserving.
+- **Headless `process()`-driver harness:** run N sample blocks at multiple sample rates (44.1k/48k/96k) and multiple block sizes; assert output is bit-identical (or within epsilon) before vs after the #12 move. Catches block-buffering assumptions.
+- For #11: clamp `dt` (e.g. `dt = clamp(getLastFrameDuration(), 0, 1/30.0)`) so a stalled frame can't fling an animation; unit-test a pathological large `dt` and assert phase advances only by the clamped amount.
+- Keep the atomic bridges for any value crossing the new thread boundary; reuse the existing lock-free double-buffer pattern, not a raw shared buffer.
+- **Land each bug fix (#1–#4) as a regression test in the same commit** (PROJECT.md mandates this) so the refactor can't silently reintroduce them.
+
+**Warning signs:** Display "looks slightly off" after refactor; crackle reports as instance count grows (the #12 margin finally exhausted); animation jumps on patch load / window refocus; tests that hard-code 60fps.
+
+**Phase to address:** "Test harness" phase (build unit + headless harness FIRST), then "DSP/display refactor" phase gated on those tests being green before and after each change. #12 and #11 must not precede the harness.
+
+---
+
+### Pitfall 7: Committing a behavioral change (x1.5 / ÷1.5 retrigger, finding #2) without auditioning
+
+**What goes wrong:**
+Finding #2's proposed per-ratio alignment table is *mathematically* more consistent, but the current every-beat retrigger on x1.5 might be a **desirable groove** the author/users actually like. "Correct by math" can be "worse by feel." Committing the table change blind risks shipping a regression in musical behavior that no automated test catches (it's a taste/feel decision, not a correctness bug).
+
+**Why it happens:**
+DSP correctness instincts treat "inconsistent with other ratios" as a bug to fix. For a creative instrument, intentional asymmetry can be a feature.
+
+**How to avoid — explicit audition gate:**
+1. Build both versions behind a temporary toggle (or two builds: current vs aligned table).
+2. Audition x1.5 and ÷1.5 in Rack against a clock with a musical patch: listen for whether the every-beat chop is a groove or an artifact; watch the phase dot teleport vs glide.
+3. Record the decision (with audio if possible) in the milestone log: keep-current vs adopt-table, with rationale.
+4. Only after the listening decision: implement the chosen behavior and add a **deterministic regression test** pinning the *chosen* alignment (e.g. "÷1.5 resets every 3 beats", or "x1.5 retriggers every beat — intentional") so future refactors can't silently flip it.
+5. If the table is adopted, also assert no mid-cycle truncation (phase ≈ 0 at the reset boundary) in the headless harness.
+
+**Warning signs:** A PR that changes the ratio table with no "auditioned" note; a test that encodes the *math* without anyone having listened; user feedback that "the groove changed."
+
+**Phase to address:** "Bug fixes" phase, with #2 explicitly **audition-gated** (PROJECT.md already flags it). The listening decision is a phase entry criterion for writing the test.
+
+---
+
+### Pitfall 8: Version / changelog hygiene for a public release
+
+**What goes wrong:**
+- **Internal milestone "v1.4" vs manifest `version 2.0.0` confusion.** A well-meaning fix could "correct" the manifest to `1.4.0`, which would **break VCV** (MAJOR must equal Rack major = 2) and confuse the Library updater. The internal milestone name and the published plugin version are *different numbering schemes* and must not be conflated.
+- **Makefile `VERSION` drifting from `plugin.json version`** — VCV reads the Makefile for update detection; mismatch makes the Library miss/misreport the release.
+- **No `CHANGELOG`** (confirmed absent). A public release with no changelog leaves users and the reviewer without a record of what changed; `changelogUrl` goes unfilled.
+- **First public version chosen carelessly** — since the slug is frozen forever, the first published `version` is the baseline; pick a clean `2.x.y` and only ever increment.
+
+**Why it happens:**
+Two parallel version systems (GSD milestone vs VCV manifest) invite "fixing" the one that looks wrong.
+
+**How to avoid:**
+- Document the rule: **manifest stays 2.x (Rack 2); milestone label v1.4 is internal only.** Increment REVISION/MINOR for this release (e.g. keep `2.0.0` for the first public build, or `2.1.0` if treating the hardening as a feature release).
+- Keep `plugin.json version` and Makefile `VERSION` identical; add a grep-compare check to the release checklist.
+- Add `CHANGELOG.md`; set `changelogUrl` and `manualUrl` (Notion) in the manifest.
+- Tag the release commit (`git tag v2.x.y`) and record `git rev-parse HEAD` for the VCV submission.
+
+**Warning signs:** Anyone editing `version` toward `1.x`; Makefile and plugin.json versions differing; release with no tag/changelog.
+
+**Phase to address:** "VCV Library compliance" phase (version reconciliation + CHANGELOG + Makefile sync) and "Submission" phase (tag + commit hash).
+
+---
+
+## Technical Debt Patterns
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Delete trial fonts from HEAD only, skip history rewrite | One commit, done in seconds | Fonts redistributable forever once public; license violation + VCV rejection grounds | **Never** for a repo going public |
+| Flip repo public, then purge | Unblocks submission sooner | Third parties (and GitHub SHA-addressable cache) may already have the fonts; purge no longer fully effective | Never — purge while private |
+| Move display buffer off audio thread without extracting/pinning the pure function first | Faster refactor | No proof output is preserved; silent visual/audio regression | Never this milestone (tests are the whole point) |
+| Adopt the #2 alignment table on math grounds without auditioning | Closes the finding fast | May ship a worse groove; un-catchable by tests | Never — audition first |
+| Set manifest version to "1.4.0" to match milestone | Naming feels consistent | Breaks VCV MAJOR=Rack-major rule; Library update confusion | Never |
+| Skip CHANGELOG for first public release | Less writing | No record for users/reviewer; empty changelogUrl | Only for a truly internal pre-release, not the public submission |
+| Hard-code 60fps to keep #11 simple | Less math | Animations wrong on 120/144Hz displays (the bug being fixed) | Never — defeats finding #11 |
+
+## Integration Gotchas
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| `git filter-repo` | Running it on the live working repo; surprised origin vanished; force-pushing only `main` | Run on a fresh `--no-local` clone; re-add origin; `push --force --all --tags`; re-sync working repo |
+| GitHub visibility | Making repo public before purge verified against a fresh remote clone | Verify (4-step grep on a re-clone) while still PRIVATE, then flip public |
+| VCV Library issue tracker | Titling the thread with the plugin *name*; giving a branch name | Title = **slug** (`ForgeAudio-AnalogSeries`); post `git rev-parse HEAD` + sourceUrl + license |
+| VCV manifest ↔ Makefile | `plugin.json version` and Makefile `VERSION` drift | Keep identical; grep-compare in release checklist |
+| Panel SVG ↔ nanosvg renderer | Filters/blur/CSS/live `<text>` that render in editor but not in Rack | Lint SVG to nanosvg subset; load in a real Rack build |
+| Notion manual ↔ manifest | Manual exists but `manualUrl`/`pluginUrl` left empty | Publish Notion page, paste its public URL into the manifest before submission |
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Display buffer regen on audio thread (#12) | Crackle/xruns as instance count rises | Move to GUI `step()` behind atomics + double-buffer | Many instances / high sample rate / low block size |
+| Frame-rate-coupled animation (#11) | Breathing glow ~2.4× too fast on 144Hz; SYNC blink wrong | Wall-clock `dt` (clamped) | Any monitor >60Hz |
+| Unclamped `dt` after stall | Animation jump/flash on patch load or window refocus | `clamp(dt, 0, 1/30)` | First frame, focus changes, heavy patches |
+
+## Security Mistakes
+
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| Patch-load crash on malformed JSON (#4) | Hand-edited/corrupt patch crashes Rack (DoS-ish, user data loss) | `json_is_string()` guard + try/catch or `strtoull`; fall back to existing seed |
+| Trial/proprietary binaries in public history | Legal exposure (license violation), VCV rejection | History purge before public (Pitfall 1) |
+
+## UX Pitfalls
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| "Fixing" x1.5 groove without auditioning (#2) | Familiar groove silently changes; users feel the instrument regressed | Audition gate, document decision, pin with test |
+| Animations at wrong speed on high-Hz displays (#11) | Visual identity (breathing ember glow, SYNC flash) feels wrong | Frame-rate-independent timing |
+| Phase dot desync with swing in free-run (#3) | Dot no longer tracks actual output voltage — misleading feedback | Store effective display value (`isClocked ? swingFrac : 0.5f`) |
+
+## "Looks Done But Isn't" Checklist
+
+- [ ] **Font removal:** HEAD is clean — verify `git rev-list --all --objects | grep -iE 'Barell|FoundationLogo'` is empty on a fresh clone of the *remote*.
+- [ ] **LICENSE:** manifest says GPL-3.0-or-later — verify an actual `LICENSE` file exists at repo root AND Makefile `DISTRIBUTABLES` picks it up.
+- [ ] **Manifest URLs:** look populated — verify `sourceUrl` reachable, `pluginUrl`/`manualUrl` point to live public pages.
+- [ ] **Version:** plugin.json `2.x` — verify it was NOT "corrected" to 1.4.x and matches Makefile `VERSION`.
+- [ ] **Panel SVG:** renders in dev — verify it renders identically in a clean official Rack build, no unsupported SVG features.
+- [ ] **Refactor (#11/#12):** "works on my machine" — verify headless harness output is identical pre/post at 44.1/48/96k, and animation tested on a >60Hz display (or simulated large `dt`).
+- [ ] **#2 ratio change:** test is green — verify a human actually auditioned and the decision is logged.
+- [ ] **Bug fixes #1–#4:** marked fixed — verify each has a regression test that fails on the old code.
+- [ ] **CHANGELOG:** release tagged — verify CHANGELOG.md updated and a `v2.x.y` git tag exists.
+- [ ] **Submission:** thread opened — verify title = slug, commit hash (not branch) posted.
+
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Fonts leaked to a public repo before purge | HIGH | Purge history + force-push; assume binaries are "out there"; if a trial license was breached, stop distribution and document; GitHub support can be asked to GC cached SHAs but assume copies exist |
+| Manifest version set to 1.x and submitted | MEDIUM | Bump back to 2.x, increment Makefile VERSION, post corrected commit hash in the VCV thread |
+| #12 refactor introduced crackle/regression | MEDIUM | Revert to pre-refactor commit (kept green by tests), re-extract pure function, re-test before re-moving |
+| #2 groove changed and users complain | LOW–MEDIUM | Toggle back to prior behavior (kept behind a flag during audition), re-audition, re-pin test |
+| Slug changed after release | HIGH | Cannot undo cleanly — breaks every saved patch; must restore original slug |
+
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| 1. Fonts only removed from HEAD | Release IP hardening / history purge (while PRIVATE, before publish) | 4-step grep empty on a fresh clone of the remote |
+| 2. Public/submit before purge verified | Publish public repo (entry-gated on purge verification) | Fresh-clone grep empty; `--all --tags` force-pushed |
+| 3. Incompatible/uncredited assets | Release IP hardening (asset inventory + LICENSE/NOTICES, finding #5) | NOTICES lists every asset's license; source refs only OFL |
+| 4. Trademark naming | VCV compliance (string audit) + Manual phase | No trademarked names in manifest/panel/preset/manual UI strings |
+| 5. Manifest/submission rejection | VCV Library compliance + Submission | Field-by-field manifest validation; official-build panel render; slug-titled thread + commit hash |
+| 6. DSP refactor regression (#11/#12) | Test harness phase (FIRST) → DSP/display refactor phase | Headless harness bit-identical pre/post at 3 sample rates; clamped-`dt` test |
+| 7. #2 committed without audition | Bug fixes phase (#2 audition-gated) | Logged listening decision; regression test pins chosen behavior |
+| 8. Version/changelog hygiene | VCV compliance (version + CHANGELOG + Makefile sync) → Submission (tag + hash) | plugin.json==Makefile version, MAJOR=2, CHANGELOG present, release tagged |
+
+**Recommended phase ordering (purge safety is load-bearing):**
+1. Test harness (unit + headless) — enables safe refactors and bug-fix regression tests
+2. Functional bug fixes #1, #3, #4 + #2 (audition-gated) — each lands with a test
+3. Code/display cleanups + refactors #8–#12 — gated on harness green
+4. Release IP hardening: LICENSE (#5), manifest URLs (#6), asset inventory/NOTICES, **history purge of trial fonts (#7) while PRIVATE**, verify purge
+5. VCV compliance: manifest validation, version/CHANGELOG/Makefile reconciliation, SVG lint, official-build verify, string/trademark audit
+6. Publish public repo (gated on purge verification) → Notion manual published → fill `manualUrl`/`pluginUrl`/`sourceUrl`
+7. Submission: tag release, capture commit hash, open VCV issue thread titled with the slug
 
 ## Sources
 
-- [VCV Rack FramebufferWidget API](https://vcvrack.com/docs-v2/structrack_1_1widget_1_1FramebufferWidget) - dirty flag behavior, oversample, setDirty()
-- [VCV Rack Module Panel Guide](https://vcvrack.com/manual/Panel) - SVG requirements, nanosvg limitations, HP sizing
-- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) - module slugs, parameter serialization
-- [FramebufferWidget community discussion](https://community.vcvrack.com/t/framebufferwidget-question/3041) - usage patterns, dirty flag timing
-- [NanoVG optimization discussion](https://community.vcvrack.com/t/trying-to-optimize-nanovg/16364) - rendering performance, shadow impact
-- [SVG gradient limitations](https://community.vcvrack.com/t/svg-transparencies-and-gradients/16833) - 2-stop limit, radial gradient issues
-- [VCO PWM click artifacts (Fundamental #140)](https://github.com/VCVRack/Fundamental/issues/140) - MinBLEP double-discontinuity bug
-- [PWM community discussion](https://community.vcvrack.com/t/clicks-and-pops-from-pwm/15824) - click artifacts from duty cycle modulation
-- [nanosvg theme-able SVG notes](https://community.vcvrack.com/t/notes-for-theme-able-svgs-with-nanosvg/20060) - SVG cache behavior
-- [VCV Rack RackWidget.cpp source](https://github.com/VCVRack/Rack/blob/v2/src/app/RackWidget.cpp) - module position stored as grid coords, width from SVG
-- [VCV Rack ModuleWidget.cpp source](https://github.com/VCVRack/Rack/blob/v2/src/app/ModuleWidget.cpp) - panel width derived from SVG: `box.size.x = std::round(panel->box.size.x / RACK_GRID_WIDTH) * RACK_GRID_WIDTH`
-- Direct source code analysis: `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/src/AnalogLFO.cpp` (1,360 lines)
-- Direct source code analysis: `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/res/AnalogLFO.svg` (existing 12HP panel)
-- Direct source code analysis: `/Users/mrcbrown/Claude/Software/Forge Audio/Analog Series/DESIGN-LANGUAGE.md` (Forge Noir specification)
+- git-filter-repo — official repo & usage (`--path`, `--invert-paths`, fresh-clone/`--force` guardrail, removes origin, force-push requirement): https://github.com/newren/git-filter-repo
+- git-filter-repo practical removal guides (corroborating exact flags, re-add remote, force-push, re-clone): https://www.git-tower.com/learn/git/faq/git-filter-repo , https://coreui.io/answers/how-to-remove-a-file-from-git-history/ , https://marcofranssen.nl/remove-files-from-git-history-using-git-filter-repo
+- VCV Plugin Manifest — field requirements, slug rules ("never change" after release, `a-zA-Z0-9-_`), version (MAJOR=Rack major, no "v" prefix), SPDX license, valid module tag list, `res/<module slug>.svg`: https://vcvrack.com/manual/Manifest
+- VCV Library submission rules — issue thread titled with slug, post sourceUrl + commit hash (not branch), increment Makefile VERSION, "do not misuse intellectual property (legally or morally)" acceptance rule: https://github.com/VCVRack/library/blob/master/README.md
+- VCV Panel Guide — SVG saved to `res/<module slug>.svg`, nanosvg subset constraints: https://vcvrack.com/manual/Panel
+- SIL Open Font License (OFL) — JetBrains Mono / Bebas Neue / Chakra Petch redistribution & attribution terms: https://openfontlicense.org/
+- Repo state verified directly this session: `git ls-files`, `git log --all -- <fonts>` (both fonts only in commit `e486ce1`), `git ls-remote`, `gh repo view ... --json visibility,pushedAt,forkCount` (PRIVATE, already pushed), `plugin.json` inspection, `grep` of source (only `JetBrainsMonoNL-Regular.ttf` referenced), absence of `LICENSE`/`CHANGELOG`/`tests/`/font `.gitignore`.
+
+---
+*Pitfalls research for: VCV Rack 2 plugin release hardening (Forge Audio — Analog LFO, v1.4 Tempered)*
+*Researched: 2026-06-14*

@@ -1,284 +1,286 @@
-# Stack Research: v1.3 Forge Noir
+# Stack Research — Release & Packaging for VCV Library Submission
 
-**Domain:** VCV Rack 2 module development -- adding PWM morph extension, Forge Noir SVG panel, display layout changes, and animated sync badge to existing C++ LFO module
-**Researched:** 2026-03-27
-**Confidence:** HIGH (validated against existing codebase, VCV Rack SDK docs, nanosvg/NanoVG references)
-
----
-
-## What Already Exists (DO NOT ADD)
-
-The v1.2 codebase already has everything needed for core DSP and rendering. No new libraries, frameworks, or dependencies are required for v1.3. The existing stack is:
-
-| Technology | Purpose | Status |
-|------------|---------|--------|
-| VCV Rack 2 SDK (~2.6) | Framework, build system, component library | In place |
-| C++17 | Module DSP + widget code | In place |
-| NanoVG (bundled in SDK) | Real-time display rendering | In place |
-| nanosvg (bundled in SDK) | Panel SVG parsing/rasterization | In place |
-| Standard VCV Makefile + plugin.mk | Build system | In place |
-
-**No new dependencies. No new libraries. No new build system changes.** The v1.3 milestone is purely implementation work within the existing stack.
+**Domain:** VCV Rack 2 plugin publishing / release hardening (v1.4 "Tempered")
+**Researched:** 2026-06-14
+**Confidence:** HIGH (VCV facts verified against vcvrack.com/manual and VCVRack/library README; test-framework comparison verified against doctest GitHub + ACCU/hackingcpp)
 
 ---
 
-## Stack Requirements Per Feature
+## Scope
 
-### 1. PWM as Morph Extension
+This is a release-only milestone. The audio engine, build system (`plugin.mk`, no external deps), and panel are frozen. This document covers exactly what is needed to **publish** the source and **submit** the existing plugin to the VCV Library, plus the one new build-tooling decision the milestone introduces: a C++ test target.
 
-**What's needed:** Pure C++ math. No new dependencies.
+Two practical surprises up front, both verified:
 
-**Implementation stack:**
-
-| Component | What | Why |
-|-----------|------|-----|
-| `computePulse()` function | New waveform generator using phase comparison against variable duty cycle | Extends the morph sweep from 4 shapes (sine/tri/saw/square) to 5 (+ narrow pulse) |
-| Morph scaling change | `morph * 4.f` instead of `morph * 3.f`, 4 segments instead of 3 | Adds a fifth position at morph=1.0 while preserving existing waveform positions at 0.0, 0.25, 0.5, 0.75 |
-| `tanh()` edge softening | Same sigmoid technique already used in `computeSquare()` | Consistent analog character modeling; reuse existing pattern |
-| Bleed ring expansion | `shapes[5]` wrapping ring instead of `shapes[4]` | Waveform bleed (CHAR-05) needs to include pulse as a neighbor of square and wrap back to sine |
-
-**Key technical detail:** The square-to-pulse morph is a continuous duty cycle narrowing. At morph=0.75 (square), duty is 50%. At morph=1.0 (narrow pulse), duty narrows to ~10-15%. The `character` knob should apply the same type of analog deformation (edge softening, duty asymmetry with component spread) as it does for square.
-
-**What NOT to add:**
-- No separate PWM knob or CV input. The morph knob IS the PWM control in the square-to-pulse region.
-- No PWM LFO. The morph CV input provides external PWM modulation.
-- No anti-aliasing (polyBLEP). This is an LFO at sub-audio rates. Anti-aliasing is a VCO concern (deferred to v2.0).
-
-**Confidence:** HIGH. This is straightforward DSP math using the exact same patterns already validated in `computeSquare()`.
+1. **VCV Library submission is via a GitHub *Issue*, not a PR.** You do not open a pull request against `VCVRack/library`. You open one issue per plugin, titled with your **plugin slug**, and post your metadata + source URL + commit hash in it. (The old `manifests/*.json` PR flow is legacy; the current README directs submitters to the Issue Tracker. The library build infrastructure that compiles your source for all platforms is operated by VCV, not driven by a file in your repo.)
+2. **Your plugin slug `ForgeAudio-AnalogSeries` is locked forever once published.** It is the permanent identity and the issue title. Confirm it is what you want *before* the first submission — it can never change.
 
 ---
 
-### 2. Forge Noir Panel SVG (nanosvg constraints)
+## Part 1 — `plugin.json` Manifest: Required vs Optional
 
-**What's needed:** A new 14HP SVG file respecting nanosvg's limited feature set, plus custom SVG component widgets (hex bolt screws, Forge knobs, Forge jacks).
+Verified against https://vcvrack.com/manual/Manifest.
 
-**nanosvg Supported Features (use these):**
+### Plugin-level fields
 
-| SVG Feature | Support Level | Notes |
-|-------------|---------------|-------|
-| `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>`, `<polygon>` | Full | All basic shapes work |
-| `<path>` with M/L/C/S/Q/T/A/Z commands | Full | All path commands including arcs |
-| `<g>` groups with `transform` | Full | translate, scale, rotate, skewX, skewY, matrix |
-| `fill`, `stroke`, `stroke-width` | Full | Inline attributes only (not CSS) |
-| `opacity`, `fill-opacity`, `stroke-opacity` | Full | Per-element opacity works |
-| `<linearGradient>` (2-color) | Full | Simple two-stop linear gradients |
-| `<radialGradient>` (2-color, circular) | Partial | Circular only (cx/cy/r). No fx/fy. No elliptical. Improved in VCV 2.6 |
-| `fill-rule` (evenodd, nonzero) | Full | Already used in current panel for letter cutouts |
-| `stroke-dasharray`, `stroke-linecap`, `stroke-linejoin` | Full | Dashed lines, round/butt/square caps |
-| Units: mm, px, pt, cm, in | Full | Panel must use mm (71.12mm x 128.5mm for 14HP) |
+| Field | Required? | Rule / Format | Your current value | Action for v1.4 |
+|-------|-----------|---------------|--------------------|-----------------|
+| `slug` | **REQUIRED** | `[a-zA-Z0-9_-]` only. Permanent — never change after release. | `ForgeAudio-AnalogSeries` | Keep (verify it's final) |
+| `name` | **REQUIRED** | Human-readable plugin name | `Forge Audio - Analog Series` | Keep |
+| `version` | **REQUIRED** | `MAJOR.MINOR.REVISION`, **no `v` prefix**. MAJOR must match Rack major (`2`). | `2.0.0` | Keep `2.x.x`; bump on each Library build (see Part 3) |
+| `license` | **REQUIRED** | SPDX id, `"proprietary"`, or EULA URL | `GPL-3.0-or-later` | Keep — **confirmed accepted** (see Part 2) |
+| `author` | **REQUIRED** | Name/company/alias/GitHub user | `Forge Audio` | Keep |
+| `brand` | optional | Prefix prepended to all module names in browser | `Forge Audio` | Keep |
+| `description` | optional | One-line summary | present | Keep |
+| `authorUrl` | optional | Author/company homepage | `""` | **Fill** (finding #6) |
+| `pluginUrl` | optional | Plugin homepage | `""` | **Fill** (finding #6) |
+| `sourceUrl` | optional* | Source repo **project page** (NOT the `.git` URL) | `""` | **Fill — de-facto required** (finding #6) |
+| `manualUrl` | optional | HTML/PDF/GitHub manual | absent | **Add** — Notion manual URL (milestone deliverable) |
+| `authorEmail` | optional | Support contact (public if set) | absent | Optional |
+| `donateUrl` | optional | Donation link | absent | Skip |
+| `changelogUrl` | optional | Version history | absent | Optional (CHANGELOG.md on GitHub) |
+| `minRackVersion` | optional | Min Rack version; enforced for `2.4.0+` | `2.6.0` | Keep (or lower to `2.0.0`/`2.4.0` to widen audience — see note) |
 
-**nanosvg NOT Supported (avoid these):**
+\* `sourceUrl` is formally optional in the manifest schema, but the **submission requires you to provide the source URL** in the issue, and open-source Library distribution builds *from* that source. Treat `sourceUrl` as required for your case. It must be the **GitHub project page** (`https://github.com/<user>/<repo>`), not the clone URL ending in `.git`.
 
-| SVG Feature | Status | Workaround |
-|-------------|--------|------------|
-| `<text>` / `<tspan>` | Not supported | Convert all text to `<path>` geometry (already done in current panel) |
-| `<use>` / `<defs>` references | Not supported | Inline all geometry. No symbol reuse. |
-| CSS `<style>` blocks | Not supported | Use inline `fill=` / `stroke=` attributes only |
-| `<filter>` (blur, drop-shadow) | Not supported | Approximate glows with semi-transparent overlapping shapes |
-| `<clipPath>` / `<mask>` | Not supported | Use path intersection or opacity layering |
-| Multi-stop gradients (3+ stops) | Not supported | Chain multiple 2-stop gradient rectangles to simulate |
-| Gradient transforms (`gradientTransform`) | Buggy | Avoid. Position gradient coordinates in absolute space |
-| `<image>` | Not supported | Everything must be vector |
-| CSS animations | Not supported | No animated SVG; animation lives in NanoVG code |
+> **`minRackVersion` note:** `2.6.0` excludes everyone on 2.0–2.5. Unless the code genuinely depends on a 2.6 API, lower it (e.g. `2.0.0`) to maximize reach. This is a free decision to revisit during requirements.
 
-**Custom SVG Components needed:**
+### Module-level fields (each entry in `modules[]`)
 
-| Component | Type | Approach |
-|-----------|------|----------|
-| Hex bolt screws | `app::SvgScrew` subclass | Create `ForgeHexBolt.svg` (hex with socket detail), load via `setSvg(Svg::load(asset::plugin(...)))` |
-| Hero knob (MORPH) | `app::SvgKnob` subclass | Create `ForgeKnobXL.svg` (background) + `ForgeKnobXL-bg.svg` if needed. Knurled ring as concentric path rings in SVG |
-| Secondary knobs (CHAR/DRIFT) | `app::SvgKnob` subclass | `ForgeKnobLG.svg` -- machined metal look via radial gradient (2-color only) |
-| Utility knobs (RATE/PHASE) | `app::SvgKnob` subclass | `ForgeKnobMD.svg` -- same visual language, smaller |
-| Trimpots | `app::SvgKnob` subclass | `ForgeTrim.svg` -- scalloped trimpot with directional indicator |
-| Input jacks | `app::SvgPort` subclass | `ForgeJackSmall.svg` -- PJ301M-style metallic rings, concentric gradient |
-| Output jack | `app::SvgPort` subclass | `ForgeJackLarge.svg` -- same + ember accent ring as additional path with `fill-opacity` |
+| Field | Required? | Rule | Your value | Action |
+|-------|-----------|------|------------|--------|
+| `slug` | **REQUIRED** | Slug charset; **permanent** | `ForgeAnalogLFO` | Keep (locked once shipped) |
+| `name` | **REQUIRED** | Human-readable; `brand` is auto-prefixed in browser | `Analog LFO` | Keep |
+| `description` | optional | Browser tooltip one-liner | present | Keep |
+| `tags` | optional | From VCV's **fixed tag vocabulary**, case-insensitive | `["Low-frequency oscillator","Waveshaper"]` | Valid — see below |
+| `keywords` | optional | Hidden search aliases | absent | Optional (e.g. `"LFO drift analog morph"`) |
+| `manualUrl` | optional | Module-specific manual; falls back to plugin `manualUrl` | absent | Skip (plugin-level covers it) |
+| `modularGridUrl` | optional | For hardware clones only | absent | Skip (original design) |
+| `hidden` | optional | Boolean; hide deprecated modules | absent | Skip |
 
-**Forge Noir SVG implementation strategy:**
+**Tag validation:** tags must come from VCV's predefined list (Arpeggiator, Attenuator, Blank, Chorus, Clock generator, Compressor, Controller, Delay, Digital, Distortion, Drum, Dual, Effect, Envelope follower, Envelope generator, Equalizer, Expander, External, Filter, Flanger, Function generator, Granular, Hardware clone, Limiter, Logic, Low-frequency oscillator, Low-pass gate, MIDI, Mixer, Multiple, Noise, Oscillator, Panning, Phaser, Physical modeling, Polyphonic, Quantizer, Random, Recording, Reverb, Ring modulator, Sample and hold, Sampler, Sequencer, Slew limiter, Switch, Synth voice, Tuner, Utility, Visual, Voltage-controlled amplifier, Waveshaper, …). Your two are valid. Consider adding **`Random`** (the drift/OU engine is a defining feature). Do **not** add `Polyphonic` — the module is monophonic by design.
 
-The DESIGN-LANGUAGE.md describes effects (multi-layer box-shadows, conic-gradients, repeating gradients, blur filters) that are CSS/HTML-only and cannot exist in an SVG parsed by nanosvg. The SVG panel must be a **faithful translation** that achieves the same visual impression within nanosvg constraints:
-
-| Design Language Element | SVG Translation |
-|------------------------|-----------------|
-| Panel texture (radial gradient) | Single 2-color radial gradient rect, centered at ~35% height |
-| Accent bars (multi-stop gradient) | 3-5 adjacent thin rects with solid fills simulating gradient steps |
-| Forge emblem (atmospheric background) | Paths with low fill-opacity (0.03-0.18) in ember/gold colors |
-| Section divider (gradient line) | Thin rect with linearGradient (2-color, from transparent to ember) |
-| Decorative header slashes | Simple rotated `<line>` elements with stroke-opacity |
-| Module name "cut" through divider line | Panel-colored rect behind text paths to mask the line |
-| Knob body (multi-layer gradient) | Rendered as SVG component, not panel SVG. Use 2-color radial gradient for main curvature |
-| CRT scanlines on display | Cannot do in SVG; render in NanoVG `drawBackground()` if desired |
-
-**Panel SVG file structure:**
-
-```
-res/
-  AnalogLFO-ForgeNoir.svg      (14HP panel background)
-  ForgeHexBolt.svg              (custom screw)
-  ForgeKnobXL.svg               (hero knob body)
-  ForgeKnobLG.svg               (secondary knob body)
-  ForgeKnobMD.svg               (utility knob body)
-  ForgeTrim.svg                 (trimpot body)
-  ForgeJackSmall.svg            (input jack)
-  ForgeJackLarge.svg            (output jack)
-```
-
-**Confidence:** HIGH for nanosvg constraints (verified against nanosvg source, VCV community reports, and existing panel patterns). MEDIUM for exact visual fidelity of the Forge Noir design -- some CSS effects (knurled texture via conic-gradient, multi-layer box-shadows) will need creative SVG approximation.
+> An invalid tag is the single most common manifest rejection. If you add tags, copy them character-exact from the manual; the matcher is case-insensitive but vocabulary-strict.
 
 ---
 
-### 3. NanoVG Display Layout Changes
+## Part 2 — Licensing: Whitelist & GPL Compatibility
 
-**What's needed:** Restructure the existing `WaveformDisplay::drawLayer()` to use the Forge Noir three-column layout. No new dependencies.
+Verified against https://vcvrack.com/manual/PluginLicensing and community confirmation.
 
-**Current NanoVG APIs already in use (no changes needed):**
+- **`GPL-3.0-or-later` is accepted and is VCV's *recommended* license** for open-source plugins. VCV explicitly: "Since Rack is licensed under GPLv3+, you may license your plugin under GPLv3+ as well." **Your declared license needs no change.**
+- There is **no narrow numeric "whitelist"** — the rule is **GPL-compatible / OSI open-source**. In-Library plugins use CC0, MIT, BSD-3-Clause, GPL-3.0, GPL-3.0-or-later, etc. GPL-3.0-or-later is the safest, most-recommended choice and is what you already have.
+- **All assets you ship must be redistributable under the declared license** (or a compatible one). This is what makes finding **#7 (trial/proprietary fonts) a hard blocker**: publishing the repo is an act of redistribution. `BCBarellTEST-Regular.otf` (trial) and `FoundationLogo.ttf` must be removed from the working tree **and purged from git history** before the repo goes public. `res/fonts/JetBrainsMonoNL-Regular.ttf` is **OFL — safe to ship**.
+- **Ethics guideline (enforced for Library):** "You may not clone the brand name, model name, logo, panel design, or layout of components … of an existing hardware or software product without permission." Forge Noir is an original design — no concern. Just ensure no character preset is named after a trademarked synth (PROJECT.md already lists "Named synth presets" as out of scope — good).
+- **LICENSE file is required** (finding #5). GPL itself requires the full license text accompany the source; the Library expects it; your Makefile already lists `DISTRIBUTABLES += $(wildcard LICENSE*)` but no file exists. Add the verbatim GPLv3 text as `LICENSE` at repo root.
 
-| Function | Current Use | v1.3 Use |
-|----------|-------------|----------|
-| `nvgBeginPath` / `nvgRoundedRect` / `nvgFill` | Display background | Same + corner bracket accents |
-| `nvgStrokeColor` / `nvgStroke` | Waveform trace, inset frame | Same |
-| `nvgRadialGradient` / `nvgFillPaint` | Phase dot halo | Same |
-| `nvgBoxGradient` | Pill backgrounds | Same |
-| `nvgFontFaceId` / `nvgFontSize` / `nvgText` | Text overlays (SYNC, Hz, BPM, ratios) | Same, repositioned to columns |
-| `nvgFontBlur` | Text glow effect | Same |
-| `nvgTextBounds` / `nvgTextMetrics` | Pill sizing | Same |
-| `nvgScissor` / `nvgResetScissor` | Zero-crossing reference line clipping | Same |
-
-**Custom Font for Forge Noir Display:**
-
-The current display uses `ShareTechMono-Regular.ttf` (system font). The Forge Noir design language specifies JetBrains Mono for display data. To use it:
-
-| Font | File | Purpose | Loading Pattern |
-|------|------|---------|-----------------|
-| JetBrains Mono | `res/fonts/JetBrainsMono-Regular.ttf` | Display data (Hz, BPM, ratios, SYNC) | `APP->window->loadFont(asset::plugin(pluginInstance, "res/fonts/JetBrainsMono-Regular.ttf"))` |
-
-**Important:** NanoVG font handles must be loaded every frame in `drawLayer()`, not cached across frames. The existing pattern (`APP->window->loadFont()`) is correct -- it returns from an internal cache. JetBrains Mono is SIL Open Font License, safe for plugin distribution.
-
-The Forge Noir design language also specifies Bebas Neue and Chakra Petch, but those are for the SVG panel text (rendered as `<path>` elements), not for NanoVG display text. Only JetBrains Mono is needed in the NanoVG runtime.
-
-**Layout change specifics:**
-
-| Column | X Range (approx) | Content |
-|--------|-------------------|---------|
-| Left | 4px - ~35% width | Ratio pill, Hz readout, Swing label |
-| Center | ~20% - ~80% width | Waveform trace + phase dot (existing, repositioned) |
-| Right | ~65% width - margin | SYNC badge, CLK/LFO BPM stack |
-
-The three-column layout prevents pill-waveform overlap. This is a coordinate reorganization of existing draw calls, not new rendering technology.
-
-**Confidence:** HIGH. All NanoVG APIs needed are already in use in the v1.2 display code.
+**Confidence: HIGH.** GPL-3.0-or-later acceptance is stated directly in the official manual.
 
 ---
 
-### 4. Animated Sync Badge (Clock-Pulse Flash)
+## Part 3 — Submission Mechanism (the actual steps)
 
-**What's needed:** An animation state variable bridged from the audio thread, and a brightness modulation in the existing SYNC badge draw code. No new dependencies.
+Verified against the VCVRack/library README.
 
-**Implementation stack:**
+### First-time submission (open-source)
 
-| Component | What | Why |
-|-----------|------|-----|
-| `std::atomic<bool> displayClockPulse` | New atomic bridge from audio thread | Signals when a clock edge is detected; set to `true` in `processClockInput()` when trigger fires |
-| `float syncFlashAlpha` in WaveformDisplay | Flash envelope state (decays from 1.0 to 0.0) | Visual feedback that clock is being received |
-| Exponential decay in `step()` | `syncFlashAlpha *= 0.92f` (or similar) per frame | ~60fps gives roughly 100-150ms visible flash, natural exponential decay |
-| Brightness boost in `drawTextOverlays()` | Modulate SYNC badge ember color brightness by `syncFlashAlpha` | Brighter on clock pulse, dims between pulses |
+1. **Publish the source repo** publicly on GitHub (milestone deliverable), after history purge of trial fonts (#7).
+2. **Populate `plugin.json`** URLs: `sourceUrl` = `https://github.com/<user>/<repo>`, plus `authorUrl`, `pluginUrl`, `manualUrl`. Commit.
+3. **Verify it builds clean** against the current Rack SDK and that `make dist` succeeds (Part 4) — VCV builds from your source; if it doesn't compile on their toolchain, it's rejected.
+4. **Open exactly ONE issue** at https://github.com/VCVRack/library/issues with the **title equal to your plugin slug** (`ForgeAudio-AnalogSeries`) — *the slug, not the name*.
+5. In the issue body, post: **plugin name, license, all relevant URLs (source/plugin/author/manual), and (optionally) a public support email.**
+6. A Library maintainer picks it up, builds it for Mac/Windows/Linux from your source, and adds it. This issue thread is your **permanent channel** for all future updates to this plugin.
 
-**Animation architecture (matching existing pattern):**
+### Subsequent version updates (every release after the first)
 
-The existing codebase already has the correct architecture for this:
-1. Audio thread sets atomic flag on clock edge (like `displayClockState`)
-2. Widget `step()` reads atomic and updates animation envelope (like `syncFadeAlpha` updates)
-3. `drawLayer()` uses animation state to modulate rendering (like the ACQUIRING blink effect)
+1. **Increment `version` in `plugin.json`** (e.g. `2.0.0` → `2.0.1`). Required *before* you notify.
+2. Push the commit to the public repo.
+3. **Comment in the same issue** with the **new version number** AND the **exact commit hash** (`git rev-parse HEAD`). **Do not give a branch name like `main`/`master`** — the README explicitly forbids this; they pin the build to a commit.
 
-The clock-pulse flash adds one new atomic and one new animation variable. The `WaveformDisplay` already redraws every frame (it is a `TransparentWidget`, not cached in a `FramebufferWidget`), so no dirty-flagging is needed.
+### What you do NOT do
 
-**Alternative considered and rejected:**
-- Using `dsp::PulseGenerator` in the widget for flash timing. Rejected because widgets don't have access to sample rate, and the ~60fps frame rate is sufficient for visual effects. A simple multiplicative decay per frame is simpler and correct.
+- **No pull request** against `VCVRack/library`. (The `manifests/*.json` PR flow is legacy.)
+- **No uploading of the `.vcvplugin`** to VCV — they build from source. (You still build it locally for your own QA and for users who sideload before it lands in the Library; see Part 4.)
+- No git **tags or GitHub Releases are required** by VCV — they pin to a commit hash, not a tag. (Tags are good practice for your own bookkeeping but are not part of the submission contract.)
 
-**Confidence:** HIGH. Direct extension of existing animation patterns already working in v1.2.
+> **Closed-source path (not yours):** email contact@vcvrack.com. Listed for completeness only.
 
----
-
-## Alternatives Considered
-
-| Recommended | Alternative | Why Not |
-|-------------|-------------|---------|
-| Text as `<path>` in panel SVG | Embedding TTF fonts in SVG | nanosvg does not support `<text>` elements at all |
-| 2-color gradients for knob metallic look | Multi-stop gradients | nanosvg only reliably supports 2-stop gradients |
-| NanoVG corner bracket accents on display | SVG-rendered display frame | Display is a NanoVG widget overlaid on the SVG panel; decorative frame belongs in NanoVG where it can animate |
-| Multiplicative alpha decay for flash | Timer-based PulseGenerator in widget | Widgets run at frame rate (~60fps), not sample rate; decay per frame is simpler and frame-rate-independent with dt scaling |
-| JetBrains Mono for display | Keep ShareTechMono | ShareTechMono is a system font with good readability but JetBrains Mono aligns with the Forge Noir design language and offers better glyph quality at small sizes |
-| Inline all SVG elements | `<use>` / `<defs>` for symmetry | nanosvg does not support `<use>` or `<defs>` references; the DESIGN-LANGUAGE.md's `<use>` mirroring advice applies to the HTML mockup, not the production SVG |
-| Separate SVG files per component | Single monolithic SVG | VCV Rack's component library architecture expects individual SVG files per widget type; this enables hot-swapping and theming |
+**Confidence: HIGH** for the Issue+slug-title+commit-hash mechanism (README verbatim).
 
 ---
 
-## What NOT to Add
+## Part 4 — Building Distributable Artifacts Locally
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| External SVG preprocessing tool (svgo, etc.) | Adds build complexity; nanosvg handles simple SVGs fine | Hand-author SVGs or use Inkscape with Object-to-Path |
-| OpenGL shaders for knob rendering | Overkill for static knob graphics; VCV Rack's SvgKnob handles rotation | SVG-based knob components with radial gradients |
-| Custom NanoVG build or patches | Modifying SDK headers breaks compatibility with future VCV Rack updates | Work within bundled NanoVG's capabilities |
-| Additional C++ libraries (Eigen, etc.) | PWM is trivial math; no linear algebra or DSP library needed | Standard `<cmath>` (already included) |
-| Separate display widget class hierarchy | Current `WaveformDisplay` struct handles all display rendering | Extend existing struct with new layout coordinates |
-| Animation framework / tween library | One exponential decay variable does not need a framework | `syncFlashAlpha *= decayFactor` in `step()` |
-| Web fonts or @font-face in SVG | Not supported by nanosvg | Convert all panel text to `<path>` elements |
-| SVG filters for glow/shadow | Not supported by nanosvg | Use overlapping semi-transparent shapes for glow approximation |
-| FramebufferWidget for WaveformDisplay | The display updates every frame (phase dot moves continuously) | Keep as TransparentWidget; framebuffer caching would require marking dirty every frame anyway |
+Verified against https://vcvrack.com/manual/Building.
 
----
+Your Makefile is already correct and minimal:
 
-## Version Compatibility
-
-| Component | Version | Compatibility Notes |
-|-----------|---------|---------------------|
-| VCV Rack SDK | 2.x (tested ~2.6) | Stable API. `app::SvgScrew`, `app::SvgKnob`, `app::SvgPort` classes unchanged since v2.0 |
-| nanosvg (bundled) | SDK-pinned | Gradient support improved in 2.6; target 2-color gradients for compatibility with older Rack versions |
-| NanoVG (bundled) | SDK-pinned | `nvgBoxGradient`, `nvgRadialGradient`, font functions all stable since v2.0 |
-| JetBrains Mono | Latest (SIL OFL) | No version dependency; TTF file bundled with plugin. ~150KB per weight |
-| C++17 | As per SDK | `std::atomic`, `std::array`, structured bindings all available |
-
----
-
-## File Additions Summary
-
-```
-res/
-  AnalogLFO-ForgeNoir.svg      NEW  (14HP Forge Noir panel)
-  ForgeHexBolt.svg              NEW  (custom hex bolt screw)
-  ForgeKnobXL.svg               NEW  (hero knob body)
-  ForgeKnobLG.svg               NEW  (secondary knob body)
-  ForgeKnobMD.svg               NEW  (utility knob body)
-  ForgeTrim.svg                 NEW  (trimpot body)
-  ForgeJackSmall.svg            NEW  (input jack)
-  ForgeJackLarge.svg            NEW  (output jack)
-  fonts/
-    JetBrainsMono-Regular.ttf   NEW  (display font)
-
-src/
-  AnalogLFO.cpp                 MODIFY (PWM, layout, flash, custom components)
+```makefile
+RACK_DIR ?= ../Rack-SDK
+SOURCES += $(wildcard src/*.cpp)
+DISTRIBUTABLES += res
+DISTRIBUTABLES += $(wildcard LICENSE*)
+DISTRIBUTABLES += $(wildcard presets)
+include $(RACK_DIR)/plugin.mk
 ```
 
-No Makefile changes needed. The existing `SOURCES += $(wildcard src/*.cpp)` and `DISTRIBUTABLES += res` already cover all additions.
+### Commands
+
+```bash
+export RACK_DIR=../Rack-SDK   # already your default via ?=
+
+make            # compile plugin.so/.dylib/.dll
+make dist       # build + package the distributable
+make install    # build + package + copy into Rack user plugins dir (local test)
+# make dep      # only if you had external deps — you don't, skip
+```
+
+### What `make dist` produces
+
+- Output path: `dist/<slug>-<version>-<os>-<cpu>.vcvplugin`
+  e.g. `dist/ForgeAudio-AnalogSeries-2.0.0-mac-arm64.vcvplugin`
+- The `.vcvplugin` is a **compressed archive** (zip) containing: the compiled binary, **`plugin.json`**, and everything in `DISTRIBUTABLES` (**`res/`** and **`LICENSE`**).
+
+### DISTRIBUTABLES checklist for your release
+
+| Item | In Makefile? | Present on disk? | Action |
+|------|--------------|------------------|--------|
+| `res/` (panel SVG + OFL font) | yes | yes | OK |
+| `LICENSE` | yes (`$(wildcard LICENSE*)`) | **NO** | **Create `LICENSE` (GPLv3 text)** — #5 |
+| `presets/` | yes (`$(wildcard presets)`) | none | Fine — wildcard no-ops if absent |
+| `plugin.json` | auto-included by `plugin.mk` | yes | OK |
+
+> **Verification gate for the milestone's `.vcvplugin` deliverable:** after `make dist`, unzip the artifact and confirm `LICENSE`, `plugin.json` (with populated URLs), and `res/` are all present, and that **no trial fonts** are inside. The trial OTF/TTF live at repo root and are *not* in `res/`, so they won't be packaged — but they WILL be in the public git history until purged (#7).
+
+**Confidence: HIGH.**
+
+---
+
+## Part 5 — Reviewer Criteria (what gets a plugin bounced)
+
+Synthesized from the manual + ethics guidelines (MEDIUM confidence — VCV review is human and not exhaustively documented, but these are the consistently cited bars):
+
+| Criterion | Bar | Your status |
+|-----------|-----|-------------|
+| **Compiles from source** on VCV's toolchain (all 3 OSes) | Hard requirement | Likely OK (C++17, no deps); verify clean build |
+| **Open-source / compatible license** | Hard requirement | OK (GPL-3.0-or-later) + LICENSE file (#5) |
+| **All shipped assets redistributable** | Hard requirement | **Blocked until #7 font purge** |
+| **No IP/trademark cloning** (brand, panel, layout, names) | Hard requirement (ethics) | OK — original Forge Noir |
+| **Not malware / no privacy harm** | Hard requirement | OK |
+| **Valid manifest** (slug charset, valid tags, version format) | Hard requirement | OK once URLs added |
+| **Panel quality / readability** | Soft — flagrant unreadability gets feedback | OK — polished Forge Noir |
+| **CPU sanity** | Soft — no hard benchmark, but egregious waste noted | Watch finding #12 (display buffer on audio thread) at high instance counts; not a submission blocker |
+| **Doesn't crash on patch load** | Soft but reputationally critical | **Fix #4** (malformed-JSON crash) before publishing |
+
+There is **no published CPU benchmark threshold** and **no formal panel-art rubric** — review is pragmatic. The release blockers that actually gate *you* are #5 (LICENSE), #6 (URLs), and #7 (font purge). The crash guard (#4) is a strongly-advised pre-publish fix for reputation, not a manifest gate.
+
+---
+
+## Part 6 — C++ Test Framework: **doctest** (chosen)
+
+**Recommendation: doctest, vendored as the single amalgamated header `tests/doctest/doctest.h`, pinned to v2.4.11 (stable line; v2.5.2 is the newest tag, Apr 2025).** Justification follows; Catch2 is the runner-up and is explicitly compared.
+
+### Why doctest over Catch2
+
+| Criterion | doctest | Catch2 v3 | Winner |
+|-----------|---------|-----------|--------|
+| Single-header drop-in | Yes — one `doctest.h`, zero build setup | v3 **dropped single-header**; now needs CMake-built static lib (v2 was header-only but is EOL) | **doctest** |
+| Compile-time overhead of including the header | ~10ms per TU | ~430ms per TU | **doctest** (orders of magnitude) |
+| Fits a `plugin.mk` Makefile with a hand-rolled test target | Trivial — add the header to include path | Awkward — wants CMake / a prebuilt lib | **doctest** |
+| Added **runtime** dependency to the shipped plugin | **None** — tests compile in a separate target, never linked into `plugin.so` | None (also separate) | tie |
+| C++17 support (your standard) | Yes (C++11/14/17/20/23) | Yes | tie |
+| API ergonomics | Catch-like (`TEST_CASE`, `CHECK`, `REQUIRE`, `SUBCASE`) | `TEST_CASE`, `CHECK`, `REQUIRE`, `SECTION` | tie |
+
+The decisive factors for *this* project: (1) **no build-system friction** — doctest is a header you check in, which matches a dependency-free `plugin.mk` setup; Catch2 v3 now mandates CMake, fighting your Makefile. (2) **Negligible compile cost**, so a test target stays fast. (3) **Zero runtime footprint** in the shipped plugin — the test executable is a wholly separate artifact and `doctest.h` never enters `src/*.cpp` that compiles into the plugin.
+
+> Note on "single-header": doctest's *internal source tree* was modularized in 2.5.0, but the **distributed/amalgamated `doctest/doctest.h` remains the supported single-header consumption path** — you vendor that one file. Pin v2.4.11 for a battle-tested release, or v2.5.2 for newest; either is fine.
+
+### Makefile integration sketch (separate target, no plugin coupling)
+
+Keep the plugin Makefile pristine; add a self-contained test target that does **not** go through `plugin.mk` (so test code never links into the plugin). The clean pattern is to extract pure DSP into a header-or-`.cpp` with **no Rack dependency**, then compile only that against the test main.
+
+```makefile
+# --- appended to Makefile, after `include $(RACK_DIR)/plugin.mk` ---
+# Pure DSP units under test must NOT include rack.hpp.
+TEST_SRC   := tests/test_main.cpp $(wildcard tests/test_*.cpp)
+TEST_DSP   := $(wildcard src/dsp/*.cpp)   # Rack-free DSP extracted here
+TEST_BIN   := build/tests/run
+TEST_FLAGS := -std=c++17 -Isrc -Itests/doctest -O0 -g
+
+test:
+	@mkdir -p build/tests
+	$(CXX) $(TEST_FLAGS) $(TEST_SRC) $(TEST_DSP) -o $(TEST_BIN)
+	./$(TEST_BIN)
+
+.PHONY: test
+```
+
+```cpp
+// tests/test_main.cpp — the only TU that defines the runner
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest/doctest.h"
+```
+
+```cpp
+// tests/test_clock.cpp — example regression test (finding #1)
+#include "doctest/doctest.h"
+#include "ClockTracker.hpp"   // extracted, Rack-free
+TEST_CASE("clock re-locks after >3x tempo jump") {
+    ClockTracker t;
+    lockTo(t, /*period=*/0.5);          // 120 BPM
+    feedEdges(t, /*period=*/0.125, 4);  // 4x faster
+    CHECK(t.state == ClockTracker::LOCKED);
+    CHECK(t.smoothedPeriod == doctest::Approx(0.125).epsilon(0.05));
+}
+```
+
+**Headless integration harness** (the milestone's `process()`-driver requirement): the same `test` binary can host it, but driving `Module::process()` pulls in `rack.hpp`. Two clean options:
+- **(a) Preferred** — Extract the engine into a Rack-free `Engine` struct (taking a plain `{float sampleTime}` arg), drive it in doctest, assert on output blocks. Keeps everything in one fast, dependency-free `make test`.
+- **(b)** If full `Module` coverage is wanted, build a second target that links the Rack SDK; heavier, only if (a) leaves real gaps.
+
+Each fixed bug (#1–#4) lands as a doctest `TEST_CASE`, satisfying the milestone's "bug fixes as regression tests" goal.
+
+---
+
+## What NOT to bother adding
+
+| Skip | Why |
+|------|-----|
+| GitHub Release / git tag *for the submission* | VCV pins to a commit hash, not a tag. (Tags optional for your own records.) |
+| Uploading `.vcvplugin` to VCV | They build from source; the artifact is for your QA + early sideloaders only |
+| A PR to `VCVRack/library` | Submission is an Issue titled with your slug |
+| `manifests/*.json` file | Legacy flow; not part of current Issue-based submission |
+| `donateUrl`, `modularGridUrl`, module `hidden`, `keywords` (optional) | Not needed for a clean first ship; add later if wanted |
+| `Polyphonic` tag | Module is monophonic by design — would be a false tag |
+| Catch2 / GoogleTest / Boost.Test | Build-system friction vs `plugin.mk`; doctest wins on header-drop + compile speed |
+| `minRackVersion: 2.6.0` *as-is* (reconsider) | Excludes 2.0–2.5 users; lower unless a 2.6 API is actually used |
+
+---
+
+## Concrete v1.4 release checklist (derived)
+
+1. Purge `BCBarellTEST-Regular.otf` + `FoundationLogo.ttf` from working tree **and git history** (#7) — do this *before* the repo is ever pushed public.
+2. Add GPLv3 `LICENSE` at repo root (#5).
+3. Fill `authorUrl`, `pluginUrl`, `sourceUrl` (GitHub project page), add `manualUrl` (Notion) in `plugin.json` (#6). Reconsider `minRackVersion`.
+4. Confirm slug `ForgeAudio-AnalogSeries` + module slug `ForgeAnalogLFO` are final (permanent).
+5. Fix patch-load crash (#4) — reputation gate.
+6. `make dist`; unzip; verify `LICENSE` + populated `plugin.json` + `res/` present, no trial fonts inside.
+7. Push public GitHub repo.
+8. Open one Library issue titled `ForgeAudio-AnalogSeries`; post name, license, source/plugin/author/manual URLs, commit hash.
+9. For later updates: bump `plugin.json` version → push → comment new version + `git rev-parse HEAD` in the same issue.
 
 ---
 
 ## Sources
 
-- [VCV Rack Module Panel Guide](https://vcvrack.com/manual/Panel) -- Official SVG requirements, nanosvg limitations (HIGH confidence)
-- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) -- Font loading, NanoVG rendering, FramebufferWidget, custom widgets (HIGH confidence)
-- [VCV Rack FramebufferWidget API](https://vcvrack.com/docs-v2/structrack_1_1widget_1_1FramebufferWidget) -- Dirty flag, setDirty(), performance model (HIGH confidence)
-- [nanosvg GitHub (memononen/nanosvg)](https://github.com/memononen/nanosvg) -- Supported SVG elements, paint types, gradient types (HIGH confidence)
-- [nanosvg DeepWiki](https://deepwiki.com/memononen/nanosvg) -- Feature overview, paint type enums, path commands (HIGH confidence)
-- [VCV Community: SVG transparencies and gradients](https://community.vcvrack.com/t/svg-transparencies-and-gradients/16833) -- Gradient support details, 2-color limitation, VCV 2.6 improvements (MEDIUM confidence)
-- [VCV Community: Notes for theme-able SVGs with nanoSvg](https://community.vcvrack.com/t/notes-for-theme-able-svgs-with-nanosvg/20060) -- Theming patterns, SVG traversal (MEDIUM confidence)
-- [VCV Community: Custom knob SVGs](https://community.vcvrack.com/t/how-can-i-implement-custom-knob-svgs/21399) -- SvgKnob subclass pattern (HIGH confidence)
-- [VCV Rack componentlibrary.hpp (v2)](https://github.com/VCVRack/Rack/blob/v2/include/componentlibrary.hpp) -- ScrewSilver/ScrewBlack/SvgKnob class patterns (HIGH confidence)
-- [stellare-modular/vcv-rack-sdk nanovg.h](https://github.com/stellare-modular/vcv-rack-sdk/blob/master/dep/include/nanovg.h) -- NanoVG font and gradient API signatures (HIGH confidence)
-- [Perfect Circuit: What is PWM?](https://www.perfectcircuit.com/signal/what-is-pwm) -- PWM fundamentals, duty cycle narrowing (HIGH confidence)
-- [Yamaha Synth: All Squares are Pulse](https://yamahasynth.com/learn/synth-programming/synth-basics-all-squares-are-pulse/) -- Pulse wave as square with variable duty (HIGH confidence)
-- Existing codebase: `src/AnalogLFO.cpp` -- computeSquare (lines 276-297), computeMorphedWave (lines 299-343), WaveformDisplay (lines 802-1293) (HIGH confidence)
+- https://vcvrack.com/manual/Manifest — manifest field list, required/optional, slug charset, version format, tag vocabulary (HIGH)
+- https://vcvrack.com/manual/PluginLicensing — GPL-3.0-or-later accepted/recommended, ethics/trademark rules, asset licensing (HIGH)
+- https://vcvrack.com/manual/Building — `make`/`make dist`/`make install`, `.vcvplugin` path & contents, DISTRIBUTABLES (HIGH)
+- https://github.com/VCVRack/library (+ README) — Issue-based submission, slug-titled issue, source URL + version + commit-hash update flow, no-branch-name rule (HIGH)
+- https://github.com/doctest/doctest + releases — single-header `doctest.h`, v2.5.2 (Apr 2025) / v2.4.11 stable, C++11–23 (HIGH)
+- https://accu.org/journals/overload/25/137/kirilov_2343/ and https://hackingcpp.com/cpp/tools/testing_frameworks — doctest ~10ms vs Catch ~430ms include overhead; Catch2 v3 dropped single-header (MEDIUM/HIGH)
+- VCV Community (community.vcvrack.com) — GPL relicensing context, in-Library licenses include CC0/MIT/BSD/GPL (MEDIUM)
 
 ---
-*Stack research for: Forge Audio Analog Series v1.3 Forge Noir*
-*Researched: 2026-03-27*
+*Stack research for: VCV Library release & packaging (v1.4 Tempered)*
+*Researched: 2026-06-14*

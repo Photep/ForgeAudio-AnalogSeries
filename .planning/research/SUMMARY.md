@@ -1,17 +1,19 @@
 # Project Research Summary
 
-**Project:** Forge Audio Analog Series -- v1.3 Forge Noir
-**Domain:** VCV Rack 2 module development (LFO: PWM extension, panel redesign, display layout, animation)
-**Researched:** 2026-03-27
+**Project:** Forge Audio — Analog Series (v1.4 "Tempered")
+**Domain:** VCV Rack 2 plugin release hardening — automated testing, IP compliance, VCV Library submission, Notion user manual
+**Researched:** 2026-06-14
 **Confidence:** HIGH
+
+---
 
 ## Executive Summary
 
-The v1.3 Forge Noir milestone extends the existing ~1,374-line single-file VCV Rack 2 LFO module in four well-bounded directions: adding a fifth morph shape (pulse/PWM), replacing the 12HP panel with a 14HP Forge Noir design, restructuring the display into a three-column layout, and adding a clock-pulse flash animation to the SYNC badge. Critically, all four features fit entirely within the existing stack -- no new libraries, no new build system changes, no new dependencies. This is implementation work, not infrastructure work. The one deliberate addition is JetBrains Mono (a bundled TTF file for the NanoVG display), which follows the established font loading pattern and requires no code changes to the build system.
+v1.4 "Tempered" is a release-hardening milestone for a feature-frozen VCV Rack 2 LFO. No new DSP features ship. The work divides into four tracks with strict ordering constraints between them: (1) extract pure DSP into a Rack-independent header-only core and build a doctest-driven test harness; (2) fix four functional bugs from CODE-REVIEW-FINDINGS.md, each landing as a regression test; (3) harden the repo for public release — purge trial fonts from git history while the GitHub repo is still private, add a GPL LICENSE file, populate manifest URLs, create a CHANGELOG, and audit assets for IP compliance; (4) write and publish the Notion user manual, then flip the repo public, and finally open the VCV Library submission issue.
 
-The recommended build order is A (PWM DSP) -> B (SVG panel + widget positions) -> C (display layout) -> D (sync animation), driven by hard dependencies: the panel must exist before display positions can be finalized, and the SYNC badge must be in its final position before adding flash animation. PWM is fully independent of all rendering work and should ship first to validate the DSP extension before visual complexity accumulates. The panel SVG is the most labor-intensive deliverable -- the HTML/CSS mockup (v19) uses features that nanosvg cannot render, requiring systematic element-by-element translation to nanosvg-compatible geometry, tested in VCV Rack iteratively rather than at the end.
+The load-bearing ordering constraints are: the test harness must precede DSP refactors (findings #11, #12), and the git-history purge must complete while the repo is still private before the repo is ever made public. These two constraints are the only hard dependencies across the four tracks; everything else is sequenced for efficiency. The VCV Library submission mechanism is a GitHub issue on VCVRack/library titled with the plugin slug (`ForgeAudio-AnalogSeries`), providing a source URL and exact commit hash — not a PR, not a branch name. The manifest `version 2.0.0` is correct and must not be changed to `1.4.x`.
 
-The dominant risk class is backward compatibility: the morph range remapping (4->5 shapes) changes what existing patches sound like unless handled with unequal segment widths; the panel width change (12HP->14HP) shifts neighboring modules in saved layouts; and enum ordering mistakes would silently corrupt saved parameter values. All three risks have clear, established mitigations and are not reasons to change the design -- they are reasons to test carefully and document in the changelog.
+The primary risks are: (a) flipping the GitHub repo public before the font-purge is verified against a fresh remote clone — a non-recoverable IP leak once public; (b) performing the #11/#12 display/thread refactors before the test harness exists, leaving no proof of output preservation; (c) adopting the #2 ratio-alignment table change without a documented listening decision, shipping a groove regression that automated tests cannot detect. All three risks have concrete prevention procedures documented in PITFALLS.md.
 
 ---
 
@@ -19,193 +21,232 @@ The dominant risk class is backward compatibility: the morph range remapping (4-
 
 ### Recommended Stack
 
-No new dependencies are needed for v1.3. The entire milestone is implementation work within the existing stack: VCV Rack 2 SDK (~2.6), C++17, NanoVG (bundled), nanosvg (bundled), and the standard VCV Makefile build system.
+The existing build system (`plugin.mk`, no external dependencies, C++17) requires no changes. The one new tooling decision is the C++ test framework: **doctest**, vendored as the single amalgamated header `tests/doctest/doctest.h` (pin v2.4.11 or v2.5.2). Doctest wins over Catch2 v3 because Catch2 v3 dropped its single-header distribution and now requires CMake — which fights a `plugin.mk` Makefile. Doctest compiles in ~10 ms per translation unit vs Catch2's ~430 ms, requires zero build-system changes, and has identical API ergonomics (`TEST_CASE`, `CHECK`, `REQUIRE`). GoogleTest and Boost.Test are excluded for the same build-friction reasons.
 
-The one deliberate file addition is JetBrains Mono Regular (`res/fonts/JetBrainsMono-Regular.ttf`) to align display typography with the Forge Noir design language. It is SIL OFL licensed (~150KB) and loaded via the established `APP->window->loadFont(asset::plugin(...))` pattern. No Makefile changes are needed -- the existing `DISTRIBUTABLES += res` covers new files automatically.
-
-Full details: `.planning/research/STACK.md`
+`make test` is a purely additive target appended after `include $(RACK_DIR)/plugin.mk`. It compiles only `src/dsp/*.hpp` (header-only, zero Rack includes) and `tests/*.cpp`, linking nothing from the Rack SDK. The plugin build path is unchanged.
 
 **Core technologies:**
-- VCV Rack 2 SDK: framework, component library, panel rendering -- in place, API stable since v2.0
-- C++17: all DSP and widget code -- in place, `std::atomic`, `std::array`, structured bindings all available
-- NanoVG (SDK-bundled): real-time display rendering -- in place, all APIs needed for v1.3 are already in active use
-- nanosvg (SDK-bundled): panel SVG parsing -- in place, constraints are well-documented and already respected in the v1.2 panel
-- JetBrains Mono TTF: display font for Forge Noir -- new file addition, zero code dependency changes required
+- **VCV Rack 2 SDK + plugin.mk:** unchanged — existing build system is canonical
+- **doctest v2.4.11+:** header-only test framework; drop `doctest.h` into `tests/`; no CMake, no submodules
+- **git-filter-repo:** the tool for font history purge (officially recommended; auto-removes `origin` as a guardrail; use over BFG for path-precision and auditability)
+- **GitHub Issues (VCVRack/library):** the submission mechanism — one issue per plugin, title = slug, body = sourceUrl + commit hash + license
 
-**Critical version note:** Target 2-stop gradients only for SVG compatibility across older Rack versions. Radial gradient support improved in VCV 2.6 but circular-only (`r`, not `rx/ry`) is still the safest constraint.
+**VCV manifest facts (do not get these wrong):**
+- `version 2.0.0` is CORRECT (MAJOR must equal Rack major = 2). Do not "fix" to `1.4.x`.
+- `slug ForgeAudio-AnalogSeries` and module slug `ForgeAnalogLFO` are permanent once published — freeze now.
+- `GPL-3.0-or-later` is VCV's recommended license for open-source plugins — no change needed.
+- `sourceUrl` must be the GitHub project page (`https://github.com/Photep/ForgeAudio-AnalogSeries`), not the `.git` clone URL.
+- Submission is a GitHub **Issue** titled with the slug, not a PR. Post `git rev-parse HEAD`, not a branch name.
+- `minRackVersion: 2.6.0` should be reconsidered — it excludes Rack 2.0–2.5 users unless a 2.6 API is actually required.
 
-**File additions summary:**
-```
-res/
-  AnalogLFO-ForgeNoir.svg      NEW  (14HP Forge Noir panel)
-  ForgeHexBolt.svg             NEW  (custom hex bolt screw)
-  ForgeKnobXL.svg              NEW  (hero knob body)
-  ForgeKnobLG.svg              NEW  (secondary knob body)
-  ForgeKnobMD.svg              NEW  (utility knob body)
-  ForgeTrim.svg                NEW  (trimpot body)
-  ForgeJackSmall.svg           NEW  (input jack)
-  ForgeJackLarge.svg           NEW  (output jack)
-  fonts/
-    JetBrainsMono-Regular.ttf  NEW  (display font)
+### Expected Features (Manual Sections)
 
-src/
-  AnalogLFO.cpp                MODIFY (PWM, layout, flash, custom components)
-```
+This is a documentation milestone. "Features" = manual sections.
 
-### Expected Features
+**Table stakes (a VCV manual is incomplete without these):**
+- Overview / concept with hero panel image
+- Annotated panel screenshot with numbered callouts
+- Control reference TABLE (knobs + buttons) — the spine of the manual and the differentiator vs every surveyed VCV manual (none use a clean table)
+- Inputs / outputs reference with voltage ranges and polarity
+- Right-click / context-menu section (invisible on panel; universally expected in VCV docs)
+- Rate dual-mode explanation (free Hz vs 15 musical ratios — genuinely confusing without docs)
+- Clock sync explanation (3-state tracker, SYNC badge states, phase reset, display pills)
+- Installation: VCV Library path AND manual `.vcvplugin` path — both required
+- Changelog (liftable directly from MILESTONES.md)
+- Credits / License (GPL-3.0, source repo link)
 
-The v1.3 scope is locked -- all four core features are explicitly decided in PROJECT.md. Research validates feasibility and de-risks implementation rather than redefining scope.
+**Should have (differentiators for this module's 3-axis engine):**
+- "Understanding the Analog Engine" concept page — the Morph/Character/Drift mental model; one subsection per axis; highest-leverage page for adoption
+- The Display deep-dive (three-column CRT layout, animated SYNC flash, phase dot)
+- 2–4 patch/usage examples (slow filter sweep, tempo-synced wobble, living vibrato, self-FM)
+- Animated GIFs of drift and SYNC flash (Stoermelder convention for time-based behavior)
+- Signal-flow diagram (Mutable/Befaco tradition for analog-modeled modules)
+- Troubleshooting / FAQ (pre-empts clock sync questions; reference resolved v1.4 fixes as closed)
 
-Full details: `.planning/research/FEATURES.md`
+**Cut / avoid:**
+- DSP internals (OU layers, EMA alpha, crossfade math) — code comments, not user manual
+- Electrical specs — meaningless in software
+- VCO / future module pages — out of this milestone's scope
+- Trademark-y "sounds like a Minimoog" claims — legal/trademark risk
 
-**Must have (table stakes -- define the milestone):**
-- Morph-integrated PWM -- sine -> tri -> saw -> square -> narrow pulse as a single continuous sweep; no separate knob; backward compatibility requires the unequal-segment-widths approach (see pitfalls)
-- Forge Noir panel SVG (14HP) -- flat elements in SVG (background, text-as-paths, labels, decorative geometry, hex bolts); gradient and glow elements deferred to NanoVG overlays
-- Display three-column layout -- left pills (ratio, Hz, swing), center waveform, right pills (SYNC, BPM); eliminates current overlap-at-some-ratios problem
-- Animated SYNC badge -- clock-pulse flash on each clock edge (fast attack, ~200ms exponential decay); existing 2Hz sinusoidal blink during ACQUIRING state unchanged
+**Notion structure:** 12 subpages with `/Table of contents` block on top-level page and each long subpage; Notion simple tables (not databases) for control/jack references; "Share to web" on, search-engine indexing on, editing/comments off.
 
-**Should have (elevates functional to premium -- defer only under time pressure):**
-- NanoVG premium knobs (xl/lg/md variants with multi-layer radial gradients, metallic rings, knurl texture for MORPH xl) -- highest complexity P2 item, with unvalidated GPU cost
-- Forge emblem atmospheric background (molten streams, ember particles, chevron marks at 0.03-0.18 opacity) -- SVG implementation
-- CRT display aesthetic (scanline overlay, corner bracket accents, animated border glow via breathePhase)
-- Character-aware PWM (squareDutySpread extended to pulse region, tanh edge softening, bleed ring topology extended to 5 shapes) -- small additive work, bundles well with Phase A
-
-**Defer (v2.0 or later):**
-- Through-zero PWM -- meaningful at audio rates only; adds morph mapping complexity for no LFO benefit
-- NanoVG trimpots and jacks -- poor effort-to-visual-reward ratio; SVG versions are acceptable for v1.3
-- Animated forge emblem (drifting particles, flowing streams) -- GPU cost non-trivial; violates "atmosphere not foreground" design principle
-
-**Competitive position:** No other VCV Rack LFO combines continuous waveform morphing through pulse, analog character modeling on the pulse shape, clock sync with swing, and a premium display. The v1.3 Forge Noir panel and NanoVG knobs further differentiate on presentation. The closest visual competitor (Surge XT) has NanoVG rendering but no analog character or morph engine. The closest functional competitor (Vult Vessek) has PW-all-waveforms but no clock sync, display, or drift.
+**Authoring order:** Write sections 1, 4, 5, 8, 10, 12 first (table-stakes spine — shippable on its own); then 2, 6, 7, 9 (differentiators); then 3, 11 (polish). Changelog comes from MILESTONES.md directly; CV voltage ranges verified against `AnalogLFO.cpp` before publishing.
 
 ### Architecture Approach
 
-The module is a single-file, three-struct architecture: `AnalogLFO` (Module/DSP), `WaveformDisplay` (TransparentWidget/NanoVG), `AnalogLFOWidget` (ModuleWidget/panel). All audio-to-GUI communication uses relaxed atomics via a lock-free double buffer for waveform data. This architecture is not changing for v1.3 -- all four features integrate as localized extensions to existing structs via established patterns.
+Extract all DSP logic from `struct AnalogLFO : Module` into header-only, Rack-independent units under `src/dsp/*.hpp`. The `AnalogLFO.cpp` Rack shell becomes a thin pass-through: unpack `params[]`/`inputs[]`/`ProcessArgs` into a `forge::Inputs` POD, call `core.step(in)`, write `outputs[]` and display atomics. `process()` shrinks to ~20 lines. This is the unanimous pattern in VCV plugins with test suites (Squinky Labs, Surge XT).
 
-Full details: `.planning/research/ARCHITECTURE.md`
+Do NOT link `libRack` into the test binary. The SDK ships `libRack.dylib` (12 MB) and technically exports engine symbols, but it drags in `Window`/GL/`APP` globals — bare `process()` calls without a configured `Engine` dereference uninitialized globals. Linking is unsupported, platform-fragile, and buys nothing that the extracted-core harness does not provide.
 
-**Major components and v1.3 changes:**
-1. `AnalogLFO` (Module) -- NEW: `computePulse()`, `pulseWidthSpread`, `clockPulseCount` atomic; MODIFIED: `computeMorphedWave()` (4->5 shapes, unequal segments), `initComponentSpread()`
-2. `WaveformDisplay` (TransparentWidget) -- NEW: `syncFlashAlpha`, `lastClockPulseCount`, three-column coordinate system, corner brackets; MODIFIED: pill positions, colors, font to JetBrains Mono
-3. `AnalogLFOWidget` (ModuleWidget) -- MODIFIED: all `mm2px(Vec(...))` positions for 14HP layout, new SVG panel path, new custom widget subclasses
-4. `res/AnalogLFO.svg` (Panel) -- REPLACED: 12HP -> 14HP, complete Forge Noir redesign
-
-**Key patterns applied:**
-- Monotonic counter (`clockPulseCount`) for audio-to-GUI edge events -- avoids the lost-event race condition of a bool flag; GUI detects multiple edges per frame if needed
-- Proportional coordinate system for display column boundaries -- `leftColRight()`, `centerLeft()`, etc. defined as fractions of `box.size.x`; survives any display box resize
-- Shape array extension (4->5 elements) -- morph engine was generic: N shapes with (N-1) segments; adding a shape is additive, not a refactor
-- Hybrid SVG+NanoVG rendering -- SVG for static structure, NanoVG for gradients and animation; this is the correct split for nanosvg's constraints
-- Unequal morph segment widths -- morph [0, 0.75] maps to existing 3 crossfade segments; morph [0.75, 1.0] maps to the new square-to-pulse segment; preserves all existing patch sounds exactly
+**Major components:**
+1. **`src/dsp/RackCompat.hpp`** — forge-owned shims: `SchmittTrigger`, `Timer`, `ExponentialFilter` (~10 lines each); replace `rack::math::clamp` with `std::clamp`
+2. **`src/dsp/ClockTracker.hpp`** — EMA + consecutive-outlier counter + 3-state FSM; `step(float clkVoltage, float dt)` interface; home of the #1 fix
+3. **`src/dsp/RatioTable.hpp`** — 15-ratio table + `BEATS_PER_ALIGN[15]` + `shouldReset(ratioIdx, beatCount)`; pure integer math; home of the #2 fix; easiest high-value unit-test target
+4. **`src/dsp/Waveshape.hpp`** — `computeSine/Tri/Saw/Square/Pulse/Morph`; bleed dependency (`ouLayers[0].state`) becomes an explicit `float bleedLfo` parameter
+5. **`src/dsp/Swing.hpp`** — `swingPhaseMultiplier(phase, swingFrac, isClocked)` and display warp; home of the #3 fix
+6. **`src/dsp/DriftEngine.hpp`** — OU layers + jitter + DC; templated on RNG type for deterministic test injection
+7. **`src/dsp/LfoCore.hpp`** — orchestrator taking `forge::Inputs` POD, returning output voltage
+8. **`tests/BlockDriver.hpp`** — owns `LfoCore` + fixed sample rate; synthesizes input blocks; IS the headless integration harness
+9. **`tests/test_main.cpp` + `tests/test_*.cpp`** — doctest runner + per-finding regression tests (#1 outlier recovery, #2 ratio alignment, #3 swing desync, #4 JSON crash guard) + invariant tests (output bounds, frequency accuracy, phase continuity, morph/character ranges, determinism)
 
 ### Critical Pitfalls
 
-Sixteen pitfalls were identified in research. The top five by consequence severity:
+1. **Removing trial fonts from HEAD only, skipping history rewrite** — fonts are already pushed to the private remote in commit `e486ce1`. Required: `git filter-repo --path BCBarellTEST-Regular.otf --path FoundationLogo.ttf --invert-paths` on a fresh `--no-local` clone, `git push --force --all --tags origin`, then verify with a four-step grep on a fresh re-clone of the remote. Do this while the repo is still PRIVATE.
 
-1. **Morph continuity break at the square-to-pulse boundary** -- The naive 5-equal-segment approach (`morph * 4.f`) shifts every existing patch: square moves from morph=1.0 to morph=0.75. Prevent with unequal segment widths: morph [0, 0.75] maps to the 3 existing crossfade segments; morph [0.75, 1.0] maps to square-to-pulse. Detection: A/B test at morph=0.5 (pure saw) before and after -- output must be identical.
+2. **Flipping the repo public before purge is verified against a fresh remote clone** — `push --force origin main` only rewrites one ref; stale branches/tags still contain the old commits. Force-push with `--all --tags`. The publish step is a separate phase gated on `git rev-list --all --objects | grep -iE 'Barell|FoundationLogo'` returning empty on a fresh re-clone.
 
-2. **nanosvg rendering failures silently breaking the panel** -- The HTML/CSS mockup uses features nanosvg cannot render: `<text>`, `<use>`, `<defs>`, `<filter>`, CSS classes, multi-stop gradients, clip-paths. Designing the full panel in Inkscape before testing in VCV Rack produces a black rectangle in production. Prevent by testing in VCV Rack after each major SVG element, not at the end.
+3. **Performing the #11/#12 display/thread refactors before the test harness exists** — moving `updateDisplayBuffer()` off the audio thread introduces a thread boundary; replacing fixed `1/60` ticks with wall-clock `dt` changes all animation math. Without a pinned headless harness there is no proof the refactor preserved behavior. Harness first; refactors gated on harness-green.
 
-3. **Enum reordering corrupting saved parameter values** -- Inserting a new param anywhere except the end of the enum shifts all subsequent IDs, causing patches to load with wrong values. Prevent by always appending to enums before `PARAMS_LEN`. The morph-integrated PWM design avoids needing any new param (PWM is the morph sweep, not a separate control) -- this risk is low for v1.3 but must be verified if any new param is added.
+4. **Adopting the #2 ratio-alignment table without a documented listening decision** — the current x1.5 every-beat retrigger may be a desirable groove. Build both versions, audition in Rack, record the decision (with audio if possible), then write the regression test that pins the *chosen* behavior. A test encoding the math without anyone having listened is insufficient.
 
-4. **Pulse wave amplitude and DC collapse at narrow duty cycles** -- At 10% duty, perceived amplitude drops and DC bias shifts toward -0.8V normalized. Prevent with a hard minimum duty cycle floor (10-15%) and verification that drift DC offset does not compound past +/-5V. Accept the inherent DC characteristic as authentic analog behavior.
-
-5. **Panel width change disrupting saved patch layouts** -- 12HP to 14HP forces a 2HP right-shift of all neighboring modules on patch load. Cables remain connected, parameters restore correctly. Prevent by NOT changing the module slug, documenting in the changelog, and testing load behavior with a real v1.2 patch file before release.
-
-Additional pitfalls covered in detail in `.planning/research/PITFALLS.md`: bleed ring topology (Pitfall 7), display buffer for pulse region (Pitfall 8), component placeholder alignment (Pitfall 9), font loading per-frame overhead (Pitfall 10), crossfade artifacts from rapid morph CV (Pitfall 11), three-column layout at small zoom (Pitfall 12), animation CPU when hidden (Pitfall 13), font bundling (Pitfall 14), component spread seed ordering (Pitfall 15), SVG cache during development (Pitfall 16).
+5. **Setting `version` to `1.4.x` in plugin.json** — the internal milestone label "v1.4 Tempered" and the manifest `version` are different numbering schemes. Manifest MAJOR must equal Rack major = 2. `2.0.0` is correct. Changing it to `1.x` breaks VCV's updater and the submission.
 
 ---
 
 ## Implications for Roadmap
 
-Based on combined research, the phase structure is determined by the dependency graph. There is no ambiguity about ordering.
+Two hard ordering constraints govern all phases:
+- **Constraint A:** Test harness (Phase 1) must precede all DSP refactors (Phase 3).
+- **Constraint B:** Git-history purge (Phase 4) must complete while repo is PRIVATE and be verified via fresh remote clone before the repo is flipped public (Phase 6).
 
-### Phase A: PWM DSP Extension
-
-**Rationale:** Smallest, most self-contained change. Pure C++ math modifying only `AnalogLFO` struct. Zero panel dependencies -- the existing display automatically renders the new waveform range because `updateDisplayBuffer()` calls `computeMorphedWave()`. Validates the most important feature before visual complexity accumulates. Character-aware PWM bundles here because it modifies the same code (bleed ring, squareDutySpread, tanh softening on pulse edges).
-
-**Delivers:** Full five-shape morph sweep (sine->tri->saw->square->narrow pulse) using unequal segment widths to preserve all existing patch sounds. computePulse() with tanh edge softening. Bleed ring extended to 5 shapes with open-ended vs. ring topology decision made. pulseWidthSpread added as last entry in initComponentSpread().
-
-**Features addressed:** Morph-integrated PWM (P1 must-have), Character-aware PWM (P1 bundled)
-
-**Critical pitfalls to avoid:** Pitfall 1 (morph continuity -- unequal segment widths), Pitfall 2 (amplitude/DC collapse -- hard floor at 10-15% duty), Pitfall 6 (enum ordering -- no new params for v1.3 PWM), Pitfall 7 (bleed ring topology -- update modulus atomically), Pitfall 8 (display buffer -- passes full morph range), Pitfall 15 (spread seed ordering -- append pulseWidthSpread last)
-
-**Research flag:** No deeper research needed. All patterns are direct extensions of existing computeSquare() code. LOW complexity, HIGH confidence.
+Everything else is relatively independent within its phase.
 
 ---
 
-### Phase B: Forge Noir SVG Panel + Widget Positions
+### Phase 1: Test Harness Foundation
 
-**Rationale:** The panel SVG is a standalone file with no code dependencies beyond the widget constructor positions. It is the most labor-intensive deliverable and is the structural blocker for Phase C (display box position and size depend on the 14HP layout). Creating the panel before touching display code avoids working in two coordinate systems simultaneously.
-
-**Delivers:** Full 14HP Forge Noir panel SVG (panel background #0c0c0c, text-as-paths for all labels, decorative lines, hex bolt geometry, forge emblem as simplified low-opacity paths, display placeholder rect). Updated widget constructor with all `mm2px(Vec(...))` positions recalculated for 14HP per DESIGN-LANGUAGE.md coordinates. Custom SVG component files for knobs, jacks, trimpots, hex bolts.
-
-**Features addressed:** Forge Noir panel SVG (P1 must-have), Forge emblem atmospheric background (P2, simplified SVG version acceptable)
-
-**Critical pitfalls to avoid:** Pitfall 3 (2HP width change -- document, do not change slug), Pitfall 4 (nanosvg limitations -- test in VCV Rack after each major SVG element), Pitfall 9 (component placeholder alignment -- single source of truth in C++ positions), Pitfall 16 (SVG cache -- restart VCV Rack fully after SVG changes during development)
-
-**Research flag:** No deeper research needed. nanosvg constraints are fully documented. Translation from HTML/CSS mockup to nanosvg-compatible SVG is labor-intensive but not technically uncertain. MEDIUM complexity overall; HIGH confidence on the constraints, MEDIUM confidence on exact visual fidelity of the design language translation.
-
----
-
-### Phase C: Display Three-Column Layout
-
-**Rationale:** Depends on Phase B (display box position and size are finalized). The three-column restructuring is a coordinate reorganization of existing NanoVG draw calls -- no new rendering technology, no new atomics. Column boundaries defined as proportions of `box.size.x` auto-adapt to the new 14HP display dimensions. CRT aesthetic elements (corner brackets, scanlines, border glow) bundle here because they modify the same drawLayer() function with minimal additional code.
-
-**Delivers:** Left/center/right column layout for all pills, waveform confined to center column, Forge Noir display colors (#030303 background, ember accent border), JetBrains Mono font loaded and cached for data readouts, corner bracket accents (8x8px L-shapes), CRT scanline overlay, animated border glow via breathePhase.
-
-**Features addressed:** Display three-column layout (P1 must-have), CRT display aesthetic (P2)
-
-**Critical pitfalls to avoid:** Pitfall 5 (FramebufferWidget misuse -- keep WaveformDisplay as TransparentWidget, never wrap), Pitfall 10 (font loading -- cache handle in member variable on first draw, not every frame), Pitfall 12 (zoom levels -- test at 50%/75%/100%/150%/200%), Pitfall 14 (font bundling -- use `asset::plugin()` not `asset::system()` for JetBrains Mono)
-
-**Research flag:** No deeper research needed. All NanoVG APIs are already in active use in the v1.2 display code. Coordinate math is proportional arithmetic. LOW complexity, HIGH confidence.
+**Rationale:** Load-bearing prerequisite for safe DSP refactors (#11, #12) and for bug fixes landing as regression tests (PROJECT.md mandate). Build it before any other code changes.
+**Delivers:**
+- `src/dsp/` directory with `RackCompat.hpp` shims
+- `tests/doctest/doctest.h` vendored (pinned v2.4.11 or v2.5.2)
+- `tests/test_main.cpp` defining the doctest runner
+- Makefile `test` target (additive; does not touch plugin build; `RACK_DIR` irrelevant to it)
+- `tests/BlockDriver.hpp` headless integration harness over `LfoCore`
+- Stub/passing tests for output-bounds, frequency-accuracy, morph/character-range invariants
+**Avoids:** DSP refactor regressions with no safety net (Pitfall 6); tested code drifting from shipped code (Architecture anti-pattern)
+**Research flag:** No deeper research needed — architecture is well-documented and doctest drop-in is trivial.
 
 ---
 
-### Phase D: Animated SYNC Badge
+### Phase 2: Functional Bug Fixes
 
-**Rationale:** Depends on Phase C (SYNC badge must be in its final position). The smallest GUI change in the milestone: one new atomic (`clockPulseCount`), one new float (`syncFlashAlpha`), a few lines in `step()`, and a minor alpha boost in `drawTextOverlays()`. Appropriately scoped as the final phase because it builds on both the display layout work (Phase C) and the existing breathePhase animation infrastructure.
-
-**Delivers:** Brief ember flash on each clock edge while LOCKED (fast attack, exponential decay ~200ms, base visibility ~60%). Flash uses monotonic counter bridge from audio thread to prevent lost-event races between audio and GUI frames. ACQUIRING state 2Hz sinusoidal blink is unchanged.
-
-**Features addressed:** Animated SYNC badge (P1 must-have)
-
-**Critical pitfalls to avoid:** Pitfall 5 (no FramebufferWidget involved here), Pitfall 13 (gate animation on `syncFadeAlpha > 0.001f`, matching existing pattern)
-
-**Research flag:** No deeper research needed. Pattern is a direct extension of the existing breathePhase and syncFadeAlpha animation system. LOW complexity, HIGH confidence.
+**Rationale:** Each fix lands with a regression test going from failing to passing. The harness from Phase 1 enables this. Finding #2 has a hard audition gate that cannot be skipped.
+**Delivers:**
+- Fix #3 (phase dot desync): store `isClocked ? swingFrac : 0.5f` as `displaySwingFraction` — one line; regression test added
+- Fix #4 (malformed-JSON crash): `json_is_string()` guard + try/catch fallback; regression test on parsing predicate as free function
+- Fix #1 (clock tracker lockout): consecutive-outlier counter in `ClockTracker`; regression test asserts re-acquisition after >3× tempo jump and after fast-to-slow trap
+- Fix #2 (x1.5/÷1.5 beat alignment): **AUDITION-GATED** — build both versions, listen in Rack, record decision, then add `BEATS_PER_ALIGN` table to `RatioTable.hpp` and regression test that pins chosen behavior
+**Avoids:** #2 groove regression shipped without human listening decision (Pitfall 7); missing regression tests (PROJECT.md mandate)
 
 ---
 
-### NanoVG Premium Knobs (P2 -- Phase E or Deferred)
+### Phase 3: DSP Extraction and Display Refactors
 
-**Rationale:** The only P2 feature without a natural anchor in the above phases. NanoVG knobs require a custom widget subclass overriding `drawLayer()` with multi-pass radial gradients and FramebufferWidget caching (dirty only on rotation). This is architecturally separate from all other v1.3 work and carries the highest implementation risk: GPU cost of multi-pass gradient rendering is unvalidated, and FramebufferWidget interaction with multiple gradient passes has not been profiled.
+**Rationale:** Gated on Phase 1 (harness green). This is where #11 and #12 land alongside full `src/dsp/` extraction.
+**Delivers:**
+- Full `src/dsp/` layer: `Waveshape.hpp`, `Swing.hpp`, `DriftEngine.hpp`, `LfoCore.hpp`
+- `AnalogLFO.cpp` shell thinned to ~20-line `process()` pass-through
+- Fix #11 (frame-rate-independent animation): `APP->window->getLastFrameDuration()` with `clamp(dt, 0, 1/30.f)` ceiling
+- Fix #12 (display buffer off audio thread): move `updateDisplayBuffer()` to `WaveformDisplay::step()` behind existing atomics + double-buffer pattern
+- Code cleanups: #8 (dead `drawZeroCrossing` + `scanlineImage`), #9 (unreachable `isStill`), #10 (pill fade symmetry on clock disconnect)
+- Headless harness output verified within epsilon pre/post at 44.1/48/96 kHz
+**Avoids:** Silent regression from thread-boundary introduction (Pitfall 6); bleed-modulation parameter lift missed during extraction (Architecture gap — flag on extraction checklist)
+**Research flag:** One decision to confirm at phase start: RNG strategy (re-implement Xoroshiro128+ in core for bit-identical fidelity vs. template on RNG and inject `std::mt19937_64` in tests). Recommendation: re-implement Xoroshiro128+ for fidelity.
 
-**Recommendation:** Defer to a clearly-scoped Phase E after the core milestone ships. Profile GPU cost immediately before committing to the full three-size system (xl/lg/md). Do not let knob rendering block the milestone.
+---
 
-**Research flag:** NEEDS empirical performance validation before implementation begins. Multi-pass NanoVG knob GPU cost is explicitly listed at LOW confidence in FEATURES.md. If pursuing Phase E, profile with VCV Rack's performance meters on the first prototype knob before building all three sizes.
+### Phase 4: Release IP Hardening
+
+**Rationale:** Must execute while the GitHub repo is still PRIVATE. Rewrites every commit SHA from `e486ce1` onward; must be its own dedicated phase on a quiet tree with nothing else in flight.
+**Delivers:**
+- `BCBarellTEST-Regular.otf` and `FoundationLogo.ttf` purged from all history via `git filter-repo --invert-paths` on a fresh clone, force-pushed with `--all --tags`
+- Purge verified: `git rev-list --all --objects | grep -iE 'Barell|FoundationLogo'` returns empty on a fresh clone of the remote (not just the local repo)
+- `LICENSE` file at repo root (GPLv3 full text)
+- `NOTICES` or `res/fonts/README` with OFL attribution for JetBrains Mono and any other shipped font
+- Asset inventory for `res/`: confirm Bebas Neue / Chakra Petch outlines in panel SVG came from OFL Google Fonts cuts, not trial/commercial cuts
+- `.gitignore` entry blocking future non-OFL font commits
+**Avoids:** Trial fonts redistributed via public history (Pitfalls 1, 2, 3 — non-recoverable once public)
+**Research flag:** SVG font-outline provenance is an open question — resolve by inspection at phase start (see Open Questions).
+
+---
+
+### Phase 5: VCV Library Compliance
+
+**Rationale:** All code work and IP hardening are complete. This is the manifest/packaging/verification pass before publication.
+**Delivers:**
+- `plugin.json` URLs populated: `sourceUrl` (GitHub project page), `authorUrl`, `pluginUrl`, `manualUrl` (Notion URL — requires Phase 6a Notion publish first; this field can be filled at end of Phase 5 or start of Phase 7)
+- `plugin.json version` confirmed at `2.x.x`; Makefile `VERSION` confirmed identical
+- `minRackVersion` decision documented (lower from `2.6.0` to `2.0.0` unless a 2.6 API is confirmed required)
+- `CHANGELOG.md` created (lifted from MILESTONES.md); `changelogUrl` added to manifest
+- Tag audit: consider adding `Random` tag (OU drift engine); confirm no invalid tags exist
+- SVG lint: `res/AnalogLFO.svg` contains no `<filter>`, `feGaussianBlur`, CSS, or live `<text>` nodes (nanosvg subset constraint)
+- Trademark string audit: no trademarked synth names in manifest fields, panel text, preset names
+- `make dist` run; `.vcvplugin` artifact unzipped and inspected: `LICENSE` present, `plugin.json` URLs populated, `res/` present, no trial fonts
+- Clean build verified on macOS; GitHub Actions CI matrix (ubuntu/macos/windows) added if feasible
+**Avoids:** Manifest rejection (Pitfall 5); version confusion (Pitfall 8); trademark triggers (Pitfall 4)
+
+---
+
+### Phase 6: Publish Repo and Manual
+
+**Rationale:** Repo goes public only after Phase 4 purge is verified. Manual drafting can start during any earlier phase; must be published before Phase 7.
+**Delivers:**
+- 6a: Notion manual published to web (12 subpages; table-stakes sections 1/4/5/8/10/12 first, then 2/6/7/9, then 3/11)
+- 6b: GitHub repo flipped public (`gh repo edit --visibility public`) — gated on Phase 4 verification
+- `plugin.json` `sourceUrl`, `pluginUrl`, `manualUrl` verified as live URLs and committed
+**Avoids:** Public repo with contaminated history (Pitfalls 1/2 — Phase 4 purge verification is the gate)
+
+---
+
+### Phase 7: VCV Library Submission
+
+**Rationale:** Final phase. All prerequisites complete: code clean, tests green, IP hardened, repo public, manifest valid, manual published.
+**Delivers:**
+- Git tag `v2.x.y` at release commit
+- `git rev-parse HEAD` commit hash recorded
+- One issue opened at https://github.com/VCVRack/library/issues titled `ForgeAudio-AnalogSeries` (the slug, not the name)
+- Issue body: plugin name, license (`GPL-3.0-or-later`), sourceUrl, pluginUrl, authorUrl, manualUrl, exact commit hash (NOT a branch name)
+- Submission issue URL recorded for all future update comments (this thread is permanent)
+**Avoids:** Issue titled with plugin name (Pitfall 5); branch name instead of commit hash (Pitfall 5)
+**Research flag:** No deeper research needed — submission procedure is fully documented.
 
 ---
 
 ### Phase Ordering Rationale
 
-- Phase A first: PWM DSP is zero-dependency on rendering work; validates the most important feature change with maximum isolation; any bugs are easier to isolate before panel and display complexity accumulates
-- Phase B second: the panel is the structural blocker for all coordinate work; must be locked before display positions can be finalized; it is the highest-effort single deliverable and benefits from being done while the implementation is still fresh
-- Phase C third: depends on Phase B display box position and size; all NanoVG APIs are already in use so iteration is fast once the panel coordinate system is established
-- Phase D last: depends on Phase C SYNC badge final position; it is the smallest change and the appropriate integration capstone
-- NanoVG knobs deferred or Phase E: architecturally orthogonal to all other work; carries the only unvalidated performance risk in the milestone
-
----
+- Phase 1 before Phases 2 and 3: harness must exist before any code is expected to carry regression tests, and before refactors that need a behavioral pin.
+- Phase 2 before Phase 3: bugs fixed first; refactors do not introduce new variables while bugs are outstanding.
+- Phase 4 as early as feasible (can run after Phase 2, before or concurrent with Phase 3): purge rewrites history; doing it earlier reduces SHA-rebase surface area. Must happen on a quiet tree.
+- Phase 5 after Phase 3: compliance pass needs the final code state.
+- Phase 6b (public flip) gated on Phase 4 purge verification: hard constraint.
+- Phase 6a (Notion publish) can start drafting during any earlier phase; must publish before Phase 7.
+- Phase 7 last: all gates must be green.
 
 ### Research Flags
 
-Phases needing deeper research or empirical validation:
+**No additional research needed (patterns fully established):**
+- Phase 1 (Test Harness): doctest drop-in, Makefile additive-target pattern — fully documented in STACK.md and ARCHITECTURE.md
+- Phase 2 (Bug Fixes): all four fixes concretely specified in CODE-REVIEW-FINDINGS.md; #2 has an audition gate, not a research gate
+- Phase 4 (IP Hardening): git-filter-repo procedure fully documented; only SVG provenance needs inspection at phase start
+- Phase 7 (Submission): VCV issue-based flow fully documented
 
-- **NanoVG Premium Knobs (Phase E):** GPU performance of multi-pass gradient rendering at three knob sizes is untested. Needs profiling on target hardware before committing to the full implementation. Listed at LOW confidence in source research.
+**One open question to resolve at phase start:**
+- Phase 3 (DSP Extraction): RNG strategy decision — low-stakes, decide at phase start
+- Phase 5 (Compliance): `minRackVersion` decision requires a one-time API grep
 
-Phases with standard, established patterns (skip additional research):
+---
 
-- **Phase A (PWM DSP):** Direct extension of computeSquare(). All math is proven in existing code.
-- **Phase B (SVG Panel):** nanosvg constraints are fully documented; translation from mockup is labor, not research. Iterative testing in VCV Rack is the validation mechanism.
-- **Phase C (Display Layout):** All NanoVG APIs already in active use. Coordinate math is proportional arithmetic.
-- **Phase D (Sync Animation):** Monotonic counter and exponential decay pattern directly mirrors existing animation infrastructure.
+## Open Questions
+
+| Question | Where to Resolve | Stakes |
+|----------|-----------------|--------|
+| **SVG font provenance:** do Bebas Neue / Chakra Petch outlines baked into `res/AnalogLFO.svg` come from the OFL Google Fonts cuts or from a trial/commercial cut? | Phase 4 — inspect SVG source and font file provenance records | HIGH — non-OFL outlines in the production SVG is a redistribution issue; OFL just needs NOTICES attribution |
+| **"Forge" brand collision check:** does slug `ForgeAudio-AnalogSeries` or brand "Forge Audio" collide with any existing VCV Library plugin or trademark? | Phase 5 — search VCV Library and library issue tracker for "Forge" | MEDIUM — slug is permanent; confirm before submission |
+| **Author/source URLs:** are `authorUrl` and `pluginUrl` the Photep GitHub org page and repo page, or a separate Forge Audio domain? | Phase 5 / Phase 6 — decide and record in manifest | LOW — informational; does not block submission but should be deliberate |
+| **`minRackVersion` decision:** is `2.6.0` actually required by any API, or can it be lowered to `2.0.0` to widen audience? | Phase 5 — grep `AnalogLFO.cpp` for API calls introduced after Rack 2.0 | MEDIUM — free audience expansion if lowerable |
+| **NOTICES file scope:** which assets beyond JetBrains Mono need explicit OFL attribution? Any other binaries in `res/`? | Phase 4 — asset inventory | MEDIUM — required for clean GPL compliance |
+| **#2 audition decision:** is the current x1.5 every-beat retrigger a desirable groove or an artifact? | Phase 2 — explicit listening session before implementing `BEATS_PER_ALIGN` table | HIGH for musical quality — cannot be delegated to automated tests |
 
 ---
 
@@ -213,60 +254,46 @@ Phases with standard, established patterns (skip additional research):
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | No new dependencies. All APIs verified against SDK docs and existing codebase at specific line numbers. JetBrains Mono follows an established loading pattern. |
-| Features | HIGH | All four core features explicitly scoped in PROJECT.md. PWM math, display layout, and animation patterns are well-documented. Design language finalized at mockup v19. NanoVG knob GPU cost is the one LOW-confidence item. |
-| Architecture | HIGH | Existing codebase fully analyzed (1,359 lines). All integration points identified with line numbers. Build order validated against dependency graph. Three key architectural patterns (monotonic counter, proportional coordinates, shape array extension) are established. |
-| Pitfalls | HIGH | 16 pitfalls identified, 12 at HIGH confidence from direct source analysis. Two at MEDIUM confidence (crossfade artifacts from rapid morph CV, font loading overhead) are edge cases with natural mitigations. Two at MEDIUM confidence (SVG cache behavior, visual fidelity of nanosvg gradient translation) are development process concerns, not architectural risks. |
+| Stack (VCV manifest facts, submission mechanism, doctest) | HIGH | All facts verified against official VCV manual, VCVRack/library README, and doctest GitHub. No ambiguity on submission flow or framework choice. |
+| Features (manual sections, Notion structure) | HIGH | Cross-referenced against 5 leading VCV author manuals + official VCV docs + official Notion help docs. Table-stakes vs. nice-to-have split is well-supported. |
+| Architecture (extract-core approach, test harness design) | HIGH | Corroborated by Squinky Labs and Surge XT (two major VCV plugins with test suites), VCV community thread consensus, and direct SDK inspection. Decoupling surface assessed line-by-line from the 1,641-line source. |
+| Pitfalls (git-history purge procedure, manifest rejection causes) | HIGH | Repo state verified directly this session via `git log`, `git ls-files`, `gh repo view` (PRIVATE, pushed, fonts in e486ce1). VCV manifest and submission rules verified against official sources. Purge procedure verified against git-filter-repo docs. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Exact mm coordinates for 14HP component positions:** DESIGN-LANGUAGE.md specifies positions at 5x pixel scale. These need dividing by 5 to get mm, then converting via `mm2px()` in the widget constructor. The arithmetic is straightforward but must be done precisely. Verify against the mockup coordinate grid before authoring the SVG. Key positions: panel center at x=35.56mm, secondary columns at x=21.2mm and x=49.9mm, CV jack columns at x=9.2mm, 22.8mm, 35.56mm, 48.8mm, 62mm.
-
-- **Minimum pulse duty cycle floor:** Research recommends 10-15%. The exact value should be validated by ear at morph=1.0 with character=0 -- the pulse should be narrow and distinctive, not perceived as silence or near-silence. The computePulse() ARCHITECTURE.md prototype uses 12.5% as the base duty at character=0, which is a natural starting point. Confirm by listening and observing the display.
-
-- **Bleed ring topology for 5 shapes:** Research identifies two options: ring topology (pulse bleeds into sine, matching the circular structure of the existing 4-shape ring) vs. open-ended (no bleed at the extremes of sine and pulse). An open-ended topology is argued to be more musically appropriate for a linear morph sweep, but this is a design decision. Make it explicitly before implementing Phase A.
-
-- **NanoVG knob GPU cost:** The only genuinely unknown quantity in the milestone. Multi-pass radial gradient rendering for three knob sizes has not been profiled. If pursuing NanoVG knobs (Phase E), profile the first prototype knob at 60fps before building the full system.
-
-- **nanosvg `<use>` with scale(-1,1) for forge emblem symmetry:** DESIGN-LANGUAGE.md specifies `<use>` mirroring for the forge emblem. ARCHITECTURE.md documents that `<use>` is not supported in nanosvg. The resolution is to duplicate and manually mirror geometry. Confirm by testing a simple mirrored element in VCV Rack before committing to the emblem geometry.
+- **SVG font-outline provenance** (Phase 4): inspect `res/AnalogLFO.svg` for outlined glyphs from Bebas Neue / Chakra Petch and confirm which font files generated them.
+- **`minRackVersion` API audit** (Phase 5): grep source for any `rack::` API call requiring Rack 2.6+; if none found, lower to `2.0.0`.
+- **RNG strategy** (Phase 3, phase start): decide whether to re-implement Xoroshiro128+ in the core (bit-identical drift with shipped behavior) or template `DriftEngine` on an RNG type. Recommendation: re-implement Xoroshiro128+ for fidelity.
+- **`computeMorphedWave` bleed dependency** (Phase 3, extraction checklist): `ouLayers[0].state` is currently read inside `computeMorphedWave` for bleed modulation — must become an explicit `float bleedLfo` parameter during extraction. Easy to miss; add to the extraction checklist.
+- **"Forge" collision check** (Phase 5): search VCV Library and issue tracker before submitting; slug is permanent.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-
-- `src/AnalogLFO.cpp` (1,374 lines) -- direct source analysis for all integration points, current patterns, enum ordering, line-number-specific pitfall identification
-- [VCV Rack Module Panel Guide](https://vcvrack.com/manual/Panel) -- SVG requirements, nanosvg limitations, HP sizing
-- [VCV Rack Plugin API Guide](https://vcvrack.com/manual/PluginGuide) -- drawLayer, font loading, widget lifecycle, parameter serialization
-- [VCV Rack FramebufferWidget API](https://vcvrack.com/docs-v2/structrack_1_1widget_1_1FramebufferWidget) -- dirty flag, caching model, when to use vs. avoid
-- [nanosvg GitHub (memononen/nanosvg)](https://github.com/memononen/nanosvg) -- supported elements, paint types, gradient types
-- [VCV Rack RackWidget.cpp source](https://github.com/VCVRack/Rack/blob/v2/src/app/RackWidget.cpp) -- module position stored as grid coords, width derived from SVG
-- [VCV Rack ModuleWidget.cpp source](https://github.com/VCVRack/Rack/blob/v2/src/app/ModuleWidget.cpp) -- panel width derivation from SVG
-- `DESIGN-LANGUAGE.md` -- complete Forge Noir specification, color palette, typography, component sizing, layout coordinates at 5x scale
-- [nanosvg DeepWiki](https://deepwiki.com/memononen/nanosvg) -- feature overview, paint type enums, path commands
+- https://vcvrack.com/manual/Manifest — manifest field list, slug rules, version format, tag vocabulary, minRackVersion
+- https://vcvrack.com/manual/PluginLicensing — GPL-3.0-or-later acceptance, ethics/trademark rules, asset licensing
+- https://vcvrack.com/manual/Building — `make dist`, `.vcvplugin` contents, DISTRIBUTABLES
+- https://github.com/VCVRack/library (README) — Issue-based submission, slug-title rule, commit-hash rule, no-branch-name rule
+- https://vcvrack.com/manual/Installing — both install paths (Library + manual .vcvplugin)
+- https://github.com/doctest/doctest — single-header `doctest.h`, v2.4.11/v2.5.2, C++11–23
+- https://github.com/newren/git-filter-repo — `--path`/`--invert-paths`, fresh-clone guardrail, force-push requirement
+- Direct repo inspection this session: `git log`, `git ls-files`, `gh repo view` (PRIVATE, pushed, fonts in e486ce1), `plugin.json` state, `src/AnalogLFO.cpp` line-by-line coupling analysis, `../Rack-SDK/libRack.dylib` inspection
 
 ### Secondary (MEDIUM confidence)
-
-- [VCV Community: SVG transparencies and gradients](https://community.vcvrack.com/t/svg-transparencies-and-gradients/16833) -- gradient support details, 2-color limitation, VCV 2.6 improvements
-- [VCV Community: Notes for theme-able SVGs with nanoSvg](https://community.vcvrack.com/t/notes-for-theme-able-svgs-with-nanosvg/20060) -- theming patterns, SVG cache behavior
-- [VCV Community: Custom knob SVGs](https://community.vcvrack.com/t/how-can-i-implement-custom-knob-svgs/21399) -- SvgKnob subclass pattern
-- [VCV Community: Custom Widget Light Bloom](https://community.vcvrack.com/t/custom-widget-light-bloom/14647/3) -- ring lights via dual radial gradients, box gradients for bloom
-- [VCV Community: NanoVG optimization](https://community.vcvrack.com/t/trying-to-optimize-nanovg/16364) -- rendering performance, shadow impact
-- [Perfect Circuit: What is PWM?](https://www.perfectcircuit.com/signal/what-is-pwm) -- 5%-95% duty cycle limits, synth design conventions
-- [Sound on Sound: Synthesizing Strings with PWM](https://www.soundonsound.com/techniques/synthesizing-strings-pwm-string-sounds) -- duty cycle acoustic symmetry, standard limits
-- [Mutable Instruments Plaits manual](https://pichenettes.github.io/mutable-instruments-documentation/modules/plaits/manual/) -- waveform morph engine, narrow pulse behavior
-- [VCO PWM click artifacts (Fundamental #140)](https://github.com/VCVRack/Fundamental/issues/140) -- discontinuity artifacts from duty cycle modulation
-
-### Tertiary (LOW confidence -- empirical validation needed)
-
-- GPU cost of multi-pass NanoVG knob rendering -- no community benchmarks found; must profile on target hardware before committing to Phase E
-- FramebufferWidget with multiple gradient passes -- community anecdotes suggest benefit for static knobs but not quantified for the Forge Noir rendering approach
-- nanosvg `<use>` with scale(-1,1) for forge emblem mirroring -- design language specifies this technique, architecture research flags it as unsupported; needs empirical confirmation in VCV Rack
+- https://accu.org/journals/overload/25/137/kirilov_2343/ and https://hackingcpp.com/cpp/tools/testing_frameworks — doctest ~10ms vs Catch ~430ms compile overhead; Catch2 v3 dropped single-header
+- https://community.vcvrack.com/t/unit-testing/7477 — Squinky Labs "extract the core" testimony; community consensus on DSP isolation
+- https://community.vcvrack.com/t/tip-rack-sdk-with-catch2-via-vcpkg-and-cmake-with-ci-cd/23244 — CI friction when linking Rack; reinforces headers-only path
+- Surge XT for Rack — Catch2 test suite over Rack-independent engine (structure reference)
+- Stoermelder PackOne docs — per-feature sections, appended changelog, GIFs for time-based behavior (manual structure reference)
+- Bogaudio Modules README — standardized polyphony/bypass footer convention
+- Notion help docs — Wiki, ToC block, callout, table, Share to web, publishing settings
+- https://openfontlicense.org/ — OFL redistribution terms for JetBrains Mono, Bebas Neue, Chakra Petch
+- git-tower.com, coreui.io, marcofranssen.nl — corroborating git-filter-repo flags and force-push procedure
 
 ---
-
-*Research completed: 2026-03-27*
+*Research completed: 2026-06-14*
 *Ready for roadmap: yes*
