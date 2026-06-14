@@ -1,0 +1,35 @@
+name: test
+
+# D-09: cross-platform CI wired now (Phase 22), running on the private repo.
+# Rack-free — the test target links no libRack, fetches no Rack SDK, and needs no
+# display server. The DSP core under src/dsp/*.hpp is plain C++17, so `make test`
+# (and the Windows g++ fallback) build and run with only a compiler present.
+on: [push, pull_request]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ubuntu/macos ship GNU make + a C++17 compiler. No Rack toolchain needed.
+      - name: make test (unix)
+        if: runner.os != 'Windows'
+        run: make test
+
+      # windows-latest has no preinstalled GNU make and defaults to MSVC; invoke
+      # g++ directly with the SAME flags as the Makefile TEST_CXXFLAGS so the build
+      # stays consistent (notably -ffp-contract=off, no -ffast-math). The binary
+      # runs from the checkout root so the tests/golden/*.f32 relative paths resolve.
+      # The drift-on golden uses an epsilon tolerance off the canonical (macOS) OS
+      # (handled inside test_golden.cpp); the workflow just builds and runs.
+      - name: make test (windows / direct g++)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          g++ -std=c++17 -O2 -g -Isrc -Itests -Wall -Wextra -ffp-contract=off tests/*.cpp -o test.exe
+          ./test.exe
