@@ -165,12 +165,11 @@ struct ClockTracker {
 				}
 				prevRatioIdx = currentRatioIdx;
 
-				// Division-aware reset decision (AnalogLFO.cpp:520-524 → RatioTable::shouldReset)
-				bool reset = true;
-				if (currentRatioIdx >= 0 && RATIO_TABLE[currentRatioIdx] < 1.f) {
-					int divisor = (int)std::round(1.f / RATIO_TABLE[currentRatioIdx]);
-					reset = (clockBeatCount >= divisor);
-				}
+				// Division-aware reset decision (AnalogLFO.cpp:520-524). Delegate to
+				// forge::shouldReset so the Phase-23 BEATS_PER_ALIGN fix has a single
+				// home — re-implementing it here would silently split the clock FSM
+				// from the table when P23 patches shouldReset (CR-03).
+				bool reset = forge::shouldReset(currentRatioIdx, clockBeatCount);
 
 				if (reset) {
 					// Shell performs: crossfadeFrom=lastOutputVoltage; crossfadeProgress=0;

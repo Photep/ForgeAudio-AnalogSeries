@@ -14,7 +14,13 @@ DISTRIBUTABLES += res
 DISTRIBUTABLES += $(wildcard LICENSE*)
 DISTRIBUTABLES += $(wildcard presets)
 
+# `make test` is Rack-free (TEST-01 / D-09). A bare `include` hard-fails when
+# ../Rack-SDK is absent (e.g. GitHub Actions ubuntu/macos runners), so skip it
+# when `test` is the goal — the TEST_-namespaced target needs nothing from
+# plugin.mk and $(CXX) falls back to the make default (CR-01).
+ifeq ($(filter test,$(MAKECMDGOALS)),)
 include $(RACK_DIR)/plugin.mk
+endif
 
 # ---------------------------------------------------------------------------
 # Standalone test harness (TEST-01) — purely additive.

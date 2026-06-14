@@ -238,7 +238,9 @@ struct AnalogLFO : Module {
 	void dataFromJson(json_t* rootJ) override {
 		json_t* s0J = json_object_get(rootJ, "spreadSeed0");
 		json_t* s1J = json_object_get(rootJ, "spreadSeed1");
-		if (s0J && s1J) {
+		// Type-check, not just presence: a hand-edited patch with non-string
+		// nodes makes json_string_value() return NULL -> std::stoull(NULL) is UB (CR-02).
+		if (json_is_string(s0J) && json_is_string(s1J)) {
 			spreadSeed[0] = std::stoull(json_string_value(s0J), nullptr, 16);
 			spreadSeed[1] = std::stoull(json_string_value(s1J), nullptr, 16);
 			initComponentSpread();  // regenerate deterministic offsets from restored seed
