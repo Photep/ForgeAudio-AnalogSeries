@@ -194,6 +194,54 @@ TEST_CASE("RatioTable: shouldReset division behavior") {
 	CHECK(forge::shouldReset(-1, 1));
 }
 
+TEST_CASE("RatioTable: full reset cadence at the 13 un-gated ratios (TEST-03)") {
+	// TEST-03 pins the CURRENT alignment cadence at every NON-audition-gated index
+	// using the boundary style (no reset before the period, reset exactly at it).
+	//
+	// AUDITION-GATED EXCLUSION: idx 6 (/1.5) and idx 8 (x1.5) cadence is NOT
+	// asserted here. Those two cells are pinned by plan 23-05 in
+	// test_regression.cpp AFTER the human x1.5/÷1.5 audition decision; asserting
+	// their post-audition cadence now would conflict with whatever the audition
+	// decides (PLAN.md key_constraints; PATTERNS.md L97-110). Their un-gated facts
+	// (RATIO_TABLE values) are checked separately below.
+
+	// --- Division ratios idx 0-5 (RATIO_TABLE < 1): reset once beatCount reaches
+	//     round(1/ratio). Boundary sweep: CHECK_FALSE through period-1, CHECK at it.
+	const int DIV_PERIOD[6] = {16, 8, 6, 4, 3, 2};   // /16 /8 /6 /4 /3 /2
+	for (int idx = 0; idx <= 5; ++idx) {
+		int period = DIV_PERIOD[idx];
+		for (int b = 1; b < period; ++b)
+			CHECK_FALSE(forge::shouldReset(idx, b));   // no early (mid-cycle) reset
+		CHECK(forge::shouldReset(idx, period));        // resets exactly on the boundary
+		CHECK(forge::shouldReset(idx, period + 1));    // and remains true past it
+	}
+
+	// --- Multiply ratios idx 7, 9-14 (RATIO_TABLE >= 1, integer multiples of x1):
+	//     reset EVERY beat. idx 8 (x1.5) is deliberately skipped (audition-gated).
+	const int MUL_IDX[7] = {7, 9, 10, 11, 12, 13, 14};   // x1 x2 x3 x4 x6 x8 x16
+	for (int idx : MUL_IDX) {
+		CHECK(forge::shouldReset(idx, 1));
+		CHECK(forge::shouldReset(idx, 2));
+		CHECK(forge::shouldReset(idx, 7));
+	}
+
+	// --- Unlocked (idx < 0): always reset, for any beat count.
+	CHECK(forge::shouldReset(-1, 1));
+	CHECK(forge::shouldReset(-1, 5));
+	CHECK(forge::shouldReset(-5, 99));
+}
+
+TEST_CASE("RatioTable: audition-gated idx6 / idx8 table values (cadence pinned in 23-05)") {
+	// Un-gated facts ONLY for the two audition-gated cells: their RATIO_TABLE
+	// values are fixed regardless of the alignment decision. The reset CADENCE for
+	// idx 6 (/1.5) and idx 8 (x1.5) is intentionally NOT asserted here — it is
+	// pinned in test_regression.cpp by plan 23-05 after the audition (PLAN.md).
+	CHECK(forge::RATIO_TABLE[6] == doctest::Approx(2.f / 3.f));   // /1.5
+	CHECK(forge::RATIO_TABLE[8] == doctest::Approx(3.f / 2.f));   // x1.5
+	CHECK(std::string(forge::RATIO_LABELS[6]) == "/1.5");
+	CHECK(std::string(forge::RATIO_LABELS[8]) == "x1.5");
+}
+
 // ---------------------------------------------------------------------------
 // Swing.hpp
 // ---------------------------------------------------------------------------
