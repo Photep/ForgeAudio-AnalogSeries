@@ -93,40 +93,42 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
-| TEST-03 | TBD | Pending |
-| TEST-04 | TBD | Pending |
-| TEST-05 | TBD | Pending |
-| TEST-06 | TBD | Pending |
-| BUG-01 | TBD | Pending |
-| BUG-02 | TBD | Pending |
-| BUG-03 | TBD | Pending |
-| BUG-04 | TBD | Pending |
-| CLEAN-01 | TBD | Pending |
-| CLEAN-02 | TBD | Pending |
-| CLEAN-03 | TBD | Pending |
-| CLEAN-04 | TBD | Pending |
-| CLEAN-05 | TBD | Pending |
-| PKG-01 | TBD | Pending |
-| PKG-02 | TBD | Pending |
-| PKG-03 | TBD | Pending |
-| PKG-04 | TBD | Pending |
-| PKG-05 | TBD | Pending |
-| IP-01 | TBD | Pending |
-| IP-02 | TBD | Pending |
-| IP-03 | TBD | Pending |
-| PUB-01 | TBD | Pending |
-| PUB-02 | TBD | Pending |
-| DOC-01 | TBD | Pending |
-| DOC-02 | TBD | Pending |
-| DOC-03 | TBD | Pending |
+| TEST-01 | Phase 22 | Pending |
+| TEST-02 | Phase 22 (scaffold) + Phase 24 (full extraction) | Pending |
+| TEST-03 | Phase 23 | Pending |
+| TEST-04 | Phase 22 | Pending |
+| TEST-05 | Phase 23 | Pending |
+| TEST-06 | Phase 26 | Pending |
+| BUG-01 | Phase 23 | Pending |
+| BUG-02 | Phase 23 (audition-gated) | Pending |
+| BUG-03 | Phase 23 | Pending |
+| BUG-04 | Phase 23 | Pending |
+| CLEAN-01 | Phase 24 | Pending |
+| CLEAN-02 | Phase 24 | Pending |
+| CLEAN-03 | Phase 24 | Pending |
+| CLEAN-04 | Phase 24 | Pending |
+| CLEAN-05 | Phase 24 | Pending |
+| PKG-01 | Phase 25 | Pending |
+| PKG-02 | Phase 26 | Pending |
+| PKG-03 | Phase 26 | Pending |
+| PKG-04 | Phase 25 | Pending |
+| PKG-05 | Phase 26 | Pending |
+| IP-01 | Phase 25 | Pending |
+| IP-02 | Phase 25 | Pending |
+| IP-03 | Phase 25 | Pending |
+| PUB-01 | Phase 28 | Pending |
+| PUB-02 | Phase 28 | Pending |
+| DOC-01 | Phase 27 | Pending |
+| DOC-02 | Phase 27 | Pending |
+| DOC-03 | Phase 27 | Pending |
 
 **Coverage:**
 - v1 requirements: 28 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 28 ⚠️
+- Mapped to phases: 28 ✓
+- Unmapped: 0
+
+**Note on TEST-02:** The Rack-independent core extraction is staged across two phases — Phase 22 extracts the minimal core needed to drive the harness; Phase 24 completes the full `src/dsp/*.hpp` layer and thins the Rack shell. TEST-02 is considered satisfied when Phase 24 completes. Primary owning phase: Phase 24.
 
 ---
 *Requirements defined: 2026-06-14*
-*Last updated: 2026-06-14 after initial definition*
+*Last updated: 2026-06-14 — roadmap created, traceability populated (28/28 mapped to Phases 22-28)*
