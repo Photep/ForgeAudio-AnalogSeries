@@ -4,13 +4,13 @@ milestone: v1.4
 milestone_name: Tempered
 status: executing
 stopped_at: Phase 22 context gathered
-last_updated: "2026-06-14T08:50:50.400Z"
+last_updated: "2026-06-14T09:36:11.197Z"
 last_activity: 2026-06-14
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 22 (test-harness-foundation) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-06-14
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Decisions pending at phase start (from research):
 - Phase 26: `minRackVersion` (lower 2.6.0 → 2.0.0 unless a 2.6 API is required); "Forge" slug collision check.
 - [Phase ?]: Phase 22: vendored doctest 2.4.11 harness; make test additive/Rack-free
 - [Phase ?]: Phase 22 P02: Pure DSP leaf headers (RackCompat/Waveshape/RatioTable/Swing) extracted to src/dsp/ — verbatim, rack-free, D-05 bleed lifted to bleedLfo param
+- [Phase ?]: Phase 22 P03: full LfoCore extraction (ClockTracker+DriftEngine+orchestrator) proven bit-exact vs inline via the D-08 extraction gate; shell delegates process() to core.step(), inline DSP deleted in the same change; goldens frozen from the validated core. D-04: TEST-02 full extraction effectively landed in Phase 22 (not Phase 24) — REQUIREMENTS ownership-table update flagged for human confirmation.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -84,10 +85,11 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 | Verification | Manual-only Nyquist validation (Phases 18/19/20.1/21) | Carried (human-gated) | v1.3 close |
 | Phase 22 P01 | 3min | 3 tasks | 5 files |
 | Phase 22 P02 | 8min | 4 tasks | 5 files |
+| Phase 22 P03 | 41min | 3 tasks | 12 files |
 
 ## Session Continuity
 
-Last session: 2026-06-14T08:50:40.088Z
+Last session: 2026-06-14T09:35:59.578Z
 Stopped at: Phase 22 context gathered
 Resume: plan Phase 22 with `/gsd:plan-phase 22`.
 
