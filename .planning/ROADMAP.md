@@ -96,7 +96,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
   3. A headless block-driver harness (`tests/BlockDriver.hpp`) runs the DSP core over sample blocks and asserts invariants: ±5V output bounds, frequency accuracy, phase continuity at reset, fixed-seed determinism
   4. Invariant tests pass at 44.1 / 48 / 96 kHz, establishing the behavioral baseline for later refactors
 **Plans**: 4 plans
-- [ ] 22-01-PLAN.md — Rack-free doctest harness skeleton (`make test` + vendored doctest + smoke test) (TEST-01)
+- [x] 22-01-PLAN.md — Rack-free doctest harness skeleton (`make test` + vendored doctest + smoke test) (TEST-01)
 - [ ] 22-02-PLAN.md — Extract RackCompat primitives + pure leaf headers (Waveshape w/ bleedLfo lift, RatioTable, Swing) (TEST-02)
 - [ ] 22-03-PLAN.md — Extract ClockTracker/DriftEngine/LfoCore, capture goldens, delegate shell, delete inline DSP (TEST-02, D-08)
 - [ ] 22-04-PLAN.md — BlockDriver + invariants @ 44.1/48/96 kHz + golden replay + GitHub Actions CI (TEST-04, D-09)
@@ -185,7 +185,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 22. Test Harness Foundation | v1.4 | 0/4 | Planned | - |
+| 22. Test Harness Foundation | v1.4 | 1/4 | In Progress|  |
 | 23. Functional Bug Fixes | v1.4 | 0/TBD | Not started | - |
 | 24. DSP Extraction + Display Refactors | v1.4 | 0/TBD | Not started | - |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 0/TBD | Not started | - |

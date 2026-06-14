@@ -4,13 +4,13 @@ milestone: v1.4
 milestone_name: Tempered
 status: executing
 stopped_at: Phase 22 context gathered
-last_updated: "2026-06-14T08:03:48.869Z"
-last_activity: 2026-06-14 -- Phase 22 planning complete
+last_updated: "2026-06-14T08:42:03.685Z"
+last_activity: 2026-06-14
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 22 — Test Harness Foundation (v1.4 Tempered release hardening)
+**Current focus:** Phase 22 — test-harness-foundation
 
 ## Current Position
 
-Phase: 22 of 28 (Test Harness Foundation) — first phase of v1.4
-Plan: — (none yet)
+Phase: 22 (test-harness-foundation) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-06-14 -- Phase 22 planning complete
+Last activity: 2026-06-14
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Decisions pending at phase start (from research):
 - Phase 24: RNG strategy (re-implement Xoroshiro128+ for fidelity vs. template on RNG — recommend re-implement).
 - Phase 25: SVG font-outline provenance (Bebas Neue / Chakra Petch — confirm OFL cuts).
 - Phase 26: `minRackVersion` (lower 2.6.0 → 2.0.0 unless a 2.6 API is required); "Forge" slug collision check.
+- [Phase ?]: Phase 22: vendored doctest 2.4.11 harness; make test additive/Rack-free
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -80,10 +81,11 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 |----------|------|--------|-------------|
 | Tech debt | `swingIndex` non-atomic GUI→audio write | Carried (non-blocker) | v1.3 close |
 | Verification | Manual-only Nyquist validation (Phases 18/19/20.1/21) | Carried (human-gated) | v1.3 close |
+| Phase 22 P01 | 3min | 3 tasks | 5 files |
 
 ## Session Continuity
 
-Last session: 2026-06-14T07:26:42.203Z
+Last session: 2026-06-14T08:41:53.716Z
 Stopped at: Phase 22 context gathered
 Resume: plan Phase 22 with `/gsd:plan-phase 22`.
 
