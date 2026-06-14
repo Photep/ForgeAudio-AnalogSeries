@@ -8,6 +8,21 @@ A VCV Rack 2 module series featuring analog-modeled oscillators. The first modul
 
 The three-knob analog engine — morph, character, drift — that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback showing exactly what's happening.
 
+## Current Milestone: v1.4 Tempered
+
+**Goal:** Take the feature-complete Analog LFO to a publishable, VCV-Library-ready plugin — bugs fixed, tested, package compliant, manual written, source published.
+
+**Target features:**
+- Automated testing: C++ test target (unit tests on extracted DSP logic) plus a headless `process()`-driver integration harness; bug fixes land as regression tests
+- Functional bug fixes from CODE-REVIEW-FINDINGS.md: clock tracker >3× lockout (#1), x1.5/÷1.5 mid-cycle truncation (#2), free-run phase-dot swing desync (#3), patch-load crash guard (#4)
+- Code cleanup: dead code (#8), unreachable `isStill` (#9), pill fade-out symmetry (#10), frame-rate-independent animations (#11), display buffer off the audio thread (#12)
+- VCV Library compliance: GPL-3.0 LICENSE (#5), populated plugin.json URLs (#6), trial-font removal incl. git-history purge (#7)
+- Source publication: public GitHub repo (provides sourceUrl/pluginUrl)
+- User manual authored in Notion (new top-level page)
+- Release packaging: verified build + `.vcvplugin` artifact ready for submission
+
+**Out of milestone scope:** No new DSP features — the LFO is feature-frozen. VCO module remains deferred to v2.0.
+
 ## Requirements
 
 ### Validated
@@ -55,7 +70,20 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ### Active
 
-(LFO complete — v1.3 was the final LFO milestone. Next active work is the VCO module, v2.0.)
+**v1.4 Tempered — release hardening (LFO feature-frozen):**
+- [ ] Automated test target with extracted, unit-tested DSP logic
+- [ ] Headless `process()`-driver integration harness asserting on output over sample blocks
+- [ ] Clock tracker recovers from >3× tempo jumps (no permanent lockout)
+- [ ] x1.5 / ÷1.5 ratios align without mid-cycle truncation (audition-gated)
+- [ ] Phase dot tracks trace in free-running mode with swing set
+- [ ] Patch load survives malformed/corrupt JSON without crashing
+- [ ] GPL-3.0 LICENSE file at repo root
+- [ ] plugin.json URLs populated (author/plugin/source)
+- [ ] Trial/proprietary fonts removed from repo and git history
+- [ ] Public GitHub source repository published
+- [ ] User manual published in Notion
+- [ ] `.vcvplugin` release artifact built and verified for VCV Library submission
+- [ ] Display/code cleanups: dead code, unreachable `isStill`, pill fade symmetry, frame-rate-independent animations, display buffer off audio thread
 
 **Deferred (future milestones):**
 - [ ] VCO module: V/Oct pitch input with 1V/octave tracking
@@ -150,5 +178,22 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Promote fresh.svg to production res/AnalogLFO.svg, no plugin.json width (D-03/D-05) | Rack auto-derives 18HP from viewBox; one canonical panel file | ✓ Good — no width drift between art and code |
 | SYNC flash via lock-free atomic edge counter, color/glow not alpha (Phase 21 D-01) | Audio thread increments, widget reads; white-hot lerp + bloom reads better than alpha fade | ✓ Good — per-edge flash, zero audio-thread coupling |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-06-13 after v1.3 Forge Noir milestone completion*
+*Last updated: 2026-06-14 — v1.4 Tempered milestone started*
