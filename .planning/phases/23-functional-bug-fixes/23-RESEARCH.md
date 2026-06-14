@@ -329,9 +329,12 @@ TEST_CASE("BUG-04: malformed seed string never throws, signals failure") {
 | A5 | The "milestone log" = STATE.md `### Decisions` section | Pitfall 7 | Medium — verified against STATE.md convention, but the user may intend the phase SUMMARY or a dedicated audition log; confirm the exact sink at plan time |
 | A6 | Manual in-Rack audition is the only human gate; all else is automated | Validation Architecture | Low — matches ROADMAP "Human verification gate: yes" scope |
 
-## Open Questions
+## Open Questions (RESOLVED at planning)
 
-1. **BUG-04 testability path — extract `parseSeedHex` vs manual-only?**
+> All three were resolved by the Phase 23 plans along the recommended path:
+> Q1 → **extract `parseSeedHex`** (plan 23-02 T2 — headless BUG-04 pin); Q2 → **STATE.md `### Decisions`** sink, echoed in SUMMARY (plan 23-04); Q3 → **parameterized `EXPECTED[15]`** valid under either audition outcome (plan 23-05 T1).
+
+1. **BUG-04 testability path — extract `parseSeedHex` vs manual-only?** — RESOLVED: extract (plan 23-02).
    - What we know: `dataFromJson` can't be reached headlessly; the throw is in `std::stoull`.
    - What's unclear: whether the team wants the small extraction (A4) to earn an automated TEST-05 pin for BUG-04, or accepts manual verification (BUG-04 is "medium priority robustness," and TEST-05 names only fixes #1–#3 explicitly).
    - Recommendation: extract `parseSeedHex` — it is a ~6-line Rack-free helper that turns a crash-class bug into a deterministic test, with negligible blast radius. TEST-05's literal scope is #1–#3, so BUG-04's pin is a bonus, not a requirement.
