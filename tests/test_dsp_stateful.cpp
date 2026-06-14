@@ -99,6 +99,41 @@ TEST_CASE("ClockTracker: re-acquires after a sustained >3x tempo change (does no
 	CHECK(ct.smoothedPeriod != doctest::Approx(fastPeriod));
 }
 
+// --- BUG-01 (TEST-05) regression: the SPEEDUP lockout the slowdown test misses ---
+// The genuine BUG-01 lockout is a sustained >3x SPEEDUP: every fast edge is rejected
+// as an outlier (rawPeriod < smoothedPeriod/3) AND each rejected edge already ran
+// clockTimer.reset() at L105, so the no-pulse timeout never fires -> stuck LOCKED at
+// the stale slow period forever. The consecutive-outlier counter must let it re-learn.
+TEST_CASE("BUG-01: re-acquires after a sustained >3x SPEEDUP (no lockout)") {
+	forge::ClockTracker ct;
+	// Lock at 120 BPM (period 0.5s).
+	driveClock(ct, 120.0, 4.0, 48000.0, 7);
+	REQUIRE(ct.clockState == forge::LOCKED);
+	// Switch to 540 BPM (period ~0.111s, 4.5x faster). Every edge is an outlier on the
+	// old code (0.111 < 0.5/3 = 0.167) and gets discarded; the timer keeps resetting so
+	// the timeout never rescues it. Must re-acquire the fast period via the counter.
+	driveClock(ct, 540.0, 4.0, 48000.0, 7);
+	CHECK(ct.smoothedPeriod < 0.25f);           // moved OFF the stale ~0.5s -> proves re-lock
+}
+
+// Fast-clock narrow slowdown band: the timeout floor is max(1.0, ...), so a fast clock
+// (smoothed period < ~0.33s) whose new slower period stays under that 1s floor cannot be
+// rescued by the timeout. If the slowdown is also >3x it's rejected as an outlier too.
+// The counter must let it track the new (slower-but-still-fast) period.
+TEST_CASE("BUG-01: re-acquires in the fast-clock slowdown band (timeout floor cannot rescue)") {
+	forge::ClockTracker ct;
+	// Lock a fast clock: 360 BPM => period ~0.167s (< 0.33s band; timeout floors at 1s).
+	driveClock(ct, 360.0, 4.0, 48000.0, 7);
+	REQUIRE(ct.clockState == forge::LOCKED);
+	float fastPeriod = ct.smoothedPeriod;       // ~0.167s
+	// Slow down >3x to 90 BPM => period ~0.667s. rawPeriod 0.667 > 3*0.167 = 0.5 -> outlier.
+	// The new period 0.667s is under the 1s timeout floor, so the timeout never fires.
+	// Only the consecutive-outlier counter can break the lockout here.
+	driveClock(ct, 90.0, 6.0, 48000.0, 7);
+	CHECK(ct.smoothedPeriod > 0.4f);            // tracked the new slower period
+	CHECK(ct.smoothedPeriod != doctest::Approx(fastPeriod));  // off the stale ~0.167s
+}
+
 TEST_CASE("ClockTracker: step takes injected clkV/connected (no inputs[] coupling)") {
 	// Compile-time + behavioral proof that voltage/connection are injected: passing
 	// connected=false reverts to FREE immediately even mid-lock.
