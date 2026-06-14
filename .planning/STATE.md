@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 23 (functional-bug-fixes) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 23
-Last activity: 2026-06-14 -- Phase 23 execution started
+Plan: 2 of 5
+Status: Executing Phase 23 (plan 23-01 complete)
+Last activity: 2026-06-14 -- Plan 23-01 complete: BUG-01 clock-tracker >3x lockout fixed (red->green)
 
 Progress: [██████████] 100%
 
@@ -63,6 +63,7 @@ Decisions pending at phase start (from research):
 - [Phase ?]: Phase 22: vendored doctest 2.4.11 harness; make test additive/Rack-free
 - [Phase ?]: Phase 22 P02: Pure DSP leaf headers (RackCompat/Waveshape/RatioTable/Swing) extracted to src/dsp/ — verbatim, rack-free, D-05 bleed lifted to bleedLfo param
 - [Phase ?]: Phase 22 P03: full LfoCore extraction (ClockTracker+DriftEngine+orchestrator) proven bit-exact vs inline via the D-08 extraction gate; shell delegates process() to core.step(), inline DSP deleted in the same change; goldens frozen from the validated core. D-04: TEST-02 full extraction effectively landed in Phase 22 (not Phase 24) — REQUIREMENTS ownership-table update flagged for human confirmation.
+- [Phase 23]: BUG-01 fix — consecutive-outlier counter (threshold 3) in ClockTracker.hpp breaks the >3x speedup / fast-slowdown-band lockout; recovery via drop-to-ACQUIRING (reuses fast-track re-acquire), not snap-to-raw. Pinned by a demonstrated red->green regression (TEST-05). Lone glitch edge still rejected (no jitter).
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
