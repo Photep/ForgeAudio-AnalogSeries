@@ -33,12 +33,19 @@ namespace forge {
 enum ClockState { FREE = 0, ACQUIRING = 1, LOCKED = 2 };
 
 struct ClockTracker {
+	// BUG-01: consecutive outliers tolerated before declaring a genuine tempo change.
+	// 3 keeps a single glitch edge from re-acquiring (no jitter) while still breaking
+	// the permanent >3x-speedup lockout after a short sustained run.
+	static constexpr int OUTLIER_THRESHOLD = 3;
+
 	// --- FSM state (lifted from the AnalogLFO members) ---
 	SchmittTrigger clockTrigger;
 	Timer clockTimer;
 	float smoothedPeriod = 0.f;
 	float lastSmoothedPeriod = 0.f;
 	int clockEdgeCount = 0;
+	int consecutiveOutliers = 0;   // BUG-01: count rejected-outlier edges in a row;
+	                               // at threshold, treat as a real tempo change & re-learn.
 	ClockState clockState = FREE;
 	bool prevClkConnected = false;
 	int clockBeatCount = 0;   // counts clock edges within one LFO cycle
@@ -71,6 +78,7 @@ struct ClockTracker {
 				clockState = FREE;
 				clockEdgeCount = 0;
 				clockBeatCount = 0;
+				consecutiveOutliers = 0;
 				clockTimer.reset();
 				smoothedPeriod = 0.f;
 			}
@@ -92,6 +100,7 @@ struct ClockTracker {
 				clockState = FREE;
 				clockEdgeCount = 0;
 				clockBeatCount = 0;
+				consecutiveOutliers = 0;
 				smoothedPeriod = 0.f;
 				clockTimer.reset();
 			}
@@ -119,10 +128,31 @@ struct ClockTracker {
 					bool isOutlier = (rawPeriod > 3.0f * smoothedPeriod) ||
 					                 (rawPeriod < smoothedPeriod / 3.0f);
 					if (isOutlier) {
-						// Silently discard (AnalogLFO.cpp:470)
-						r.state = clockState;
-						r.smoothedPeriod = smoothedPeriod;
-						return r;
+						// BUG-01: a lone outlier is a glitch and is still discarded, but a
+						// SUSTAINED run of outliers is a genuine tempo change. Without this
+						// counter the tracker locks out forever on a >3x speedup (every fast
+						// edge rejected, and each rejected edge already reset clockTimer at
+						// L105 so the no-pulse timeout never fires).
+						consecutiveOutliers++;
+						if (consecutiveOutliers >= OUTLIER_THRESHOLD) {
+							// Real tempo change: drop to ACQUIRING and re-learn from this edge
+							// via the existing fast-track / EMA path below (do NOT early-return).
+							clockState = ACQUIRING;
+							clockEdgeCount = 1;
+							clockBeatCount = 0;
+							consecutiveOutliers = 0;
+							// fall through to re-acquisition (clockEdgeCount==1 already handled
+							// above for the FIRST-edge case; here clockEdgeCount==1 lets the
+							// next clean edge measure a fresh period and EMA-snap to it).
+						} else {
+							// Lone/short outlier run: discard as before (AnalogLFO.cpp:470).
+							r.state = clockState;
+							r.smoothedPeriod = smoothedPeriod;
+							return r;
+						}
+					} else {
+						// Accepted in-range edge: reset the run counter.
+						consecutiveOutliers = 0;
 					}
 				}
 
