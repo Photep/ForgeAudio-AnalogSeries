@@ -1,5 +1,6 @@
 # VCV Rack build artifacts
 build/
+build-test/
 dep/
 dist/
 plugin.so
