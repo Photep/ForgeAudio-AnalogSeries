@@ -42,22 +42,27 @@ static constexpr const char* RATIO_LABELS[15] = {
 	"x1.5", "x2", "x3", "x4", "x6", "x8", "x16"
 };
 
-// Division-aware phase-reset decision (RATE-04).
-// AnalogLFO.cpp:520-524 — for a division ratio (RATIO_TABLE[idx] < 1) reset only
-// once beatCount has reached the divisor; for ratios >= 1 reset every beat.
+// Beats-per-alignment for each ratio (BUG-02 / SC4, Phase 23).
+// Each ratio p/q (lowest terms) returns to phase 0 every q beats, so resetting
+// once beatCount reaches BEATS_PER_ALIGN[idx] gives whole LFO cycles with NO
+// mid-cycle truncation. Verified mathematically (lowest-terms q). This replaces
+// the old round(1/RATIO_TABLE[idx]) divisor, which only handled division ratios
+// and truncated the non-integer ratios x1.5/÷1.5 mid-cycle.
 //
-// D-04 / SHAPE-FOR-P23: the divisor below is currently derived as
-// round(1/RATIO_TABLE[idx]). A future BEATS_PER_ALIGN[15] table will SLOT IN
-// HERE to replace that divisor math (fixes x1.5/÷1.5 alignment in Phase 23)
-// without changing this function's signature. Do NOT implement that fix here.
+// Per the logged audition DECISION: adopt-table (.planning/STATE.md ### Decisions):
+// only idx 6 (/1.5: 2→3) and idx 8 (x1.5: 1→2) change; the 13 other ratios are
+// bit-identical to the prior round(1/ratio) cadence.
+static constexpr int BEATS_PER_ALIGN[15] = {
+//  /16 /8 /6 /4 /3 /2 /1.5 x1 x1.5 x2 x3 x4 x6 x8 x16
+	16, 8, 6, 4, 3, 2,  3,  1,  2,  1, 1, 1, 1, 1, 1
+};
+
+// Phase-reset decision (RATE-04 / BUG-02). Reset exactly on the per-ratio
+// alignment boundary; unlocked (ratioIdx < 0) resets every beat (unchanged).
+// Signature FROZEN — ClockTracker.hpp delegates here (CR-03, single home).
 inline bool shouldReset(int ratioIdx, int beatCount) {
-	bool reset = true;
-	if (ratioIdx >= 0 && RATIO_TABLE[ratioIdx] < 1.f) {
-		// FUTURE (P23): replace with `int divisor = BEATS_PER_ALIGN[ratioIdx];`
-		int divisor = (int)std::round(1.f / RATIO_TABLE[ratioIdx]);
-		reset = (beatCount >= divisor);
-	}
-	return reset;
+	if (ratioIdx < 0) return true;                  // unlocked: every beat
+	return beatCount >= BEATS_PER_ALIGN[ratioIdx];  // div AND non-int ratios uniform
 }
 
 } // namespace forge
