@@ -67,12 +67,12 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - ✓ Forge Noir panel: near-black 18HP SVG panel with custom machined-metal knobs, scalloped trimpots, ember-ring jacks, forge emblem, path typography — v1.3
 - ✓ Three-column CRT display: pills in left/right margins, ember waveform in center, corner brackets, scanlines, breathing border glow — v1.3
 - ✓ Animated SYNC badge: per-edge white-hot flash while LOCKED with exponential decay — v1.3
+- ✓ Automated `make test` target with a Rack-independent header-only DSP core (`src/dsp/*.hpp` + `RackCompat.hpp` shims) consumed by the plugin shell; unit tests on the extracted DSP — v1.4 (Phase 22)
+- ✓ Headless `BlockDriver` integration harness asserting output invariants (±5V bounds, frequency accuracy, phase continuity at reset, fixed-seed determinism) over sample blocks at 44.1/48/96 kHz, plus a bit-exact golden-output regression and cross-platform GitHub Actions CI — v1.4 (Phase 22)
 
 ### Active
 
 **v1.4 Tempered — release hardening (LFO feature-frozen):**
-- [ ] Automated test target with extracted, unit-tested DSP logic
-- [ ] Headless `process()`-driver integration harness asserting on output over sample blocks
 - [ ] Clock tracker recovers from >3× tempo jumps (no permanent lockout)
 - [ ] x1.5 / ÷1.5 ratios align without mid-cycle truncation (audition-gated)
 - [ ] Phase dot tracks trace in free-running mode with swing set
@@ -196,4 +196,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-14 — v1.4 Tempered milestone started*
+*Last updated: 2026-06-14 — Phase 22 (Test Harness Foundation) complete: Rack-independent DSP core extracted, `make test` + BlockDriver harness + golden regression + CI in place*
