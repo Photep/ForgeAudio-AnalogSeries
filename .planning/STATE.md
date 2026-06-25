@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Tempered
-status: executing
-stopped_at: Phase 22 context gathered
-last_updated: "2026-06-15T00:00:00.000Z"
-last_activity: 2026-06-15 -- Plan 23-05 complete (BUG-02 x1.5/÷1.5 BEATS_PER_ALIGN swap, red→green pinned)
+status: completed
+stopped_at: Phase 24 context gathered
+last_updated: "2026-06-25T23:48:43.983Z"
+last_activity: "2026-06-15 -- Plan 23-05 complete: BUG-02 x1.5/÷1.5 alignment — adopt-table BEATS_PER_ALIGN[15] swap (idx6 /1.5 → 3 beats, idx8 x1.5 → 2; 13 others bit-identical), pinned by a deterministic reset-cadence regression (red→green). Goldens unaffected (free-run); ClockTracker untouched (CR-03)"
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 9
-  completed_plans: 6
-  percent: 67
+  completed_plans: 9
+  percent: 29
 ---
 
 # Project State
@@ -95,8 +95,8 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 
 ## Session Continuity
 
-Last session: 2026-06-14T09:43:49.619Z
-Stopped at: Phase 22 context gathered
+Last session: 2026-06-25T23:48:43.975Z
+Stopped at: Phase 24 context gathered
 Resume: plan Phase 22 with `/gsd:plan-phase 22`.
 
 ## Operator Next Steps
