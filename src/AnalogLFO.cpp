@@ -1,9 +1,11 @@
 #include "plugin.hpp"
 #include "dsp/LfoCore.hpp"   // forge::LfoCore — the extracted DSP core the shell delegates to
 #include "dsp/PatchParse.hpp"  // forge::parseSeedHex — non-throwing seed parse (BUG-04)
+#include "dsp/DisplayFill.hpp"  // pure forge preview fill + DISPLAY_SAMPLES (CLEAN-05, 24-01)
 #include <cmath>
 #include <atomic>
 #include <array>
+#include <cstdint>
 #include <random>
 
 struct AnalogLFO : Module {
@@ -97,9 +99,22 @@ struct AnalogLFO : Module {
 	forge::LfoCore core;
 
 	// Display double buffer (lock-free audio-to-GUI transfer)
-	static constexpr int DISPLAY_SAMPLES = 256;
+	static constexpr int DISPLAY_SAMPLES = forge::DISPLAY_SAMPLES;  // single-source the sample count (Pitfall 6)
 	std::array<float, DISPLAY_SAMPLES> displayBuffers[2] = {};
 	std::atomic<int> displayReadIdx{0};
+
+	// CLEAN-05 / D-01/D-02: the heavy 256x preview fill no longer runs on the audio
+	// thread. process() publishes this tear-free seqlock snapshot at the trigger
+	// instant; WaveformDisplay::step() (GUI thread) consumes it and runs the fill.
+	// bleedLfo is captured AT TRIGGER (never re-read live at paint — D-02 / Pitfall 3).
+	struct DisplaySnapshot {        // 16-byte POD copied by value across the audio->GUI boundary
+		float morph     = 0.f;
+		float character = 0.f;
+		float swingFrac = 0.5f;     // EFFECTIVE (gated) value — never recomputed GUI-side
+		float bleedLfo  = 0.f;      // core.drift.ouLayers[0].state captured at the trigger instant
+	};
+	DisplaySnapshot displaySnapshot;                  // non-atomic payload (guarded by the seqlock)
+	std::atomic<uint32_t> displaySnapshotSeq{0};      // even=stable, odd=writing; doubles as the dirty flag
 	std::atomic<float> displayPhase{0.f};
 	std::atomic<float> displayDrift{0.f};   // Combined CV-modulated drift level for display
 
@@ -164,25 +179,16 @@ struct AnalogLFO : Module {
 		core.setSpreadSeed(spreadSeed[0], spreadSeed[1]);
 	}
 
-	void updateDisplayBuffer(float morph, float character, float swingFrac = 0.5f) {
+	// GUI-thread fill: runs the heavy 256x preview loop behind the existing
+	// displayBuffers[2] + displayReadIdx double-buffer. Delegates to the pure
+	// header helper (24-01) — same compiled fill, so the rendered preview
+	// is byte-identical. bleedLfo comes from the snapshot (captured at trigger), so
+	// this fill structurally cannot read live drift at paint time (D-02). The release
+	// store at the end is unchanged and still pairs with the drawLayer acquire load.
+	void fillFromSnapshot(const DisplaySnapshot& s) {
 		int writeIdx = 1 - displayReadIdx.load(std::memory_order_relaxed);
-		for (int i = 0; i < DISPLAY_SAMPLES; i++) {
-			float t = (float)i / (float)DISPLAY_SAMPLES;  // uniform time
-			float p;
-			if (swingFrac <= 0.5001f) {
-				p = t;  // fast path: no swing
-			} else if (t < swingFrac) {
-				p = t * 0.5f / swingFrac;                              // even: [0,S) -> [0,0.5)
-			} else {
-				p = 0.5f + (t - swingFrac) * 0.5f / (1.f - swingFrac); // odd: [S,1) -> [0.5,1)
-			}
-			// Display preview delegates to the core's waveshape. The inline preview
-			// read the live OU-layer-0 state (the bleed modulation) at render time;
-			// the core exposes that as core.drift.ouLayers[0].state — pass it as
-			// bleedLfo so the preview matches the inline behavior exactly.
-			displayBuffers[writeIdx][i] =
-				core.wave.morphedWave(p, morph, character, core.drift.ouLayers[0].state);
-		}
+		forge::fillDisplayBuffer(displayBuffers[writeIdx], core.wave,
+		                         s.morph, s.character, s.swingFrac, s.bleedLfo);
 		displayReadIdx.store(writeIdx, std::memory_order_release);
 	}
 
@@ -206,7 +212,9 @@ struct AnalogLFO : Module {
 		configParam(FM_ATTEN_PARAM, 0.f, 1.f, 0.f, "FM Depth", "%", 0.f, 100.f);
 		configInput(FM_INPUT, "FM");
 		configOutput(OUTPUT, "LFO");
-		updateDisplayBuffer(0.f, 0.f);
+		// Prime the display buffer with a default snapshot so the preview is
+		// initialised before the first process()/step() (was updateDisplayBuffer(0,0)).
+		fillFromSnapshot(DisplaySnapshot{});
 
 		// The slew filters and OU-layer constants are initialized inside the core
 		// (forge::LfoCore / forge::DriftEngine constructors) — no longer here.
@@ -342,7 +350,17 @@ struct AnalogLFO : Module {
 		bool paramReady = displayUpdateTimer >= (1.f / 30.f);
 		if (phaseWrapped || ((morphChanged || characterChanged || swingChanged) && paramReady)) {
 			float displaySwing = t.isClocked ? t.swingFrac : 0.5f;  // no warp in free-running display
-			updateDisplayBuffer(morph, character, displaySwing);
+			// D-01: publish a tear-free seqlock snapshot instead of running the fill on
+			// the audio thread (wait-free: three atomic stores + a release fence, no loop).
+			// The heavy 256x fill now runs GUI-side in WaveformDisplay::step().
+			uint32_t s = displaySnapshotSeq.load(std::memory_order_relaxed);
+			displaySnapshotSeq.store(s + 1, std::memory_order_relaxed);   // begin write (odd)
+			std::atomic_thread_fence(std::memory_order_release);
+			displaySnapshot.morph     = morph;
+			displaySnapshot.character = character;
+			displaySnapshot.swingFrac = displaySwing;                     // same effective gate as L344
+			displaySnapshot.bleedLfo  = core.drift.ouLayers[0].state;     // capture-at-trigger (D-02 / Pitfall 3)
+			displaySnapshotSeq.store(s + 2, std::memory_order_release);   // commit (even)
 			prevDisplayMorph = morph;
 			prevDisplayCharacter = character;
 			prevSwingIndex = swingIndex;
