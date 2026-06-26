@@ -132,7 +132,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
   5. Dead code removed (`drawZeroCrossing`, `scanlineImage` — CLEAN-01), unreachable `isStill` resolved (CLEAN-02), and ratio/BPM pills fade out symmetrically with the SYNC badge on clock disconnect (CLEAN-03)
 **Plans**: 4 plans
 - [x] 24-01-PLAN.md — Extract pure Rack-free helpers `src/dsp/DisplayFill.hpp` + `src/dsp/Anim.hpp` and pin them headless (`tests/test_display.cpp`, `tests/test_anim.cpp`) (CLEAN-05, CLEAN-04 — Wave 1)
-- [ ] 24-02-PLAN.md — CLEAN-05: move the display fill off the audio thread behind a seqlock snapshot (capture-at-trigger `bleedLfo`); GUI `step()` runs `fillFromSnapshot` (Wave 2)
+- [x] 24-02-PLAN.md — CLEAN-05: move the display fill off the audio thread behind a seqlock snapshot (capture-at-trigger `bleedLfo`); GUI `step()` runs `fillFromSnapshot` (Wave 2)
 - [ ] 24-03-PLAN.md — CLEAN-04 dt animations + CLEAN-03 ratio/BPM pill fade cache + CLEAN-01/02 dead-code/`isStill` removal (Wave 3)
 - [ ] 24-04-PLAN.md — Manual in-Rack UAT (animation feel, pill symmetry, audio-thread relief, `getLastFrameDuration` probe) logged to STATE.md (BLOCKING human-verify — Wave 4)
 **UI hint**: yes
@@ -196,7 +196,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 |-------|-----------|----------------|--------|-----------|
 | 22. Test Harness Foundation | v1.4 | 4/4 | Complete    | 2026-06-14 |
 | 23. Functional Bug Fixes | v1.4 | 5/5 | Complete   | 2026-06-14 |
-| 24. DSP Extraction + Display Refactors | v1.4 | 1/4 | In Progress|  |
+| 24. DSP Extraction + Display Refactors | v1.4 | 2/4 | In Progress|  |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 0/TBD | Not started | - |
 | 26. VCV Library Compliance + Packaging | v1.4 | 0/TBD | Not started | - |
 | 27. Notion Manual | v1.4 | 0/TBD | Not started | - |
