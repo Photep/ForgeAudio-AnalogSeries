@@ -27,9 +27,9 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 
 ### Cleanup
 
-- [ ] **CLEAN-01**: Dead code removed — `drawZeroCrossing()` and the unused `scanlineImage` member (CODE-REVIEW #8)
-- [ ] **CLEAN-02**: Unreachable `isStill` dim condition resolved (CODE-REVIEW #9)
-- [ ] **CLEAN-03**: Ratio and BPM pills fade out symmetrically with the SYNC badge on clock disconnect (CODE-REVIEW #10)
+- [x] **CLEAN-01**: Dead code removed — `drawZeroCrossing()` and the unused `scanlineImage` member (CODE-REVIEW #8)
+- [x] **CLEAN-02**: Unreachable `isStill` dim condition resolved (CODE-REVIEW #9)
+- [x] **CLEAN-03**: Ratio and BPM pills fade out symmetrically with the SYNC badge on clock disconnect (CODE-REVIEW #10)
 - [x] **CLEAN-04**: Display animations are frame-rate-independent via wall-clock timing (`getLastFrameDuration`) (CODE-REVIEW #11)
 - [x] **CLEAN-05**: Display buffer regeneration runs on the GUI thread, off the audio thread (CODE-REVIEW #12)
 
@@ -103,9 +103,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BUG-02 | Phase 23 (audition-gated) | Pending |
 | BUG-03 | Phase 23 | Complete |
 | BUG-04 | Phase 23 | Complete |
-| CLEAN-01 | Phase 24 | Pending |
-| CLEAN-02 | Phase 24 | Pending |
-| CLEAN-03 | Phase 24 | Pending |
+| CLEAN-01 | Phase 24 | Complete |
+| CLEAN-02 | Phase 24 | Complete |
+| CLEAN-03 | Phase 24 | Complete |
 | CLEAN-04 | Phase 24 | Complete |
 | CLEAN-05 | Phase 24 | Complete |
 | PKG-01 | Phase 25 | Pending |

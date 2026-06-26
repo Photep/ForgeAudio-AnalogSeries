@@ -4,13 +4,13 @@ milestone: v1.4
 milestone_name: Tempered
 status: executing
 stopped_at: Phase 24 context gathered
-last_updated: "2026-06-26T01:16:44.309Z"
+last_updated: "2026-06-26T01:29:02.022Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
   percent: 29
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 24 (dsp-extraction-display-refactors) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-06-26
 
-Progress: [█████████░] 85%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Decisions pending at phase start (from research):
 - [Phase 23]: BUG-02 fix (plan 23-05) — APPLIED adopt-table: added `static constexpr int BEATS_PER_ALIGN[15]` to RatioTable.hpp; shouldReset reads it uniformly (round(1/ratio) guard removed, signature frozen). Two-cell behavioral change only — idx 6 (/1.5) 2→3, idx 8 (x1.5) 1→2; the 13 other ratios bit-identical. Pinned by a deterministic reset-cadence regression in test_regression.cpp reading EXPECTED[15] from this decision (RED on pre-swap header: 1 case / 2 assertions → GREEN, make test 43/43). Goldens NOT regenerated (free-run, never reach shouldReset — all golden cases stayed green); ClockTracker.hpp untouched (delegates via forge::shouldReset, CR-03 single home); plugin still builds against ../Rack-SDK.
 - [Phase 24]: P01: extracted pure forge::fillDisplayBuffer (DisplayFill.hpp, bleedLfo a param -> D-02 structural) + isfinite-guarded forge::clampFrameDt/flashDecay (Anim.hpp, Pitfall 1/D-03); 4 new headless doctest cases (make test 43->47) — Interface-first foundation for Phase 24; header comments avoid literal grep tokens to satisfy plan acceptance gates; AnalogLFO.cpp untouched (shell swap is 24-02)
 - [Phase 24]: P02 CLEAN-05: moved the 256x display fill off the audio thread — process() publishes a tear-free seqlock snapshot {morph, character, effective swingFrac, bleedLfo captured at trigger} (D-01 hybrid dirty-flag / D-02); WaveformDisplay::step() consumes (acquire/retry) and runs fillFromSnapshot -> forge::fillDisplayBuffer GUI-side; displayReadIdx double-buffer untouched; make + 47/47 tests green, preview byte-identical
+- [Phase 24]: P03 CLEAN-04/03/01/02: WaveformDisplay::step() advances every animation by one clamped wall-clock dt (forge::clampFrameDt(getLastFrameDuration()), D-03/D-04); ANIM-02 0.92 preserved via forge::flashDecay (pow(0.92,dt*60), not re-tuned); ratio+BPM pills fade out symmetrically with the SYNC badge via widget-side cachedRatioIdx/cachedPeriod refreshed only while clocked (D-05, no atomic/DSP change); dead drawZeroCrossing+scanlineImage+unreachable isStill removed (D-07); make clean (no warnings) + 47/47 green
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -96,10 +97,11 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 | Phase 22 P04 | 9 | 3 tasks | 4 files |
 | Phase 24 P01 | 12min | 2 tasks | 4 files |
 | Phase 24 P02 | 8min | 2 tasks | 1 files |
+| Phase 24 P03 | 11min | 3 tasks | 1 files |
 
 ## Session Continuity
 
-Last session: 2026-06-26T01:12:23.775Z
+Last session: 2026-06-26T01:28:24.322Z
 Stopped at: Phase 24 context gathered
 Resume: plan Phase 22 with `/gsd:plan-phase 22`.
 
