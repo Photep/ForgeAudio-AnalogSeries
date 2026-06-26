@@ -2,6 +2,7 @@
 #include "dsp/LfoCore.hpp"   // forge::LfoCore — the extracted DSP core the shell delegates to
 #include "dsp/PatchParse.hpp"  // forge::parseSeedHex — non-throwing seed parse (BUG-04)
 #include "dsp/DisplayFill.hpp"  // pure forge preview fill + DISPLAY_SAMPLES (CLEAN-05, 24-01)
+#include "dsp/Anim.hpp"  // frame-rate-independent dt clamp + badge-decay helpers (CLEAN-04, 24-01)
 #include <cmath>
 #include <atomic>
 #include <array>
@@ -397,7 +398,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 	// SYNC badge per-edge flash envelope (ANIM-01/ANIM-02, Phase 21).
 	// prevClockEdge caches the last-seen edge counter; flashIntensity re-arms to 1.0 on a
-	// new LOCKED edge then decays *= 0.92f per frame. Widget reads the atomic only.
+	// new LOCKED edge then decays via the continuous-time badge-decay helper (pow(0.92, dt*60)). Widget reads the atomic only.
 	int prevClockEdge = 0;
 	float flashIntensity = 0.f;
 
@@ -406,16 +407,21 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	uint32_t lastConsumedSeq = 0;
 
 	void step() override {
+		// CLEAN-04 / D-03/D-04: advance every animation by clamped wall-clock dt so
+		// the feel is frame-rate-independent (identical at 60fps, correct at 144Hz).
+		// GUI-thread-only call — the window's last-frame duration must never be read off-thread.
+		float dt = forge::clampFrameDt((float)APP->window->getLastFrameDuration());
+
 		// Advance breathe animation (0.2Hz = 5-second cycle, per D-13)
-		breathePhase += 2.f * (float)M_PI * 0.2f / 60.f;
+		breathePhase += 2.f * (float)M_PI * 0.2f * dt;
 		if (breathePhase > 2.f * (float)M_PI) breathePhase -= 2.f * (float)M_PI;
 
 		// 2Hz blink for SYNC ACQUIRING indicator (independent of border glow rate)
-		blinkPhase += 2.f * (float)M_PI * 2.f / 60.f;
+		blinkPhase += 2.f * (float)M_PI * 2.f * dt;
 		if (blinkPhase > 100.f * (float)M_PI) blinkPhase -= 100.f * (float)M_PI;  // prevent float overflow
 
-		// Advance scanline scroll (~1px/sec at 60fps)
-		scanlineScrollPhase += 1.f / 60.f;
+		// Advance scanline scroll (~1px/sec)
+		scanlineScrollPhase += dt;
 		scanlineScrollPhase = fmodf(scanlineScrollPhase, 4.f);  // wrap at tile height
 
 		// Advance fade timers for text overlays (200ms transitions)
@@ -438,7 +444,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			}
 
 			int clockState = module->displayClockState.load(std::memory_order_relaxed);
-			float fadeSpeed = 1.f / (0.2f * 60.f);  // 200ms at ~60fps
+			float fadeSpeed = dt / 0.2f;  // 200ms ramp, frame-rate-independent (CLEAN-04)
 
 			bool showClocked = (clockState != 0);  // ACQUIRING or LOCKED
 			float syncTarget = showClocked ? 1.f : 0.f;
@@ -465,7 +471,9 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 				flashIntensity = 1.f;  // re-peak (clean retrigger even mid-decay)
 				prevClockEdge = edge;
 			}
-			flashIntensity *= 0.92f;  // ANIM-02 locked decay -- do NOT change this factor
+			// ANIM-02 locked decay -- the 0.92 factor now lives inside the continuous-time decay
+			// helper (pow(0.92, dt*60)), preserved by mathematical equivalence (D-03/D-04); do NOT re-tune it.
+			flashIntensity = forge::flashDecay(flashIntensity, dt);
 			if (flashIntensity < 0.001f) flashIntensity = 0.f;  // snap to steady state
 		}
 
