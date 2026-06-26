@@ -394,8 +394,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	int cachedRatioIdx = -1;
 	float cachedPeriod = 0.f;
 
-	// CRT scanline state (used by Plan 03)
-	int scanlineImage = -1;
+	// CRT scanline scroll accumulator
 	float scanlineScrollPhase = 0.f;
 
 	// Dedicated 2Hz blink accumulator for SYNC ACQUIRING indicator (Plan 02 uses this)
@@ -586,26 +585,6 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgMoveTo(vg, w - inset - size, h - inset);
 		nvgLineTo(vg, w - inset, h - inset);
 		nvgLineTo(vg, w - inset, h - inset - size);
-		nvgStroke(vg);
-	}
-
-	void drawZeroCrossing(NVGcontext* vg) {
-		float centerY = box.size.y / 2.f;
-		float xStart = box.size.x * 0.20f;  // CENTER_START
-		float xEnd = box.size.x * 0.80f;    // CENTER_END
-		float dashLen = 2.f;
-		float gapLen = 3.f;
-		float x = xStart;
-
-		nvgBeginPath(vg);
-		while (x < xEnd) {
-			float end = std::min(x + dashLen, xEnd);
-			nvgMoveTo(vg, x, centerY);
-			nvgLineTo(vg, end, centerY);
-			x = end + gapLen;
-		}
-		nvgStrokeColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.06f));
-		nvgStrokeWidth(vg, 0.5f);
 		nvgStroke(vg);
 	}
 
@@ -1033,9 +1012,10 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 				int readIdx = module->displayReadIdx.load(std::memory_order_acquire);
 				const auto& buffer = module->displayBuffers[readIdx];
 				float phase = module->displayPhase.load(std::memory_order_relaxed);
-				float rate = module->params[AnalogLFO::RATE_PARAM].getValue();
-				bool isStill = (rate <= 0.001f);  // effectively zero rate
-				float dimFactor = (module->isBypassed() || isStill) ? 0.25f : 1.f;
+				// CLEAN-02 / D-07: the old `rate <= 0.001f` still-check is unreachable
+				// (RATE_PARAM min is 0.01f; REQUIREMENTS forbids lowering it), so only the
+				// reachable bypass dim remains.
+				float dimFactor = module->isBypassed() ? 0.25f : 1.f;
 
 				drawWaveformTrace(vg, buffer, dimFactor);
 				drawPhaseDot(vg, buffer, phase, dimFactor);
