@@ -432,16 +432,18 @@ TEST_CASE("anim: decay is feel-identical at 60fps") {
 | A1 | `getLastFrameDuration()` returns the wall-clock inter-frame interval (≈1/refreshRate), not active render time | Pitfall 2 | Animations would be slow / render-load-coupled. Mitigated: decision is locked (D-04) AND the manual UAT includes a one-line probe to confirm. |
 | A2 | Engine is effectively paused during `dataFromJson` patch-load, so the GUI reading `core.wave` spreads is not a live race | Pitfall 4 | A real (but pre-existing, out-of-scope) data race on spread coefficients during load. No new exposure created by this phase. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All four are "Claude's Discretion" items per CONTEXT.md; resolved here and implemented by the Phase 24 plans.
 
 1. **Where do the shared helpers live?**
-   - Recommendation: new `src/dsp/DisplayFill.hpp` and `src/dsp/Anim.hpp` (header-only, auto-globbed by the test Makefile). Alternative: fold `Anim.hpp` into an existing header to minimize file count — planner's discretion (D-discretion).
+   - RESOLVED: new `src/dsp/DisplayFill.hpp` and `src/dsp/Anim.hpp` (header-only, auto-globbed by the test Makefile) — created in plan 24-01. Alternative considered (fold `Anim.hpp` into an existing header) rejected for clarity.
 2. **`isStill` resolution: delete vs. wire to effective frequency?**
-   - Recommendation: **delete** (`dimFactor = isBypassed() ? 0.25f : 1.f`). REQUIREMENTS forbids lowering the Rate param min; comparing effective clocked frequency widens blast radius for a behavior that has never been reachable. Minimal change. (D-07 discretion.)
+   - RESOLVED: **delete** (`dimFactor = isBypassed() ? 0.25f : 1.f`) — plan 24-03 T3. REQUIREMENTS forbids lowering the Rate param min; comparing effective clocked frequency widens blast radius for a behavior that has never been reachable. Minimal change. (D-07 discretion.)
 3. **Do we commit a reference display buffer (golden) or rely on the purity test?**
-   - Recommendation: the purity + structural-no-live-read guarantee is sufficient for D-06's automatable portion; a committed reference buffer is optional belt-and-suspenders. If added, reuse the canonical-OS-bit-exact / 1e-5-tolerance split from `test_golden.cpp` (Pitfall 7).
+   - RESOLVED: rely on the purity + structural-no-live-read guarantee (sufficient for D-06's automatable portion) — plan 24-01 T1, no committed reference buffer. A committed golden was optional belt-and-suspenders; if ever added, reuse the canonical-OS-bit-exact / 1e-5-tolerance split from `test_golden.cpp` (Pitfall 7).
 4. **Seqlock vs. publish-index double-buffer for the snapshot?**
-   - Recommendation: seqlock (honors D-02 "no torn reads" strictly). The double-buffer-index variant is acceptable and matches existing code but carries the same theoretical 2-slot tear as `displayBuffers`.
+   - RESOLVED: seqlock (honors D-02 "no torn reads" strictly) — plan 24-02. The double-buffer-index variant is acceptable and matches existing code but carries the same theoretical 2-slot tear as `displayBuffers`.
 
 ## Environment Availability
 
