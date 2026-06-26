@@ -388,6 +388,12 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	float hzFadeAlpha = 1.f;  // starts visible (free-running mode default)
 	float swingFadeAlpha = 0.f;  // swing overlay (bottom-left)
 
+	// CLEAN-03 / D-05: widget-side cache of the last genuinely-clocked ratio index +
+	// period. On disconnect the audio thread publishes -1, but the cache holds the last
+	// valid content so the ratio + BPM pills fade out (alpha-gated) instead of popping off.
+	int cachedRatioIdx = -1;
+	float cachedPeriod = 0.f;
+
 	// CRT scanline state (used by Plan 03)
 	int scanlineImage = -1;
 	float scanlineScrollPhase = 0.f;
@@ -441,6 +447,16 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			if (seq != lastConsumedSeq) {                                // dirty?
 				module->fillFromSnapshot(snap);                          // GUI-thread fill (the moved 256x loop)
 				lastConsumedSeq = seq;
+			}
+
+			// CLEAN-03 / D-05: refresh the ratio/period cache ONLY while genuinely clocked.
+			// On disconnect the atomics go to -1; the cache then retains the last valid
+			// content so the ratio + BPM pills fade out in sync with the SYNC badge.
+			int ri = module->displayRatioIndex.load(std::memory_order_relaxed);
+			float per = module->displaySmoothedPeriod.load(std::memory_order_relaxed);
+			if (ri >= 0 && per > 0.f) {
+				cachedRatioIdx = ri;
+				cachedPeriod = per;
 			}
 
 			int clockState = module->displayClockState.load(std::memory_order_relaxed);
@@ -783,11 +799,10 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgText(vg, x, y, text, NULL);
 	}
 
-	void drawBpmStack(NVGcontext* vg, int fontHandle, float alpha) {
-		int ratioIdx = module->displayRatioIndex.load(std::memory_order_relaxed);
-		float period = module->displaySmoothedPeriod.load(std::memory_order_relaxed);
-		if (ratioIdx < 0 || period <= 0.f) return;
-
+	// CLEAN-03 / D-05: ratioIdx + period are the widget-cached last-clocked values
+	// (passed in), so the stack draws behind the bpmFadeAlpha gate at the call site
+	// instead of self-loading the atomics + popping off on disconnect.
+	void drawBpmStack(NVGcontext* vg, int fontHandle, float alpha, int ratioIdx, float period) {
 		float pad = 3.f;
 		float cornerRadius = 2.f;
 
@@ -917,7 +932,6 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		float pillMicroSize = 3.3f;   // Hz, SWING label, CLK/LFO sub-labels (14HP=2.9f; bumped ~+14%)
 
 		int clockState = module->displayClockState.load(std::memory_order_relaxed);
-		int ratioIdx = module->displayRatioIndex.load(std::memory_order_relaxed);
 
 		// === LEFT COLUMN ===
 
@@ -935,9 +949,11 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		}
 
 		// Ratio label (clocked mode, left column top)
-		if (ratioFadeAlpha > 0.001f && ratioIdx >= 0) {
+		// CLEAN-03 / D-05: gate on the widget-cached index so the pill fades out (alpha)
+		// on disconnect rather than popping off when the atomic flips to -1.
+		if (ratioFadeAlpha > 0.001f && cachedRatioIdx >= 0) {
 			drawPillText(vg, font->handle, leftColX, topY + pillLabelSize,
-			             AnalogLFO::RATIO_LABELS[ratioIdx], pillLabelSize,
+			             AnalogLFO::RATIO_LABELS[cachedRatioIdx], pillLabelSize,
 			             NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM, ratioFadeAlpha);
 		}
 
@@ -974,7 +990,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 		// BPM stack (clocked mode, right column bottom)
 		if (bpmFadeAlpha > 0.001f) {
-			drawBpmStack(vg, font->handle, bpmFadeAlpha);
+			drawBpmStack(vg, font->handle, bpmFadeAlpha, cachedRatioIdx, cachedPeriod);
 		}
 	}
 
