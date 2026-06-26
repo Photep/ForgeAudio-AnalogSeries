@@ -401,6 +401,10 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 	int prevClockEdge = 0;
 	float flashIntensity = 0.f;
 
+	// CLEAN-05 / D-01: last seqlock value consumed from the module. The heavy 256x
+	// preview fill now runs here (GUI thread) only when the snapshot changes.
+	uint32_t lastConsumedSeq = 0;
+
 	void step() override {
 		// Advance breathe animation (0.2Hz = 5-second cycle, per D-13)
 		breathePhase += 2.f * (float)M_PI * 0.2f / 60.f;
@@ -416,6 +420,23 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 		// Advance fade timers for text overlays (200ms transitions)
 		if (module) {
+			// CLEAN-05 / D-01: consume the audio-thread display snapshot tear-free,
+			// then run the heavy preview fill on the GUI thread only when it changed.
+			// Tear-free per the seqlock contract: retry while the writer is mid-update
+			// (odd seq) or the seq moved between the acquire-load and the payload copy.
+			uint32_t seq;
+			AnalogLFO::DisplaySnapshot snap;
+			do {
+				seq = module->displaySnapshotSeq.load(std::memory_order_acquire);
+				if (seq & 1u) continue;                                  // writer mid-update -> re-read
+				snap = module->displaySnapshot;                          // copy the 16-byte payload
+				std::atomic_thread_fence(std::memory_order_acquire);
+			} while (seq != module->displaySnapshotSeq.load(std::memory_order_relaxed));
+			if (seq != lastConsumedSeq) {                                // dirty?
+				module->fillFromSnapshot(snap);                          // GUI-thread fill (the moved 256x loop)
+				lastConsumedSeq = seq;
+			}
+
 			int clockState = module->displayClockState.load(std::memory_order_relaxed);
 			float fadeSpeed = 1.f / (0.2f * 60.f);  // 200ms at ~60fps
 
