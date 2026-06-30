@@ -148,11 +148,12 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
   3. Purge is VERIFIED clean via a fresh re-clone of the remote: `git rev-list --all --objects | grep -iE 'Barell|FoundationLogo'` returns empty (IP-02 — hard gate for Phase 28)
   4. A GPL-3.0 `LICENSE` file exists at repo root and the Makefile `DISTRIBUTABLES` picks it up (PKG-01)
   5. A NOTICES/credits file inventories every shipped third-party asset's license (JetBrains Mono OFL, panel SVG font outlines), and SVG/panel art font-outline provenance is confirmed acceptable for public GPL release (PKG-04, IP-03)
-**Plans**: 3 plans
+**Plans**: 4 plans
 - [x] 25-01-PLAN.md — Remove trial fonts + gitignore; add GPL-3.0 LICENSE, NOTICES, OFL.txt; wire NOTICES into Makefile; build/dist sanity (IP-01, PKG-01, PKG-04 — Wave 1, autonomous)
-- [x] 25-02-PLAN.md — Human-gated SVG wordmark font-outline provenance confirmation (IP-03 — Wave 1, blocking human-verify)
-- [ ] 25-03-PLAN.md — Irreversible history purge: push-first → filter-repo on throwaway clone → force-push --all --tags → clean-room re-clone verification → local resync (IP-02 — Wave 2, blocking human-verify gate)
-**Open question at phase start**: SVG font-outline provenance (Bebas Neue / Chakra Petch baked into `res/AnalogLFO.svg`) — confirm OFL Google Fonts cuts, not trial/commercial cuts. RESOLVED to a human gate in plan 25-02 (Assumption A1).
+- [x] 25-02-PLAN.md — Human-gated SVG wordmark font-outline provenance confirmation (IP-03 — Wave 1, blocking human-verify) → returned **needs-regeneration**
+- [ ] 25-04-PLAN.md — Re-export FORGE/AUDIO + "ANALOG LFO" wordmark outlines in res/AnalogLFO.svg from confirmed-OFL fonts (Bebas Neue / Chakra Petch); close IP-03 confirmed-OFL (IP-03 — Wave 2, blocking human-verify). Added 2026-07-01 to unblock 25-03.
+- [ ] 25-03-PLAN.md — Irreversible history purge: push-first → filter-repo on throwaway clone → force-push --all --tags → clean-room re-clone verification → local resync (IP-02 — Wave 3, blocking human-verify gate; depends on 25-04)
+**Open question at phase start**: SVG font-outline provenance (Bebas Neue / Chakra Petch baked into `res/AnalogLFO.svg`) — confirm OFL Google Fonts cuts, not trial/commercial cuts. RESOLVED via human gate 25-02 → **needs-regeneration**; wordmark re-export plan 25-04 added to regenerate from OFL fonts before the 25-03 purge.
 
 ### Phase 26: VCV Library Compliance + Packaging
 **Goal**: The manifest is validated and submission-ready, a verified `.vcvplugin` artifact is produced, and the full test suite runs green in CI.
