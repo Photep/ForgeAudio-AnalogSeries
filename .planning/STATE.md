@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 25 (release-ip-hardening-private) — IN PROGRESS (25-04 researched + planned, ready to execute)
-Plan: 2 of 4 (25-01 ✓, 25-02 ✓ → needs-regeneration, 25-04 PLANNED/ready, 25-03 BLOCKED on 25-04)
-Status: Phase 25 — execute plan 25-04 (Wave 2): triage all 18 baked-text runs + re-export trial-derived outlines from OFL fonts, close IP-03, then 25-03 (Wave 3)
-Last activity: 2026-07-01 -- researched + rewrote 25-04 (plan-checker PASS); scope = ALL suspect baked labels, both faces operator-picks
+Phase: 25 (release-ip-hardening-private) — IN PROGRESS (25-04 ✓ confirmed-OFL; 25-03 now UNBLOCKED)
+Plan: 3 of 4 (25-01 ✓, 25-02 ✓ → needs-regeneration, 25-04 ✓ → confirmed-OFL, 25-03 ready/Wave 3)
+Status: Phase 25 — 25-04 closed IP-03 (all 18 panel text outlines re-exported from OFL Chakra Petch). Next: 25-03 irreversible history purge (Wave 3), but NOTE the regenerated panel + 25-01 changes must be committed (done) then pushed before the purge.
+Last activity: 2026-07-01 -- executed 25-04: confirmed-OFL (Chakra Petch), IP-03 closed, 25-03 unblocked
 
-Progress: [█████░░░░░] 50% (2/4 plans complete; 25-04 planned, 25-03 blocked)
+Progress: [███████░░░] 75% (3/4 plans complete)
 
 ## Performance Metrics
 
@@ -85,7 +85,7 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 ### Blockers/Concerns
 
 - IP gate (Phase 25→28): repo `Photep/ForgeAudio-AnalogSeries` is private, already pushed, with trial fonts in commit e486ce1. Public flip is BLOCKED until the history purge is verified clean via fresh remote clone.
-- **NEW (2026-07-01) — 25-03 history purge BLOCKED**: 25-02 IP-03 gate returned `needs-regeneration`. The res/AnalogLFO.svg wordmark outlines may derive from the trial FoundationLogo font. A wordmark re-export plan (re-draw FORGE/AUDIO + "ANALOG LFO" from confirmed-OFL Bebas Neue / Chakra Petch) must land + commit, and the IP-03 gate must return `confirmed-OFL`, BEFORE 25-03 runs. 25-01 (LICENSE/NOTICES/OFL/font-removal) is complete and committed locally but NOT yet pushed.
+- **RESOLVED (2026-07-01) — 25-03 history purge UNBLOCKED**: 25-04 re-exported all 18 baked-text outlines in res/AnalogLFO.svg from confirmed-OFL Chakra Petch (operator-accepted `confirmed-OFL`); no trial-FoundationLogo geometry ships. IP-03 closed (see 25-04-SUMMARY.md). 25-01 (LICENSE/NOTICES/OFL/font-removal) + 25-04 (panel re-export) are committed locally but NOT yet pushed — 25-03 Task 1 push-first will push them before the filter-repo purge.
 
 ## Deferred Items
 

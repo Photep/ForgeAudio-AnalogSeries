@@ -151,7 +151,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 **Plans**: 4 plans
 - [x] 25-01-PLAN.md — Remove trial fonts + gitignore; add GPL-3.0 LICENSE, NOTICES, OFL.txt; wire NOTICES into Makefile; build/dist sanity (IP-01, PKG-01, PKG-04 — Wave 1, autonomous)
 - [x] 25-02-PLAN.md — Human-gated SVG wordmark font-outline provenance confirmation (IP-03 — Wave 1, blocking human-verify) → returned **needs-regeneration**
-- [ ] 25-04-PLAN.md — Re-export FORGE/AUDIO + "ANALOG LFO" wordmark outlines in res/AnalogLFO.svg from confirmed-OFL fonts (Bebas Neue / Chakra Petch); close IP-03 confirmed-OFL (IP-03 — Wave 2, blocking human-verify). Added 2026-07-01 to unblock 25-03.
+- [x] 25-04-PLAN.md — Re-export FORGE/AUDIO + "ANALOG LFO" wordmark outlines in res/AnalogLFO.svg from confirmed-OFL fonts (Bebas Neue / Chakra Petch); close IP-03 confirmed-OFL (IP-03 — Wave 2, blocking human-verify). Added 2026-07-01 to unblock 25-03.
 - [ ] 25-03-PLAN.md — Irreversible history purge: push-first → filter-repo on throwaway clone → force-push --all --tags → clean-room re-clone verification → local resync (IP-02 — Wave 3, blocking human-verify gate; depends on 25-04)
 **Open question at phase start**: SVG font-outline provenance (Bebas Neue / Chakra Petch baked into `res/AnalogLFO.svg`) — confirm OFL Google Fonts cuts, not trial/commercial cuts. RESOLVED via human gate 25-02 → **needs-regeneration**; wordmark re-export plan 25-04 added to regenerate from OFL fonts before the 25-03 purge.
 
@@ -201,7 +201,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | 22. Test Harness Foundation | v1.4 | 4/4 | Complete    | 2026-06-14 |
 | 23. Functional Bug Fixes | v1.4 | 5/5 | Complete   | 2026-06-14 |
 | 24. DSP Extraction + Display Refactors | v1.4 | 3/4 | In Progress|  |
-| 25. Release IP Hardening (PRIVATE) | v1.4 | 2/3 | In Progress|  |
+| 25. Release IP Hardening (PRIVATE) | v1.4 | 3/4 | In Progress|  |
 | 26. VCV Library Compliance + Packaging | v1.4 | 0/TBD | Not started | - |
 | 27. Notion Manual | v1.4 | 0/TBD | Not started | - |
 | 28. Publish + Submit | v1.4 | 0/TBD | Not started | - |
