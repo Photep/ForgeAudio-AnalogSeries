@@ -148,8 +148,11 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
   3. Purge is VERIFIED clean via a fresh re-clone of the remote: `git rev-list --all --objects | grep -iE 'Barell|FoundationLogo'` returns empty (IP-02 — hard gate for Phase 28)
   4. A GPL-3.0 `LICENSE` file exists at repo root and the Makefile `DISTRIBUTABLES` picks it up (PKG-01)
   5. A NOTICES/credits file inventories every shipped third-party asset's license (JetBrains Mono OFL, panel SVG font outlines), and SVG/panel art font-outline provenance is confirmed acceptable for public GPL release (PKG-04, IP-03)
-**Plans**: TBD
-**Open question at phase start**: SVG font-outline provenance (Bebas Neue / Chakra Petch baked into `res/AnalogLFO.svg`) — confirm OFL Google Fonts cuts, not trial/commercial cuts (research HIGH-stakes open question).
+**Plans**: 3 plans
+- [ ] 25-01-PLAN.md — Remove trial fonts + gitignore; add GPL-3.0 LICENSE, NOTICES, OFL.txt; wire NOTICES into Makefile; build/dist sanity (IP-01, PKG-01, PKG-04 — Wave 1, autonomous)
+- [ ] 25-02-PLAN.md — Human-gated SVG wordmark font-outline provenance confirmation (IP-03 — Wave 1, blocking human-verify)
+- [ ] 25-03-PLAN.md — Irreversible history purge: push-first → filter-repo on throwaway clone → force-push --all --tags → clean-room re-clone verification → local resync (IP-02 — Wave 2, blocking human-verify gate)
+**Open question at phase start**: SVG font-outline provenance (Bebas Neue / Chakra Petch baked into `res/AnalogLFO.svg`) — confirm OFL Google Fonts cuts, not trial/commercial cuts. RESOLVED to a human gate in plan 25-02 (Assumption A1).
 
 ### Phase 26: VCV Library Compliance + Packaging
 **Goal**: The manifest is validated and submission-ready, a verified `.vcvplugin` artifact is produced, and the full test suite runs green in CI.
@@ -197,7 +200,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | 22. Test Harness Foundation | v1.4 | 4/4 | Complete    | 2026-06-14 |
 | 23. Functional Bug Fixes | v1.4 | 5/5 | Complete   | 2026-06-14 |
 | 24. DSP Extraction + Display Refactors | v1.4 | 3/4 | In Progress|  |
-| 25. Release IP Hardening (PRIVATE) | v1.4 | 0/TBD | Not started | - |
+| 25. Release IP Hardening (PRIVATE) | v1.4 | 0/3 | Not started | - |
 | 26. VCV Library Compliance + Packaging | v1.4 | 0/TBD | Not started | - |
 | 27. Notion Manual | v1.4 | 0/TBD | Not started | - |
 | 28. Publish + Submit | v1.4 | 0/TBD | Not started | - |
