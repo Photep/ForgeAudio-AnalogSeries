@@ -4,8 +4,8 @@ milestone: v1.4
 milestone_name: Tempered
 status: executing
 stopped_at: Phase 24 UAT logged (24-04) — manual in-Rack sign-off APPROVED, getLastFrameDuration/A1 closed confirmed-by-behavior; phase ready for verification.
-last_updated: "2026-06-30T10:46:35.030Z"
-last_activity: 2026-06-30 -- Phase 25 planning complete
+last_updated: "2026-06-30T21:52:40.611Z"
+last_activity: 2026-06-30 -- Phase 25 execution started
 progress:
   total_phases: 7
   completed_phases: 3
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 24 — dsp-extraction-display-refactors
+**Current focus:** Phase 25 — release-ip-hardening-private
 
 ## Current Position
 
-Phase: 24 (dsp-extraction-display-refactors) — EXECUTING
-Plan: 4 of 4 (complete — UAT logged)
-Status: Ready to execute
-Last activity: 2026-06-30 -- Phase 25 planning complete
+Phase: 25 (release-ip-hardening-private) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 25
+Last activity: 2026-06-30 -- Phase 25 execution started
 
 Progress: [██████████] 100%
 
