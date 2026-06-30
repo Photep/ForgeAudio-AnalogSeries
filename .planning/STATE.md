@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 25 (release-ip-hardening-private) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 25
-Last activity: 2026-06-30 -- Phase 25 execution started
+Phase: 25 (release-ip-hardening-private) — HALTED (IP-03 gate returned needs-regeneration)
+Plan: 2 of 3 (25-01 ✓, 25-02 ✓ decision recorded, 25-03 BLOCKED)
+Status: Phase 25 blocked — wordmark re-export required before the 25-03 history purge
+Last activity: 2026-07-01 -- 25-02 human provenance gate returned needs-regeneration
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 67% (2/3 plans; 25-03 correctly blocked)
 
 ## Performance Metrics
 
@@ -58,7 +58,7 @@ v1.0–v1.3 phase-level decisions archived in `milestones/` ROADMAP files.
 Decisions pending at phase start (from research):
 
 - Phase 24: RNG strategy (re-implement Xoroshiro128+ for fidelity vs. template on RNG — recommend re-implement).
-- Phase 25: SVG font-outline provenance (Bebas Neue / Chakra Petch — confirm OFL cuts).
+- Phase 25 (RESOLVED 2026-07-01): SVG font-outline provenance (IP-03 / A1) — operator decision **needs-regeneration**. The FORGE/AUDIO + "ANALOG LFO" wordmark outlines in res/AnalogLFO.svg could NOT be positively confirmed as OFL (Bebas Neue / Chakra Petch); design memory documents the trial FoundationLogo as the brand face. Automated census proved 0 font programs ship in any SVG, but path geometry carries no provenance. The wordmark must be re-exported from a confirmed-OFL font BEFORE 25-03's irreversible history purge. See 25-02-SUMMARY.md.
 - Phase 26: `minRackVersion` (lower 2.6.0 → 2.0.0 unless a 2.6 API is required); "Forge" slug collision check.
 - [Phase ?]: Phase 22: vendored doctest 2.4.11 harness; make test additive/Rack-free
 - [Phase ?]: Phase 22 P02: Pure DSP leaf headers (RackCompat/Waveshape/RatioTable/Swing) extracted to src/dsp/ — verbatim, rack-free, D-05 bleed lifted to bleedLfo param
@@ -85,6 +85,7 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 ### Blockers/Concerns
 
 - IP gate (Phase 25→28): repo `Photep/ForgeAudio-AnalogSeries` is private, already pushed, with trial fonts in commit e486ce1. Public flip is BLOCKED until the history purge is verified clean via fresh remote clone.
+- **NEW (2026-07-01) — 25-03 history purge BLOCKED**: 25-02 IP-03 gate returned `needs-regeneration`. The res/AnalogLFO.svg wordmark outlines may derive from the trial FoundationLogo font. A wordmark re-export plan (re-draw FORGE/AUDIO + "ANALOG LFO" from confirmed-OFL Bebas Neue / Chakra Petch) must land + commit, and the IP-03 gate must return `confirmed-OFL`, BEFORE 25-03 runs. 25-01 (LICENSE/NOTICES/OFL/font-removal) is complete and committed locally but NOT yet pushed.
 
 ## Deferred Items
 
