@@ -1,0 +1,44 @@
+THIRD-PARTY NOTICES — Forge Audio: Analog Series
+=================================================
+
+This file inventories the licenses of all components distributed in the
+Forge Audio: Analog Series VCV Rack plugin. It travels with the plugin
+inside the `.vcvplugin` artifact (shipped via the Makefile DISTRIBUTABLES).
+
+
+1. Plugin code
+--------------
+The plugin source code and build output are licensed under the
+GNU General Public License, version 3 or later (GPL-3.0-or-later).
+The full license text is in the LICENSE file at the root of this
+distribution. plugin.json declares "license": "GPL-3.0-or-later".
+
+
+2. JetBrains Mono (bundled runtime font)
+----------------------------------------
+File:    res/fonts/JetBrainsMonoNL-Regular.ttf
+License: SIL Open Font License, Version 1.1 (OFL-1.1)
+Author:  The JetBrains Mono Project Authors
+         (https://github.com/JetBrains/JetBrainsMono)
+Text:    The full OFL 1.1 text ships beside the font at res/fonts/OFL.txt.
+
+The SIL OFL 1.1 permits bundling and redistribution of the font within
+this software, including its embedding and conversion to outlines.
+
+
+3. Wordmark vector outlines in panel art
+-----------------------------------------
+File:    res/AnalogLFO.svg (and sibling panel SVGs)
+The "FORGE / AUDIO" and "ANALOG LFO" wordmark lettering in the panel
+artwork is shipped as static vector path outlines (Bezier geometry).
+No font program — no <text>, <glyph>, <font>, @font-face, or embedded
+font binary — is present in the SVGs.
+
+These outlines were drawn from the following Open Font License fonts:
+  - Bebas Neue   — SIL Open Font License, Version 1.1 (OFL-1.1)
+  - Chakra Petch — SIL Open Font License, Version 1.1 (OFL-1.1)
+
+The SIL OFL 1.1 expressly permits embedding and conversion of glyphs to
+outlines. Once converted to standalone path geometry, these outlines are
+not subject to the OFL's font-redistribution restrictions and are
+therefore distributable under this project's GPL-3.0-or-later grant.

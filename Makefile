@@ -12,6 +12,7 @@ SOURCES += $(wildcard src/*.cpp)
 
 DISTRIBUTABLES += res
 DISTRIBUTABLES += $(wildcard LICENSE*)
+DISTRIBUTABLES += $(wildcard NOTICES*)
 DISTRIBUTABLES += $(wildcard presets)
 
 # `make test` is Rack-free (TEST-01 / D-09). A bare `include` hard-fails when
