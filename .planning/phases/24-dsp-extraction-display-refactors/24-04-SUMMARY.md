@@ -68,7 +68,7 @@ completed: 2026-06-30
 ## Task Commits
 
 1. **Task 1: In-Rack UAT (animation feel, pill fade symmetry, audio-thread relief, getLastFrameDuration probe)** — blocking human-verify checkpoint, APPROVED by operator 2026-06-30 (no commit; verification gate)
-2. **Task 2: Log the UAT outcome to STATE.md** — `7d2905e` (docs) — committed with this plan's docs commit (STATE.md + 24-04-SUMMARY.md)
+2. **Task 2: Log the UAT outcome to STATE.md** — `52568d0` (docs) — committed with this plan's docs commit (STATE.md + 24-04-SUMMARY.md)
 
 ## Files Created/Modified
 - `.planning/STATE.md` — dated Phase 24 P04 UAT entry (APPROVED, five-check results, A1/getLastFrameDuration confirmed-by-behavior, shasum match); frontmatter `last_updated`/`last_activity`/`stopped_at`/`completed_plans`/`percent`; Current Position; Session Continuity; Operator Next Steps.
@@ -109,7 +109,7 @@ Matches the plan's `<threat_model>` exactly. T-24-04-01 (Repudiation — unverif
 
 ## Self-Check: PASSED
 
-`.planning/STATE.md` modified and present; `.planning/phases/24-dsp-extraction-display-refactors/24-04-SUMMARY.md` created and present; acceptance greps (`Phase 24` / `UAT` / `getLastFrameDuration`) all PASS; no ROADMAP.md checkbox changes. Docs commit `7d2905e` present in git log.
+`.planning/STATE.md` modified and present; `.planning/phases/24-dsp-extraction-display-refactors/24-04-SUMMARY.md` created and present; acceptance greps (`Phase 24` / `UAT` / `getLastFrameDuration`) all PASS; no ROADMAP.md checkbox changes. Docs commit `52568d0` present in git log.
 
 ---
 *Phase: 24-dsp-extraction-display-refactors*
