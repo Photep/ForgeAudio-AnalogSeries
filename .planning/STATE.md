@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 25 (release-ip-hardening-private) — IN PROGRESS (25-04 wordmark re-export added to unblock 25-03)
-Plan: 2 of 4 (25-01 ✓, 25-02 ✓ → needs-regeneration, 25-04 wordmark re-export PENDING, 25-03 BLOCKED on 25-04)
-Status: Phase 25 — next up plan 25-04 (regenerate wordmark from OFL fonts), then re-clear IP-03, then 25-03
-Last activity: 2026-07-01 -- added plan 25-04 (wordmark regeneration) after 25-02 returned needs-regeneration
+Phase: 25 (release-ip-hardening-private) — IN PROGRESS (25-04 researched + planned, ready to execute)
+Plan: 2 of 4 (25-01 ✓, 25-02 ✓ → needs-regeneration, 25-04 PLANNED/ready, 25-03 BLOCKED on 25-04)
+Status: Phase 25 — execute plan 25-04 (Wave 2): triage all 18 baked-text runs + re-export trial-derived outlines from OFL fonts, close IP-03, then 25-03 (Wave 3)
+Last activity: 2026-07-01 -- researched + rewrote 25-04 (plan-checker PASS); scope = ALL suspect baked labels, both faces operator-picks
 
-Progress: [█████░░░░░] 50% (2/4 plans complete)
+Progress: [█████░░░░░] 50% (2/4 plans complete; 25-04 planned, 25-03 blocked)
 
 ## Performance Metrics
 
