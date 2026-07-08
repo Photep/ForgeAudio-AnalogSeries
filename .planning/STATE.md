@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 25 (release-ip-hardening-private) — IN PROGRESS (25-03 ABORTED at go/no-go gate; purge NOT done)
-Plan: 3 of 4 (25-01 ✓, 25-02 ✓, 25-04 ✓ confirmed-OFL, 25-03 PAUSED — force-push aborted by operator)
-Status: Phase 25 — 25-03 Task 1 done (reversible prep); operator ABORTED at the Task 2 go/no-go gate. Force-push NOT executed; remote history still contains the trial fonts. Resume with /gsd-execute-phase 25 --wave 3 when ready.
-Last activity: 2026-07-01 -- 25-03 push-first done (remote==local 8a24538); operator aborted before the irreversible force-push
+Phase: 25 (release-ip-hardening-private) — ALL PLANS COMPLETE (4/4); ready for verification
+Plan: 4 of 4 (25-01 ✓, 25-02 ✓, 25-04 ✓ confirmed-OFL, 25-03 ✓ purge done + IP-02 verified)
+Status: Phase 25 — trial fonts PURGED from all remote history (main afc1ae2, v1.3 1f7441e); clean-room re-clone verified EMPTY (IP-02 hard gate PASSED). Repo stayed private. Next: phase verification, then Phase 26.
+Last activity: 2026-07-08 -- 25-03 force-push approved + executed; IP-02 clean-room verify EMPTY; local resynced clean
 
-Progress: [███████░░░] 75% (3/4 plans complete; 25-03 paused pre-force-push)
+Progress: [██████████] 100% (4/4 plans complete)
 
 ## Performance Metrics
 
@@ -84,9 +84,9 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 
 ### Blockers/Concerns
 
-- IP gate (Phase 25→28): repo `Photep/ForgeAudio-AnalogSeries` is private, already pushed, with trial fonts in commit e486ce1. Public flip is BLOCKED until the history purge is verified clean via fresh remote clone.
+- IP gate (Phase 25→28): **CLEARED 2026-07-08** — trial fonts purged from all remote history and verified clean via independent re-clone (see 25-03 blocker entry below). Phase 28 public flip is now clearable.
 - **RESOLVED (2026-07-01) — IP-03 closed**: 25-04 re-exported all 18 baked-text outlines in res/AnalogLFO.svg from confirmed-OFL Chakra Petch (operator-accepted `confirmed-OFL`); no trial-FoundationLogo geometry ships. See 25-04-SUMMARY.md.
-- **PAUSED (2026-07-01) — 25-03 force-push ABORTED by operator at the go/no-go gate**. Reversible prep IS done: git-filter-repo 2.47.0 installed; remote confirmed PRIVATE; push-first COMPLETE (local main + all Phase 22-25 work pushed → origin/main == HEAD == `8a24538`); a throwaway clone was filter-repo-rewritten and verified clean (rewritten HEAD would be `5f68253`, blobs `031e8db`/`3533f3e` gone, v1.3 font-free). The IRREVERSIBLE `git push --force --all --tags` was NOT run — **the remote still contains the trial-font blobs in history (commit e486ce1 ancestor + tag v1.3)**. IP-02 is therefore NOT yet satisfied, and the Phase 28 public flip REMAINS BLOCKED. To finish: re-run `/gsd-execute-phase 25 --wave 3` (it re-clones fresh and re-verifies per Pitfall 5) and approve the force-push at the gate. Verified-clean scratch clone left at `scratchpad/25-03-purge/` (not required for resume).
+- **RESOLVED (2026-07-08) — IP-02 hard gate PASSED.** Operator aborted the first go/no-go attempt (2026-07-01); re-authorized and completed 2026-07-08. Trial-font blobs purged from ALL remote history via git-filter-repo on a throwaway clone, force-pushed (`main` `afc1ae2`, tag `v1.3` `1f7441e`). A SECOND independent clean-room clone verified `rev-list --all --objects | grep -iE 'Barell|FoundationLogo'` EMPTY and both blob OIDs (031e8db, 3533f3e) MISSING; no Phase 22-25 work lost; repo stayed PRIVATE throughout. Local resynced to afc1ae2 + tags force-synced + gc'd clean. See 25-03-SUMMARY.md. **Phase 28 public flip is now clearable** (re-confirm EMPTY on a final fresh clone at flip time — PUB-01).
 
 ## Deferred Items
 

@@ -79,7 +79,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] **Phase 22: Test Harness Foundation** — Stand up the doctest target, the Rack-independent DSP core scaffold, and the headless block-driver harness before any code changes (completed 2026-06-14)
 - [x] **Phase 23: Functional Bug Fixes** — Fix the four CODE-REVIEW functional bugs, each pinned by a regression test; #2 (x1.5/÷1.5) is audition-gated (completed 2026-06-14)
 - [ ] **Phase 24: DSP Extraction + Display Refactors** — Complete the `src/dsp/*.hpp` core extraction, thin the Rack shell, and land the display/thread cleanups behind the green harness
-- [ ] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance
+- [x] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance (completed 2026-07-08)
 - [ ] **Phase 26: VCV Library Compliance + Packaging** — Populate/validate the manifest, build the verified `.vcvplugin`, wire CI green
 - [ ] **Phase 27: Notion Manual** — Author and publish the user manual in Notion with full table-stakes sections
 - [ ] **Phase 28: Publish + Submit** — Flip the repo public (gated on purge verification), then open the VCV Library submission issue
@@ -152,7 +152,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] 25-01-PLAN.md — Remove trial fonts + gitignore; add GPL-3.0 LICENSE, NOTICES, OFL.txt; wire NOTICES into Makefile; build/dist sanity (IP-01, PKG-01, PKG-04 — Wave 1, autonomous)
 - [x] 25-02-PLAN.md — Human-gated SVG wordmark font-outline provenance confirmation (IP-03 — Wave 1, blocking human-verify) → returned **needs-regeneration**
 - [x] 25-04-PLAN.md — Re-export FORGE/AUDIO + "ANALOG LFO" wordmark outlines in res/AnalogLFO.svg from confirmed-OFL fonts (Bebas Neue / Chakra Petch); close IP-03 confirmed-OFL (IP-03 — Wave 2, blocking human-verify). Added 2026-07-01 to unblock 25-03.
-- [ ] 25-03-PLAN.md — Irreversible history purge: push-first → filter-repo on throwaway clone → force-push --all --tags → clean-room re-clone verification → local resync (IP-02 — Wave 3, blocking human-verify gate; depends on 25-04)
+- [x] 25-03-PLAN.md — Irreversible history purge: push-first → filter-repo on throwaway clone → force-push --all --tags → clean-room re-clone verification → local resync (IP-02 — Wave 3, blocking human-verify gate; depends on 25-04)
 **Open question at phase start**: SVG font-outline provenance (Bebas Neue / Chakra Petch baked into `res/AnalogLFO.svg`) — confirm OFL Google Fonts cuts, not trial/commercial cuts. RESOLVED via human gate 25-02 → **needs-regeneration**; wordmark re-export plan 25-04 added to regenerate from OFL fonts before the 25-03 purge.
 
 ### Phase 26: VCV Library Compliance + Packaging
@@ -201,7 +201,7 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | 22. Test Harness Foundation | v1.4 | 4/4 | Complete    | 2026-06-14 |
 | 23. Functional Bug Fixes | v1.4 | 5/5 | Complete   | 2026-06-14 |
 | 24. DSP Extraction + Display Refactors | v1.4 | 3/4 | In Progress|  |
-| 25. Release IP Hardening (PRIVATE) | v1.4 | 3/4 | In Progress|  |
+| 25. Release IP Hardening (PRIVATE) | v1.4 | 4/4 | Complete   | 2026-07-08 |
 | 26. VCV Library Compliance + Packaging | v1.4 | 0/TBD | Not started | - |
 | 27. Notion Manual | v1.4 | 0/TBD | Not started | - |
 | 28. Publish + Submit | v1.4 | 0/TBD | Not started | - |
