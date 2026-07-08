@@ -78,7 +78,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 
 - [x] **Phase 22: Test Harness Foundation** — Stand up the doctest target, the Rack-independent DSP core scaffold, and the headless block-driver harness before any code changes (completed 2026-06-14)
 - [x] **Phase 23: Functional Bug Fixes** — Fix the four CODE-REVIEW functional bugs, each pinned by a regression test; #2 (x1.5/÷1.5) is audition-gated (completed 2026-06-14)
-- [ ] **Phase 24: DSP Extraction + Display Refactors** — Complete the `src/dsp/*.hpp` core extraction, thin the Rack shell, and land the display/thread cleanups behind the green harness
+- [x] **Phase 24: DSP Extraction + Display Refactors** — Complete the `src/dsp/*.hpp` core extraction, thin the Rack shell, and land the display/thread cleanups behind the green harness (completed 2026-06-30, verified 2026-07-08)
 - [x] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance (completed 2026-07-08)
 - [ ] **Phase 26: VCV Library Compliance + Packaging** — Populate/validate the manifest, build the verified `.vcvplugin`, wire CI green
 - [ ] **Phase 27: Notion Manual** — Author and publish the user manual in Notion with full table-stakes sections
