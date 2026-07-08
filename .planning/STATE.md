@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 25 (release-ip-hardening-private) — ALL PLANS COMPLETE (4/4); ready for verification
-Plan: 4 of 4 (25-01 ✓, 25-02 ✓, 25-04 ✓ confirmed-OFL, 25-03 ✓ purge done + IP-02 verified)
-Status: Phase 25 — trial fonts PURGED from all remote history (main afc1ae2, v1.3 1f7441e); clean-room re-clone verified EMPTY (IP-02 hard gate PASSED). Repo stayed private. Next: phase verification, then Phase 26.
-Last activity: 2026-07-08 -- 25-03 force-push approved + executed; IP-02 clean-room verify EMPTY; local resynced clean
+Phase: 25 (release-ip-hardening-private) — COMPLETE + VERIFIED ✓ (status: passed)
+Plan: 4 of 4 all complete (25-01 ✓, 25-02 ✓, 25-04 ✓ confirmed-OFL, 25-03 ✓ IP-02 verified)
+Status: Phase 25 DONE — IP-01/IP-02/IP-03/PKG-01/PKG-04 all verified (25-VERIFICATION.md status: passed). Trial fonts purged from all remote history + clean-room verified; LICENSE/NOTICES/OFL shipped; panel OFL-clean. Next: Phase 26 (VCV Library compliance + packaging).
+Last activity: 2026-07-08 -- Phase 25 verified passed; IP gate cleared for the Phase 28 public flip
 
-Progress: [██████████] 100% (4/4 plans complete)
+Progress: [██████████] 100% (4/4 plans complete, phase verified)
 
 ## Performance Metrics
 
