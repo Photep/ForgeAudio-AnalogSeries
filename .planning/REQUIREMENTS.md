@@ -16,7 +16,7 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 - [ ] **TEST-03**: Unit tests cover waveshaping output ranges, the clock ratio/alignment table, consecutive-outlier clock recovery, and swing math
 - [x] **TEST-04**: A headless block-driver harness runs the DSP core over sample blocks and asserts on output invariants (frequency accuracy, phase continuity at reset, ±5V output bounds, fixed-seed determinism)
 - [x] **TEST-05**: Each functional bug fix (#1–#3) is pinned by a regression test that fails before the fix and passes after
-- [ ] **TEST-06**: The full test suite runs green and is wired as a GitHub Actions CI check on push
+- [x] **TEST-06**: The full test suite runs green and is wired as a GitHub Actions CI check on push
 
 ### Bug Fixes
 
@@ -36,10 +36,10 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 ### Packaging
 
 - [ ] **PKG-01**: GPL-3.0 LICENSE file present at repo root (CODE-REVIEW #5)
-- [ ] **PKG-02**: plugin.json `authorUrl`, `pluginUrl`, and `sourceUrl` (GitHub project page) are populated (CODE-REVIEW #6)
-- [ ] **PKG-03**: Manifest validated for submission — permanent slug confirmed, version stays `2.0.0`, tags valid, module slug/name correct
+- [x] **PKG-02**: plugin.json `authorUrl`, `pluginUrl`, and `sourceUrl` (GitHub project page) are populated (CODE-REVIEW #6)
+- [x] **PKG-03**: Manifest validated for submission — permanent slug confirmed, version stays `2.0.0`, tags valid, module slug/name correct
 - [ ] **PKG-04**: A NOTICES/credits file inventories third-party asset licenses (shipped fonts, SVG panel art)
-- [ ] **PKG-05**: `make dist` produces a verified `.vcvplugin` artifact (binary + plugin.json + `res/` + LICENSE)
+- [x] **PKG-05**: `make dist` produces a verified `.vcvplugin` artifact (binary + plugin.json + `res/` + LICENSE)
 
 ### IP Hardening
 
@@ -98,7 +98,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | TEST-03 | Phase 23 | Pending |
 | TEST-04 | Phase 22 | Complete |
 | TEST-05 | Phase 23 | Complete |
-| TEST-06 | Phase 26 | Pending |
+| TEST-06 | Phase 26 | Complete |
 | BUG-01 | Phase 23 | Pending |
 | BUG-02 | Phase 23 (audition-gated) | Pending |
 | BUG-03 | Phase 23 | Complete |
@@ -109,10 +109,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CLEAN-04 | Phase 24 | Complete |
 | CLEAN-05 | Phase 24 | Complete |
 | PKG-01 | Phase 25 | Pending |
-| PKG-02 | Phase 26 | Pending |
-| PKG-03 | Phase 26 | Pending |
+| PKG-02 | Phase 26 | Complete |
+| PKG-03 | Phase 26 | Complete |
 | PKG-04 | Phase 25 | Pending |
-| PKG-05 | Phase 26 | Pending |
+| PKG-05 | Phase 26 | Complete |
 | IP-01 | Phase 25 | Pending |
 | IP-02 | Phase 25 | Pending |
 | IP-03 | Phase 25 | Pending |
