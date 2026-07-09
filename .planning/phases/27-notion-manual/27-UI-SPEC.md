@@ -70,6 +70,8 @@ Baked-asset text sizes are px at the **2× export scale**. Markdown prose/headin
 
 Applies to the **annotated-panel PNG** (the one authored visual). Values are the shipped Forge Noir palette. GitHub's own light/dark chrome around the rendered Markdown is not controllable and is out of scope.
 
+**Visual hierarchy (focal point):** the rendered **panel silhouette is the primary visual anchor** of the composited asset; the ember-ringed numbered badges are a deliberate **secondary wayfinding layer** sitting on top, and the warm-white leader lines are tertiary. The executor must preserve this order — the annotation layer guides the eye to the panel, it does not compete with it (badges never occlude a control's own graphic; leader lines drop to 60% opacity over busy art per Badge anatomy).
+
 | Role | Value | Usage |
 |------|-------|-------|
 | Dominant (60%) | `#0c0c0c` | Near-black panel body / PNG canvas — the screenshot's own background |
