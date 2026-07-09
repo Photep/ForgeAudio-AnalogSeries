@@ -56,7 +56,7 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 
 - [x] **DOC-01**: User manual authored as GitHub Markdown under `docs/` with a per-section file per table-stakes section and a `docs/index.md` hub (subpage-per-section preserved)
 - [x] **DOC-02**: Manual covers all table-stakes sections — 3-axis engine concept, annotated panel, control-reference table, I/O reference, context-menu options, clock/sync behavior, install (Library + manual), changelog, license/credits
-- [ ] **DOC-03**: Manual is linked from `plugin.json` `manualUrl`; public reachability completes with the Phase 28 repo-public flip
+- [x] **DOC-03**: Manual is linked from `plugin.json` `manualUrl`; public reachability completes with the Phase 28 repo-public flip
 
 ## v2 Requirements
 
@@ -120,7 +120,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PUB-02 | Phase 28 | Pending |
 | DOC-01 | Phase 27 | Complete |
 | DOC-02 | Phase 27 | Complete |
-| DOC-03 | Phase 27 | Pending |
+| DOC-03 | Phase 27 | Complete |
 
 **Coverage:**
 - v1 requirements: 28 total
