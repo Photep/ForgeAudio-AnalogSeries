@@ -30,7 +30,7 @@ A custom SVG rune centered between FORGE and AUDIO, vertically centered with the
   - r=16, stroke-width 3, opacity 0.14
   - r=20, stroke-width 2, opacity 0.09
   - r=25, stroke-width 1.5, opacity 0.06
-  - r=31, stroke-width 1 (gold `#daa520`), opacity 0.035
+  - r=31, stroke-width 1 (gold `#d4a017`), opacity 0.035
 - Entire rune group has Gaussian blur glow filter (stdDeviation 1.8)
 
 ### Module Name
@@ -57,10 +57,10 @@ A custom SVG rune centered between FORGE and AUDIO, vertically centered with the
 
 | Name | Hex | Usage |
 |------|-----|-------|
-| Panel Black | `#0c0c0c` | Panel background |
-| Panel Border | `#1a1a1a` | Panel edge, subtle borders |
-| Forge Ember | `#e85d26` | Primary accent — brand, indicators, accents, glows |
-| Molten Gold | `#daa520` | Secondary accent — display readouts, warm details |
+| Panel Black | `#0e0e11` → `#070708` | Panel background (subtle top→bottom gradient, not flat) |
+| Panel Border | `#202024` | Panel edge, subtle borders |
+| Forge Ember | `#e85d26` | Primary accent — brand, indicators, accents, glows (single value across panel, components, and code) |
+| Molten Gold | `#d4a017` | Secondary accent — accent-rail center, display readouts, warm details |
 | Hot Gold | `#f0a030` | Tertiary — phase dots, rune center, highlights |
 | White Hot | `#ffe0a0` | Rune core, peak brightness moments |
 | Warm White | `#e8e4e0` | Module name, hero labels (MORPH) |
@@ -85,6 +85,8 @@ A custom SVG rune centered between FORGE and AUDIO, vertically centered with the
 | Output Label | Bebas Neue | 14px | — | 4px | `#e85d26` + ember shadow | OUTPUT |
 | Display Pills | JetBrains Mono | 5-8px | 400-600 | — | varies | SYNC, Hz, BPM, Swing |
 
+> **Shipping reality:** the fonts above describe the *design intent* / mockup letterforms. In the shipping panel, all static text (brand, module name, labels) is pre-converted to SVG `<path>` outlines, so no font file is needed at runtime. The only bundled font is **JetBrains Mono** (`res/fonts/`, OFL-licensed), used for the live display readouts. FoundationLogo and the other mockup fonts are **not** redistributed.
+
 ### Label Spacing Rule
 - **10px gap** between label bottom and component top edge (consistent across all knob sizes)
 - **10px gap** between component bottom and next label top (zone-to-zone)
@@ -95,13 +97,15 @@ A custom SVG rune centered between FORGE and AUDIO, vertically centered with the
 ## Panel Structure
 
 ### Dimensions
-- **14HP** (71.12mm wide × 128.5mm tall)
-- At 5x scale: 356px × 642px
-- Panel center axis: x = 178px
+- **18HP** (91.44mm wide × 128.5mm tall)
+- Panel center axis: x = 45.72mm
+- Authoritative mm coordinates for every component live in [res/PANEL-SPEC.md](res/PANEL-SPEC.md); this document covers the visual language, that one covers exact placement.
+
+> Note: the px values elsewhere in this document date from the original 5x HTML mockup (a 14HP-width proportioned canvas) and are kept as *relative* rendering recipes. Treat the mm figures here and in PANEL-SPEC.md as the shipping truth.
 
 ### Accent Bars
-- 3px tall bars at top and bottom edges
-- `linear-gradient(90deg, #1a0800, #e85d26 25%, #daa520 50%, #e85d26 75%, #1a0800)`
+- Thin ember/gold rails at top and bottom edges
+- `linear-gradient(90deg, #1a0800, #e85d26 22%, #d4a017 50%, #e85d26 78%, #1a0800)`
 
 ### Hex Bolts
 - 16×16px hexagonal bolts at all four corners
@@ -144,9 +148,10 @@ A custom SVG rune centered between FORGE and AUDIO, vertically centered with the
 **Size hierarchy:**
 | Role | Class | Diameter | Indicator height | Special |
 |------|-------|----------|-----------------|---------|
-| Hero (MORPH) | knob-xl | 82px | 32% | Knurled outer ring via `repeating-conic-gradient` on `::before` |
-| Secondary (CHAR, DRIFT) | knob-lg | 60px | 28% | Standard metallic ring |
-| Utility (RATE, PHASE) | knob-md | 46px | 26% | Standard metallic ring |
+| Hero (MORPH) | ForgeKnobHero | 16.38mm | 32% | Knurled outer ring, largest metallic ring |
+| Control (CHAR, DRIFT, RATE, PHASE) | ForgeKnobSecondary | 11.99mm | 28% | Standard metallic ring |
+
+> The four control knobs share one class and size — there is no separate "utility" knob. RATE and PHASE are the same `ForgeKnobSecondary` as CHARACTER and DRIFT.
 
 ### Jacks — PJ301M-Style Metallic
 
@@ -229,27 +234,25 @@ A symmetrical atmospheric SVG behind the main knob section, suggesting smolderin
 
 ## Layout Rules
 
-### Knob Arrangement: 1-2-2 Diamond
-```
-      [MORPH]        ← Hero, centered
-   [CHAR]  [DRIFT]   ← Secondary, flanking
-   [RATE]  [PHASE]   ← Utility, same columns
-```
-- Center axis: x = 178
-- Secondary/utility columns: x = 106, x = 250
+> Coordinates below are the shipping 18HP layout in mm (see [res/PANEL-SPEC.md](res/PANEL-SPEC.md) §4 for the full table). Panel center axis: **x = 45.72mm**.
 
-### Bottom I/O Row
-- CLK, RST, OUTPUT spread evenly across panel width
-- Positions: x = 72, 178, 284
-- OUTPUT on the right, retains ember accent ring
-- Labels baseline-aligned (account for different font sizes)
+### Knob Arrangement: hero + 4-across control row
+```
+            [MORPH]                     ← Hero, centered (45.72, 61.00)
+  [CHAR]  [DRIFT]  [RATE]  [PHASE]      ← Control row, single line at y = 87.00
+```
+- MORPH hero centered on the panel axis, below the display
+- Four equal control knobs in one row at y=87.00, x = 18.00 / 36.24 / 54.48 / 72.72 (even 18.24mm spacing)
 
-### CV Section
-- 5 columns for attenuator pairs: x = 46, 114, 178, 244, 310
-- Label → Trimpot → Connecting line → Jack (vertical stack)
+### Bottom Grid: trimpot row over jack row
+- **Trimpot row** (y=108.50): 5 CV attenuverters at x = 7.70 / 18.56 / 29.43 / 40.29 / 51.15
+- **Jack row** (y=119.50): a single 8-across row on the same ~10.86mm rhythm
+  - Columns 1–5 are the CV inputs directly below their trimpots (same x), linked by ember connecting lines
+  - Columns 6–8 continue the rhythm: CLK (62.01), RST (72.88), OUTPUT (83.74)
+- OUTPUT sits far right and retains its ember accent ring
 
 ### Symmetry Rule
-**Everything must be perfectly mirrored about the panel center axis (x = 178).** Use SVG `<use>` with mirror transform where possible to guarantee this. Verify all x-coordinates: left element at `178 - d`, right element at `178 + d`.
+The **decorative and upper elements are mirrored about the center axis (x = 45.72mm)** — accent rails, header/brand, forge emblem, display well, and the MORPH hero. Use SVG mirroring where possible to guarantee this. The **functional lower grid** (trimpots + jacks + CLK/RST/OUTPUT) is intentionally *not* mirrored: it reads as a uniform left-to-right rhythm anchored at the left margin, with OUTPUT deliberately at the right end.
 
 ---
 
@@ -265,9 +268,9 @@ A symmetrical atmospheric SVG behind the main knob section, suggesting smolderin
 - Splitting brand into two elements for flexible left/right alignment
 
 ### Design Principles
-1. **Symmetry is sacred** — every decorative element must mirror perfectly about center
+1. **Symmetry where it decorates** — decorative and upper elements (rails, brand, emblem, display, hero) mirror perfectly about center; the functional lower grid follows a uniform left-to-right rhythm instead
 2. **Consistent spacing** — uniform gaps between labels and components throughout
-3. **Component hierarchy** — size communicates importance (MORPH > CHAR/DRIFT > RATE/PHASE > trimpots)
+3. **Component hierarchy** — size communicates importance (MORPH hero > the four control knobs > trimpots)
 4. **Ember as identity** — `#e85d26` is the signature color, used for all accents, never for backgrounds
 5. **Subtlety in layers** — atmospheric effects (forge emblem, panel texture) should enhance without competing
 6. **Typography does work** — clear font hierarchy makes the panel readable at a glance

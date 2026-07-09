@@ -1,8 +1,10 @@
 # Forge Audio Analog LFO - Panel Specification (Forge Noir)
 
-Designer handoff document for the 14HP Forge Noir panel SVG.
+Designer handoff document for the 18HP Forge Noir panel SVG.
 
-This document captures every coordinate, size, color, and constraint needed to recreate or refine the panel without reading C++ code. The component positions in this spec, the SVG components layer, and the C++ widget code MUST stay synchronized. If a designer moves a component, the C++ code must be updated to match.
+This document captures every coordinate, size, color, and constraint needed to recreate or refine the panel without reading C++ code. Component positions here, the panel art in `res/AnalogLFO.svg`, and the widget placement code in `src/AnalogLFO.cpp` MUST stay synchronized. If a designer moves a component in the art, the C++ `mm2px(Vec(x, y))` call must be updated to match (and vice versa).
+
+> **Source of truth:** the shipping values below are transcribed from `src/AnalogLFO.cpp` (component placement) and `res/AnalogLFO.svg` (dimensions, palette, artwork). Where this document and the code ever disagree, the code wins — update this document.
 
 ---
 
@@ -10,181 +12,173 @@ This document captures every coordinate, size, color, and constraint needed to r
 
 | Property | Value |
 |----------|-------|
-| Width | 71.12mm (14HP x 5.08mm/HP) |
+| Width | 91.44mm (18HP x 5.08mm/HP) |
 | Height | 128.5mm (standard 3U Eurorack) |
-| Panel center X | 35.56mm |
-| HP count | 14 |
-| Screw clear zone | ~5mm diameter at each corner |
+| Panel center X | 45.72mm |
+| HP count | 18 |
+| Bolt-hole inset | 2.60mm from each edge |
 
-The SVG must declare `width="71.12mm"`, `height="128.5mm"`, and `viewBox="0 0 71.12 128.5"`.
+The SVG declares `width="91.44mm"`, `height="128.5mm"`, and `viewBox="0 0 91.44 128.5"`.
 
 ---
 
 ## 2. Color Palette
 
-### Panel Palette (60/30/10 Split)
+### Structural (near-black)
 
-| Role | Hex | Usage |
-|------|-----|-------|
-| Dominant (60%) | `#0c0c0c` | Panel background -- near-black matte |
-| Secondary (30%) | `#1a1a1a` | Panel border, knob metallic ring dark band, hex bolt outer, section divider endpoints |
-| Accent (10%) | `#e85d26` (Forge Ember) | Brand text, knob indicator lines, output jack accent ring, accent bars, CV connecting lines, header slashes, output label, decorative line |
+The panel background is a subtle vertical gradient, not a flat fill.
 
-### Extended Palette
+| Role | Value | Usage |
+|------|-------|-------|
+| Background gradient | `#0e0e11` → `#0a0a0c` → `#070708` (top→bottom) | Panel body fill (`url(#bg)`) |
+| Panel border | `#202024` | 0.35mm inset edge stroke |
+| Bolt fill / dark bands | `#161618`, `#2c2c30` | Hex-bolt bodies, metallic dark bands |
+
+### Accent (Forge Ember + gold)
 
 | Name | Hex | Usage |
 |------|-----|-------|
-| Panel Black | `#0c0c0c` | Panel background fill |
-| Panel Border | `#1a1a1a` | Subtle panel edge, dark metallic bands |
-| Forge Ember | `#e85d26` | Primary accent -- brand, indicators, accents, glows |
-| Molten Gold | `#daa520` | Secondary accent -- rune power ring outermost, display readout warm details |
-| Hot Gold | `#f0a030` | Tertiary -- rune center mid-layer, highlight moments |
-| White Hot | `#ffe0a0` | Rune core peak brightness |
-| Warm White | `#e8e4e0` | Module name |
-| Hero Label | `#f0ece8` | MORPH label (warmer than warm white) |
-| Label Light | `#c0bbb5` | Primary control labels (CHARACTER, DRIFT) |
-| Label Mid | `#888888` | Secondary control labels (RATE, PHASE) |
-| Label Dim | `#777777` | CV labels |
-| Label I/O | `#999999` | CLK, RST labels |
-| Knob Highlight | `#4a4a4a` | Knob body gradient bright stop |
-| Knob Dark | `#0a0a0a` | Knob body gradient dark stop |
-| Metallic Ring Bright | `#777777` | Knob outer metallic ring peak |
-| Metallic Ring Mid | `#555555` | Knob outer metallic ring transition |
-| Trimpot Bright | `#6a6a6a` | Trimpot body bright gradient stop |
-| Jack Inner Ring | `#cccccc` | Jack concentric ring bright peak |
-| Display BG | `#030303` | Display background (reserved for Phase 20) |
+| Forge Ember | `#e85d26` | Primary accent — brand text, indicators, accent rails, output ring, CV lines, emblem glow, rune |
+| Ember Highlight | `#ff8a4c` | Brightest ember moments (indicator tips, hottest glow) |
+| Molten Gold | `#d4a017` | Secondary accent — rail center, display readout warm details, rune power ring |
+| Rail dark stop | `#1a0800` | Fade-out ends of the top/bottom accent rails |
 
-### Accent Reserved-For List
+The top and bottom accent rails share one gradient: `#1a0800` → `#e85d26` (0.22) → `#d4a017` (0.5) → `#e85d26` (0.78) → `#1a0800`.
 
-Forge Ember `#e85d26` is used ONLY for:
-1. Brand text ("FORGE", "AUDIO")
-2. Knob indicator lines (all 3 sizes)
-3. Output jack accent ring (semi-transparent stroke)
-4. Top and bottom accent bar gradients
-5. CV connecting lines (gradient, fading downward)
-6. Header slash marks (gradient, fading downward)
-7. Output label text
-8. Decorative line behind module name
-9. Emblem glow elements (low opacity: 0.02-0.18)
-10. Rune glyph outer diamond and power rings (low opacity)
-11. Morph arc (dashed decorative ring around MORPH knob)
-12. Footer "FORGE" text (opacity 0.25)
+> **Ember is a single value:** `#e85d26` is used consistently across the panel art, the component SVGs (`res/components/`), and the runtime NanoVG code (`src/AnalogLFO.cpp`). Do not introduce a near-duplicate (an earlier panel revision used `#e8612a`; it was normalized).
+
+### Text / label greys (luminance hierarchy)
+
+Static text is a ramp of warm greys — brighter = higher in the visual hierarchy.
+
+| Hex | Tier | Typical usage |
+|------|------|---------------|
+| `#ece8e2` | Brightest | Module name ("ANALOG LFO"), MORPH hero label |
+| `#c8c4be` | Light | Primary control labels (CHARACTER, DRIFT) |
+| `#a39e96` | Mid | Secondary control labels (RATE, PHASE) |
+| `#8f8a82` | Dim | CV labels and small I/O text (the bulk of small glyphs) |
+
+### Display (waveform screen)
+
+| Role | Value | Usage |
+|------|-------|-------|
+| Screen fill | `#0b0d0c` → `#040504` (radial) | Display background (`url(#screen)`) |
+| Screen stroke | ember/gold gradient, low opacity | Bezel edge (`url(#dispStroke)`) |
+
+> The live display (waveform, pills, BPM, phase dot) is drawn at runtime by the `WaveformDisplay` NanoVG widget, not baked into the SVG. The SVG only supplies the screen well and bezel.
 
 ---
 
-## 3. Layout Zones
+## 3. Layout Zones (top → bottom)
 
-| Zone | Y Range (mm) | Height (mm) | Content |
-|------|-------------|-------------|---------|
-| Header + accent bar | 0 - 8 | 8 | Ember accent bar (0.60mm), brand text (FORGE / rune / AUDIO), header slashes |
-| Module name | 8 - 12 | 4 | "ANALOG LFO" title, decorative line behind |
-| Waveform display | 13 - 31 | 18 | Dark display area for waveform visualization |
-| MORPH zone | 32 - 55 | 23 | "MORPH" label, hero knob at (35.56, 47.35), morph arc |
-| CHARACTER/DRIFT zone | 55 - 75 | 20 | Primary labels, secondary knobs at (21.18/49.94, 67.32) |
-| RATE/PHASE zone | 75 - 90 | 15 | Secondary labels, utility knobs at (21.18/49.94, 83.51) |
-| CV trimpot row | 90 - 98 | 8 | 5 trimpots at y=95.89mm, CV labels above |
-| CV jack row | 98 - 107 | 9 | 5 CV input jacks at y=103.08mm, CV connecting lines |
-| Bottom I/O | 107 - 123 | 16 | CLK, RST inputs + OUTPUT jack at y=117.47mm, I/O labels |
-| Footer + accent bar | 123 - 128.5 | 5.5 | Footer "FORGE" text, ember accent bar (0.60mm) |
+| Zone | Y (mm) | Content |
+|------|--------|---------|
+| Top accent rail | 0 – 0.7 | Ember/gold rail gradient |
+| Header | ~1 – 14 | Brand (FORGE / rune / AUDIO), header slashes, "ANALOG LFO" name + decorative line |
+| Waveform display | 19.00 – 45.00 | Screen well (see §4) |
+| MORPH zone | ~53 – 69 | Hero knob at y=61.00, forge emblem glow behind |
+| Control-knob row | ~81 – 93 | CHARACTER, DRIFT, RATE, PHASE at y=87.00 |
+| Trimpot row | ~106 – 111 | 5 CV attenuverters at y=108.50 |
+| Bottom I/O row | ~116 – 123 | 5 CV inputs + CLK, RST, OUTPUT at y=119.50 |
+| Bottom accent rail | 127.80 – 128.5 | Ember/gold rail gradient |
 
 ---
 
 ## 4. Component Position Map
 
-All coordinates are center positions in millimeters. Widget classes are custom Forge Noir types.
+All coordinates are **center** positions in millimeters, taken directly from `src/AnalogLFO.cpp`. Widget classes are custom Forge Noir types.
 
-### Params (Knobs + Trimpots)
+### Params — Knobs
 
-| Control | Widget Class | Center X (mm) | Center Y (mm) | Size (mm) | Type |
-|---------|-------------|---------------|---------------|-----------|------|
-| MORPH_PARAM | ForgeKnobHero | 35.56 | 47.35 | 16.38 | Param |
-| CHARACTER_PARAM | ForgeKnobSecondary | 21.18 | 67.32 | 11.99 | Param |
-| DRIFT_PARAM | ForgeKnobSecondary | 49.94 | 67.32 | 11.99 | Param |
-| RATE_PARAM | ForgeKnobUtility | 21.18 | 83.51 | 9.19 | Param |
-| PHASE_OFFSET_PARAM | ForgeKnobUtility | 49.94 | 83.51 | 9.19 | Param |
-| MORPH_ATTEN_PARAM | ForgeTrimpot | 9.19 | 95.89 | 3.60 | Param |
-| CHARACTER_ATTEN_PARAM | ForgeTrimpot | 22.77 | 95.89 | 3.60 | Param |
-| DRIFT_ATTEN_PARAM | ForgeTrimpot | 35.56 | 95.89 | 3.60 | Param |
-| FM_ATTEN_PARAM | ForgeTrimpot | 48.75 | 95.89 | 3.60 | Param |
-| PHASE_OFFSET_ATTEN_PARAM | ForgeTrimpot | 61.93 | 95.89 | 3.60 | Param |
+| Control | Widget Class | Center X | Center Y | Diameter |
+|---------|-------------|----------|----------|----------|
+| MORPH_PARAM | ForgeKnobHero | 45.72 | 61.00 | 16.38 |
+| CHARACTER_PARAM | ForgeKnobSecondary | 18.00 | 87.00 | 11.99 |
+| DRIFT_PARAM | ForgeKnobSecondary | 36.24 | 87.00 | 11.99 |
+| RATE_PARAM | ForgeKnobSecondary | 54.48 | 87.00 | 11.99 |
+| PHASE_OFFSET_PARAM | ForgeKnobSecondary | 72.72 | 87.00 | 11.99 |
+
+The four control knobs form a single row at y=87.00 with even 18.24mm center-to-center spacing.
+
+### Params — Trimpots (CV attenuverters)
+
+| Control | Widget Class | Center X | Center Y | Diameter |
+|---------|-------------|----------|----------|----------|
+| MORPH_ATTEN_PARAM | ForgeTrimpot | 7.70 | 108.50 | 5.40 |
+| CHARACTER_ATTEN_PARAM | ForgeTrimpot | 18.56 | 108.50 | 5.40 |
+| DRIFT_ATTEN_PARAM | ForgeTrimpot | 29.43 | 108.50 | 5.40 |
+| FM_ATTEN_PARAM | ForgeTrimpot | 40.29 | 108.50 | 5.40 |
+| PHASE_OFFSET_ATTEN_PARAM | ForgeTrimpot | 51.15 | 108.50 | 5.40 |
 
 ### Inputs
 
-| Control | Widget Class | Center X (mm) | Center Y (mm) | Size (mm) | Type |
-|---------|-------------|---------------|---------------|-----------|------|
-| MORPH_CV_INPUT | ForgeJackInput | 9.19 | 103.08 | 7.19 | Input |
-| CHARACTER_CV_INPUT | ForgeJackInput | 22.77 | 103.08 | 7.19 | Input |
-| DRIFT_CV_INPUT | ForgeJackInput | 35.56 | 103.08 | 7.19 | Input |
-| FM_INPUT | ForgeJackInput | 48.75 | 103.08 | 7.19 | Input |
-| PHASE_OFFSET_CV_INPUT | ForgeJackInput | 61.93 | 103.08 | 7.19 | Input |
-| CLK_INPUT | ForgeJackInput | 14.38 | 117.47 | 7.19 | Input |
-| RESET_INPUT | ForgeJackInput | 35.56 | 117.47 | 7.19 | Input |
+| Control | Widget Class | Center X | Center Y | Diameter |
+|---------|-------------|----------|----------|----------|
+| MORPH_CV_INPUT | ForgeJackInput | 7.70 | 119.50 | 7.19 |
+| CHARACTER_CV_INPUT | ForgeJackInput | 18.56 | 119.50 | 7.19 |
+| DRIFT_CV_INPUT | ForgeJackInput | 29.43 | 119.50 | 7.19 |
+| FM_INPUT | ForgeJackInput | 40.29 | 119.50 | 7.19 |
+| PHASE_OFFSET_CV_INPUT | ForgeJackInput | 51.15 | 119.50 | 7.19 |
+| CLK_INPUT | ForgeJackInput | 62.01 | 119.50 | 7.19 |
+| RESET_INPUT | ForgeJackInput | 72.88 | 119.50 | 7.19 |
 
 ### Outputs
 
-| Control | Widget Class | Center X (mm) | Center Y (mm) | Size (mm) | Type |
-|---------|-------------|---------------|---------------|-----------|------|
-| OUTPUT | ForgeJackOutput | 56.74 | 117.47 | 8.39 | Output |
+| Control | Widget Class | Center X | Center Y | Diameter |
+|---------|-------------|----------|----------|----------|
+| OUTPUT | ForgeJackOutput | 83.74 | 119.50 | 8.39 |
 
 ### Waveform Display
 
-| Element | Position (mm) | Size (mm) |
-|---------|--------------|-----------|
-| WaveformDisplay | pos (3.60, 13.19) | size (63.93, 17.98) |
+| Element | Pos (mm) | Size (mm) | Span |
+|---------|----------|-----------|------|
+| WaveformDisplay | (5.00, 19.00) | (81.44, 26.00) | x 5.00–86.44, y 19.00–45.00 (horizontally centered) |
 
 ### Screws (Hex Bolts)
 
-| Position | Coordinate |
-|----------|------------|
-| Top-left | (RACK_GRID_WIDTH, 0) |
-| Top-right | (box.size.x - 2*RACK_GRID_WIDTH, 0) |
-| Bottom-left | (RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH) |
-| Bottom-right | (box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH) |
+| Position | Coordinate (mm) |
+|----------|-----------------|
+| Top-left | (2.60, 2.60) |
+| Top-right | (88.84, 2.60) |
+| Bottom-left | (2.60, 125.90) |
+| Bottom-right | (88.84, 125.90) |
 
-**Widget size hierarchy:**
-- ForgeKnobHero: 16.38mm diameter (primary control -- MORPH)
-- ForgeKnobSecondary: 11.99mm diameter (secondary controls -- CHARACTER, DRIFT)
-- ForgeKnobUtility: 9.19mm diameter (utility controls -- RATE, PHASE)
-- ForgeTrimpot: 3.60mm diameter (CV attenuverters)
-- ForgeJackInput: 7.19mm diameter (standard input)
-- ForgeJackOutput: 8.39mm diameter (output with ember accent ring)
-- ForgeHexBolt: 3.20mm (hexagonal screw)
+The bottom-right bolt is pushed into the corner to clear the OUTPUT jack's ember accent rings.
 
-**CV section layout (two-row convention):** 5 trimpots at y=95.89mm (upper row), 5 jacks at y=103.08mm (lower row). Five columns at X = 9.19, 22.77, 35.56, 48.75, 61.93mm give ~13.58mm center-to-center spacing. Each trimpot sits directly above its associated CV jack at the same X coordinate. Ember connecting lines (0.20mm, gradient opacity) visually link each trimpot to its jack.
+### Widget size hierarchy
 
-**Bottom I/O layout:** CLK at x=14.38mm, RST at x=35.56mm (center axis), OUTPUT at x=56.74mm. Symmetrical distribution with center emphasis.
+- ForgeKnobHero — 16.38mm (primary control: MORPH)
+- ForgeKnobSecondary — 11.99mm (all four control knobs: CHARACTER, DRIFT, RATE, PHASE)
+- ForgeTrimpot — 5.40mm (CV attenuverters)
+- ForgeJackInput — 7.19mm (standard input)
+- ForgeJackOutput — 8.39mm (output, with ember accent ring)
+- ForgeHexBolt — 3.20mm (hexagonal screw)
+
+> There is no separate "utility" knob class. RATE and PHASE use the same `ForgeKnobSecondary` as CHARACTER and DRIFT.
+
+**Bottom-row layout:** the bottom I/O row is a single line of eight jacks at y=119.50 with even ~10.86mm spacing. Columns 1–5 (x = 7.70, 18.56, 29.43, 40.29, 51.15) each carry a trimpot directly above at y=108.50; ember connecting lines visually link each trimpot to its jack. Columns 6–8 continue the same rhythm: CLK (62.01), RST (72.88), OUTPUT (83.74).
 
 ---
 
 ## 5. nanosvg Compatibility Constraints
 
-VCV Rack uses nanosvg to render panel SVGs. This imposes strict limitations on what SVG features can be used.
+VCV Rack renders panel SVGs with nanosvg, which imposes strict limits.
 
-**NOT supported (will be ignored or cause errors):**
-- `<text>` elements -- convert all text to `<path>` elements
-- CSS `<style>` blocks -- use inline attributes (`fill`, `stroke`, etc.)
-- `<use>` and `<defs>` references (except `<defs>` for gradient definitions)
+**NOT supported (ignored or broken):**
+- `<text>` elements — convert all text to `<path>` outlines (the shipping panel contains zero `<text>` elements)
+- CSS `<style>` blocks — use inline attributes (`fill`, `stroke`, etc.)
+- `<use>` references and `<defs>` other than gradient definitions
 - `<clipPath>` clipping
 - `<filter>` effects (blur, shadow, etc.)
-- `<image>` embedded images
-- `opacity` on `<g>` groups -- set opacity on individual elements instead
-- 3-digit hex colors -- always use 6-digit hex (e.g., `#0c0c0c`, not `#0c0`)
+- `<image>` embedded rasters
+- `opacity` on `<g>` groups — set opacity on individual elements
+- 3-digit hex colors — always use 6-digit hex
 
-**Supported elements:**
-- `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>`, `<polygon>`, `<path>`, `<g>`
+**Supported elements:** `<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>`, `<polygon>`, `<path>`, `<g>`
 
-**Supported attributes:**
-- `fill`, `stroke`, `stroke-width`, `opacity`, `fill-opacity`, `stroke-opacity`
-- `fill-rule` (evenodd, nonzero)
-- `transform` (translate, scale, rotate)
-- `rx`, `ry` on `<rect>` for rounded corners
-- 2-stop linear and radial gradients (since Rack 2.6.0)
+**Supported attributes:** `fill`, `stroke`, `stroke-width`, `opacity`, `fill-opacity`, `stroke-opacity`, `fill-rule`, `transform` (translate/scale/rotate), `rx`/`ry` on `<rect>`
 
-**Gradient constraints:**
-- Maximum 2 color stops per gradient definition
-- Both `<linearGradient>` and `<radialGradient>` supported
-- Defined inside `<defs>` block
-- Referenced via `url(#gradientId)` in fill or stroke attributes
+**Gradient constraints:** max 2 color stops per gradient in older Rack; the panel uses multi-stop gradients that require Rack ≥ 2.6.0. Both `<linearGradient>` and `<radialGradient>` are supported, defined in `<defs>`, referenced via `url(#id)`.
 
 ---
 
@@ -194,72 +188,58 @@ VCV Rack uses nanosvg to render panel SVGs. This imposes strict limitations on w
 
 | File | Path | Dimensions | Description |
 |------|------|-----------|-------------|
-| Panel | `res/AnalogLFO.svg` | 71.12mm x 128.5mm | 14HP Forge Noir panel with all decorative elements, labels, emblem, rune, and component placement layer |
+| Panel | `res/AnalogLFO.svg` | 91.44mm x 128.5mm | 18HP Forge Noir panel: background, accent rails, emblem, brand text, labels, display well/bezel, and footer. All text pre-converted to `<path>` outlines. |
 
-### Component SVGs (res/components/)
+### Component SVGs (`res/components/`)
 
 | File | Dimensions (mm) | Description |
 |------|-----------------|-------------|
 | ForgeKnobHero.svg | 16.38 x 16.38 | MORPH knob body + indicator (rotates) |
-| ForgeKnobHero_bg.svg | ~18.00 x 18.00 | Shadow + outer metallic ring (static) |
-| ForgeKnobSecondary.svg | 11.99 x 11.99 | CHARACTER/DRIFT knob body + indicator |
-| ForgeKnobSecondary_bg.svg | ~13.50 x 13.50 | Shadow + metallic ring |
-| ForgeKnobUtility.svg | 9.19 x 9.19 | RATE/PHASE knob body + indicator |
-| ForgeKnobUtility_bg.svg | ~10.50 x 10.50 | Shadow + metallic ring |
-| ForgeTrimpot.svg | 3.60 x 3.60 | CV attenuverter body + indicator (rotates) |
-| ForgeTrimpot_bg.svg | ~4.20 x 4.20 | Shadow ring |
+| ForgeKnobHero_bg.svg | 18.00 x 18.00 | Shadow + outer metallic ring (static) |
+| ForgeKnobSecondary.svg | 11.99 x 11.99 | Control knob body + indicator (rotates) |
+| ForgeKnobSecondary_bg.svg | 13.50 x 13.50 | Shadow + metallic ring (static) |
+| ForgeTrimpot.svg | 5.40 x 5.40 | CV attenuverter body + indicator (rotates) |
+| ForgeTrimpot_bg.svg | 6.30 x 6.30 | Shadow ring (static) |
 | ForgeJackInput.svg | 7.19 x 7.19 | Standard input jack |
 | ForgeJackOutput.svg | 8.39 x 8.39 | Output jack with ember accent ring |
 | ForgeHexBolt.svg | 3.20 x 3.20 | Hexagonal bolt screw replacement |
 
+> Each knob/trimpot is a two-file pair: a static `_bg` (shadow + metal ring) drawn behind a rotating foreground (body + indicator). The `_bg` is auto-centered under its foreground by the widget code.
+
 ---
 
-## 7. SVG Component Layer Convention
+## 7. Placement Synchronization
 
-The panel SVG contains a hidden group `<g id="components" style="display:none">` that marks component placement positions with color-coded circles. This layer is invisible at runtime but serves as a reference for designers and tools.
+Unlike earlier revisions, the 18HP SVG does **not** contain a hidden `<g id="components">` placement layer. Component positions live in exactly two places and must agree:
 
-**Color coding:**
-- **Red circles** (`#ff0000`) = Params (knobs + trimpots), radius = half the component diameter
-- **Green circles** (`#00ff00`) = Inputs (jacks), radius = half the component diameter
-- **Blue circles** (`#0000ff`) = Outputs (jacks), radius = half the component diameter
-- **Magenta rect** (`#ff00ff`) = Display area, matching display box dimensions
+1. This document (`res/PANEL-SPEC.md`) — Section 4 tables
+2. The C++ widget code (`src/AnalogLFO.cpp`) — `mm2px(Vec(x, y))` calls
 
-**Circle center** = widget placement center, which must match the `mm2px(Vec(x, y))` coordinates in the C++ widget code (`src/AnalogLFO.cpp`).
+The panel artwork (`res/AnalogLFO.svg`) draws the labels, wells, and decorative rings that sit *around* each component; it must be visually aligned to the same coordinates, but there is no machine-readable placement layer to diff against. When a position changes, update both the code and this document, and re-check the art visually in Rack.
 
 ---
 
 ## 8. Coordinate System Notes
 
 - **Origin** (0,0) is the top-left corner of the panel
-- **X** increases rightward, **Y** increases downward
-- All coordinates in this document are in **millimeters**
+- **X** increases rightward, **Y** increases downward; all coordinates are in **millimeters**
 - Conversion to VCV Rack pixels: `pixels = mm * (75.0 / 25.4)` = `mm * 2.95276`
-- The C++ code uses `mm2px(Vec(x, y))` which applies this conversion automatically
-
-**Synchronization requirement:** The three sources of truth for component positions must always agree:
-1. This document (`res/PANEL-SPEC.md`) -- Section 4 tables
-2. The SVG components layer (`res/AnalogLFO.svg`) -- `<g id="components">` circle positions
-3. The C++ widget code (`src/AnalogLFO.cpp`) -- `mm2px(Vec(x, y))` calls
-
-If any one of these changes, update the other two to match.
+- `mm2px(Vec(x, y))` applies this automatically; `createParamCentered` / `createInputCentered` / `createOutputCentered` place the widget **center** at the given point
 
 ---
 
 ## 9. Export Checklist
 
-When exporting the panel SVG from a design tool (Illustrator, Inkscape, Figma, etc.), follow these steps:
+When exporting the panel SVG from a design tool (Illustrator, Inkscape, Figma, etc.):
 
 1. [ ] Set document units to millimeters
-2. [ ] Set width to 71.12mm, height to 128.5mm
+2. [ ] Set width to 91.44mm, height to 128.5mm
 3. [ ] Convert all text to curves/paths (no `<text>` elements)
-4. [ ] Remove any CSS `<style>` blocks from the SVG
-5. [ ] Verify no `<text>` elements remain (search the exported SVG source)
-6. [ ] Ensure viewBox matches: `viewBox="0 0 71.12 128.5"`
-7. [ ] Verify `width="71.12mm"` and `height="128.5mm"` have the `mm` suffix
-8. [ ] Keep the hidden components layer intact (`<g id="components" style="display:none">`)
-9. [ ] Do not change component circle positions (they must match C++ widget code)
-10. [ ] Verify all colors use 6-digit hex format
-11. [ ] Verify all gradients have maximum 2 stops
-12. [ ] `<defs>` used only for gradient definitions
-13. [ ] No `<use>`, `<clipPath>`, `<filter>`, or `<image>` elements
-14. [ ] Test by building and loading in VCV Rack: `make && make install`
+4. [ ] Remove any CSS `<style>` blocks
+5. [ ] Verify no `<text>` elements remain (search the exported source)
+6. [ ] Ensure `viewBox="0 0 91.44 128.5"`
+7. [ ] Verify `width="91.44mm"` and `height="128.5mm"` retain the `mm` suffix
+8. [ ] Keep component art (labels, wells, rings) aligned to the Section 4 coordinates
+9. [ ] Verify all colors use 6-digit hex; ember is exactly `#e85d26`
+10. [ ] Use only `<defs>` gradient definitions — no `<use>`, `<clipPath>`, `<filter>`, or `<image>`
+11. [ ] Build and load in VCV Rack: `make && make install`
