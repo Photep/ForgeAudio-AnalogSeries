@@ -19,3 +19,9 @@ Thumbs.db
 # Trial/mockup-only fonts purged in Phase 25 (non-redistributable — never re-add)
 BCBarellTEST-Regular.otf
 FoundationLogo.ttf
+
+# Archived design iterations (kept locally, not shipped)
+archive/
+
+# Playwright MCP screenshot scratch
+.playwright-mcp/
