@@ -356,13 +356,15 @@ There is no doc test framework. The realistic validation is a **code-vs-docs fac
 | A3 | `python3` present on the machine for the JSON check | Validation Architecture | Use `node`/manual if absent |
 | A4 | Section file names/ordering as drafted | Docs Structure | Explicitly Claude's discretion (D-02) — no risk, just a suggestion |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **manualUrl exact target** — `docs/index.md` blob URL vs `tree/main/docs`? Which renders best as the "manual landing"?
    - What we know: `manualUrl` accepts a GitHub readme/URL; the repo goes public in Phase 28.
    - Recommendation: point at `…/blob/main/docs/index.md`; confirm branch name with user during planning.
+   - **RESOLVED (planning):** locked to `https://github.com/Photep/ForgeAudio-AnalogSeries/blob/main/docs/index.md` in 27-03 Task 1 (owner/repo/branch confirmed from `git remote` + existing manifest URLs).
 2. **Callout annotation tool** — Preview (manual) vs HTML+Playwright (reproducible)?
    - Recommendation: HTML+Playwright fits the existing mockup-HTML workflow and gives tweakable coords, but either is acceptable; it's the one human-assisted step.
+   - **RESOLVED (planning):** 27-04 Task 3 selects HTML-overlay + Playwright as primary (Preview markup as fallback); ImageMagick is absent.
 
 ## Sources
 
