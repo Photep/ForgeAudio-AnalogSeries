@@ -54,9 +54,9 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 
 ### Documentation
 
-- [x] **DOC-01**: User manual published in Notion as a new top-level page with a subpage-per-section structure
-- [x] **DOC-02**: Manual covers all table-stakes sections — 3-axis engine concept, annotated panel, control-reference table, I/O reference, context-menu options, clock/sync behavior, patch examples, install (Library + manual), changelog, license/credits
-- [ ] **DOC-03**: Manual is shared to web (public) and linked from `pluginUrl`
+- [x] **DOC-01**: User manual authored as GitHub Markdown under `docs/` with a per-section file per table-stakes section and a `docs/index.md` hub (subpage-per-section preserved)
+- [x] **DOC-02**: Manual covers all table-stakes sections — 3-axis engine concept, annotated panel, control-reference table, I/O reference, context-menu options, clock/sync behavior, install (Library + manual), changelog, license/credits
+- [ ] **DOC-03**: Manual is linked from `plugin.json` `manualUrl`; public reachability completes with the Phase 28 repo-public flip
 
 ## v2 Requirements
 
@@ -85,7 +85,7 @@ Explicitly excluded from v1.4. Documented to prevent scope creep.
 | Booting a full Rack instance for integration tests | Unsupported and unnecessary; block-driver over the extracted core suffices |
 | Lowering Rate param min to 0 for the `isStill` fix | Wider blast radius than needed; resolve #9 by comparing effective frequency or deleting the condition |
 | Renaming the plugin/module slug | Permanent once published; lock the current slug pre-submission |
-| Custom Notion site / custom domain hosting | Public Notion share is sufficient for v1.4; revisit later |
+| GitHub Pages site (MkDocs/Docusaurus) | Deferred to a future docs revision; `docs/` is authored Pages-ready |
 
 ## Traceability
 
