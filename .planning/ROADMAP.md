@@ -81,7 +81,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] **Phase 24: DSP Extraction + Display Refactors** — Complete the `src/dsp/*.hpp` core extraction, thin the Rack shell, and land the display/thread cleanups behind the green harness (completed 2026-06-30, verified 2026-07-08)
 - [x] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance (completed 2026-07-08)
 - [x] **Phase 26: VCV Library Compliance + Packaging** — Populate/validate the manifest, build the verified `.vcvplugin`, wire CI green (completed 2026-07-09)
-- [ ] **Phase 27: User Manual (GitHub Markdown)** — Author and publish the user manual as GitHub Markdown under `docs/` with full table-stakes sections
+- [x] **Phase 27: User Manual (GitHub Markdown)** — Author and publish the user manual as GitHub Markdown under `docs/` with full table-stakes sections (completed 2026-07-09)
 - [ ] **Phase 28: Publish + Submit** — Flip the repo public (gated on purge verification), then open the VCV Library submission issue
 
 ## Phase Details
@@ -184,7 +184,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] 27-01-PLAN.md — Docs scaffold + hub + engine-concept/I-O/context-menu/clock-sync sections (DOC-01, DOC-02)
 - [x] 27-02-PLAN.md — Install/changelog/license-credits sections + brand-name denylist check_docs.sh (DOC-02)
 - [x] 27-03-PLAN.md — plugin.json manualUrl + ROADMAP/REQUIREMENTS Notion→GitHub reconciliation (DOC-01/02/03)
-- [ ] 27-04-PLAN.md — Annotated-panel: build/screenshot + 19-callout PNG + legend/control-reference table (DOC-02, Wave 2, human-assisted)
+- [x] 27-04-PLAN.md — Annotated-panel: build/screenshot + 19-callout PNG + legend/control-reference table (DOC-02, Wave 2, human-assisted)
 **UI hint**: yes
 
 ### Phase 28: Publish + Submit
@@ -211,5 +211,5 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | 24. DSP Extraction + Display Refactors | v1.4 | 3/4 | In Progress|  |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 4/4 | Complete   | 2026-07-08 |
 | 26. VCV Library Compliance + Packaging | v1.4 | 4/4 | Complete    | 2026-07-09 |
-| 27. User Manual (GitHub Markdown) | v1.4 | 3/4 | In Progress|  |
+| 27. User Manual (GitHub Markdown) | v1.4 | 4/4 | Complete   | 2026-07-09 |
 | 28. Publish + Submit | v1.4 | 0/TBD | Not started | - |
