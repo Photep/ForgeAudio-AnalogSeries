@@ -47,7 +47,7 @@ P[2]={b:[120,C(2)[1]], line:[[142,C(2)[1]],[C(2)[0]-100,C(2)[1]]], op:0.6};
 const stage=document.getElementById('stage');
 stage.style.width=CW+'px'; stage.style.height=CH+'px';
 const svg=document.getElementById('svg'); svg.setAttribute('width',CW); svg.setAttribute('height',CH);
-document.getElementById('panel').onload=()=>{
+function render(){
   for(const n in P){const e=P[n];
     const pl=document.createElementNS('http://www.w3.org/2000/svg','polyline');
     pl.setAttribute('points', e.line.map(p=>p[0]+','+p[1]).join(' '));
@@ -60,6 +60,11 @@ document.getElementById('panel').onload=()=>{
     d.style.left=e.b[0]+'px'; d.style.top=e.b[1]+'px'; d.textContent=n;
     stage.appendChild(d);}
   window.__done=true;
-};
+}
+const panelImg=document.getElementById('panel');
+// Guard against a warm HTTP cache: a load event won't re-fire if the image is
+// already complete, so render immediately in that case (WR-01).
+if(panelImg.complete && panelImg.naturalWidth>0){ render(); }
+else { panelImg.onload=render; panelImg.onerror=()=>{ console.error('panel-raw.png failed to load'); }; }
 </script>
 </body></html>
