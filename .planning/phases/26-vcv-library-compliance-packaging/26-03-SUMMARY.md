@@ -100,6 +100,10 @@ Threat register mitigations satisfied: T-26-04 (spread-path neutralization in bo
 - The cross-platform golden leg is ready; the true Linux/Windows validation happens in the CI matrix on push (out of scope for local macOS execution).
 - Contributes the D-07 half of TEST-06 (paired with the D-05 Rack-free matrix work).
 
+## Self-Check: PASSED
+
+All created files exist on disk; all task commits (`8d3698d`, `df5b499`, `04eec93`) plus the metadata commit (`cd5c4ef`) are present in git history. Worktree is clean.
+
 ---
 *Phase: 26-vcv-library-compliance-packaging*
 *Completed: 2026-07-09*
