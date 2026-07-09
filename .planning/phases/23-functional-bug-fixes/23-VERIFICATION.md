@@ -1,23 +1,29 @@
 ---
 phase: 23-functional-bug-fixes
 verified: 2026-06-15T01:00:00Z
-status: human_needed
+status: passed
 score: 11/11
 overrides_applied: 0
 human_verification:
   - test: "BUG-03 consumer — phase-dot tracking in free-run + swing"
     expected: "In Rack, select Medium or Heavy swing from the context menu, then unplug the clock; the phase dot must sit on the trace/output waveform and NOT be warped ahead of it."
     why_human: "displaySwingFraction.store() is on the audio thread; the phase-dot rendering is in the GUI draw path. There is no headless harness that exercises the atomic publish -> GUI draw consumer chain. The code change (L328 gates the value) mirrors the already-verified L344 buffer gate, but the visual lock of dot to trace can only be confirmed with eyes in Rack."
+    result: passed
+    verified_by: operator
+    verified_at: 2026-07-09
   - test: "BUG-04 wiring — corrupt-patch load survives in Rack (jansson path)"
     expected: "Hand-edit a .vcv patch and set spreadSeed0 to \"zzzz\"; load it in Rack; Rack must not crash and the module must run with a valid seed."
     why_human: "The parseSeedHex helper is headlessly pinned (test_regression.cpp BUG-04 case). The crash path that was removed (std::stoull throwing in dataFromJson) is exercised by Rack's jansson JSON load machinery, which is not reachable from make test. The unit test proves the helper does not throw; the in-Rack load proves dataFromJson's wiring does not crash Rack itself."
+    result: passed
+    verified_by: operator
+    verified_at: 2026-07-09
 ---
 
 # Phase 23: Functional Bug Fixes — Verification Report
 
 **Phase Goal:** All four CODE-REVIEW functional bugs are fixed, each pinned by a regression test that fails on the old code and passes on the new — with the x1.5/÷1.5 behavior change confirmed by an in-Rack listening test first.
 **Verified:** 2026-06-15T01:00:00Z
-**Status:** human_needed (all automated must-haves verified; 2 GUI/jansson items require in-Rack confirmation)
+**Status:** passed (all automated must-haves verified; 2 GUI/jansson items confirmed in-Rack by operator on 2026-07-09)
 **Re-verification:** No — initial verification.
 
 ---
@@ -128,9 +134,11 @@ No `TBD`, `FIXME`, or `XXX` markers found in any file modified by this phase. No
 
 ---
 
-### Human Verification Required
+### Human Verification — RESOLVED (operator sign-off 2026-07-09)
 
-#### 1. BUG-03 — Phase-dot tracking in free-run + swing (visual)
+Both in-Rack items below were confirmed PASSED by the operator on 2026-07-09.
+
+#### 1. BUG-03 — Phase-dot tracking in free-run + swing (visual) — ✅ PASSED (2026-07-09)
 
 **Test:** In Rack, select Medium or Heavy swing from the Analog LFO context menu. Then unplug the CLK input. Observe the phase dot position relative to the waveform trace and output signal.
 
@@ -140,7 +148,7 @@ No `TBD`, `FIXME`, or `XXX` markers found in any file modified by this phase. No
 
 ---
 
-#### 2. BUG-04 — Corrupt-patch load in Rack (jansson integration)
+#### 2. BUG-04 — Corrupt-patch load in Rack (jansson integration) — ✅ PASSED (2026-07-09)
 
 **Test:** In a text editor, open a saved `.vcv` patch that contains the Analog LFO module. Find the JSON field `spreadSeed0` inside the module's data object and change its value to `"zzzz"` (non-hex). Save the patch. Load it in Rack.
 
@@ -154,9 +162,10 @@ No `TBD`, `FIXME`, or `XXX` markers found in any file modified by this phase. No
 
 No automated must-haves are unmet. The two human verification items above are classified as such in the PLAN frontmatter itself (plan 23-02 verification block: "Manual UAT (GUI/jansson-only — NOT headless-reachable, deferred to operator)") and in the phase goal ("BUG-03's consumer (phase dot) + BUG-04's dataFromJson end-to-end are GUI/jansson MANUAL UATs").
 
-The `status: human_needed` reflects that these items require human confirmation before the phase can be marked complete, not that the automated portion failed.
+Both items have since been confirmed in-Rack by the operator on 2026-07-09; `status` is now `passed`.
 
 ---
 
 _Verified: 2026-06-15T01:00:00Z_
 _Verifier: Claude (gsd-verifier)_
+_Human UAT resolved: 2026-07-09 — BUG-03 + BUG-04 confirmed PASSED in-Rack by operator_
