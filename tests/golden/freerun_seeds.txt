@@ -37,3 +37,42 @@ files           = freerun_44100.f32 (sr=44100), freerun_48000.f32 (sr=48000), fr
 # everywhere.
 canonical_os    = macos (Apple clang / libc++)
 captured_by     = tools: build-test/capture (one-shot generator, not part of `make test`)
+
+# ===========================================================================
+# Drift-OFF + spread-OFF cross-platform scenario — Phase 26 Plan 03 (D-07 / TEST-06)
+# ===========================================================================
+#
+# The drift-on golden above is bit-exact ONLY on macOS because it draws from
+# std::normal_distribution, which is not portable across libc++/libstdc++/MinGW.
+# To give Linux + Windows a real cross-platform regression guard, these drift-OFF
+# fixtures exercise ONLY the portable Xoroshiro uniform + libm sin/cos path, so
+# they replay to a tight libm epsilon (~1e-6) on ALL OSes.
+#
+# CRITICAL neutralization (Pitfall 1): drift = 0.0 is NOT sufficient on its own.
+# The generator must ALSO leave the component-spread path unseeded — it never
+# seeds the spread coefficients, so all *Spread values stay at their 0.f defaults.
+# (tests/BlockDriver.hpp's constructor would seed them from normal_distribution and
+# reintroduce non-portable divergence; tools/capture_golden.cpp constructs
+# forge::LfoCore directly and calls ONLY core.seed(...) to avoid that.)
+
+driftoff_scenario   = free-run, drift OFF, spread coefficients unseeded (all *Spread = 0.f)
+driftoff_rate_hz    = 2.0       # identical to the drift-on golden above
+driftoff_morph      = 0.4       # identical
+driftoff_character  = 0.6       # identical
+driftoff_drift      = 0.0       # drift OFF (the only scenario-param difference)
+driftoff_phase_off  = 0.0
+driftoff_swing      = 0         # Straight
+driftoff_seed_s0    = 0x0000000000C0FFEE   # core.seed(s0, s1) -> drift RNG only
+driftoff_seed_s1    = 0x000000000BADF00D
+# NOTE: no spread seeding — no setSpreadSeed call — *Spread stay at 0.f defaults
+#       (Pitfall 1 spread-path neutralization; keeps output portable).
+
+driftoff_sample_count = 8192
+driftoff_files        = freerun_44100_driftoff.f32 (sr=44100), freerun_48000_driftoff.f32 (sr=48000), freerun_96000_driftoff.f32 (sr=96000)
+
+# Epsilon rationale: portable Xoroshiro128Plus uniform + libm sin/cos differ only
+# in the low mantissa (~1e-6) across standard-library toolchains, so the drift-off
+# replay uses a small ABSOLUTE epsilon on every OS (well below drift depth). Captured
+# on macOS (canonical OS) via `make capture`, then committed (git-tracked, NOT gitignored).
+driftoff_canonical_os = macos (Apple clang / libc++)
+driftoff_captured_by  = tools: build-test/capture (`make capture`, one-shot; not part of `make test`)
