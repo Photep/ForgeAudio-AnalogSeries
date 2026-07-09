@@ -1,6 +1,6 @@
 # Changelog
 
-Structured by shipped milestone. The plugin's `plugin.json` manifest version is `2.0.0` (VCV requires the MAJOR version to match the Rack major version — Rack 2); the milestone names below are the marketing/release history and are independent of that manifest number.
+Grouped by release. The version shown in Rack is `2.0.0` (VCV requires the major version to match Rack 2); the release names below are the product history.
 
 ## v1.0 Analog Series LFO
 
@@ -8,52 +8,50 @@ Structured by shipped milestone. The plugin's `plugin.json` manifest version is 
 
 - Three-knob analog engine: Morph, Character, Drift
 - Four-shape morph sweep: sine → triangle → saw → square
-- Real-time single-cycle waveform display with phase-tracking dot
+- Real-time single-cycle waveform display with a phase-tracking dot
 - Bipolar ±5V output
 - CV inputs for Morph, Character, and Drift
-- Sub-audio rate range 0.01–20 Hz
-- Lock-free double buffer for audio-to-display transfer
+- Sub-audio rate range: 0.01–20 Hz
 
 ## v1.1 Clock Sync
 
 *Shipped 2026-03-13.*
 
-- CLK input with edge detection and period tracking
-- Dual-mode Rate knob: free Hz or 15 snapped musical ratios
-- Division-aware phase reset on clock edges
-- 3ms cosine anti-click crossfade on reset
-- EMA period smoothing with outlier rejection
-- Display: SYNC badge, ratio label, BPM readout with fade animations
-- Reduced drift authority in clocked mode
+- CLK input that locks the LFO to your tempo
+- Dual-mode Rate knob: free Hz, or 15 snapped musical ratios
+- Clock-aligned, click-free waveform resets
+- Smooth tempo tracking that ignores glitchy pulses
+- Display: SYNC badge, ratio label, and BPM readout with fade animations
+- Gentler drift while clocked, to stay tight to the beat
 
 ## v1.2 Deep Analog
 
 *Shipped 2026-03-17.*
 
 - FM input with exponential frequency modulation
-- Separate RESET trigger jack with 1ms blanking
+- Separate RESET trigger jack
 - Phase Offset knob (0–360°) with CV input
 - Swing/shuffle for clocked mode (inactive when free-running)
-- Expanded imperfections: phase jitter, DC-offset wander, thermal pitch slew
-- Per-instance component spread with serialized seed
-- Waveform bleed (neighbor crosstalk) during morph
+- More analog imperfections: timing jitter, output-offset drift, frequency lag
+- Each instance has its own subtly unique analog character
+- Smooth blending between shapes during the morph sweep
 
 ## v1.3 Forge Noir
 
 *Shipped 2026-06-13.*
 
-- 18HP Forge Noir panel with custom machined-metal SVG components
-- Fifth morph shape: narrow pulse (PWM folded into the morph sweep)
-- Three-column CRT display: corner brackets, scanlines, breathing border glow
-- Per-edge animated SYNC badge flash while LOCKED
+- 18HP Forge Noir panel with custom machined-metal artwork
+- Fifth morph shape: narrow pulse (pulse width narrows as you sweep past square)
+- Three-column display: corner brackets, scanlines, breathing border glow
+- Animated SYNC badge that flashes on each clock pulse
 
 ## v1.4 Tempered
 
 *In progress (2026-07).*
 
-- Release hardening: functional bug fixes and code cleanups
-- Automated test harness (Rack-independent DSP core, integration harness, golden regression) with cross-platform CI
-- IP hardening: GPL-3.0 license, trial-font purge
-- VCV Library compliance and `.vcvplugin` packaging
 - This user manual
-- Public source release
+- Now available through the VCV Library
+- Corrected the FM and Phase-Offset labels on the panel
+- CV attenuators now start closed, so a patched CV has no effect until you turn its trim up
+- Stability and reliability improvements
+- Released as open source under the GPL-3.0 license

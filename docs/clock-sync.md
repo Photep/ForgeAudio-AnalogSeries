@@ -1,51 +1,41 @@
 # Clock & Sync
 
-## State Machine
+Patch a clock into the CLK input and the LFO locks to your tempo. Unplug it and the LFO free-runs from the Rate knob.
 
-The clock tracker runs a three-state FSM: **FREE → ACQUIRING → LOCKED**.
+## How sync behaves
 
-| State | Behavior |
-|-------|----------|
-| FREE | No clock patched (or timed out / disconnected). Rate knob = free Hz (0.01–20). Display shows the Hz readout |
-| ACQUIRING | Entered on connect + first edge. Phase resets. SYNC badge blinks at 2 Hz. Period smoothed by EMA (α = 0.3) |
-| LOCKED | Ratio label + BPM shown. SYNC badge does a per-edge white-hot flash |
+| Situation | What happens |
+|-----------|--------------|
+| No clock patched | The LFO free-runs. The Rate knob sets the speed (0.01–20 Hz) and the display shows the rate in Hz. |
+| Clock just connected | The LFO starts following the incoming pulses. The waveform restarts and the SYNC badge blinks while it learns the tempo. |
+| Locked to tempo | The display shows the current ratio and the tempo in BPM, and the SYNC badge flashes on each clock pulse. |
 
-### Transitions
+Locking is fast. If the incoming tempo is close to one it recently tracked, it re-locks on the second pulse; otherwise it settles after a few steady pulses. Unplugging the clock returns to free-run instantly, and it remembers the last tempo for a quick re-lock.
 
-| Transition | Condition |
-|------------|-----------|
-| First edge → ACQUIRING | Connect + first detected edge; phase resets |
-| ACQUIRING → LOCKED (fast-track) | 2nd edge period within 0.8×–1.2× of the last known period → immediate lock (EMA-snapped) |
-| ACQUIRING → LOCKED (consistency) | After ≥4 consistent edges |
-| Timeout → FREE | No edge within `max(1.0s, min(3×period, 5.0s))` |
-| Disconnect → FREE | Instant; last period cached for fast re-lock |
+Occasional glitchy pulses — ones that arrive far too fast or too slow — are ignored, so a stray edge won't throw off the tempo. But a real tempo change (several pulses in a row at the new speed) is followed: the LFO re-learns the new tempo instead of staying stuck on the old one.
 
-### Outlier rejection (LOCKED)
+The CLK and RESET inputs work with any standard clock or gate. They register on a rising signal above 1.0V and re-arm below 0.1V, so both 5V and 10V sources work.
 
-Edges more than 3× or less than ⅓× the smoothed period are discarded as glitches — **except** 3 consecutive outliers (`OUTLIER_THRESHOLD`) are treated as a genuine tempo change, dropping the tracker back to ACQUIRING to re-learn (BUG-01 fix; prevents a permanent lockout on a >3× speedup). A lone outlier edge is always rejected.
+## Clocked ratios
 
-Clock and Reset use a Schmitt trigger: fire rising above 1.0V, arm below 0.1V.
+In clocked mode the Rate knob snaps to one of 15 musical ratios of the incoming tempo, from sixteen times slower to sixteen times faster. The center of the knob is **x1** — one LFO cycle per clock pulse.
 
-## Ratio Table
+| Ratio | Speed vs. clock |
+|-------|-----------------|
+| /16 | 16× slower |
+| /8 | 8× slower |
+| /6 | 6× slower |
+| /4 | 4× slower |
+| /3 | 3× slower |
+| /2 | half speed |
+| /1.5 | two-thirds speed |
+| x1 | same as clock |
+| x1.5 | 1.5× faster |
+| x2 | 2× faster |
+| x3 | 3× faster |
+| x4 | 4× faster |
+| x6 | 6× faster |
+| x8 | 8× faster |
+| x16 | 16× faster |
 
-In clocked mode the Rate knob selects one of 15 ratios via `round(scaledKnob × 14)` → index 0–14. **x1 is index 7.** Effective LFO frequency = `(1 / smoothedPeriod) × RATIO_TABLE[idx]`.
-
-| Ratio | Index | Multiplier |
-|-------|-------|-----------|
-| /16 | 0 | 0.0625 |
-| /8 | 1 | 0.125 |
-| /6 | 2 | 0.166667 |
-| /4 | 3 | 0.25 |
-| /3 | 4 | 0.333333 |
-| /2 | 5 | 0.5 |
-| /1.5 | 6 | 0.666667 |
-| x1 | 7 | 1.0 |
-| x1.5 | 8 | 1.5 |
-| x2 | 9 | 2.0 |
-| x3 | 10 | 3.0 |
-| x4 | 11 | 4.0 |
-| x6 | 12 | 6.0 |
-| x8 | 13 | 8.0 |
-| x16 | 14 | 16.0 |
-
-Phase reset is division-aware via `shouldReset(ratioIdx, beatCount)`, with the 3ms cosine anti-click crossfade on each reset. The RESET jack forces phase to 0 with 1ms blanking.
+Resets stay aligned to the clock and are click-free. The RESET input restarts the waveform at the beginning of its cycle.

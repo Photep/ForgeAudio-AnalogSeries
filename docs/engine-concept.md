@@ -14,7 +14,7 @@ Continuous waveform-shape sweep across five shapes, even 20% per shape:
 | 60% | Square |
 | 80–100% | Narrow pulse |
 
-Pulse-width modulation is folded into the morph sweep past square — no separate PWM control. Shapes crossfade continuously; neighbor bleed adds crosstalk during the transition.
+Pulse width narrows as you sweep past square — there's no separate width control. Shapes crossfade continuously, with a touch of blend between neighbors during each transition.
 
 ## Character
 
@@ -24,9 +24,9 @@ Crossfade from clean/digital shapes to analog character, applied per shape befor
 |-------|------------------|
 | Triangle | Warm analog triangle |
 | Saw | Vintage transistor saw |
-| Square | Classic PWM square |
+| Square | Classic square |
 
-The knob follows an x² progressive curve: the 0.5 knob position yields roughly 25% of the full effect, so low settings stay subtle and high settings turn aggressive.
+The knob follows a progressive curve: the halfway position gives roughly a quarter of the full effect, so low settings stay subtle and high settings turn aggressive.
 
 ## Drift
 
@@ -34,9 +34,9 @@ One knob scales a bundle of analog imperfections in curated proportions:
 
 | Component | Behavior |
 |-----------|----------|
-| Pitch drift | Multi-timescale Ornstein–Uhlenbeck wander |
-| Phase jitter | Per-cycle timing variance |
-| DC wander | Slow output-offset drift |
-| Thermal slew | Frequency lag on change |
+| Pitch drift | Slow, natural pitch wander |
+| Phase jitter | Small cycle-to-cycle timing variance |
+| Output-offset drift | Slow wander in the output's center |
+| Thermal lag | Frequency eases toward changes rather than snapping |
 
-Drift authority is reduced in clocked mode to prevent phase-error accumulation while preserving analog feel.
+Drift is eased back in clocked mode so it stays tight to the clock while keeping its analog feel.
