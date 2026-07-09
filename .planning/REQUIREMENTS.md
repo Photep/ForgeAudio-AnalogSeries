@@ -54,8 +54,8 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 
 ### Documentation
 
-- [ ] **DOC-01**: User manual published in Notion as a new top-level page with a subpage-per-section structure
-- [ ] **DOC-02**: Manual covers all table-stakes sections — 3-axis engine concept, annotated panel, control-reference table, I/O reference, context-menu options, clock/sync behavior, patch examples, install (Library + manual), changelog, license/credits
+- [x] **DOC-01**: User manual published in Notion as a new top-level page with a subpage-per-section structure
+- [x] **DOC-02**: Manual covers all table-stakes sections — 3-axis engine concept, annotated panel, control-reference table, I/O reference, context-menu options, clock/sync behavior, patch examples, install (Library + manual), changelog, license/credits
 - [ ] **DOC-03**: Manual is shared to web (public) and linked from `pluginUrl`
 
 ## v2 Requirements
@@ -118,8 +118,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | IP-03 | Phase 25 | Pending |
 | PUB-01 | Phase 28 | Pending |
 | PUB-02 | Phase 28 | Pending |
-| DOC-01 | Phase 27 | Pending |
-| DOC-02 | Phase 27 | Pending |
+| DOC-01 | Phase 27 | Complete |
+| DOC-02 | Phase 27 | Complete |
 | DOC-03 | Phase 27 | Pending |
 
 **Coverage:**
