@@ -81,7 +81,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] **Phase 24: DSP Extraction + Display Refactors** — Complete the `src/dsp/*.hpp` core extraction, thin the Rack shell, and land the display/thread cleanups behind the green harness (completed 2026-06-30, verified 2026-07-08)
 - [x] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance (completed 2026-07-08)
 - [x] **Phase 26: VCV Library Compliance + Packaging** — Populate/validate the manifest, build the verified `.vcvplugin`, wire CI green (completed 2026-07-09)
-- [ ] **Phase 27: Notion Manual** — Author and publish the user manual in Notion with full table-stakes sections
+- [ ] **Phase 27: User Manual (GitHub Markdown)** — Author and publish the user manual as GitHub Markdown under `docs/` with full table-stakes sections
 - [ ] **Phase 28: Publish + Submit** — Flip the repo public (gated on purge verification), then open the VCV Library submission issue
 
 ## Phase Details
@@ -171,14 +171,14 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] 26-04-PLAN.md — make dist + verify the .vcvplugin (binary, populated plugin.json, res/, LICENSE, no trial fonts) via tar --zstd (PKG-05 — Wave 2)
 **Open decision at phase start**: `minRackVersion` — lower from 2.6.0 to 2.0.0 unless a Rack 2.6 API is confirmed required (one-time grep). Also: "Forge" brand/slug collision check against the VCV Library.
 
-### Phase 27: Notion Manual
-**Goal**: A complete, publicly shared user manual lives in Notion and is linked from the manifest.
+### Phase 27: User Manual (GitHub Markdown)
+**Goal**: A complete user manual lives as GitHub Markdown under `docs/` in the (public) repo, linked from `plugin.json` `manualUrl`.
 **Depends on**: Conceptually independent — drafting may begin during any earlier phase; must be published before Phase 28. Listed as a discrete phase. CV voltage ranges verified against `AnalogLFO.cpp` before publishing.
 **Requirements**: DOC-01, DOC-02, DOC-03
 **Success Criteria** (what must be TRUE):
-  1. A new top-level Notion page exists with a subpage-per-section structure (DOC-01)
-  2. The manual covers all table-stakes sections: 3-axis engine concept, annotated panel, control-reference table, I/O reference, context-menu options, clock/sync behavior, patch examples, install (Library + manual), changelog, license/credits (DOC-02)
-  3. The manual is shared to web (public) and its URL is linked from `pluginUrl`/`manualUrl` in the manifest (DOC-03)
+  1. A `docs/` directory with per-section `.md` files plus a `docs/index.md` hub exists (DOC-01)
+  2. The manual covers all table-stakes sections: 3-axis engine concept, annotated panel, control-reference table, I/O reference, context-menu options, clock/sync behavior, install (Library + manual), changelog, license/credits (DOC-02)
+  3. The `docs/` are committed and `manualUrl` is added to `plugin.json`; public reachability completes with the Phase 28 repo-public flip (DOC-03)
   4. No trademarked synth names appear as feature names in the manual prose (Pitfall 4)
 **Plans**: 4 plans
 - [x] 27-01-PLAN.md — Docs scaffold + hub + engine-concept/I-O/context-menu/clock-sync sections (DOC-01, DOC-02)
@@ -202,7 +202,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 
 **Execution Order:**
 Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
-(Phase 27 Notion Manual may be drafted in parallel but must publish before 28.)
+(Phase 27 User Manual may be drafted in parallel but must publish before 28.)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -211,5 +211,5 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | 24. DSP Extraction + Display Refactors | v1.4 | 3/4 | In Progress|  |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 4/4 | Complete   | 2026-07-08 |
 | 26. VCV Library Compliance + Packaging | v1.4 | 4/4 | Complete    | 2026-07-09 |
-| 27. Notion Manual | v1.4 | 2/4 | In Progress|  |
+| 27. User Manual (GitHub Markdown) | v1.4 | 2/4 | In Progress|  |
 | 28. Publish + Submit | v1.4 | 0/TBD | Not started | - |
