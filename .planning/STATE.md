@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Tempered
-status: executing
-stopped_at: Phase 24 UAT logged (24-04) — manual in-Rack sign-off APPROVED, getLastFrameDuration/A1 closed confirmed-by-behavior; phase ready for verification.
-last_updated: "2026-06-30T21:52:40.611Z"
-last_activity: 2026-06-30 -- Phase 25 execution started
+status: verifying
+stopped_at: Phase 26 context gathered
+last_updated: "2026-07-09T01:11:52.525Z"
+last_activity: 2026-07-08 -- Phase 25 verified passed; IP gate cleared for the Phase 28 public flip
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 16
-  completed_plans: 13
-  percent: 43
+  completed_phases: 4
+  total_plans: 17
+  completed_plans: 17
+  percent: 57
 ---
 
 # Project State
@@ -105,8 +105,8 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 
 ## Session Continuity
 
-Last session: 2026-06-30T09:53:03.000Z
-Stopped at: Phase 24 UAT logged (24-04) — manual in-Rack sign-off APPROVED, getLastFrameDuration/A1 closed confirmed-by-behavior; phase ready for verification.
+Last session: 2026-07-09T01:11:52.515Z
+Stopped at: Phase 26 context gathered
 Resume: run `/gsd:verify-work` to close Phase 24 (it owns ROADMAP checkbox + phase completion).
 
 ## Operator Next Steps
