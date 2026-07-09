@@ -19,7 +19,7 @@ DISTRIBUTABLES += $(wildcard presets)
 # ../Rack-SDK is absent (e.g. GitHub Actions ubuntu/macos runners), so skip it
 # when `test` is the goal — the TEST_-namespaced target needs nothing from
 # plugin.mk and $(CXX) falls back to the make default (CR-01).
-ifeq ($(filter test,$(MAKECMDGOALS)),)
+ifeq ($(filter test capture,$(MAKECMDGOALS)),)
 include $(RACK_DIR)/plugin.mk
 endif
 
@@ -44,3 +44,19 @@ test: $(TEST_BIN)
 $(TEST_BIN): $(TEST_SOURCES) $(TEST_HEADERS)
 	@mkdir -p build-test
 	$(CXX) $(TEST_CXXFLAGS) $(TEST_SOURCES) -o $@
+
+# ---------------------------------------------------------------------------
+# Drift-off golden generator (D-07 / TEST-06) — one-shot, NOT wired into `test`.
+# Rack-free like `test:` (added to the plugin.mk skip filter above). Compiles with
+# the SAME TEST_CXXFLAGS so captured fixtures are bit-identical to what `make test`
+# replays. Run from the repo root — output paths are relative to CWD.
+# ---------------------------------------------------------------------------
+CAPTURE_BIN := build-test/capture
+
+.PHONY: capture
+capture: $(CAPTURE_BIN)
+	./$(CAPTURE_BIN)
+
+$(CAPTURE_BIN): tools/capture_golden.cpp $(TEST_HEADERS)
+	@mkdir -p build-test
+	$(CXX) $(TEST_CXXFLAGS) tools/capture_golden.cpp -o $@
