@@ -102,6 +102,11 @@ None - no external service configuration required.
 - 27-03 done. Remaining Phase 27 work: 27-04 (annotated-panel: build/screenshot + numbered-callout PNG + legend/control-reference table — human-assisted).
 - `manualUrl` is committed but resolves publicly only after the Phase 28 repo-public flip (sequencing constraint, by design — no live URL check attempted this phase).
 
+## Self-Check: PASSED
+
+- Files verified present: `plugin.json`, `.planning/ROADMAP.md`, `.planning/REQUIREMENTS.md`, `.planning/phases/27-notion-manual/27-03-SUMMARY.md`
+- Commits verified present: `26b2502`, `50c0b61`, `993fad8`, `72e44ce`
+
 ---
 *Phase: 27-notion-manual*
 *Completed: 2026-07-09*

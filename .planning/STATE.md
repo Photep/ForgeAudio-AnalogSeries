@@ -4,13 +4,13 @@ milestone: v1.4
 milestone_name: Tempered
 status: executing
 stopped_at: Completed 27-01-PLAN.md
-last_updated: "2026-07-09T07:48:51.409Z"
+last_updated: "2026-07-09T07:54:19.527Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
   percent: 71
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 27 (notion-manual) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-09
 
-Progress: [█████████░] 92%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Decisions pending at phase start (from research):
 - [Phase 24]: P04 manual in-Rack UAT (D-06, blocking human-verify) — APPROVED 2026-06-30 by operator ("It all looks good to me"). All five in-Rack visual checks pass feel-identical pre/post refactor: (1) CLEAN-04 animation feel — breathe glow (~5s), SYNC ACQUIRING blink (~2Hz), scanline scroll, and SYNC badge per-edge flash-decay all identical at 60fps, no multi-second stall-jump after a window stall (dt clamp), no first-frame pop on add; (2) CLEAN-04/A1 frame-rate independence — breathe cycle runs at the correct ~5s rate. Assumption A1 (getLastFrameDuration() returns the inter-frame interval ~0.0167s @60Hz, NOT a sub-ms render time) is closed CONFIRMED-BY-BEHAVIOR, not numerically: the operator did NOT run the numeric getLastFrameDuration() probe (no debugger access), so NO measured value is claimed; the ~5s breathe rate is only possible if getLastFrameDuration() yields the inter-frame interval — a sub-ms value would run all animations ~60x too fast, which was not observed, so A1 holds behaviorally; (3) CLEAN-03 pill fade symmetry — ratio pill + BPM stack fade out together with the SYNC badge on clock disconnect, no early pop, and fade back in together on reconnect; (4) CLEAN-05 audio-thread relief — morph/character sweeps track the preview with no audio glitch/zipper and no CPU-meter regression; (5) CLEAN-01/02 display unchanged — waveform, bypass dim, and overlays render identically. Build/install: rebuilt against ../Rack-SDK and installed with stale-flush; built vs installed dylib shasum matched (1f53c196e2858162776ea0d7043cc5951c3b7b4b). CLEAN-01..05 visually/behaviorally verified feel-identical; phase ready for /gsd:verify-work (ROADMAP checkboxes deliberately NOT flipped here — verify-work owns phase completion).
 - [Phase ?]: Phase 27 P01: authored docs/ manual hub + 4 code-fact sections (engine-concept, io-reference, context-menu, clock-sync) as GitHub Markdown (D-01/D-02); CV ranges/ratio table/swing/FSM transcribed verbatim from source; generic Character vocabulary, zero brand names (D-06); no patch-examples (D-07)
 - [Phase 27]: Phase 27 P02: authored install (VCV Library + manual .vcvplugin), milestone changelog v1.0–v1.4 (manifest 2.0.0 noted once, no 2.x relabel), license/credits (GPL-3.0 summary + links to LICENSE/NOTICES/OFL.txt); added tests/check_docs.sh — brand-name denylist + code-fact gate (D-06), PASS at wave 1 (panel.md deferred to 27-04)
+- [Phase ?]: Phase 27 P03: added plugin.json manualUrl -> docs/index.md blob URL + optional changelogUrl -> docs/changelog.md (D-04/A2), version untouched 2.0.0; reconciled ROADMAP §Phase 27 + REQUIREMENTS DOC-01/02/03 + Out-of-Scope from Notion to GitHub-Markdown docs/ pivot (D-01), dropped patch-examples (D-07); DOC status checkboxes left for verify-work
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -106,10 +107,11 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 | Phase 24 P04 | ~2min | 1 task (Task 2; Task 1 = human-verify UAT) | 1 files |
 | Phase 27 P01 | ~8min | 3 tasks | 5 files |
 | Phase 27 P02 | 7min | 3 tasks | 4 files |
+| Phase 27 P3 | 2min | 3 tasks | 3 files |
 
 ## Session Continuity
 
-Last session: 2026-07-09T07:48:41.270Z
+Last session: 2026-07-09T07:53:23.458Z
 Stopped at: Completed 27-01-PLAN.md
 Resume: run `/gsd:verify-work` to close Phase 24 (it owns ROADMAP checkbox + phase completion).
 
