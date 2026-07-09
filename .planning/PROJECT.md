@@ -18,7 +18,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - Code cleanup: dead code (#8), unreachable `isStill` (#9), pill fade-out symmetry (#10), frame-rate-independent animations (#11), display buffer off the audio thread (#12)
 - VCV Library compliance: GPL-3.0 LICENSE (#5), populated plugin.json URLs (#6), trial-font removal incl. git-history purge (#7)
 - Source publication: public GitHub repo (provides sourceUrl/pluginUrl)
-- User manual authored in Notion (new top-level page)
+- User manual authored as GitHub-flavored Markdown under `docs/` (linked from plugin.json manualUrl)
 - Release packaging: verified build + `.vcvplugin` artifact ready for submission
 
 **Out of milestone scope:** No new DSP features — the LFO is feature-frozen. VCO module remains deferred to v2.0.
@@ -81,7 +81,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - [ ] plugin.json URLs populated (author/plugin/source)
 - [ ] Trial/proprietary fonts removed from repo and git history
 - [ ] Public GitHub source repository published
-- [ ] User manual published in Notion
+- [ ] User manual published as Markdown under `docs/`
 - [ ] `.vcvplugin` release artifact built and verified for VCV Library submission
 - [ ] Display/code cleanups: dead code, unreachable `isStill`, pill fade symmetry, frame-rate-independent animations, display buffer off audio thread
 
