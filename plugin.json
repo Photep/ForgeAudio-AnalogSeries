@@ -9,6 +9,8 @@
   "authorUrl": "https://github.com/Photep/ForgeAudio-AnalogSeries",
   "pluginUrl": "https://github.com/Photep/ForgeAudio-AnalogSeries",
   "sourceUrl": "https://github.com/Photep/ForgeAudio-AnalogSeries",
+  "manualUrl": "https://github.com/Photep/ForgeAudio-AnalogSeries/blob/main/docs/index.md",
+  "changelogUrl": "https://github.com/Photep/ForgeAudio-AnalogSeries/blob/main/docs/changelog.md",
   "description": "Analog-modeled oscillator modules with waveform morphing, classic synth character, and drift",
   "modules": [
     {
