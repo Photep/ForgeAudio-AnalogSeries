@@ -8,15 +8,19 @@
 // EXACT seeds documented in tests/golden/freerun_seeds.txt, then assert the output
 // reproduces the committed reference.
 //
-// Cross-platform tolerance split (RESEARCH.md Pitfall 6 / Open Q1, resolved):
-//   - The drift-on golden is BIT-EXACT only on the CANONICAL capture OS:
-//         macOS (Apple clang / libc++)  -- see freerun_seeds.txt L38.
-//     std::normal_distribution is NOT specified to be portable across
-//     libstdc++ / libc++ / MSVC even given an identical Xoroshiro stream, so the
-//     drift-on reference can differ in the low mantissa on the other CI legs.
-//   - On non-canonical OSes the drift-on replay uses a 1e-5 ABSOLUTE tolerance
-//     (~0.2 ppm of +/-5 V FS) — large enough to absorb normal_distribution /
-//     transcendental-libm differences, small enough to catch any real regression.
+// Cross-platform structure (D-07 / TEST-06):
+//   - DRIFT-OFF + SPREAD-OFF is the CROSS-PLATFORM regression guard. It runs on
+//     EVERY OS (freerun_<rate>_driftoff.f32) with a tight absolute libm epsilon
+//     (~1e-6). Drift off AND the spread path unseeded (never call setSpreadSeed)
+//     means the output touches ONLY the portable Xoroshiro uniform + libm sin/cos,
+//     so it replays identically-to-1e-6 across libc++ / libstdc++ / MinGW.
+//   - DRIFT-ON is BIT-EXACT but macOS-ONLY. It draws from std::normal_distribution,
+//     which is NOT specified to be portable across standard-library implementations
+//     even given an identical Xoroshiro stream, so it is gated to the canonical
+//     capture OS (macOS, Apple clang / libc++ -- see freerun_seeds.txt) and simply
+//     does not run on the other CI legs. We deliberately do NOT widen the drift-on
+//     epsilon to absorb that divergence (CONTEXT D-07): the drift-off leg is the
+//     cross-platform guard instead.
 //   - Same-platform same-seed DETERMINISM remains bit-exact everywhere (that
 //     invariant lives in test_invariants.cpp); this file is the cross-build
 //     reference pin.
@@ -63,16 +67,52 @@ forge::Inputs goldenBase() {
 	return in;
 }
 
-// The golden is captured on macOS (Apple clang / libc++) — see freerun_seeds.txt.
-// Bit-exact there; epsilon-tolerant on the other CI legs (drift-on path).
-#if defined(__APPLE__)
-constexpr bool   CANONICAL_OS  = true;
-constexpr double GOLDEN_EPSILON = 0.0;       // bit-exact on the canonical capture OS
-#else
-constexpr bool   CANONICAL_OS  = false;
-constexpr double GOLDEN_EPSILON = 1e-5;      // drift-on tolerance off the canonical OS
-#endif
+// --- Cross-platform drift-OFF + spread-OFF leg (runs on ALL OSes) -----------
+// Absolute libm epsilon: portable Xoroshiro uniform + libm sin/cos differ only
+// in the low mantissa across standard libraries. 1e-6 is well below the drift
+// depth yet tight enough to catch any real regression (freerun_seeds.txt).
+constexpr double DRIFTOFF_EPSILON = 1e-6;
 
+// Canonical free-run scenario with drift OFF. Identical to goldenBase() EXCEPT
+// in.drift = 0.0f (and the replay never seeds the spread path).
+forge::Inputs goldenBaseDriftOff() {
+	forge::Inputs in = goldenBase();
+	in.drift = 0.0f;   // drift OFF -> deterministic, portable output
+	return in;
+}
+
+// Replay the drift-off fixtures on every OS. Constructs forge::LfoCore DIRECTLY
+// (not BlockDriver, whose ctor would seed the spread path) and seeds ONLY the
+// drift RNG, so all *Spread stay 0.f — the exact neutralization the generator
+// (tools/capture_golden.cpp) used. Mirrors BlockDriver::run's per-sample drive.
+void replayGoldenDriftOff(double sr, const std::string& path) {
+	auto ref = loadF32(path);
+	REQUIRE(ref.size() == (size_t)GOLDEN_SAMPLES);
+
+	forge::LfoCore core;
+	core.seed(DRIFT_S0, DRIFT_S1);   // drift RNG only; spread path left neutralized
+
+	const float dt = (float)(1.0 / sr);
+	forge::Inputs base = goldenBaseDriftOff();
+	std::vector<float> got;
+	got.reserve(ref.size());
+	for (size_t i = 0; i < ref.size(); ++i) {
+		forge::Inputs in = base;
+		in.sampleTime = dt;
+		got.push_back(core.step(in));
+	}
+	REQUIRE(got.size() == ref.size());
+
+	for (size_t i = 0; i < ref.size(); ++i) {
+		CHECK(std::fabs((double)got[i] - (double)ref[i]) <= DRIFTOFF_EPSILON);
+	}
+}
+
+// --- macOS-gated drift-ON bit-exact leg -------------------------------------
+#if defined(__APPLE__)
+// The drift-on golden is bit-exact ONLY on the canonical capture OS (macOS).
+// std::normal_distribution is not portable across standard libraries, so this
+// leg does not run off-canonical — the drift-off leg above is the guard there.
 void replayGolden(double sr, const std::string& path) {
 	auto ref = loadF32(path);
 	REQUIRE(ref.size() == (size_t)GOLDEN_SAMPLES);
@@ -82,23 +122,32 @@ void replayGolden(double sr, const std::string& path) {
 	auto got = d.run((int)ref.size(), [&](int) { return base; });
 	REQUIRE(got.size() == ref.size());
 
-	if (CANONICAL_OS) {
-		// Bit-exact replay on the canonical OS / drift-off everywhere. Use a
-		// direct float == (NOT doctest::Approx, whose epsilon(0) still applies a
-		// relative-scaling margin and is not a true bit-exact comparator).
-		for (size_t i = 0; i < ref.size(); ++i) {
-			CHECK(got[i] == ref[i]);
-		}
-	} else {
-		// 1e-5 ABSOLUTE tolerance for the drift-on path on non-canonical OSes.
-		for (size_t i = 0; i < ref.size(); ++i) {
-			CHECK(std::fabs(got[i] - ref[i]) <= GOLDEN_EPSILON);
-		}
+	// Bit-exact replay on the canonical OS. Use a direct float == (NOT
+	// doctest::Approx, whose epsilon(0) still applies a relative-scaling margin
+	// and is not a true bit-exact comparator).
+	for (size_t i = 0; i < ref.size(); ++i) {
+		CHECK(got[i] == ref[i]);
 	}
 }
+#endif // __APPLE__
 
 } // namespace
 
+// --- Cross-platform drift-off cases (every OS) ------------------------------
+TEST_CASE("golden: drift-off freerun replay matches reference @ 44.1k") {
+	replayGoldenDriftOff(44100.0, "tests/golden/freerun_44100_driftoff.f32");
+}
+
+TEST_CASE("golden: drift-off freerun replay matches reference @ 48k") {
+	replayGoldenDriftOff(48000.0, "tests/golden/freerun_48000_driftoff.f32");
+}
+
+TEST_CASE("golden: drift-off freerun replay matches reference @ 96k") {
+	replayGoldenDriftOff(96000.0, "tests/golden/freerun_96000_driftoff.f32");
+}
+
+// --- macOS-only drift-on bit-exact cases ------------------------------------
+#if defined(__APPLE__)
 TEST_CASE("golden: freerun replay matches reference @ 44.1k") {
 	replayGolden(44100.0, "tests/golden/freerun_44100.f32");
 }
@@ -110,3 +159,4 @@ TEST_CASE("golden: freerun replay matches reference @ 48k") {
 TEST_CASE("golden: freerun replay matches reference @ 96k") {
 	replayGolden(96000.0, "tests/golden/freerun_96000.f32");
 }
+#endif // __APPLE__
