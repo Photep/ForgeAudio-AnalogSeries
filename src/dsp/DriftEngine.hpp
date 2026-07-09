@@ -27,6 +27,7 @@
 #include <random>
 
 #include "dsp/RackCompat.hpp"   // forge::Xoroshiro128Plus
+#include "dsp/MathConst.hpp"    // forge::kPi (D-06, rack-free pi constant)
 
 namespace forge {
 
@@ -63,24 +64,24 @@ struct DriftEngine {
 	DriftEngine() {
 		// Initialize OU layers (multi-timescale drift). AnalogLFO.cpp:606-622.
 		// Layer 0: 0.05Hz slow wander
-		ouLayers[0].theta = 2.f * (float)M_PI * 0.05f;   // 0.314
+		ouLayers[0].theta = 2.f * (float)forge::kPi * 0.05f;   // 0.314
 		ouLayers[0].sigma = 0.793f;
 		ouLayers[0].weight = 0.50f;
 		// Layer 1: 0.2Hz medium drift
-		ouLayers[1].theta = 2.f * (float)M_PI * 0.2f;    // 1.257
+		ouLayers[1].theta = 2.f * (float)forge::kPi * 0.2f;    // 1.257
 		ouLayers[1].sigma = 1.586f;
 		ouLayers[1].weight = 0.25f;
 		// Layer 2: 0.8Hz fast drift
-		ouLayers[2].theta = 2.f * (float)M_PI * 0.8f;    // 5.027
+		ouLayers[2].theta = 2.f * (float)forge::kPi * 0.8f;    // 5.027
 		ouLayers[2].sigma = 3.170f;
 		ouLayers[2].weight = 0.15f;
 		// Layer 3: ~2Hz jitter
-		ouLayers[3].theta = 2.f * (float)M_PI * 2.0f;    // 12.566
+		ouLayers[3].theta = 2.f * (float)forge::kPi * 2.0f;    // 12.566
 		ouLayers[3].sigma = 5.013f;
 		ouLayers[3].weight = 0.10f;
 
 		// DC offset wander OU layer (CHAR-02). AnalogLFO.cpp:624-629.
-		dcOffsetOU.theta = 2.f * (float)M_PI * 0.03f;   // 0.188
+		dcOffsetOU.theta = 2.f * (float)forge::kPi * 0.03f;   // 0.188
 		dcOffsetOU.sigma = 0.614f;                       // stationary std ~1.0
 		dcOffsetOU.weight = 1.f;                         // single layer, no weighting
 		dcOffsetOU.state = 0.f;

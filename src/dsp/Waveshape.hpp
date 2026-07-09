@@ -18,6 +18,8 @@
 #include <cmath>
 #include <algorithm>
 
+#include "dsp/MathConst.hpp"   // forge::kPi (D-06, rack-free pi constant)
+
 #include "dsp/RackCompat.hpp"   // forge::clamp (where the inline code used rack::math::clamp)
 
 namespace forge {
@@ -37,7 +39,7 @@ struct Waveshape {
 
 	// AnalogLFO.cpp:222-232
 	float computeSine(float phase, float character) const {
-		float sine = std::sin(2.f * (float)M_PI * phase);
+		float sine = std::sin(2.f * (float)forge::kPi * phase);
 		if (character < 0.001f) return sine;
 		float c = progressiveCurve(character);
 		// Triangle-derived analog sine: residual THD via Chebyshev polynomials
@@ -69,10 +71,10 @@ struct Waveshape {
 		float roundAmount = c * 0.35f;
 		if (analogTri > (1.f - roundAmount)) {
 			float t = (analogTri - (1.f - roundAmount)) / roundAmount;
-			analogTri = (1.f - roundAmount) + roundAmount * std::sin(t * (float)M_PI * 0.5f);
+			analogTri = (1.f - roundAmount) + roundAmount * std::sin(t * (float)forge::kPi * 0.5f);
 		} else if (analogTri < -(1.f - roundAmount)) {
 			float t = (-(1.f - roundAmount) - analogTri) / roundAmount;
-			analogTri = -(1.f - roundAmount) - roundAmount * std::sin(t * (float)M_PI * 0.5f);
+			analogTri = -(1.f - roundAmount) - roundAmount * std::sin(t * (float)forge::kPi * 0.5f);
 		}
 		return analogTri;
 	}
@@ -89,7 +91,7 @@ struct Waveshape {
 		float resetWidth = c * 0.08f;
 		if (phase < resetWidth && resetWidth > 0.001f) {
 			float t = phase / resetWidth;
-			float smoothT = 0.5f - 0.5f * std::cos(t * (float)M_PI);
+			float smoothT = 0.5f - 0.5f * std::cos(t * (float)forge::kPi);
 			float resetValue = 1.f;
 			curvedSaw = resetValue + smoothT * (curvedSaw - resetValue);
 		}

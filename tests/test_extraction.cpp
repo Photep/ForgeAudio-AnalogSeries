@@ -23,6 +23,8 @@
 
 #include "doctest.h"
 
+#include "dsp/MathConst.hpp"   // forge::kPi (D-06, rack-free pi constant)
+
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
@@ -161,7 +163,7 @@ struct InlineReference {
 			crossfadeProgress += st / crossfadeDuration;
 			if (crossfadeProgress >= 1.f) crossfadeProgress = 1.f;
 			else {
-				float mix = 0.5f - 0.5f * std::cos((float)M_PI * crossfadeProgress);
+				float mix = 0.5f - 0.5f * std::cos((float)forge::kPi * crossfadeProgress);
 				outV = crossfadeFrom + mix * (outV - crossfadeFrom);
 			}
 		}
