@@ -182,7 +182,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
   4. No trademarked synth names appear as feature names in the manual prose (Pitfall 4)
 **Plans**: 4 plans
 - [x] 27-01-PLAN.md — Docs scaffold + hub + engine-concept/I-O/context-menu/clock-sync sections (DOC-01, DOC-02)
-- [ ] 27-02-PLAN.md — Install/changelog/license-credits sections + brand-name denylist check_docs.sh (DOC-02)
+- [x] 27-02-PLAN.md — Install/changelog/license-credits sections + brand-name denylist check_docs.sh (DOC-02)
 - [ ] 27-03-PLAN.md — plugin.json manualUrl + ROADMAP/REQUIREMENTS Notion→GitHub reconciliation (DOC-01/02/03)
 - [ ] 27-04-PLAN.md — Annotated-panel: build/screenshot + 19-callout PNG + legend/control-reference table (DOC-02, Wave 2, human-assisted)
 **UI hint**: yes
@@ -211,5 +211,5 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | 24. DSP Extraction + Display Refactors | v1.4 | 3/4 | In Progress|  |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 4/4 | Complete   | 2026-07-08 |
 | 26. VCV Library Compliance + Packaging | v1.4 | 4/4 | Complete    | 2026-07-09 |
-| 27. Notion Manual | v1.4 | 1/4 | In Progress|  |
+| 27. Notion Manual | v1.4 | 2/4 | In Progress|  |
 | 28. Publish + Submit | v1.4 | 0/TBD | Not started | - |
