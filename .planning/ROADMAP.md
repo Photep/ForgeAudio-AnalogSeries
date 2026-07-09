@@ -80,7 +80,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] **Phase 23: Functional Bug Fixes** — Fix the four CODE-REVIEW functional bugs, each pinned by a regression test; #2 (x1.5/÷1.5) is audition-gated (completed 2026-06-14)
 - [x] **Phase 24: DSP Extraction + Display Refactors** — Complete the `src/dsp/*.hpp` core extraction, thin the Rack shell, and land the display/thread cleanups behind the green harness (completed 2026-06-30, verified 2026-07-08)
 - [x] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance (completed 2026-07-08)
-- [ ] **Phase 26: VCV Library Compliance + Packaging** — Populate/validate the manifest, build the verified `.vcvplugin`, wire CI green
+- [x] **Phase 26: VCV Library Compliance + Packaging** — Populate/validate the manifest, build the verified `.vcvplugin`, wire CI green (completed 2026-07-09)
 - [ ] **Phase 27: Notion Manual** — Author and publish the user manual in Notion with full table-stakes sections
 - [ ] **Phase 28: Publish + Submit** — Flip the repo public (gated on purge verification), then open the VCV Library submission issue
 
@@ -168,7 +168,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] 26-01-PLAN.md — Populate + field-validate the manifest: URLs, minRackVersion 2.0.0, VERSION derivation, tags, slug/brand collision (PKG-02, PKG-03 — Wave 1)
 - [x] 26-02-PLAN.md — Remove M_PI: shared rack-free forge::kPi constexpr + replace all 22 uses; goldens unperturbed (TEST-06 / D-06 — Wave 1)
 - [x] 26-03-PLAN.md — Golden restructure: drift-off + spread-off generator/fixtures, cross-platform leg + macOS-gated drift-on (TEST-06 / D-07 — Wave 1)
-- [ ] 26-04-PLAN.md — make dist + verify the .vcvplugin (binary, populated plugin.json, res/, LICENSE, no trial fonts) via tar --zstd (PKG-05 — Wave 2)
+- [x] 26-04-PLAN.md — make dist + verify the .vcvplugin (binary, populated plugin.json, res/, LICENSE, no trial fonts) via tar --zstd (PKG-05 — Wave 2)
 **Open decision at phase start**: `minRackVersion` — lower from 2.6.0 to 2.0.0 unless a Rack 2.6 API is confirmed required (one-time grep). Also: "Forge" brand/slug collision check against the VCV Library.
 
 ### Phase 27: Notion Manual
@@ -206,6 +206,6 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | 23. Functional Bug Fixes | v1.4 | 5/5 | Complete   | 2026-06-14 |
 | 24. DSP Extraction + Display Refactors | v1.4 | 3/4 | In Progress|  |
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 4/4 | Complete   | 2026-07-08 |
-| 26. VCV Library Compliance + Packaging | v1.4 | 3/4 | In Progress|  |
+| 26. VCV Library Compliance + Packaging | v1.4 | 4/4 | Complete   | 2026-07-09 |
 | 27. Notion Manual | v1.4 | 0/TBD | Not started | - |
 | 28. Publish + Submit | v1.4 | 0/TBD | Not started | - |
