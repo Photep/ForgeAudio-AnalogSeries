@@ -201,8 +201,10 @@ tools/ or a one-shot TU      # NEW generator (the old capture tool is NOT in the
 // src/dsp/MathConst.hpp (name is Claude's discretion)
 #pragma once
 namespace forge {
-// Bit-for-bit identical IEEE-754 double to <cmath>'s M_PI (0x400921FB54442D18),
-// so (float)kPi == (float)M_PI and (double)kPi == M_PI. Golden fixtures unperturbed.
+// Bit-for-bit identical IEEE-754 double to cmath's pi macro (0x400921FB54442D18),
+// so (float)kPi and (double)kPi equal cmath's pi value exactly. Golden fixtures unperturbed.
+// NOTE: keep the literal cmath pi macro token OUT of this comment — plan 26-02's
+// `grep -rn M_PI src/ tests/` zero-hit gate scans this header.
 inline constexpr double kPi = 3.14159265358979323846;
 }
 // Replace every `(float)M_PI` -> `(float)forge::kPi`, `2.f * (float)M_PI` etc.
@@ -262,15 +264,17 @@ tar --zstd -tvf dist/ForgeAudio-AnalogSeries-2.0.0-mac-arm64.vcvplugin
 | A2 | `createIndexSubmenuItem` and `getLastFrameDuration` are Rack-2.0-era (support minRackVersion 2.0.0) | Pitfall 2 | Low-Med — D-02 already mandates a one-time confirming grep; if a 2.x-only symbol surfaces, raise the floor |
 | A3 | A small absolute epsilon (~1e-6) covers cross-platform libm sin/cos variance for the drift-off + spread-off replay | Code Examples | Med — exact value is Claude's discretion; if too tight, tune upward but keep well below drift depth |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should the drift-off fixtures reuse the same seeds/params as the drift-on golden (except drift & spread)?**
+1. **Should the drift-off fixtures reuse the same seeds/params as the drift-on golden (except drift & spread)?** — **RESOLVED**
+   - RESOLVED: plan 26-03 decides identical scenario params (rate 2.0, morph 0.4, character 0.6, pinned seeds) with only `drift=0.0f` and NO `setSpreadSeed` call, keeping the two goldens comparable; the delta is documented in `freerun_seeds.txt`. (Claude's-Discretion item, decided in 26-03.)
    - What we know: `freerun_seeds.txt` documents drift-on params (rate 2.0, morph 0.4, character 0.6, drift 0.5, seeds pinned). BlockDriver defaults exist.
    - What's unclear: whether to keep character=0.6 (its spread folding is now zeroed) or document a distinct drift-off scenario.
-   - Recommendation: Keep identical scenario params, only `drift=0` and no `setSpreadSeed`; document the delta in `freerun_seeds.txt`. Keeps the two goldens comparable and the intent auditable.
+   - Recommendation (adopted): Keep identical scenario params, only `drift=0` and no `setSpreadSeed`; document the delta in `freerun_seeds.txt`. Keeps the two goldens comparable and the intent auditable.
 
-2. **Where to house the fixture generator so it's reproducible but excluded from `make test`?**
-   - Recommendation: a `tools/` TU or a `capture`-suffixed source compiled by a dedicated Makefile target (not the `test` target). Matches the historical `build-test/capture` intent without polluting the doctest suite.
+2. **Where to house the fixture generator so it's reproducible but excluded from `make test`?** — **RESOLVED**
+   - RESOLVED: plan 26-03 houses the generator at `tools/capture_golden.cpp`, compiled by a dedicated `capture` Makefile target (Rack-free, not the `test` target). (Claude's-Discretion item, decided in 26-03.)
+   - Recommendation (adopted): a `tools/` TU or a `capture`-suffixed source compiled by a dedicated Makefile target (not the `test` target). Matches the historical `build-test/capture` intent without polluting the doctest suite.
 
 ## Environment Availability
 

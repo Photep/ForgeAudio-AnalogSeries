@@ -2,7 +2,7 @@
 phase: 26
 slug: vcv-library-compliance-packaging
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-09
 ---
@@ -38,9 +38,10 @@ created: 2026-07-09
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 26-01-xx | 01 | 1 | PKG-03 | — / — | N/A | unit | `make test` | ✅ | ⬜ pending |
-| 26-02-xx | 02 | 1 | TEST-06 | — / — | N/A | unit | `make test` | ✅ | ⬜ pending |
-| 26-03-xx | 03 | 2 | PKG-02, PKG-05 | — / — | N/A | manual | `tar --zstd -tvf dist/*.vcvplugin` | ✅ | ⬜ pending |
+| 26-01-xx | 01 | 1 | PKG-02, PKG-03 | — / — | N/A | manual+cli | `jq` field asserts + URL reachability | ✅ | ⬜ pending |
+| 26-02-xx | 02 | 1 | TEST-06 (D-06) | — / — | N/A | unit | `make test` | ✅ | ⬜ pending |
+| 26-03-xx | 03 | 1 | TEST-06 (D-07) | — / — | N/A | unit | `make test` | ✅ | ⬜ pending |
+| 26-04-xx | 04 | 2 | PKG-05 | — / — | N/A | manual | `tar --zstd -tvf dist/*.vcvplugin` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky · Task IDs finalized by planner.*
 
@@ -64,11 +65,11 @@ created: 2026-07-09
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (none required)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 20s (local)
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (none required)
+- [x] No watch-mode flags
+- [x] Feedback latency < 20s (local)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-07-09
