@@ -27,9 +27,13 @@ jobs:
       # runs from the checkout root so the tests/golden/*.f32 relative paths resolve.
       # The drift-on golden uses an epsilon tolerance off the canonical (macOS) OS
       # (handled inside test_golden.cpp); the workflow just builds and runs.
+      # -static* links the MinGW runtime (libstdc++/libgcc/libwinpthread) into
+      # test.exe so it launches without those DLLs on PATH — a dynamically-linked
+      # binary exits 127 under Git-bash when the loader can't find them. Same libm
+      # and -ffp-contract=off, so golden determinism is unchanged.
       - name: make test (windows / direct g++)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          g++ -std=c++17 -O2 -g -Isrc -Itests -Wall -Wextra -ffp-contract=off tests/*.cpp -o test.exe
+          g++ -std=c++17 -O2 -g -Isrc -Itests -Wall -Wextra -ffp-contract=off -static -static-libgcc -static-libstdc++ tests/*.cpp -o test.exe
           ./test.exe
