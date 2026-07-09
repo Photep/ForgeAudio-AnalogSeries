@@ -1,5 +1,6 @@
 #include "plugin.hpp"
 #include "dsp/LfoCore.hpp"   // forge::LfoCore — the extracted DSP core the shell delegates to
+#include "dsp/MathConst.hpp"  // forge::kPi (D-06, rack-free pi constant)
 #include "dsp/PatchParse.hpp"  // forge::parseSeedHex — non-throwing seed parse (BUG-04)
 #include "dsp/DisplayFill.hpp"  // pure forge preview fill + DISPLAY_SAMPLES (CLEAN-05, 24-01)
 #include "dsp/Anim.hpp"  // frame-rate-independent dt clamp + badge-decay helpers (CLEAN-04, 24-01)
@@ -418,12 +419,12 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		float dt = forge::clampFrameDt((float)APP->window->getLastFrameDuration());
 
 		// Advance breathe animation (0.2Hz = 5-second cycle, per D-13)
-		breathePhase += 2.f * (float)M_PI * 0.2f * dt;
-		if (breathePhase > 2.f * (float)M_PI) breathePhase -= 2.f * (float)M_PI;
+		breathePhase += 2.f * (float)forge::kPi * 0.2f * dt;
+		if (breathePhase > 2.f * (float)forge::kPi) breathePhase -= 2.f * (float)forge::kPi;
 
 		// 2Hz blink for SYNC ACQUIRING indicator (independent of border glow rate)
-		blinkPhase += 2.f * (float)M_PI * 2.f * dt;
-		if (blinkPhase > 100.f * (float)M_PI) blinkPhase -= 100.f * (float)M_PI;  // prevent float overflow
+		blinkPhase += 2.f * (float)forge::kPi * 2.f * dt;
+		if (blinkPhase > 100.f * (float)forge::kPi) blinkPhase -= 100.f * (float)forge::kPi;  // prevent float overflow
 
 		// Advance scanline scroll (~1px/sec)
 		scanlineScrollPhase += dt;
@@ -978,7 +979,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		nvgBeginPath(vg);
 		for (int i = 0; i < 256; i++) {
 			float p = (float)i / 256.f;
-			float val = std::sin(2.f * (float)M_PI * p);
+			float val = std::sin(2.f * (float)forge::kPi * p);
 			float x = phaseToX(p);
 			float y = valueToY(val);
 			if (i == 0)
@@ -1040,8 +1041,8 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 struct ForgeKnobHero : app::SvgKnob {
 	widget::SvgWidget* bg;
 	ForgeKnobHero() {
-		minAngle = -0.75 * M_PI;
-		maxAngle = 0.75 * M_PI;
+		minAngle = -0.75 * forge::kPi;
+		maxAngle = 0.75 * forge::kPi;
 		shadow->opacity = 0.0;
 		bg = new widget::SvgWidget;
 		fb->addChildBelow(bg, tw);
@@ -1056,8 +1057,8 @@ struct ForgeKnobHero : app::SvgKnob {
 struct ForgeKnobSecondary : app::SvgKnob {
 	widget::SvgWidget* bg;
 	ForgeKnobSecondary() {
-		minAngle = -0.75 * M_PI;
-		maxAngle = 0.75 * M_PI;
+		minAngle = -0.75 * forge::kPi;
+		maxAngle = 0.75 * forge::kPi;
 		shadow->opacity = 0.0;
 		bg = new widget::SvgWidget;
 		fb->addChildBelow(bg, tw);
@@ -1071,8 +1072,8 @@ struct ForgeKnobSecondary : app::SvgKnob {
 struct ForgeTrimpot : app::SvgKnob {
 	widget::SvgWidget* bg;
 	ForgeTrimpot() {
-		minAngle = -0.75 * M_PI;
-		maxAngle = 0.75 * M_PI;
+		minAngle = -0.75 * forge::kPi;
+		maxAngle = 0.75 * forge::kPi;
 		shadow->opacity = 0.0;
 		bg = new widget::SvgWidget;
 		fb->addChildBelow(bg, tw);

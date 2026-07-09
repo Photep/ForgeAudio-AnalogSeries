@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <algorithm>
 
+#include "dsp/MathConst.hpp"   // forge::kPi (D-06, rack-free pi constant)
+
 #include "dsp/RackCompat.hpp"    // forge::OnePole, forge::exp2_taylor5, forge::clamp
 #include "dsp/Waveshape.hpp"     // forge::Waveshape::morphedWave
 #include "dsp/RatioTable.hpp"    // forge::RATIO_TABLE
@@ -226,7 +228,7 @@ struct LfoCore {
 			if (crossfadeProgress >= 1.f) {
 				crossfadeProgress = 1.f;
 			} else {
-				float mix = 0.5f - 0.5f * std::cos((float)M_PI * crossfadeProgress);
+				float mix = 0.5f - 0.5f * std::cos((float)forge::kPi * crossfadeProgress);
 				outputVoltage = crossfadeFrom + mix * (outputVoltage - crossfadeFrom);
 			}
 		}
