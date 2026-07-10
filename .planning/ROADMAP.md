@@ -82,7 +82,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 - [x] **Phase 25: Release IP Hardening (PRIVATE)** — Purge trial fonts from git history while the repo is still private, add LICENSE + NOTICES, confirm asset provenance (completed 2026-07-08)
 - [x] **Phase 26: VCV Library Compliance + Packaging** — Populate/validate the manifest, build the verified `.vcvplugin`, wire CI green (completed 2026-07-09)
 - [x] **Phase 27: User Manual (GitHub Markdown)** — Author and publish the user manual as GitHub Markdown under `docs/` with full table-stakes sections (completed 2026-07-09)
-- [ ] **Phase 28: Publish + Submit** — Flip the repo public (gated on purge verification), then open the VCV Library submission issue
+- [x] **Phase 28: Publish + Submit** — Flip the repo public (gated on purge verification), then open the VCV Library submission issue (completed 2026-07-10)
 
 ## Phase Details
 
@@ -199,7 +199,7 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
 **Plans**: 3 plans
 - [x] 28-01-PLAN.md — Merge release onto main, tag v2.0.0, push + capture the 40-char hash (still PRIVATE)
 - [x] 28-02-PLAN.md — HARD-STOP purge re-verify, then flip repo PUBLIC + confirm anonymous reachability
-- [ ] 28-03-PLAN.md — Open the ONE VCV Library submission issue (slug title + commit hash) + record its URL
+- [x] 28-03-PLAN.md — Open the ONE VCV Library submission issue (slug title + commit hash) + record its URL
 
 ## Progress
 
@@ -215,4 +215,4 @@ Phases execute in numeric order: 22 → 23 → 24 → 25 → 26 → 27 → 28
 | 25. Release IP Hardening (PRIVATE) | v1.4 | 4/4 | Complete   | 2026-07-08 |
 | 26. VCV Library Compliance + Packaging | v1.4 | 4/4 | Complete    | 2026-07-09 |
 | 27. User Manual (GitHub Markdown) | v1.4 | 4/4 | Complete    | 2026-07-09 |
-| 28. Publish + Submit | v1.4 | 2/3 | In Progress|  |
+| 28. Publish + Submit | v1.4 | 3/3 | Complete   | 2026-07-10 |
