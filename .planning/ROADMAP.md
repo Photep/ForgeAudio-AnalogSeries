@@ -196,7 +196,10 @@ See: `.planning/milestones/v1.3-ROADMAP.md` for full details.
   2. A release commit is tagged (`v2.x.y`) and its exact `git rev-parse HEAD` hash is recorded
   3. One VCV Library submission issue is opened, titled with the plugin slug `ForgeAudio-AnalogSeries` (not the name), containing `sourceUrl`, license, manual URL, and the exact commit hash (not a branch name) (PUB-02)
   4. The submission issue URL is recorded for all future update comments
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 28-01-PLAN.md — Merge release onto main, tag v2.0.0, push + capture the 40-char hash (still PRIVATE)
+- [ ] 28-02-PLAN.md — HARD-STOP purge re-verify, then flip repo PUBLIC + confirm anonymous reachability
+- [ ] 28-03-PLAN.md — Open the ONE VCV Library submission issue (slug title + commit hash) + record its URL
 
 ## Progress
 
