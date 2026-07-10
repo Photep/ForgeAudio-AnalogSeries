@@ -49,8 +49,8 @@ Requirements for the v1.4 release. Each maps to exactly one roadmap phase.
 
 ### Publication
 
-- [ ] **PUB-01**: GitHub repository flipped to public only after IP-02 purge verification passes
-- [ ] **PUB-02**: VCV Library submission issue opened — titled with the plugin slug, containing sourceUrl and the exact commit hash
+- [x] **PUB-01**: GitHub repository flipped to public only after IP-02 purge verification passes
+- [x] **PUB-02**: VCV Library submission issue opened — titled with the plugin slug, containing sourceUrl and the exact commit hash
 
 ### Documentation
 
@@ -116,8 +116,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | IP-01 | Phase 25 | Pending |
 | IP-02 | Phase 25 | Pending |
 | IP-03 | Phase 25 | Pending |
-| PUB-01 | Phase 28 | Pending |
-| PUB-02 | Phase 28 | Pending |
+| PUB-01 | Phase 28 | Complete |
+| PUB-02 | Phase 28 | Complete |
 | DOC-01 | Phase 27 | Complete |
 | DOC-02 | Phase 27 | Complete |
 | DOC-03 | Phase 27 | Complete |
