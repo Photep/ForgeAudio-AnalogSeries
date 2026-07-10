@@ -1,0 +1,4 @@
+**Plans**: 3 plans
+- [ ] 28-01-PLAN.md — Merge release onto main, tag v2.0.0, push + capture the 40-char hash (still PRIVATE)
+- [ ] 28-02-PLAN.md — HARD-STOP purge re-verify, then flip repo PUBLIC + confirm anonymous reachability
+- [ ] 28-03-PLAN.md — Open the ONE VCV Library submission issue (slug title + commit hash) + record its URL
