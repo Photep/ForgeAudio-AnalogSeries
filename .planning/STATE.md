@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Tempered
-status: ready_to_execute
-stopped_at: Phase 28 planned (3/3 plans, plan-check PASSED) — ready to execute
-last_updated: 2026-07-10T00:00:00.000Z
-last_activity: 2026-07-10
+status: executing
+stopped_at: Completed 27-01-PLAN.md
+last_updated: "2026-07-10T00:28:15.216Z"
+last_activity: 2026-07-10 -- Phase 28 execution started
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 28
   completed_plans: 25
-  percent: 89
+  percent: 86
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 28 — publish + submit
+**Current focus:** Phase 28 — publish-submit
 
 ## Current Position
 
-Phase: 28
-Plan: 3 plans (28-01, 28-02, 28-03) — planned, plan-check PASSED
-Status: Ready to execute
-Last activity: 2026-07-10
+Phase: 28 (publish-submit) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 28
+Last activity: 2026-07-10 -- Phase 28 execution started
 
 Progress: [██████████] 96%
 
@@ -75,6 +75,7 @@ Decisions pending at phase start (from research):
 - [Phase ?]: Phase 27 P01: authored docs/ manual hub + 4 code-fact sections (engine-concept, io-reference, context-menu, clock-sync) as GitHub Markdown (D-01/D-02); CV ranges/ratio table/swing/FSM transcribed verbatim from source; generic Character vocabulary, zero brand names (D-06); no patch-examples (D-07)
 - [Phase 27]: Phase 27 P02: authored install (VCV Library + manual .vcvplugin), milestone changelog v1.0–v1.4 (manifest 2.0.0 noted once, no 2.x relabel), license/credits (GPL-3.0 summary + links to LICENSE/NOTICES/OFL.txt); added tests/check_docs.sh — brand-name denylist + code-fact gate (D-06), PASS at wave 1 (panel.md deferred to 27-04)
 - [Phase ?]: Phase 27 P03: added plugin.json manualUrl -> docs/index.md blob URL + optional changelogUrl -> docs/changelog.md (D-04/A2), version untouched 2.0.0; reconciled ROADMAP §Phase 27 + REQUIREMENTS DOC-01/02/03 + Out-of-Scope from Notion to GitHub-Markdown docs/ pivot (D-01), dropped patch-examples (D-07); DOC status checkboxes left for verify-work
+- [Phase 28]: P01 (2026-07-10) — release finalized WHILE PRIVATE. Merge strategy = **ff-only** (operator-selected); `main` fast-forwarded 4b27436→4d7b0a8 and pushed to the still-PRIVATE remote (both docs/index.md + docs/changelog.md present on main). Annotated tag **v2.0.0** created on that commit and pushed. **Release commit hash = `4d7b0a81f7aabed83626a11951956fff173b6ad7`** (`git rev-parse v2.0.0^{commit}`, 40-char) — this exact value is what the VCV Library submission issue (28-03) must carry as the build ref; never a branch/tag name. No GitHub Release, no .vcvplugin attached (VCV rebuilds from source). Repo confirmed still PRIVATE after this plan.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
