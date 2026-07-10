@@ -179,6 +179,48 @@
 
 ---
 
+## Milestone: v1.4 — Tempered
+
+**Shipped:** 2026-07-10
+**Phases:** 7 | **Plans:** 28 | **Tasks:** 54 | **Timeline:** 2026-06-14 → 2026-07-10
+
+### What Was Built
+- Rack-independent header-only DSP core (`src/dsp/*.hpp`) proven bit-exact vs the shipped inline DSP, consumed by a thinned plugin shell
+- `make test` doctest harness (never links libRack) + headless `BlockDriver` invariant suite + bit-exact golden regression + 3-OS GitHub Actions CI
+- Four functional bug fixes (clock >3× lockout, x1.5/÷1.5 cadence, free-run swing phase-dot, corrupt-patch crash guard), each pinned by a red→green regression
+- Five display/thread cleanups: 256× fill moved off the audio thread (seqlock snapshot), frame-rate-independent animation, pill fade symmetry, dead-code removal
+- Release IP hardening: trial fonts purged from full git history (verified clean via fresh mirror), GPL-3.0 LICENSE + NOTICES + OFL, SVG outlines re-exported from confirmed-OFL fonts — all while PRIVATE
+- VCV compliance: validated manifest, verified `.vcvplugin`; GitHub-Markdown user manual under `docs/`; public repo flip + VCV Library submission issue #929
+
+### What Worked
+- **Test harness first (Phase 22) as a load-bearing safety net** — every later DSP refactor and bug fix rode on green unit tests + a golden bit-exact replay, so the full core extraction and the two-cell cadence swap landed with provable no-regression
+- **The PRIVATE-first purge → verify → flip ordering** held: verifying the trial-font purge on a fresh `--mirror` clone *after* the tag/push but *before* the public flip meant no branch or tag could carry a purged blob at the moment of exposure
+- **Human go/no-go gates for every irreversible outward-facing action** (public flip, VCV submission) kept the operator in control; the flip and the submission each ran only after an explicit CLEAN verdict + approval
+- Populated SUMMARY one_liners again let milestone close auto-generate accomplishments (gap stayed closed from v1.3)
+
+### What Was Inefficient
+- **Requirements traceability drift, again:** 8 requirements (TEST-03, BUG-01/02, PKG-01/04, IP-01/02/03) stayed `Pending` in REQUIREMENTS.md despite being delivered and phase-verified — the same status-bookkeeping lag flagged in v1.1/v1.2/v1.3. Caught at milestone close and reconciled inline against phase summaries + on-disk evidence.
+- Two manual in-Rack UAT scenarios (BUG-03/BUG-04) were never executed during the milestone; deferred at close with automated regression coverage as the standing safety net.
+- The internal milestone label (v1.4) vs the published release version (v2.0.0, Rack-major) is a mismatch that required deliberate care to avoid mistagging the release.
+
+### Patterns Established
+- **"Verify clean at the moment of exposure"**: a fresh independent `--mirror` re-clone + `rev-list --all --objects` grep, plus a belt-and-braces purged-blob-OID absence check, as the hard gate on an irreversible public flip
+- **Submission pins an immutable 40-char commit hash** (never a branch/tag), and **one permanent issue thread** carries all future version updates
+- **Test-harness-before-refactor** as an explicit, enforced milestone sequencing constraint
+- **AskUserQuestion human go/no-go** as the standard gate for irreversible, outward-facing actions
+
+### Key Lessons
+1. Requirements-status drift is now a **four-milestone recurring** catch — the milestone-close reconciliation is the reliable net, but updating requirement status at `phase.complete` time would stop it accumulating in the first place
+2. For irreversible outward-facing actions (history purge, public flip, external submission), gate on a **fresh independent re-verification + explicit human confirmation**; belt-and-braces (path grep *and* blob-OID absence) beats a single check
+3. Reconcile the **internal milestone label and the published release version** explicitly (v1.4 → tag v2.0.0) so the release is never mistagged
+4. A green test harness built *first* converts risky refactors (full DSP extraction, cadence changes) into provable no-regression changes — the safety net pays for itself immediately
+
+### Cost Observations
+- Model mix: Opus executor, Sonnet verifier (quality profile)
+- Notable: the publish/submit phase ran inline sequential (no subagents) so the operator stayed in the loop for each irreversible step — the right trade of parallelism for control
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -189,6 +231,7 @@
 | v1.1 | 6 days | 4 | 6 | Layered DSP approach; zero rework post-verification |
 | v1.2 | 5 days | 6 (+1 skip) | 8 | Phase skip pattern; right-click menu for panel overflow |
 | v1.3 | ~2.5 mo (sparse) | 5 (+1 insert) | 14 | Inserted redesign phase; audit-driven debt cleanup before archive |
+| v1.4 | ~26 days | 7 | 28 | Release-hardening milestone; test-harness-first; PRIVATE purge gated the irreversible public flip |
 
 ### Cumulative Stats
 
@@ -198,6 +241,7 @@
 | v1.1 | 890 | 338 | 18/18 |
 | v1.2 | 1,374 | 484 | 15/17 (2 deferred) |
 | v1.3 | 1,641 | 267 | 24/24 |
+| v1.4 | 2,435 src + 1,349 tests | +794 src (DSP core extraction) + full test harness | 28/28 (2 manual UAT deferred) |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -207,4 +251,7 @@
 4. Phase skip is a valid and valuable outcome when context gathering reveals fundamental approach problems (v1.2 Phase 17)
 5. Design for final panel dimensions before building components — incremental HP/layout expansion causes rework every milestone (v1.0, v1.2, v1.3)
 6. The milestone audit reliably surfaces verification/doc debt before it ships — run it every milestone (v1.0 displayDrift gap, v1.3 stale statuses + WAVE-05)
-7. SUMMARY.md one_liner fields: gap finally closed in v1.3 — keep populating per-plan
+7. SUMMARY.md one_liner fields: gap finally closed in v1.3 — keep populating per-plan (v1.4 reconfirmed)
+8. Requirements-status bookkeeping drifts every milestone (v1.1–v1.4) — reconcile at phase.complete, not just at milestone close
+9. Irreversible outward-facing actions need a fresh independent re-verification + explicit human go/no-go before firing (v1.4: purge re-verify → public flip → VCV submission)
+10. Build the test harness before the refactor — it turns risky changes into provable no-regressions (v1.4 DSP extraction + cadence swap)
