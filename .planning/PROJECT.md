@@ -8,20 +8,13 @@ A VCV Rack 2 module series featuring analog-modeled oscillators. The first modul
 
 The three-knob analog engine — morph, character, drift — that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback showing exactly what's happening.
 
-## Current Milestone: v1.4 Tempered
+## Current State
 
-**Goal:** Take the feature-complete Analog LFO to a publishable, VCV-Library-ready plugin — bugs fixed, tested, package compliant, manual written, source published.
+**v1.4 Tempered — SHIPPED 2026-07-10.** The feature-complete Analog LFO is now a published, VCV-Library-submitted plugin. Repo `Photep/ForgeAudio-AnalogSeries` is public; release commit `4d7b0a8` is tagged `v2.0.0` (Rack-major convention); VCV Library submission issue [#929](https://github.com/VCVRack/library/issues/929) is the permanent update channel. All 28 v1.4 requirements delivered (2 BUG manual in-Rack UAT checks deferred with automated regression coverage — see STATE.md).
 
-**Target features:**
-- Automated testing: C++ test target (unit tests on extracted DSP logic) plus a headless `process()`-driver integration harness; bug fixes land as regression tests
-- Functional bug fixes from CODE-REVIEW-FINDINGS.md: clock tracker >3× lockout (#1), x1.5/÷1.5 mid-cycle truncation (#2), free-run phase-dot swing desync (#3), patch-load crash guard (#4)
-- Code cleanup: dead code (#8), unreachable `isStill` (#9), pill fade-out symmetry (#10), frame-rate-independent animations (#11), display buffer off the audio thread (#12)
-- VCV Library compliance: GPL-3.0 LICENSE (#5), populated plugin.json URLs (#6), trial-font removal incl. git-history purge (#7)
-- Source publication: public GitHub repo (provides sourceUrl/pluginUrl)
-- User manual authored as GitHub-flavored Markdown under `docs/` (linked from plugin.json manualUrl)
-- Release packaging: verified build + `.vcvplugin` artifact ready for submission
+**Next milestone: v2.0 VCO** — the analog-modeled VCO module (V/Oct, through-zero FM, hard sync, morph-aware polyBLEP, phase distortion, tracking-error modeling, oversampling). Start with `/gsd:new-milestone`.
 
-**Out of milestone scope:** No new DSP features — the LFO is feature-frozen. VCO module remains deferred to v2.0.
+**v1.4 delivered:** automated test harness (Rack-independent DSP core + `make test` + headless BlockDriver + golden regression + CI); 4 functional bug fixes pinned by regressions; 5 display/code cleanups; VCV compliance (GPL-3.0 LICENSE, NOTICES, populated manifest URLs, trial-font removal + git-history purge verified clean); GitHub-Markdown user manual under `docs/`; verified `.vcvplugin` packaging; public source publication + Library submission.
 
 ## Requirements
 
@@ -69,23 +62,19 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 - ✓ Animated SYNC badge: per-edge white-hot flash while LOCKED with exponential decay — v1.3
 - ✓ Automated `make test` target with a Rack-independent header-only DSP core (`src/dsp/*.hpp` + `RackCompat.hpp` shims) consumed by the plugin shell; unit tests on the extracted DSP — v1.4 (Phase 22)
 - ✓ Headless `BlockDriver` integration harness asserting output invariants (±5V bounds, frequency accuracy, phase continuity at reset, fixed-seed determinism) over sample blocks at 44.1/48/96 kHz, plus a bit-exact golden-output regression and cross-platform GitHub Actions CI — v1.4 (Phase 22)
+- ✓ Full Rack-independent DSP core (`src/dsp/*.hpp`) proven bit-exact vs inline; unit coverage on waveshaping ranges, ratio/alignment table, consecutive-outlier clock recovery, swing math — v1.4 (Phases 22, 24)
+- ✓ Clock tracker recovers from >3× / <⅓× tempo jumps via consecutive-outlier counting — no permanent lockout — v1.4 (Phase 23)
+- ✓ x1.5 / ÷1.5 ratios align on correct beat boundaries without mid-cycle truncation (adopt-table, operator-auditioned) — v1.4 (Phase 23)
+- ✓ Phase dot tracks trace in free-running mode with swing set; patch load survives malformed/corrupt JSON without crashing — v1.4 (Phase 23)
+- ✓ Display/code cleanups: dead code removed, unreachable `isStill` resolved, pill fade symmetry, frame-rate-independent animations, display buffer off the audio thread — v1.4 (Phase 24)
+- ✓ VCV Library compliance: GPL-3.0 LICENSE + NOTICES at root, populated plugin.json URLs, trial/proprietary fonts removed from working tree + purged from full git history (verified clean via fresh mirror), SVG font-outline provenance confirmed OFL — v1.4 (Phases 25, 26)
+- ✓ Verified `.vcvplugin` release artifact + validated manifest (permanent slug, version 2.0.0) — v1.4 (Phase 26)
+- ✓ User manual authored as GitHub-Markdown under `docs/` (all table-stakes sections), linked from `plugin.json` manualUrl, publicly reachable — v1.4 (Phase 27)
+- ✓ Public GitHub source repository published (flipped after purge re-verify) + VCV Library submission issue #929 filed with exact commit hash — v1.4 (Phase 28)
 
 ### Active
 
-**v1.4 Tempered — release hardening (LFO feature-frozen):**
-- [ ] Clock tracker recovers from >3× tempo jumps (no permanent lockout)
-- [ ] x1.5 / ÷1.5 ratios align without mid-cycle truncation (audition-gated)
-- [ ] Phase dot tracks trace in free-running mode with swing set
-- [ ] Patch load survives malformed/corrupt JSON without crashing
-- [ ] GPL-3.0 LICENSE file at repo root
-- [ ] plugin.json URLs populated (author/plugin/source)
-- [ ] Trial/proprietary fonts removed from repo and git history
-- [ ] Public GitHub source repository published
-- [ ] User manual published as Markdown under `docs/`
-- [ ] `.vcvplugin` release artifact built and verified for VCV Library submission
-- [ ] Display/code cleanups: dead code, unreachable `isStill`, pill fade symmetry, frame-rate-independent animations, display buffer off audio thread
-
-**Deferred (future milestones):**
+**v2.0 VCO — next milestone (not yet planned):**
 - [ ] VCO module: V/Oct pitch input with 1V/octave tracking
 - [ ] VCO module: FM input and through-zero FM
 - [ ] VCO module: Hard sync input
@@ -116,12 +105,12 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ## Context
 
-**Current state:** v1.3 Forge Noir SHIPPED (2026-06-13). 1,641 lines of C++. 18HP Forge Noir "fresh" panel (Phase 20.1 — redesigned from 14HP, single-row equal secondary knobs, grouped clock section, corner bolts, widget-owned knob art) with custom SVG components, three-column CRT-aesthetic display (Phase 20), per-edge animated SYNC badge flash (Phase 21), three-knob analog engine with clock sync, FM modulation, expanded imperfections, waveform bleed, swing timing, and 5-shape morph sweep (sine-tri-saw-square-pulse). The LFO is feature-complete; the VCO module (v2.0) is the next milestone.
+**Current state:** v1.4 Tempered SHIPPED (2026-07-10) — feature-frozen LFO taken to a published, VCV-Library-submitted plugin. Builds on v1.3 Forge Noir (18HP "fresh" panel, three-column CRT display, per-edge SYNC badge flash, three-knob analog engine with clock sync, FM, imperfections, bleed, swing, 5-shape morph). v1.4 added: a Rack-independent header-only DSP core (`src/dsp/*.hpp`) with `make test` + headless BlockDriver + golden regression + GitHub Actions CI; 4 bug fixes pinned by regressions; 5 display/code cleanups; VCV compliance (GPL-3.0 LICENSE, NOTICES, manifest URLs, trial-font history purge verified clean); GitHub-Markdown manual under `docs/`; verified `.vcvplugin`; public repo + Library submission #929. The LFO is done; the VCO module (v2.0) is the next milestone.
 **Tech stack:** VCV Rack 2 SDK, C++17, NanoVG for display, nanosvg for panel.
 **Build system:** Standard VCV Rack Makefile with plugin.mk, no external dependencies.
 **Brand identity:** Forge Noir — near-black panel (#0c0c0c), ember orange (#e85d26), gold accent (#daa520), warm white text (#e8e4e0). Fonts: Bebas Neue (brand/hero), Chakra Petch (labels), JetBrains Mono (data).
 **Prior work:** POC LFO at `/Users/mrcbrown/Claude/Software/Forge Audio/LFO/` — clean digital implementation, no analog modeling.
-**Release strategy:** v1.3 Forge Noir is the final LFO milestone — shipped. VCO module (v2.0) is next.
+**Release strategy:** v1.4 Tempered is the LFO release milestone — shipped and submitted to the VCV Library (issue #929; commit 4d7b0a8 / tag v2.0.0). All future LFO version bumps are comments on #929, never a new submission issue. VCO module (v2.0 milestone) is next.
 **Known tech debt:** `swingIndex` is a plain int written from the GUI context-menu lambda and read from the audio thread (pre-existing non-atomic write, predates Phase 18; worst case one-frame latency on swing change — common VCV menu-param pattern). Four v1.3 phases (18/19/20.1/21) carry manual-only Nyquist validation (inherently human-gated visual/audio behaviors, no automated harness). Both deferred from v1.3 as non-blockers.
 
 ## Constraints
@@ -177,6 +166,14 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 | Widget-owned knob art, strip metal bodies from SVG (D-01) | Eliminates double-rendered knob bodies; SVG keeps only recessed-socket shadows + scallop ticks | ✓ Good — clean single source of knob rendering |
 | Promote fresh.svg to production res/AnalogLFO.svg, no plugin.json width (D-03/D-05) | Rack auto-derives 18HP from viewBox; one canonical panel file | ✓ Good — no width drift between art and code |
 | SYNC flash via lock-free atomic edge counter, color/glow not alpha (Phase 21 D-01) | Audio thread increments, widget reads; white-hot lerp + bloom reads better than alpha fade | ✓ Good — per-edge flash, zero audio-thread coupling |
+| Rack-independent header-only DSP core, test harness never links libRack (v1.4 Ph22) | Linking libRack drags in window/GL/`APP->` globals; extract pure `src/dsp/*.hpp` + RackCompat shims instead, driven by a headless BlockDriver | ✓ Good — `make test` + CI green, core proven bit-exact vs inline |
+| Full LfoCore extraction landed in Phase 22, not deferred to Phase 24 (v1.4 D-08) | The extraction gate proved the core bit-exact early; shell delegates `process()` to `core.step()` | ✓ Good — TEST-02 effectively satisfied in Ph22, Ph24 completed the thinning |
+| x1.5/÷1.5 cadence: adopt-table (BEATS_PER_ALIGN), audition-gated (v1.4 BUG-02) | In-Rack listening confirmed the old cadence truncates mid-cycle; two-cell table swap fixes alignment, 13 other ratios bit-identical | ✓ Good — operator-approved, pinned by deterministic cadence regression |
+| Manifest version stays 2.0.0 (Rack-major), milestone label is internal (v1.4) | VCV requires MAJOR = Rack major (2); the internal GSD milestone tag is v1.4 but the release/git tag is v2.0.0 | ✓ Good — VCV tooling keyed correctly, no relabel |
+| Trial-font git-history purge via filter-repo on a throwaway clone, verified while PRIVATE (v1.4 IP-02) | Purge + force-push, then a fresh mirror re-verify (grep empty + blob OIDs absent) gates the public flip so no purged blob can be exposed | ✓ Good — CLEAN at flip time, repo public with clean history |
+| Public flip strictly gated on a fresh-mirror CLEAN verdict; one-way door acknowledged (v1.4 PUB-01) | Verify AFTER tag/push but BEFORE flip so no branch/tag carries a purged blob at exposure | ✓ Good — flipped only after CLEAN, anonymous reachability confirmed |
+| VCV submission pins the full 40-char commit hash, one permanent issue (v1.4 PUB-02) | VCV rebuilds from source at the submitted ref; a branch/tag name is forbidden. All future updates are comments on the one issue | ✓ Good — issue #929 filed with hash 4d7b0a8, slug-titled |
+| User manual as GitHub-Markdown under `docs/`, not a Pages site (v1.4 DOC-01) | `docs/` is authored Pages-ready but ships as plain Markdown linked from manualUrl; MkDocs/Docusaurus deferred | ✓ Good — publicly reachable, zero build step |
 
 ## Evolution
 
@@ -196,4 +193,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-14 — Phase 22 (Test Harness Foundation) complete: Rack-independent DSP core extracted, `make test` + BlockDriver harness + golden regression + CI in place*
+*Last updated: 2026-07-10 after v1.4 Tempered milestone — LFO shipped and submitted to the VCV Library (public repo, tag v2.0.0, issue #929). All 28 requirements validated; next milestone is v2.0 VCO.*

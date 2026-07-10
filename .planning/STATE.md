@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Tempered
-status: milestone_complete
-stopped_at: Milestone complete (Phase 28 was final phase)
-last_updated: 2026-07-10T00:42:55.957Z
-last_activity: 2026-07-10 -- Phase 28 execution started
+status: Awaiting next milestone
+stopped_at: Completed 27-01-PLAN.md
+last_updated: "2026-07-10T00:51:36.377Z"
+last_activity: 2026-07-10 — Milestone v1.4 completed and archived
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 28
   completed_plans: 28
-  percent: 86
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 28
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-07-10
-
-Progress: [██████████] 96%
+Phase: Milestone v1.4 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-10 — Milestone v1.4 completed and archived
 
 ## Performance Metrics
 
@@ -111,6 +109,8 @@ None — all v1.3 todos resolved (see `.planning/todos/done/`).
 | Phase 27 P01 | ~8min | 3 tasks | 5 files |
 | Phase 27 P02 | 7min | 3 tasks | 4 files |
 | Phase 27 P3 | 2min | 3 tasks | 3 files |
+| Verification (UAT) | Phase 23 BUG-03 manual in-Rack check — phase dot tracks trace in free-run with swing set (automated regression covers the fix) | Acknowledged / deferred | v1.4 close (2026-07-10) |
+| Verification (UAT) | Phase 23 BUG-04 manual in-Rack check — corrupt spreadSeed hex patch loads without crashing, falls back to valid seed (automated red→green regression covers the fix) | Acknowledged / deferred | v1.4 close (2026-07-10) |
 
 ## Session Continuity
 
@@ -120,5 +120,4 @@ Resume: run `/gsd:verify-work` to close Phase 24 (it owns ROADMAP checkbox + pha
 
 ## Operator Next Steps
 
-- Run `/gsd:verify-work` to close Phase 24 (verifies CLEAN-01..05 + flips the 24-04 / Phase 24 ROADMAP checkboxes).
-- After Phase 24 verification, proceed to Phase 25 (Release IP Hardening — git-history font purge while repo is PRIVATE).
+- Start the next milestone with /gsd-new-milestone
