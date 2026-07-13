@@ -60,3 +60,18 @@ capture: $(CAPTURE_BIN)
 $(CAPTURE_BIN): tools/capture_golden.cpp $(TEST_HEADERS)
 	@mkdir -p build-test
 	$(CXX) $(TEST_CXXFLAGS) tools/capture_golden.cpp -o $@
+
+# ---------------------------------------------------------------------------
+# Submission preflight (post-v2.0.0-rejection lesson — see RETROSPECTIVE.md).
+# The VCV library toolchain builds every platform with -std=c++11 (GCC on
+# win/linux); local clang at -O3 masks C++17-isms and ODR'd in-class static
+# constexpr. This strict-compiles the plugin sources to the toolchain's
+# standard — run before every tag/submission. SDK headers are -isystem so
+# only OUR code is held to -pedantic-errors. CI mirrors this plus a full
+# MinGW link (the ODR class only surfaces at link time).
+# ---------------------------------------------------------------------------
+.PHONY: strict
+strict:
+	$(CXX) -std=c++11 -pedantic-errors -fsyntax-only -Wall -Wextra -Wno-unused-parameter \
+		-Isrc -isystem $(RACK_DIR)/include -isystem $(RACK_DIR)/dep/include $(wildcard src/*.cpp)
+	@echo "strict C++11 gate: PASS"

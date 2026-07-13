@@ -37,3 +37,52 @@ jobs:
         run: |
           g++ -std=c++17 -O2 -g -Isrc -Itests -Wall -Wextra -ffp-contract=off -static -static-libgcc -static-libstdc++ tests/*.cpp -o test.exe
           ./test.exe
+
+  # Post-v2.0.0-rejection gate (see .planning/RETROSPECTIVE.md). The VCV library
+  # toolchain builds ALL platforms with -std=c++11 — GCC on win/linux — and the
+  # win-x64 leg links plugin.dll against libRack with full symbol resolution.
+  # Local mac clang at -O3 masks both failure classes (C++17-isms; ODR'd in-class
+  # static constexpr with no out-of-line definition), and the test legs above
+  # compile -std=c++17 without the Rack shell TU, so neither catches them.
+  # Two stages:
+  #   1. strict -pedantic-errors C++11 compile of the plugin sources (catches the
+  #      compile-stage class; SDK headers are -isystem so only OUR code is gated)
+  #   2. exact reproduction of the library's win-x64 leg — MinGW cross-compile +
+  #      full link vs libRack (catches the link-stage ODR class)
+  toolchain-gate:
+    runs-on: ubuntu-latest
+    env:
+      RACK_SDK_VERSION: 2.6.6
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Rack SDKs (linux headers + windows link stub)
+        run: |
+          curl -sSfL -o /tmp/sdk-lin.zip "https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-lin-x64.zip"
+          curl -sSfL -o /tmp/sdk-win.zip "https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-win-x64.zip"
+          unzip -q /tmp/sdk-lin.zip -d /tmp/lin
+          unzip -q /tmp/sdk-win.zip -d /tmp/win
+          test -d /tmp/lin/Rack-SDK/include
+          ls /tmp/win/Rack-SDK/libRack*
+
+      - name: Strict C++11 pedantic gate (our code only)
+        run: |
+          g++ -std=c++11 -pedantic-errors -fsyntax-only -Wall -Wextra -Wno-unused-parameter \
+            -Isrc -isystem /tmp/lin/Rack-SDK/include -isystem /tmp/lin/Rack-SDK/dep/include \
+            src/*.cpp
+
+      - name: Install MinGW cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-mingw-w64-x86-64
+
+      - name: win-x64 leg reproduction (compile + full link vs libRack)
+        run: |
+          mkdir -p build-ci
+          for f in src/*.cpp; do
+            x86_64-w64-mingw32-g++ -std=c++11 -O3 -funsafe-math-optimizations -fno-omit-frame-pointer \
+              -Wall -Wextra -Wno-unused-parameter -march=nehalem -D_USE_MATH_DEFINES -municode \
+              -Isrc -I/tmp/win/Rack-SDK/include -I/tmp/win/Rack-SDK/dep/include \
+              -c -o "build-ci/$(basename "$f").o" "$f"
+          done
+          x86_64-w64-mingw32-g++ -municode -o build-ci/plugin.dll build-ci/*.o \
+            -shared -L/tmp/win/Rack-SDK -lRack -static-libstdc++
+          echo "win-x64 link gate: PASS"
