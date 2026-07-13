@@ -1,6 +1,6 @@
 # Changelog
 
-Grouped by release. The version shown in Rack is `2.0.0` (VCV requires the major version to match Rack 2); the release names below are the product history.
+Grouped by release. The version shown in Rack is `2.0.1` (VCV requires the major version to match Rack 2); the release names below are the product history.
 
 ## v1.0 Analog Series LFO
 
