@@ -375,6 +375,17 @@ struct AnalogLFO : Module {
 	}
 };
 
+// Out-of-line definitions for the in-class static constexpr arrays. Required under
+// C++11/14 (the Rack toolchain builds with -std=c++11): in-class initializers are
+// declarations only, and ODR-use (runtime indexing takes the array's address) needs
+// a definition or MinGW's linker fails with "undefined reference". Redundant but
+// harmless from C++17 onward.
+constexpr float AnalogLFO::RATIO_TABLE[15];
+constexpr const char* AnalogLFO::RATIO_LABELS[15];
+constexpr float AnalogLFO::SWING_FRACTIONS[6];
+constexpr const char* AnalogLFO::SWING_MENU_LABELS[6];
+constexpr const char* AnalogLFO::SWING_OVERLAY_LABELS[6];
+
 struct WaveformDisplay : rack::widget::TransparentWidget {
 	AnalogLFO* module = nullptr;
 
@@ -907,7 +918,7 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 
 		// Font sizes at widget scale (from UI-SPEC Typography section)
 		float pillLabelSize = 4.6f;   // ratio, SYNC (14HP=4.1f; bumped ~+12% for 18HP box, Plan 04 D-06)
-		[[maybe_unused]] float pillValueSize = 4.0f;   // BPM value (14HP=3.5f; bumped in step; drawBpmStack owns its own bpmFontSize)
+		// BPM value size lives in drawBpmStack (bpmFontSize), not here (14HP=3.5f; bumped in step)
 		float pillSmallSize = 3.6f;   // swing percentage (14HP=3.2f; bumped ~+12%)
 		float pillMicroSize = 3.3f;   // Hz, SWING label, CLK/LFO sub-labels (14HP=2.9f; bumped ~+14%)
 
