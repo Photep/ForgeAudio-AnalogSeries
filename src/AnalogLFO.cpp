@@ -256,9 +256,15 @@ struct AnalogLFO : Module {
 			// longer throw and crash Rack on load. Parse into temporaries and only commit
 			// the restored seed (+ regenerate spread) when BOTH succeed; otherwise keep the
 			// constructor-seeded spread (the CODE-REVIEW #4 safe fallback).
+			// Reject an all-zero seed pair: {0,0} is Xoroshiro128Plus's fixed point
+			// (output stuck at 0), which sends std::normal_distribution's rejection
+			// sampler into an infinite loop -> Rack hangs on patch load. A saved
+			// patch never contains it (ctor seeds from random_device), so it can
+			// only come from a hand-edited/corrupt patch; keep the ctor spread.
 			uint64_t s0 = 0, s1 = 0;
 			if (forge::parseSeedHex(json_string_value(s0J), s0) &&
-			    forge::parseSeedHex(json_string_value(s1J), s1)) {
+			    forge::parseSeedHex(json_string_value(s1J), s1) &&
+			    (s0 | s1) != 0) {
 				spreadSeed[0] = s0;
 				spreadSeed[1] = s1;
 				initComponentSpread();  // regenerate deterministic offsets from restored seed
@@ -445,13 +451,18 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 		if (module) {
 			// CLEAN-05 / D-01: consume the audio-thread display snapshot tear-free,
 			// then run the heavy preview fill on the GUI thread only when it changed.
-			// Tear-free per the seqlock contract: retry while the writer is mid-update
-			// (odd seq) or the seq moved between the acquire-load and the payload copy.
+			// Tear-free per the seqlock contract: spin to an even (quiescent) seq
+			// before copying, then retry if the seq moved during the copy. NOTE: the
+			// even-seq spin must be an inner loop -- a `continue` in the outer do/while
+			// would jump to the CONDITION, which can compare the odd seq against itself
+			// and exit with `snap` never assigned (or validate a torn copy from a
+			// previous iteration).
 			uint32_t seq;
 			AnalogLFO::DisplaySnapshot snap;
 			do {
 				seq = module->displaySnapshotSeq.load(std::memory_order_acquire);
-				if (seq & 1u) continue;                                  // writer mid-update -> re-read
+				while (seq & 1u)                                         // writer mid-update -> wait for even
+					seq = module->displaySnapshotSeq.load(std::memory_order_acquire);
 				snap = module->displaySnapshot;                          // copy the 16-byte payload
 				std::atomic_thread_fence(std::memory_order_acquire);
 			} while (seq != module->displaySnapshotSeq.load(std::memory_order_relaxed));
@@ -979,8 +990,10 @@ struct WaveformDisplay : rack::widget::TransparentWidget {
 			}
 		}
 
-		// BPM stack (clocked mode, right column bottom)
-		if (bpmFadeAlpha > 0.001f) {
+		// BPM stack (clocked mode, right column bottom). Guard the cache like the
+		// ratio pill above: during first-clock acquisition (one edge seen) the cache
+		// is still {-1, 0} -> RATIO_TABLE[-1] OOB and 60/0 = inf ((int)round(inf) is UB).
+		if (bpmFadeAlpha > 0.001f && cachedRatioIdx >= 0 && cachedPeriod > 0.f) {
 			drawBpmStack(vg, font->handle, bpmFadeAlpha, cachedRatioIdx, cachedPeriod);
 		}
 	}
