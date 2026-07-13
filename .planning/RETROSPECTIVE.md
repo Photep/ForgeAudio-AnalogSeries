@@ -221,6 +221,31 @@
 
 ---
 
+## Post-Release: VCV Library Build Rejection (v2.0.0 → v2.0.1, 2026-07-13)
+
+*The library toolchain rejected the v2.0.0 submission with a win-x64 link failure. Root-caused, fixed, review-swept, and resubmitted as v2.0.1 in one session. Recorded here because every future Analog Series module ships through the same gate.*
+
+### What Happened
+- MinGW `ld` failed with `undefined reference` to three in-class `static constexpr` arrays (`RATIO_TABLE`, `RATIO_LABELS`, `SWING_OVERLAY_LABELS`)
+- Root cause: the VCV toolchain builds **all** platforms with `-std=c++11`, where in-class `static constexpr` members are declarations only — ODR-use (runtime indexing takes the array's address) requires an out-of-line definition. Local mac clang folds the references at `-O3`, masking the bug entirely
+- A second C++17-ism (`inline constexpr` in MathConst.hpp) would have hard-errored the linux-x64 GCC leg; it never got that far because Windows failed first
+- Follow-up review (two parallel agents: C++ portability + submission compliance) found three more latent runtime bugs, fixed pre-resubmission: BPM pill OOB read + `(int)round(inf)` UB during first-clock acquisition (cache still `{-1, 0}`); all-zero patch seed = Xoroshiro fixed point → `normal_distribution` infinite loop → Rack hangs on load; seqlock reader `continue`-in-`do/while` jumping to the *condition*, exiting with an unassigned or torn snapshot
+
+### Root-Cause Class (why local green ≠ toolchain green)
+- **Local mac clang masks two whole bug classes** the toolchain's GCC legs reject: (1) missing out-of-line definitions for ODR-used in-class `static constexpr`; (2) C++17-isms under `-std=c++11` (`inline constexpr` variables, `[[maybe_unused]]`)
+- **"Windows build error" often means "GCC error"**: Linux `-shared` linking tolerates undefined symbols (they'd only surface at `dlopen`), so MinGW reports link problems first — never assume a Windows-only report is Windows-specific
+- The GitHub Actions test legs didn't catch it either: tests compile with `-std=c++17` and never link the Rack shell TU
+
+### Key Lessons (feed forward to every new Analog Series module)
+1. **Preflight gate before any tag/submission**: strict-compile all plugin sources against the SDK with `-std=c++11 -pedantic-errors -Werror=c++14-extensions -Werror=c++17-extensions`. This exact sweep found the only remaining C++17-ism in one pass. Candidate for a CI leg so it can never regress
+2. **Module-struct constants**: any in-class `static constexpr` array that is runtime-indexed needs an out-of-line definition block after the struct (see AnalogLFO.cpp "Out-of-line definitions" block) — or prefer namespace-scope `static constexpr` in a header (the `forge::` DSP pattern), which sidesteps ODR entirely
+3. **Resubmission mechanics**: fix → bump version + new tag (never move an already-referenced tag) → comment on the toolchain-filed issue in *our* repo naming the new tag → close it (the reporter is subscribed). The library issue (#929) stays open — the team closes it when the plugin goes live
+4. **Display-cache sentinels are load-bearing**: caches initialized to `{-1, 0}` (pre-acquisition) must be checked at *every* draw gate, not just the ones that existed when the sentinel was introduced — the ratio pill checked, the BPM pill didn't
+5. **Seqlock reader idiom**: spin-to-even must be an *inner* loop; `continue` inside `do/while` jumps to the condition and can validate a torn or never-copied snapshot. Writer side (odd store → release fence → payload → release even store) was correct and is the pattern to copy
+6. **Patch-JSON values are hostile input**: anything persisted and re-parsed (seeds especially) needs domain validation beyond parse success — `{0,0}` parses fine and hangs Rack
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -255,3 +280,4 @@
 8. Requirements-status bookkeeping drifts every milestone (v1.1–v1.4) — reconcile at phase.complete, not just at milestone close
 9. Irreversible outward-facing actions need a fresh independent re-verification + explicit human go/no-go before firing (v1.4: purge re-verify → public flip → VCV submission)
 10. Build the test harness before the refactor — it turns risky changes into provable no-regressions (v1.4 DSP extraction + cadence swap)
+11. Local mac clang green ≠ VCV toolchain green — the toolchain is `-std=c++11` GCC on win/linux, which rejects ODR'd in-class `static constexpr` and C++17-isms that clang masks; strict-gate with `-std=c++11 -pedantic-errors` before every submission (v2.0.0 rejection)
