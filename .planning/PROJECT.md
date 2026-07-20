@@ -8,11 +8,27 @@ A VCV Rack 2 module series featuring analog-modeled oscillators. The first modul
 
 The three-knob analog engine — morph, character, drift — that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback showing exactly what's happening.
 
+## Current Milestone: v2.0 Forge Analog VCO
+
+**Goal:** Ship the second module in the Analog Series — an analog-modeled *morphing* VCO that brings the LFO's morph/character/drift identity to audio rate, as a second module inside the existing `ForgeAudio-AnalogSeries` plugin.
+
+**Structure:** Same repo, same plugin. The VCO is `src/AnalogVCO.cpp` + a new `src/dsp/VcoCore.hpp`, registered via a second `addModel()` in `plugin.cpp` and a second entry in `plugin.json` `modules[]`. It reuses the extracted analog core (`Waveshape.hpp`, `DriftEngine.hpp`, `MathConst.hpp`, `RackCompat.hpp`) directly — no duplication. One VCV Library entry (submission thread #929 stays canonical), one build, one "Analog Series" install.
+
+**Scope decision (lean core first):** v2.0 ships a rock-solid analog morphing VCO. Through-zero FM, phase distortion, and Off/2×/4× oversampling are deferred to a future v2.1 milestone (see Future Requirements) to de-risk the hard morph-aware anti-aliasing work and match the LFO's proven incremental growth.
+
+**Target features (v2.0):**
+- V/Oct pitch input with 1V/octave tracking + coarse/fine tune
+- Morph-aware polyBLEP anti-aliasing (band-limiting a *continuous* morph crossfade, not a discrete shape select)
+- Hard sync input
+- Exponential (audio-rate) FM input, reusing the `exp2_taylor5` pitch path
+- The morph / character / drift analog engine running at audio rate
+- Real-time waveform display carried over from the LFO's Forge Noir CRT
+
 ## Current State
 
 **v1.4 Tempered — SHIPPED 2026-07-10.** The feature-complete Analog LFO is now a published, VCV-Library-submitted plugin. Repo `Photep/ForgeAudio-AnalogSeries` is public; release commit `4d7b0a8` is tagged `v2.0.0` (Rack-major convention); VCV Library submission issue [#929](https://github.com/VCVRack/library/issues/929) is the permanent update channel. All 28 v1.4 requirements delivered (2 BUG manual in-Rack UAT checks deferred with automated regression coverage — see STATE.md).
 
-**Next milestone: v2.0 VCO** — the analog-modeled VCO module (V/Oct, through-zero FM, hard sync, morph-aware polyBLEP, phase distortion, tracking-error modeling, oversampling). Start with `/gsd:new-milestone`.
+**Milestone v2.0 Forge Analog VCO — IN PROGRESS (requirements being defined).** Second module in the same plugin; see the "Current Milestone" section above for goal, structure, and lean scope.
 
 **v1.4 delivered:** automated test harness (Rack-independent DSP core + `make test` + headless BlockDriver + golden regression + CI); 4 functional bug fixes pinned by regressions; 5 display/code cleanups; VCV compliance (GPL-3.0 LICENSE, NOTICES, populated manifest URLs, trial-font removal + git-history purge verified clean); GitHub-Markdown user manual under `docs/`; verified `.vcvplugin` packaging; public source publication + Library submission.
 
@@ -74,15 +90,21 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ### Active
 
-**v2.0 VCO — next milestone (not yet planned):**
+**v2.0 VCO — current milestone (lean core, requirements being defined):**
 - [ ] VCO module: V/Oct pitch input with 1V/octave tracking
-- [ ] VCO module: FM input and through-zero FM
-- [ ] VCO module: Hard sync input
-- [ ] VCO module: Morph-aware polyBLEP antialiasing
-- [ ] VCO module: Phase distortion
-- [ ] VCO module: Tracking error modeling (right-click toggle)
 - [ ] VCO module: Coarse/fine tune controls
-- [ ] VCO module: Oversampling option (Off/2x/4x)
+- [ ] VCO module: Morph-aware polyBLEP antialiasing
+- [ ] VCO module: Hard sync input
+- [ ] VCO module: Exponential (audio-rate) FM input
+- [ ] VCO module: Morph/character/drift analog engine at audio rate (reuses Waveshape + DriftEngine)
+- [ ] VCO module: Real-time waveform display (Forge Noir CRT carried over)
+
+### Future (deferred to v2.1+)
+
+- Through-zero FM — audio-rate timbral depth, but adds DC-offset/sign-handling complexity; defer until core VCO ships
+- Phase distortion — a distinct Casio-CZ-style synthesis mode; standalone feature, better as its own scoped increment
+- Oversampling option (Off/2×/4×) — anti-aliasing infrastructure; core polyBLEP proves out first
+- Tracking-error modeling (right-click toggle) — analog realism polish, lower priority than correct pitch tracking
 
 ### Out of Scope
 
@@ -193,4 +215,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-10 after v1.4 Tempered milestone — LFO shipped and submitted to the VCV Library (public repo, tag v2.0.0, issue #929). All 28 requirements validated; next milestone is v2.0 VCO.*
+*Last updated: 2026-07-20 — v1.4 Tempered shipped and ACCEPTED into the VCV Library (live, issue #929). Started milestone v2.0 Forge Analog VCO: second module in the same plugin, lean core scope (advanced FM/phase-distortion/oversampling deferred to v2.1), research-first, phase numbering continues from 29.*

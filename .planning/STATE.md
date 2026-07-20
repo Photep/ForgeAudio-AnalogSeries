@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: Tempered
-status: Awaiting next milestone
-stopped_at: Completed 27-01-PLAN.md
-last_updated: "2026-07-10T00:51:36.377Z"
-last_activity: 2026-07-10 — Milestone v1.4 completed and archived
+milestone: v2.0
+milestone_name: VCO
+status: planning
+last_updated: "2026-07-20T08:26:03.604Z"
+last_activity: 2026-07-20
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 28
-  completed_plans: 28
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: Milestone v1.4 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-10 — Milestone v1.4 completed and archived
+Status: Defining requirements
+Last activity: 2026-07-20 — Milestone v2.0 started
 
 ## Performance Metrics
 
