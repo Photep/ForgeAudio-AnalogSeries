@@ -20,7 +20,9 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Milestone complete
+**Current focus:** v2.0 Forge Analog VCO — defining requirements (lean core, 2nd module in same plugin)
+
+> **⚠ MILESTONE GUARDRAIL — protect the shipped LFO.** No breaking/behavioral changes to the Analog LFO (live in VCV Library, golden-pinned) while adding the VCO. Prefer additive code over editing shared `src/dsp/` headers. Any LFO-regression risk (shared-header edits, plugin.json/version/registration) → surface to operator with impact + remediation options + a recommendation before acting. Tripwires: LFO `.f32` goldens + `make strict`. See PROJECT.md Constraints.
 
 ## Current Position
 

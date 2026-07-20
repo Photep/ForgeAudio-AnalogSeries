@@ -137,6 +137,7 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 ## Constraints
 
+- **⚠ LFO non-regression guardrail (v2.0 milestone):** The shipped Analog LFO — live in the VCV Library, pinned by bit-exact `.f32` goldens — MUST NOT get breaking or behavioral changes while the VCO is added. Prefer additive work (new `VcoCore.hpp` / band-limiting wrapper) over editing the shared headers (`Waveshape.hpp`, `DriftEngine.hpp`, `RackCompat.hpp`, `MathConst.hpp`) in place. Any change that risks touching LFO behavior — shared-header edits, `plugin.json`/version/module-registration changes — must be surfaced to the operator with an impact assessment and remediation options + a recommendation BEFORE proceeding. The LFO goldens + `make strict` (C++11 gate) are the tripwires.
 - **Platform:** VCV Rack 2 SDK, C++17, cross-platform (Mac/Windows/Linux)
 - **Panel rendering:** SVG via nanosvg — limited subset (no filters, no CSS, text as paths)
 - **Real-time:** All DSP in process() callback at sample rate — no allocation, no blocking
