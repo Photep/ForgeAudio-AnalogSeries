@@ -1,295 +1,201 @@
-# Feature Research — VCV Rack Module User Manual (Notion)
+# Feature Research
 
-**Domain:** Public-facing user manual / product documentation for a finished VCV Rack 2 module (Forge Audio "Analog Series" Analog LFO), authored in Notion.
-**Researched:** 2026-06-14
-**Confidence:** HIGH (official VCV manual + multiple leading-author manuals + official Notion docs corroborate every structural claim)
+**Domain:** VCV Rack 2 analog-modeled *morphing* VCO (audio-rate oscillator), second module in the `ForgeAudio-AnalogSeries` plugin
+**Researched:** 2026-07-20
+**Confidence:** HIGH (VCV voltage/behavior conventions are formally documented; reference modules verified against VCV Library + vendor docs; engine reuse verified by reading `Waveshape.hpp` / `DriftEngine.hpp`)
 
-> Scope note: This is documentation research, not product-feature research. "Features" below = manual sections and documentation conventions. The module itself is feature-frozen — the deliverable documents what already ships. The template's MVP/dependency framing is reinterpreted as "table-stakes manual sections vs nice-to-have" and "section authoring order."
->
-> This file supersedes the v1.3 product-feature research previously at this path (researched 2026-03-27).
+> Scope note: This supersedes the prior FEATURES.md at this path (v1.4 *documentation/manual* research, 2026-06-14). This file is product-feature research for the v2.0 VCO module.
 
----
+## Reference set analyzed
 
-## How Leading VCV Authors Document Modules (Evidence)
+| Module | Class | Outputs | FM | Sync | Poly | Relevance |
+|--------|-------|---------|----|----|------|-----------|
+| Fundamental VCO-1/VCO-2 | bread-and-butter analog | simultaneous sin/tri/saw/sqr | expo + linear | hard/soft | yes | baseline table-stakes reference |
+| Befaco EvenVCO | analog | tri/ramp/pwm/sine + **Even** | linear | hard | **mono** | precedent: a respected VCO can be mono |
+| Bogaudio VCO/XCO | analog | simultaneous sqr/saw/tri/sine | expo + linear **TZFM** | hard | yes | feature-maximal reference (what we deliberately don't do) |
+| Surge XT VCO (Classic/Modern/…) | multi-model | **single** out | per-model | per-model | yes | precedent: model/morph oscillator with one output |
+| Audible Instruments Macro Osc (Mutable Braids/Plaits) | macro/morph | **single** out (MODEL morphs timbre) | expo (+TZ some) | yes | yes | closest paradigm match — morph → single output is idiomatic |
+| Instruō Cš-L | complex analog | multiple (wavefolder per osc) | linear | yes | — | morphing/symmetry-bias reference, but multi-out complex voice |
 
-Surveyed five reference manuals plus the official VCV manual. Each is a distinct convention point; the recommended structure synthesizes the best of all.
+**Key framing:** The Forge VCO is a **morph/macro oscillator**, not a bread-and-butter multi-out analog VCO. Its correct peer group is Plaits/Braids/Surge (single output, timbre is a knob), *not* Fundamental/Bogaudio (many simultaneous shape outs). This reframes the "single output" question from a limitation into a genre convention (see Anti-Features).
 
-| Author / Manual | Format | Structure observed | What to steal |
-|-----------------|--------|--------------------|---------------|
-| **VCV (official free modules manual)** | Web (illustrated) | Core Concepts page (cross-cutting: knob behavior, modulation, polyphony, tempo-sync) THEN per-module pages; large annotated screenshots; bulleted feature lists | The "Core Concepts first, then modules" split; annotated panel screenshot as the anchor of each page |
-| **Surge XT Rack manual** | Web (GitHub Pages) | Horizontal nav, intro/overview, prose per-module with annotated screenshots, links back to main Surge manual; **no install section** (assumes Rack present) | Annotated screenshot + prose; concept cross-links. Note: relies on prose over tables — we will improve on this with a control table |
-| **Stoermelder (PackOne `/docs/*.md`)** | Per-module markdown | Introduction → feature/workflow sections (often versioned, e.g. "14-bit CC (v1.9.0+)") → **Changelog** at the bottom (v1.1.0 → v1.10.0). Animated GIFs for workflows, PNGs for context menus | Per-feature workflow sections; **changelog appended to the module page**; GIFs for time-based behavior (perfect for our drift/sync animation) |
-| **Bogaudio** | Single README, category-grouped | Per-module: short description + bulleted capabilities, controls woven into prose, **standardized footer** ("Note on Polyphony", "Note on Bypassing", "When bypassed") | Standardized footer blocks for cross-cutting behaviors (polyphony, bypass) — readers learn to expect them |
-| **Befaco / Mutable-style** | Mutable-inspired authors lean on the original hardware manuals' "one page per concept, signal-flow diagram up top" tradition | Signal-flow diagram, then control-by-control | A signal-flow diagram near the top is a strong convention for analog-modeled modules |
+## Feature Landscape
 
-**Cross-author consensus (table-stakes conventions):**
-1. An **annotated panel screenshot** is the visual anchor of the main page.
-2. **Controls are explained by name**, grouped logically (main controls, then I/O, then menu).
-3. **Context-menu / right-click options get their own section** — universal in VCV docs because they're invisible on the panel.
-4. **A changelog lives in the docs** (Stoermelder appends per module; VCV keeps a global one).
-5. **Polyphony and bypass behavior** are explicitly stated (Bogaudio standardizes this) — even "monophonic by design" is worth one line.
-6. Prose-heavy is the norm, but **none of these use a clean control-reference table** — that is our opportunity to be clearer than the field.
+### Table Stakes (Users Expect These)
 
----
+Missing any of these makes it not feel like a real VCV VCO.
 
-## Feature Landscape (Manual Sections)
+| Feature | Why Expected | Complexity | Engine dependency / notes |
+|---------|--------------|------------|---------------------------|
+| **1V/oct pitch input, accurate tracking** | The defining contract of a VCV VCO. `f = f₀·2^V`, baseline C4 = 261.626 Hz at 0V (VCV Voltage Standards). Users expect clean tracking over **at least 7–10 octaves**. | MEDIUM | Reuses the existing `exp2_taylor5` pitch path (already in the LFO's FM). Base tracking must be accurate *independent* of drift; drift rides on top. |
+| **Coarse + fine tune** | Every VCO has it — coarse for octave/interval placement, fine for beating/unison detune. | LOW | Recommend COARSE ≈ ±5 octaves continuous (optional right-click semitone/octave snap — meaningful for a VCO, unlike the LFO where it was out-of-scope), FINE ≈ ±1 semitone (±100 cents). Pure pitch summation into the exp2 path. |
+| **±5 V audio output (10 Vpp)** | VCV standard: oscillators output ±5 V before bandlimiting; saturate to avoid clipping. | LOW | Already the LFO output convention. Reuse the ±5 V morphed output; apply soft saturation so drift DC-offset + bleed can't push past rails. |
+| **Exponential audio-rate FM + attenuverter** | Expo FM is standard; a bare FM jack with no depth control is considered incomplete — the attenuverter is table stakes. | MEDIUM | Reuses the LFO expo FM path at audio rate. **New vs LFO:** a dedicated FM attenuverter (LFO FM had fixed/scaled authority). This is the one genuinely new panel control the VCO must add. |
+| **Hard sync input** | Expected on any subtractive-synth VCO; the primary way users get classic sync-sweep timbres. | MEDIUM | Not in the LFO. Reset phase accumulator on rising edge. Must interact with the morph-aware polyBLEP — the sync discontinuity injected mid-cycle needs its own BLEP correction, else it aliases. Coupled to the anti-aliasing work. |
+| **Band-limited output (no obvious aliasing)** | A VCO that aliases audibly is considered broken; every reference module band-limits. | HIGH | **The hard problem.** morph-aware polyBLEP over a *continuous* crossfade + character-deformed edges + sync discontinuities. The milestone's central risk (already flagged in PROJECT). Owned by STACK/ARCHITECTURE; listed here as the invisible table stake. |
+| **Wide, musical pitch range** | Users expect roughly C-1…C8/C9 reachable (sub-bass to high leads). | LOW | Falls out of accurate 1V/oct + coarse range; just clamp to a sane max (avoid Nyquist blow-ups at extreme +V/oct). |
+| **Real-time timbre display** | Carried expectation from the LFO; this plugin's users expect the CRT. | MEDIUM | See Display section — static single-cycle morph preview, not a live scope. |
 
-### Table Stakes (Users / VCV Community Expect These)
+**Polyphony — the honest gap.** VCV *recommends* up to 16 channels keyed off the V/oct input, and the modern "default" VCOs (Fundamental, Bogaudio) are polyphonic. The plugin-wide decision explicitly **excludes polyphony** (16× CPU; complicates per-voice drift and the single-cycle display). Assessment:
 
-Missing any of these makes the manual feel incomplete by VCV-community standards.
+- **Defensible, not free.** Befaco EvenVCO (well-regarded) is mono, and the whole *character/boutique* oscillator niche is routinely mono. A morph/drift oscillator is a "voice," not a "poly workhorse."
+- **The drift identity is inherently per-voice.** Doing poly *correctly* means 16 independent `DriftEngine` instances (16× RNG state + 16× OU stepping) and 16 component-spread seeds — exactly the cost the decision cites. Sharing one drift engine across voices would sound wrong and undercut the identity.
+- **Duplication is idiomatic here and sonically desirable:** each instance already has its own seed → own component spread + drift, so stacking 2–3 instances gives natural analog unison/detune for free. A genuine plus, not just a workaround.
+- **Verdict:** Mono is acceptable for v2.0 *if documented plainly* and positioned as "one alive voice." It remains the single most legitimate feature request users will raise, and the strongest **v2.1+** candidate — but it is a *plugin-wide* decision to revisit, not a VCO-local one.
 
-| Section | Why Expected | Effort | Notes |
-|---------|--------------|--------|-------|
-| Overview / Concept ("What is it") | First thing every reference manual opens with; sells the three-knob engine | LOW | 2-4 sentences + hero panel image. Lead with the Morph/Character/Drift value prop |
-| Annotated panel screenshot | The visual anchor of every VCV module page (VCV official, Surge, Stoermelder) | LOW | Numbered callouts mapping to the control table. Single most important image |
-| Signal-flow / "How it works" diagram | Analog-modeled-module convention (Mutable/Befaco tradition); demystifies a 3-axis engine | MED | CLK→tracker→rate; knobs→engine→single ±5V out. Mermaid or a simple PNG |
-| **Control reference table** (knobs/buttons) | Users scan for "what does this knob do"; clearer than the prose norm | LOW | One row per control. Template below. This is the spine of the manual |
-| Inputs / Outputs reference (jacks) | Every patch question is "what goes where"; CV ranges are non-obvious | LOW | Voltage ranges, polarity, what each CV modulates. Note single bipolar ±5V output |
-| Context-menu (right-click) options | Invisible on panel; **universal dedicated section** in VCV docs | LOW | Swing presets and any other menu items. Screenshot of the open menu |
-| Rate-knob dual-mode explanation | Behavior changes when CLK is patched — genuinely confusing without docs | MED | The 15 snapped ratios, free Hz mode, the switch trigger. Needs its own subsection |
-| Clock sync explanation | 3-state tracker (FREE/ACQUIRING/LOCKED), phase reset, anti-click | MED | Explain the SYNC badge states and what the display pills mean |
-| Installation — VCV Library | The expected install path for a Library module | LOW | Subscribe on library.vcvrack.com + sync in Rack. Steps below |
-| Installation — Manual (.vcvplugin) | Needed pre-Library and for power users; VCV documents both | LOW | Open user folder, drop .vcvplugin, restart. Steps below |
-| Changelog / version history | Stoermelder + VCV both ship one; users check "what changed" | LOW | Derive directly from MILESTONES.md (v1.0→v1.4). Append at bottom |
-| Credits / License | GPL-3.0 is a v1.4 requirement; attribution expected for open source | LOW | License, author, links to source repo + VCV Library page |
+### Differentiators (Competitive Advantage)
 
-### Differentiators (Make This Manual Better Than Average)
+Where the module earns its place — the morph/character/drift identity at audio rate. All three are **inherited directly** from the shipped engine (`Waveshape.hpp` + `DriftEngine.hpp`), so marginal build cost is low; the real cost is *calibration* for audio rate.
 
-Not strictly expected, but elevate the manual and directly serve this module's unusual 3-axis engine.
+| Feature | Value Proposition | Complexity | Engine dependency / notes |
+|---------|-------------------|------------|---------------------------|
+| **Continuous MORPH as the sole timbre axis** | One knob sweeps sine→tri→saw→square→narrow-pulse with neighbor bleed. Positions the module with Plaits/Surge (timbre is a CV-able, automatable knob), not with 4-jack analog VCOs. | LOW | Verbatim `Waveshape::morphedWave()`. Only new work: the crossfade must be band-limited (polyBLEP) at audio rate — see table-stakes anti-aliasing. |
+| **CHARACTER as an oscillator-timbre coloration knob** | At audio rate the per-shape analog modeling *is* harmonic content: THD/Chebyshev harmonics on the "sine," rounded triangle peaks, exponential saw ramp + soft capacitor reset, tanh-softened square/pulse edges + duty asymmetry. Turns clean-digital into vintage-transistor/Moog/Roland coloration — a continuously dialable warmth axis most VCOs lack. | MEDIUM | Verbatim `Waveshape` character math. **Caveat:** character mostly *softens* edges (rounded peaks, soft edges → fewer highs → aliasing-friendly), but saw exponential curvature + duty asymmetry can *add* harmonics. The polyBLEP must band-limit the **characterized** waveform, not the ideal shape — character and anti-aliasing are coupled, not independent. |
+| **DRIFT as audible analog instability** | On a VCO, "drift" becomes: slow multi-timescale **pitch wander** (the 0.05–2 Hz OU layers → thermal/vintage out-of-tune-ness), tiny per-sample **phase jitter** (a subtle non-tonal shimmer that keeps the tone from being sterile), slow **DC-offset wander**, and per-instance **component spread** (each instance detuned/timbrally unique → instant analog unison when stacked). The headline "sounds alive" differentiator. | MEDIUM | Verbatim `DriftEngine::step()`. **Critical calibration flag:** authority constants are tuned for an LFO (max 7.5% free / 2% clocked of *rate*). 7.5% of *pitch* ≈ **~125 cents** — a wild, unmusical warble on a VCO. The VCO has no "clocked" mode, so it would take the 7.5% branch. **The VCO needs its own, much smaller pitch-drift authority** (real analog drift ≈ ±5–30 cents ⇒ ~0.3–1.8%), audition-gated. Phase-jitter and DC authorities likely also want VCO-specific values. This is a real requirement, not a copy-paste. |
+| **Per-instance analog "fingerprint" (component spread)** | Because each module seeds its own spread, no two instances are identical — real hardware behavior, and the reason stacking instances = free unison. | LOW | Already produced by `setSpreadSeed()`; no new DSP beyond seeding on VCO construction. Reinforces the mono-is-OK story. |
+| **Note / pitch readout on the CRT** | The LFO shows BPM; the VCO can show resolved note + frequency (e.g. "A4 · 440 Hz") in a display pill — genuinely useful for tuning and a natural idiom swap. | LOW–MEDIUM | Display-only; reads the pitch the DSP already computes. |
 
-| Section | Value Proposition | Effort | Notes |
-|---------|-------------------|--------|-------|
-| "Understanding the Analog Engine" conceptual page | The Morph/Character/Drift model is the core value (PROJECT.md) — a dedicated mental-model page makes it click | MED | The 3-axis explainer below. The single highest-leverage page for this product |
-| Patch / usage examples (2-4) | VCV users learn by patching; examples drive adoption | MED | LFO-appropriate examples below. Ideally with a screenshot or .vcv download |
-| Animated GIFs of drift + SYNC flash | Drift and the per-edge SYNC flash are time-based — static images can't show them (Stoermelder uses GIFs exactly here) | MED | One GIF of the ember waveform drifting; one of the SYNC badge locking |
-| Troubleshooting / FAQ | Pre-empts support questions ("why won't it sync?", "ratios feel off") | LOW | Short Q&A. Address known v1.4 fixes (tempo jumps, x1.5 alignment) as resolved |
-| "Tips & tricks" / sweet spots | Curated knob recipes invite exploration (Character x² curve rewards it) | LOW | e.g. "Drift ~30% + Character ~60% on a triangle = vintage Juno wobble" |
-| Quick-start / "first 60 seconds" callout | Lowers the barrier; a single callout box at the top | LOW | "Patch the output to a filter cutoff, sweep Morph, turn up Character." Notion callout block |
+### Anti-Features (Commonly Requested, Often Problematic)
 
-### Anti-Features (Documentation Pitfalls to Avoid)
+| Feature | Why Requested | Why Problematic | Alternative / Decision |
+|---------|---------------|-----------------|------------------------|
+| **Per-shape simultaneous outputs (sin/tri/saw/sqr jacks)** | It's what Fundamental/Bogaudio/EvenVCO do; users pattern-match to "normal VCO." | Destroys the identity — the morph crossfade *is* the product; separate outs make MORPH meaningless and blow up the panel. | **Keep the single morphed ±5 V output.** Genre-correct for a morph/macro oscillator (Plaits/Surge do the same). A design pillar, not a shortcoming. |
+| **Wavetable mode** | "Add a wavetable and it's a Serum-killer." | Different synthesis paradigm; dilutes the analog identity; huge scope. Already PROJECT out-of-scope. | Out. The analog morph *is* the wave palette. |
+| **Built-in sub-oscillator** | Common on bass VCOs. | Adds a knob/jack and a second core; dilutes the three-knob focus; panel cost. | Out. Patch a second instance an octave down (spread gives free detune). |
+| **Polyphony (v2.0)** | Modern default; chords from one module. | 16× CPU, 16× drift engines, per-voice display ambiguity; plugin-wide decision. | Out for v2.0; document mono clearly; strongest v2.1+ reconsideration. Duplicate instances for unison now. |
+| **Through-zero FM** | Deep metallic/bell FM; Bogaudio has it. | DC-offset + phase-sign handling + interacts with polyBLEP; genuine complexity. | **Deferred to v2.1** (PROJECT Future). v2.0 ships expo FM only. |
+| **Phase distortion (Casio-CZ)** | Distinct, loved synthesis flavor. | A whole separate synthesis mode, not a knob; better as its own scoped increment. | **Deferred to v2.1.** |
+| **Off/2×/4× oversampling switch** | The "serious anti-aliasing" toggle. | Anti-aliasing infra; prove morph-aware polyBLEP first before adding oversampled paths. | **Deferred to v2.1.** Ship clean single-rate polyBLEP first. |
+| **Linear FM mode (v2.0)** | Pairs with expo for classic FM. | Adds a mode/jack; its natural partner (TZFM) is already deferred; keep v2.0 lean. | Expo FM only for v2.0. Reconsider alongside TZFM in v2.1. |
+| **Separate PWM knob/CV** | Users expect a PW knob on a square. | PWM is already *inside* morph (square→narrow-pulse region); a separate knob double-encodes duty and confuses the sweep. | Out — pulse width is the morph tail, by design (matches the LFO decision). |
+| **Amplitude envelope / VCA / built-in FX / MIDI / quantizer / scope-analyzer** | "One module does everything." | Oscillators oscillate; these are upstream/downstream jobs. All already PROJECT out-of-scope. | Out. |
+| **Tracking-error modeling toggle** | Authentic non-linear tracking. | Realism polish that fights *correct* pitch tracking; low priority. | **Deferred to v2.1.** Get accurate 1V/oct first; drift already provides "alive" wander. |
 
-| Pitfall | Why Tempting | Why Problematic | Instead |
-|---------|--------------|-----------------|---------|
-| Documenting DSP internals (OU layers, EMA alpha, crossfade ms) in the user manual | The engineering is impressive | Users don't care; obscures usage; ties docs to implementation | Keep internals in code/README; manual describes *behavior and feel* |
-| One giant single page | Easy to write | Hard to scan/link; Notion ToC gets unwieldy; bad on mobile | Subpage-per-section tree (below). Each section deep-linkable |
-| Tables-only OR prose-only | Consistency | Tables lack the "why"; prose lacks scannability | Hybrid: control **table** for reference + short prose for concepts (beats every surveyed manual) |
-| Hardware-style electrical specs (impedance, etc.) | Looks authoritative | Meaningless in software; not a VCV convention | Voltage ranges and signal polarity only |
-| Inventing/aspirational features | Filling the page | Documents things that don't ship; erodes trust | Document only shipped behavior; defer VCO to a future "Series" page |
-| Re-explaining how VCV Rack works | Helpful to novices | Bloat; VCV's own manual owns this | Link to vcvrack.com/manual for general Rack concepts |
-| Trademark-y "sounds like a Minimoog" claims | Marketing punch | Legal/trademark risk (already an Out-of-Scope concern in PROJECT.md) | "Classic-synth-inspired character references"; describe the *behavior* |
-
----
-
-## Recommended Notion Page Tree (Concrete)
-
-Top-level published page + subpages. Each subpage has its own `/Table of contents` block and is independently deep-linkable. This mirrors VCV's "Core Concepts then modules" and Stoermelder's per-feature split, adapted to a single module.
+## Feature Dependencies
 
 ```
-📕 Forge Audio — Analog LFO — User Manual        ← top-level, "Share to web" ON
-│   (Hero panel image; one-paragraph overview; quick-start callout;
-│    /Table of contents block linking to every subpage)
-│
-├── 1. Overview & Concept
-│       What it is, who it's for, the three-knob value prop, hero shot
-│
-├── 2. Understanding the Analog Engine   ★ differentiator, highest leverage
-│       The Morph / Character / Drift mental model (3-axis explainer)
-│       One subsection per axis, each with its own waveform image/GIF
-│
-├── 3. Signal Flow
-│       Diagram (Mermaid or PNG): inputs → engine → single ±5V output;
-│       CLK → tracker → rate-mode switch
-│
-├── 4. Controls Reference
-│       Annotated panel screenshot (numbered callouts)
-│       Control reference TABLE (template below)
-│       4a. Rate knob — dual mode (free Hz / 15 musical ratios)
-│       4b. Phase Offset (knob + CV)
-│
-├── 5. Inputs & Outputs
-│       Jack reference table (CV ranges, polarity, FM, RESET, CLK, output)
-│
-├── 6. Clock Sync
-│       3-state tracker + SYNC badge states; phase reset; swing interaction;
-│       reading the display pills (ratio / BPM / incoming BPM)
-│
-├── 7. The Display
-│       Three-column CRT layout: SYNC badge, ratio/BPM pills, ember waveform,
-│       phase dot. Animated GIF of drift + SYNC flash
-│
-├── 8. Right-Click Menu Options
-│       Swing presets and any other menu items; screenshot of open menu
-│
-├── 9. Patch Examples            ★ differentiator
-│       2-4 LFO-appropriate recipes (below), each with screenshot
-│
-├── 10. Installation
-│       10a. From the VCV Library (recommended)
-│       10b. Manual install (.vcvplugin)
-│
-├── 11. Troubleshooting / FAQ
-│
-└── 12. Version History (Changelog) · Credits · License
-        From MILESTONES.md; GPL-3.0; source repo + Library links
+1V/oct tracking (exp2 path)
+    └──required by──> Exponential FM   (both sum into the same pitch/exp2 path)
+    └──required by──> Coarse/Fine tune (pitch summation)
+
+Morph-aware polyBLEP anti-aliasing  ── the linchpin ──
+    ├──required by──> MORPH as audio timbre   (continuous crossfade must be band-limited)
+    ├──coupled-with─> CHARACTER                (must band-limit the *characterized* edges, not ideal shapes)
+    └──coupled-with─> Hard sync                (sync discontinuity needs its own BLEP correction)
+
+DRIFT at audio rate
+    └──requires──> VCO-specific drift authority recalibration
+                   (LFO's 7.5% pitch authority ≈ 125 cents = unmusical; needs ~0.3–1.8%)
+
+Component spread (per-instance seed)
+    └──enhances──> stacking instances = analog unison  (mitigates mono limitation)
+
+Single morphed output ──conflicts with──> per-shape outputs (mutually exclusive by design)
+Polyphony ──conflicts with──> per-voice DRIFT engine cost (why v2.0 is mono)
 ```
 
-**Authoring order (the template's "MVP" reframed):**
-- **Write first (table-stakes spine):** 1, 4, 5, 8, 10, 12. A manual with just these is *complete and shippable*.
-- **Write second (the value-add that sells the module):** 2, 6, 7, 9.
-- **Write last (polish):** 3 (diagram), 11, tips/quick-start callout.
+### Dependency notes
+- **Anti-aliasing is the critical path.** MORPH (differentiator), CHARACTER (differentiator), and hard sync (table stake) all depend on the same morph-aware polyBLEP. It should be its own early phase; the three features layer on top. This is the milestone's dominant risk.
+- **FM / coarse / fine are cheap** once the exp2 pitch path is wired — all pitch summation into one place, reusing the LFO's proven `exp2_taylor5`.
+- **DRIFT is a copy of the engine + a calibration task**, not new DSP. The calibration (finding a musical pitch-drift authority, audition-gated) is the real work and must not be skipped by reusing LFO constants.
 
----
+## MVP Definition
 
-## Control-Reference Table Template (the spine of the manual)
+### Launch With (v2.0)
+- [ ] **1V/oct tracking** (exp2 path) — the defining VCO contract
+- [ ] **Coarse + fine tune** — table stakes, cheap once the pitch path exists
+- [ ] **Morph-aware polyBLEP anti-aliasing** — the invisible table stake; everything timbral depends on it
+- [ ] **MORPH / CHARACTER at audio rate** — the core identity (band-limited)
+- [ ] **DRIFT at audio rate with VCO-specific authority** — headline differentiator + required recalibration
+- [ ] **Hard sync input** — table stake; coupled to polyBLEP
+- [ ] **Exponential FM in + attenuverter** — table stake (the attenuverter is not optional)
+- [ ] **±5 V single morphed output** with saturation — table stake + design pillar
+- [ ] **Static single-cycle CRT preview + note/Hz readout** — carried expectation, no live scope
 
-Use one table for panel **controls** and a separate table for **jacks**. Improves on every surveyed manual (none use a clean table).
+### Add After Validation (v2.1)
+- [ ] Through-zero FM — deep FM timbres once expo FM + polyBLEP are proven
+- [ ] Off/2×/4× oversampling — after single-rate polyBLEP is trusted
+- [ ] Linear FM mode — natural partner to TZFM
+- [ ] Tracking-error modeling (right-click) — realism polish on accurate tracking
 
-**Controls (knobs / buttons):**
+### Future Consideration (v2.x+)
+- [ ] Phase distortion (Casio-CZ) — a distinct synthesis mode, its own increment
+- [ ] Polyphony — only if the *plugin-wide* mono decision is revisited; requires per-voice drift engines
 
-| # | Control | Type | Range / Default | What it does | CV input? |
-|---|---------|------|-----------------|--------------|-----------|
-| 1 | Morph | Knob | Sine→Tri→Saw→Square→Pulse, continuous | Selects waveform shape along one continuous axis | Yes (Morph CV) |
-| 2 | Character | Knob | 0–100%, default 0 | Digital-clean → classic-synth analog modeling, per shape (x² curve — subtle early) | Yes (Character CV) |
-| 3 | Drift | Knob | 0–100% | Multi-timescale analog pitch instability (jitter, wander, slew, spread) | Yes (Drift CV) |
-| 4 | Rate | Knob | Free: ~0.01–20 Hz · Clocked: 15 ratios (/16…×16) | LFO speed; **switches to musical ratios when CLK is patched** | Yes (Rate CV) |
-| 5 | Phase Offset | Knob | 0–360° | Shifts output phase at the readout | Yes (Phase CV) |
+## Feature Prioritization Matrix
 
-(The `#` column maps to the numbered callouts on the annotated panel screenshot.)
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| 1V/oct tracking | HIGH | MEDIUM | P1 |
+| Morph-aware polyBLEP | HIGH (invisible) | HIGH | P1 |
+| MORPH audio-rate | HIGH | LOW (engine reuse) | P1 |
+| CHARACTER audio-rate | HIGH | MEDIUM (aliasing-coupled) | P1 |
+| DRIFT audio-rate + recalibration | HIGH | MEDIUM (calibration, not DSP) | P1 |
+| Coarse/Fine tune | HIGH | LOW | P1 |
+| Expo FM + attenuverter | HIGH | MEDIUM | P1 |
+| Hard sync | MEDIUM–HIGH | MEDIUM (BLEP-coupled) | P1 |
+| ±5 V single output + saturation | HIGH | LOW | P1 |
+| Static CRT preview + note readout | MEDIUM | MEDIUM | P1 |
+| Through-zero FM | MEDIUM | HIGH | P3 (v2.1) |
+| Oversampling switch | MEDIUM | MEDIUM | P3 (v2.1) |
+| Linear FM | LOW–MEDIUM | LOW | P3 (v2.1) |
+| Tracking-error model | LOW | LOW | P3 (v2.1) |
+| Phase distortion | MEDIUM | HIGH | P3 (v2.x) |
+| Polyphony | HIGH | HIGH | P3 (plugin decision) |
 
-**Inputs & Outputs (jacks):**
+## Controls / Panel (18HP Forge Noir, LFO-derived)
 
-| Jack | Dir | Signal / Range | Notes |
-|------|-----|----------------|-------|
-| Morph CV | In | ±5 V (bipolar) | Adds to Morph knob |
-| Character CV | In | 0–10 V (or ±5 V — confirm in code) | Adds to Character |
-| Drift CV | In | ±5 V | Scales drift amount; display responds to CV |
-| Rate CV | In | ±5 V | Free: V/oct-like; Clocked: selects ratio |
-| Phase CV | In | ±5 V | Adds to Phase Offset |
-| FM | In | ±5 V | Exponential FM; reduced authority when clocked |
-| CLK | In | Trigger/gate | Engages clock sync; switches Rate to ratio mode |
-| RESET | In | Trigger | Resets phase with anti-click crossfade; 1 ms blanking |
-| OUT | Out | ±5 V bipolar | Single morphed output (no inverted/discrete outs by design) |
+The VCO maps almost 1:1 onto the LFO's shipped 18HP layout — same 5 main knobs, same display, same "trimpots-over-jacks" bottom convention — by **swapping LFO-specific I/O for VCO I/O**. A low-risk panel evolution, not a redesign.
 
-> Confirm exact CV voltage ranges/polarity against `AnalogLFO.cpp` before publishing — the manual must match shipped behavior, not assumptions. Add a "Polyphony: monophonic by design" footer line (Bogaudio convention).
+**Main knobs (5 — identical count to the LFO):**
+- MORPH, CHARACTER, DRIFT (the three engine axes — unchanged)
+- **COARSE** (replaces LFO RATE) — wide tune, ±~5 octaves, optional right-click octave/semitone snap
+- **FINE** (replaces LFO PHASE) — ±1 semitone detune
 
----
+**Jacks + attenuverters (bottom two rows, trimpots above jacks):**
+- **V/OCT in** (new — the primary input)
+- **FM in + FM attenuverter** (the one net-new control vs the LFO)
+- **SYNC in** (new — replaces CLK/RESET)
+- **MORPH CV + atten**, **CHARACTER CV + atten**, **DRIFT CV + atten** (unchanged — LFO already has these trimpots)
+- **OUT** (single morphed ±5 V — unchanged)
 
-## Presenting the 3-Axis Analog Engine to New Users
+**Panel-fit assessment:** MEDIUM density, fits. Jack count rises slightly (V/OCT, FM, SYNC, 3× CV, OUT = 7 jacks + 4 attenuverters) vs the LFO, but the LFO already carried CLK/FM/RESET/phase-CV/3× main-CV in the same 18HP with room. The FM attenuverter is the only genuinely new widget to place. No panel expansion needed.
 
-The hardest documentation problem here. Recommended framing (used in section 2):
+## Display: what's realistic at audio rate
 
-**Anchor metaphor — "three independent dials on a vintage oscillator":**
-- **Morph = WHAT shape** — "Pick your waveform by turning one knob instead of flipping a switch. It sweeps smoothly: Sine → Triangle → Saw → Square → Pulse." (Show the five shapes as a labeled strip image, with the in-between morph positions called out.)
-- **Character = HOW analog** — "From a clean digital waveform to the warmth and imperfection of classic analog synths. Each shape has its own character target. The effect is gentle at first and grows as you turn it up." (x² curve — say "rewards turning it past halfway".)
-- **Drift = HOW alive** — "Real analog circuits never sit perfectly still. Drift adds slow, organic instability — the higher you go, the more the pitch wanders and breathes. Watch the waveform on the display move on its own." (This is where the **animated GIF** earns its place.)
+**Recommendation: keep the static single-cycle morph preview (like the LFO), and drop/repurpose the spinning phase dot.**
 
-**Presentation tactics:**
-1. **One subsection per axis**, each with its own image, in Morph→Character→Drift order (matches the knob layout and PROJECT.md's "natural progression").
-2. **A small 3-cell comparison callout**: same patch at (clean), (warm), (wild) — three screenshots showing the display.
-3. **"They're independent"** stated explicitly — the key insight is that the three axes don't fight each other.
-4. **Lead with feel, not DSP.** Never mention Ornstein-Uhlenbeck, EMA, or layer frequencies in the user manual.
+- A **live oscilloscope trace is not viable** — at audio rate the waveform completes hundreds–thousands of cycles per rendered frame; a real trace would be a blur or need heavy sync/decimation for no benefit.
+- The **single-cycle preview is exactly right**: render one cycle of the current morphed+characterized shape, updating in real time as MORPH/CHARACTER/DRIFT (and their CV) move — the same code path and lock-free double-buffer the LFO already uses. It communicates timbre, which is the whole point.
+- **The phase dot should be dropped or decoupled.** At real pitch it spins far too fast to read (a blur). Either omit it, or animate a cosmetic indicator at a fixed visually-pleasant rate independent of actual frequency (honest cosmetic, not a measurement).
+- **DRIFT visualization carries over** — the display can subtly show drift-induced deformation exactly as the LFO does (the atomic `displayDrift` bridge already exists).
+- **Swap the readout pill:** LFO shows BPM/ratio; VCO shows **resolved note + frequency** ("A4 · 440 Hz"). Useful for tuning, idiomatic, reuses the existing pill/HUD rendering.
+- Guardrail: this stays a *preview*, not a scope/analyzer (PROJECT out-of-scope: "display is shape preview, not measurement tool").
 
----
+## Competitor Feature Analysis
 
-## Patch / Usage Examples (LFO-appropriate, 2–4)
-
-| # | Name | What it teaches | Patch |
-|---|------|-----------------|-------|
-| 1 | **Slow filter sweep** (first patch) | Core use as a modulation source; Morph + Character feel | OUT → filter cutoff CV. Set Rate slow (~0.2 Hz), sweep Morph, raise Character. Hear the shape and warmth change |
-| 2 | **Tempo-synced wobble** | Dual-mode Rate + clock sync + SYNC badge | Clock module → CLK. Rate now snaps to ratios; pick ÷2. OUT → VCA or filter for a beat-locked LFO. Watch the BPM/ratio pills |
-| 3 | **Living analog vibrato / instability** | Drift as the headline differentiator | OUT (small attenuation) → VCO 1V/oct or FM. Turn Drift up to hear organic, never-repeating pitch wander |
-| 4 | **Self-FM / evolving texture** (advanced) | FM input + Phase Offset + swing | Patch OUT → FM (or a second LFO → FM). Add swing via right-click for groove; use Phase Offset to align with other modulators |
-
-Each example: short setup steps + a screenshot of the patch. Example 1 doubles as the quick-start.
-
----
-
-## Installation Instructions (Both Paths — Verified Against vcvrack.com/manual/Installing)
-
-**A. From the VCV Library (recommended, once accepted):**
-1. Open **library.vcvrack.com**, log in with your VCV account.
-2. Find **Forge Audio — Analog LFO** and click **Add to my library** (subscribe).
-3. In VCV Rack, choose **Library → Update all** (or Sync) and restart Rack if prompted.
-4. The module appears in the browser under **Forge Audio**.
-
-**B. Manual install via `.vcvplugin` (pre-Library / power users):**
-1. In Rack: **Help → Open user folder** (opens the `Rack2` folder).
-2. Open `plugins-<OS>-<CPU>/` (e.g. `plugins-mac-arm64`, `plugins-win-x64`, `plugins-lin-x64`).
-3. Copy the downloaded `ForgeAudio-AnalogLFO-x.x.x.vcvplugin` into that folder.
-4. Restart VCV Rack — Rack extracts and loads the plugin on launch.
-5. Troubleshooting note: if it doesn't appear, check `log.txt` in the user folder, and verify the **plugin major version matches your Rack major version (2.x)**.
-
-> Include a security note (VCV's own warning): only install plugins from trusted sources. Link the source GitHub repo and the Library page.
-
----
-
-## Notion-Specific Structuring Best Practices (Verified Against Notion Help Docs)
-
-| Practice | Recommendation | Source-backed |
-|----------|----------------|---------------|
-| Page hierarchy | Use the **Wiki** feature or a parent page with subpages (one per manual section). Nested subpages = clean left-sidebar nav | Notion Wiki feature / help docs |
-| Table of contents | Add a **`/Table of contents` block** at the top of the top-level page and each long subpage — auto-populates from H1/H2/H3 headings | Notion content-blocks help |
-| Callouts | Use **callout blocks** for quick-start, tips, and warnings (e.g. "⚠️ Rate switches modes when CLK is patched"). Callouts now support custom titles, hidden emoji, toggles | Notion content-blocks help |
-| Control reference | Use Notion **simple tables** (not databases) for the control/jack reference — render cleanly when published, no DB overhead | Notion blocks |
-| Images / diagrams | Drag-drop PNGs; the **annotated panel screenshot** is the page anchor. Images can be hyperlinked. Embed GIFs natively for drift/SYNC animation | Notion embeds/images help |
-| Signal-flow diagram | Notion supports `/code` with **Mermaid** for a maintainable signal-flow diagram, or a PNG export | Notion blocks |
-| Publishing | **Share → Share to web** ON. Optionally set a custom domain/site. Test with a small group before announcing | Notion "Publish a Notion Site" help |
-| Publish settings | For a public manual, keep **"Allow duplicate as template" off** unless desired; **search-engine indexing on** so users can find it; comments/editing off for the public link | Notion sharing & permissions help |
-| Cross-linking | Link section subpages with `@`-mentions / page links so the diagram, control table, and clock-sync page reference each other | Notion |
-
----
-
-## Section Dependencies (Authoring Order)
-
-```
-Annotated panel screenshot
-    └──feeds──> Controls Reference table (# callouts map to rows)
-    └──feeds──> Inputs & Outputs table
-
-Understanding the Analog Engine (concept)
-    └──prereq for──> Patch Examples (examples assume the mental model)
-
-Clock Sync section
-    └──prereq for──> Rate dual-mode subsection (ratios only make sense with sync)
-    └──prereq for──> Display section (pills show ratio/BPM)
-
-MILESTONES.md ──source──> Changelog
-AnalogLFO.cpp ──source-of-truth──> Control + I/O tables (verify ranges)
-```
-
----
-
-## Table-Stakes vs Nice-to-Have (Final Split)
-
-**Table-stakes (a VCV manual is incomplete without these):**
-Overview/Concept · Annotated panel screenshot · Controls reference table · Inputs/Outputs reference · Right-click menu section · Rate dual-mode explanation · Clock-sync explanation · Installation (Library + manual) · Changelog · Credits/License.
-
-**Nice-to-have (elevate the manual; serve this module's unusual engine):**
-"Understanding the Analog Engine" page · Signal-flow diagram · Patch examples · Animated GIFs · Troubleshooting/FAQ · Tips & sweet spots · Quick-start callout · The Display deep-dive.
-
-**Cut / avoid:** DSP internals · single-giant-page · electrical specs · trademark claims · re-teaching VCV Rack basics · documenting unreleased VCO features.
-
----
+| Feature | Fundamental / Bogaudio | Befaco EvenVCO | Plaits/Braids (Audible) / Surge XT | Forge Analog VCO (our approach) |
+|---------|------------------------|----------------|-------------------------------------|----------------------------------|
+| Waveform outputs | simultaneous multi-jack | multi-jack + Even | **single** (timbre = knob/model) | **single morphed** ±5 V |
+| Timbre control | pick a jack | pick a jack | MODEL/morph knob | continuous MORPH knob (+CV/atten) |
+| Character/warmth | fixed | fixed (even harmonics) | model-dependent | continuous CHARACTER axis (unique) |
+| Analog instability | none/subtle | analog by nature | none (digital) | explicit DRIFT axis (unique) |
+| FM | expo + linear (+TZ Bogaudio) | linear | expo (+TZ some) | expo only (v2.0); TZ deferred |
+| Hard sync | yes | yes | yes | yes |
+| Polyphony | yes | **no (mono)** | yes | **no (mono, v2.0)** — per-voice drift cost |
+| Anti-aliasing | bandlimit + oversample | analog | bandlimit/oversample | morph-aware polyBLEP (single-rate v2.0) |
+| Display | minimal/none | none | some (Surge) | real-time single-cycle CRT (differentiator) |
 
 ## Sources
 
-- [VCV Rack — Installing & Running](https://vcvrack.com/manual/Installing) (HIGH — official; both install paths)
-- [VCV Rack — Plugin Manifest](https://vcvrack.com/manual/Manifest) (HIGH — plugin.json / manual URL field)
-- [VCV Rack — official Manual](https://vcvrack.com/manual/) (HIGH)
-- [Surge XT VCV Rack Modules Manual](https://surge-synthesizer.github.io/rack_xt_manual/) (HIGH — structure reference)
-- [Stoermelder PackOne — MIDI-CAT docs](https://github.com/stoermelder/vcvrack-packone/blob/v1/docs/MidiCat.md) (HIGH — per-feature sections + appended changelog + GIFs)
-- [Stoermelder PackOne — docs index](https://github.com/stoermelder/vcvrack-packone) (HIGH)
-- [Bogaudio Modules — README](https://github.com/bogaudio/BogaudioModules) (HIGH — standardized polyphony/bypass footers)
-- [CDM — VCV Rack's new docs for free modules](https://cdm.link/vcv-rack-free-docs/) (MEDIUM — illustrated-docs philosophy)
-- [Myk Eff — Adding Plugins to VCV Rack](https://soundand.design/adding-plugins-to-vcv-rack-f3d9ce5bba0e) (MEDIUM — community install walkthrough)
-- [MetaModule — Manual VCV plugin install](https://metamodule.info/docs/rack_manual_install.html) (MEDIUM — .vcvplugin folder steps)
-- [Notion — Publish a Notion Site](https://www.notion.com/help/public-pages-and-web-publishing) (HIGH — publish/share-to-web)
-- [Notion — Types of content blocks](https://www.notion.com/help/guides/types-of-content-blocks) (HIGH — ToC, callout, table blocks)
-- [Notion — Sharing & permissions](https://www.notion.com/help/sharing-and-permissions) (HIGH — public-page settings)
-- [Notion — Embeds & images](https://www.notion.com/help/embed-and-connect-other-apps) (HIGH)
-- [Notion VIP — Wiki feature](https://www.notion.vip/insights/notions-wiki-feature-overlooked-superpower) (MEDIUM — hierarchy patterns)
-- Internal: `.planning/PROJECT.md`, `.planning/MILESTONES.md` (HIGH — module behavior + changelog source)
+- [VCV Rack Voltage Standards](https://vcvrack.com/manual/VoltageStandards) — 1V/oct, C4 = 0V baseline, ±5 V / 10 Vpp output, saturation guidance, polyphony recommendation (up to 16 ch keyed off V/oct) — HIGH
+- [Bogaudio VCO — VCV Library](https://library.vcvrack.com/Bogaudio/Bogaudio-VCO) — simultaneous outs, expo+linear TZFM, PWM, poly, bandlimit+oversample — HIGH
+- [BogaudioModules README](https://github.com/bogaudio/BogaudioModules/blob/master/README.md) — HIGH
+- [Befaco Even VCO — vendor page](https://www.befaco.org/even-vco/) and [VCV Library](https://library.vcvrack.com/Befaco/EvenVCO) — mono, 7–10 octave tracking, hard sync, linear FM, PWM, Even output — HIGH
+- [Instruō Cš-L manual](https://www.instruomodular.com/wp-content/uploads/2019/09/Cs-L-Manual-A5.pdf) — complex morphing oscillator, wavefolder/symmetry biasing, multi-out — MEDIUM
+- [Surge XT VCV Rack manual](https://surge-synthesizer.github.io/rack_xt_manual/) — multi-model single-output oscillators — MEDIUM
+- Engine source read directly: `src/dsp/Waveshape.hpp`, `src/dsp/DriftEngine.hpp`, `docs/engine-concept.md`, `.planning/PROJECT.md` — HIGH (authoritative for reuse/dependency/calibration claims)
 
 ---
-*Feature research for: VCV Rack module user manual authored in Notion*
-*Researched: 2026-06-14*
+*Feature research for: VCV Rack analog morphing VCO (v2.0, `ForgeAudio-AnalogSeries`)*
+*Researched: 2026-07-20*
