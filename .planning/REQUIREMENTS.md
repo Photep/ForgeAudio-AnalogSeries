@@ -112,29 +112,66 @@ Explicitly excluded from the Analog Series VCO by design.
 
 ## Traceability
 
-Populated by the roadmapper. Every v1 requirement maps to exactly one phase.
+Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; numbering continues from v1.4's Phase 28).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PITCH-01..05 | TBD | Pending |
-| FM-01..03 | TBD | Pending |
-| MORPH-01..02 | TBD | Pending |
-| AA-01..05 | TBD | Pending |
-| SYNC-01..02 | TBD | Pending |
-| CHAR-01 | TBD | Pending |
-| DRIFT-01..03 | TBD | Pending |
-| OUT-01..03 | TBD | Pending |
-| DISP-01..03 | TBD | Pending |
-| PANEL-01..03 | TBD | Pending |
-| CORE-01..03 | TBD | Pending |
-| TEST-01..06 | TBD | Pending |
-| REL-01 | TBD | Pending |
+| PITCH-01 | Phase 31 | Pending |
+| PITCH-02 | Phase 31 | Pending |
+| PITCH-03 | Phase 31 | Pending |
+| PITCH-04 | Phase 31 | Pending |
+| PITCH-05 | Phase 31 | Pending |
+| FM-01 | Phase 31 | Pending |
+| FM-02 | Phase 31 | Pending |
+| FM-03 | Phase 31 | Pending |
+| MORPH-01 | Phase 32 | Pending |
+| MORPH-02 | Phase 32 | Pending |
+| AA-01 | Phase 32 | Pending |
+| AA-02 | Phase 32 | Pending |
+| AA-03 | Phase 32 | Pending |
+| AA-04 | Phase 32 | Pending |
+| AA-05 | Phase 32 | Pending |
+| SYNC-01 | Phase 33 | Pending |
+| SYNC-02 | Phase 33 | Pending |
+| CHAR-01 | Phase 34 | Pending |
+| DRIFT-01 | Phase 34 | Pending |
+| DRIFT-02 | Phase 34 | Pending |
+| DRIFT-03 | Phase 34 | Pending |
+| OUT-01 | Phase 34 | Pending |
+| OUT-02 | Phase 34 | Pending |
+| OUT-03 | Phase 34 | Pending |
+| DISP-01 | Phase 35 | Pending |
+| DISP-02 | Phase 35 | Pending |
+| DISP-03 | Phase 35 | Pending |
+| PANEL-01 | Phase 35 | Pending |
+| PANEL-02 | Phase 35 | Pending |
+| PANEL-03 | Phase 30 | Pending |
+| CORE-01 | Phase 30 | Pending |
+| CORE-02 | Phase 32 | Pending |
+| CORE-03 | Phase 30 | Pending |
+| TEST-01 | Phase 29 | Pending |
+| TEST-02 | Phase 31 | Pending |
+| TEST-03 | Phase 32 | Pending |
+| TEST-04 | Phase 29 | Pending |
+| TEST-05 | Phase 36 | Pending |
+| TEST-06 | Phase 29 | Pending |
+| REL-01 | Phase 36 | Pending |
 
 **Coverage:**
-- v1 requirements: 37 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 37 ⚠️ (resolved when roadmap is created)
+- v1 requirements: 40 total (enumerated IDs; supersedes the earlier "37" summary miscount)
+- Mapped to phases: 40 ✓
+- Unmapped: 0 ✓
+
+**Phase → requirement rollup:**
+- Phase 29 (Test Harness & Guardrail): TEST-01, TEST-04, TEST-06
+- Phase 30 (Skeleton & Registration): CORE-01, CORE-03, PANEL-03
+- Phase 31 (Pitch, Tuning & FM): PITCH-01..05, FM-01..03, TEST-02
+- Phase 32 (Anti-Aliasing): MORPH-01..02, AA-01..05, CORE-02, TEST-03
+- Phase 33 (Hard Sync): SYNC-01..02
+- Phase 34 (Analog Engine, Drift & Output): CHAR-01, DRIFT-01..03, OUT-01..03
+- Phase 35 (Shell, Panel & Display): PANEL-01..02, DISP-01..03
+- Phase 36 (Goldens, CI & Library Update): TEST-05, REL-01
 
 ---
 *Requirements defined: 2026-07-20*
-*Last updated: 2026-07-20 after initial v2.0 VCO definition*
+*Last updated: 2026-07-20 — traceability populated by roadmapper (Phases 29-36); coverage corrected from 37 to 40 enumerated IDs*
