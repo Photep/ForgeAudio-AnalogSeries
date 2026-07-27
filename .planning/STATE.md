@@ -1,10 +1,14 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.0
-milestone_name: VCO
+milestone_name: Forge Analog VCO
+current_phase: 29
+current_phase_name: VCO Test Harness & LFO Non-Regression Guardrail
 status: planning
-last_updated: "2026-07-20T09:15:00.000Z"
+stopped_at: Phase 29 context gathered
+last_updated: "2026-07-27T10:40:27.478Z"
 last_activity: 2026-07-20
+last_activity_desc: v2.0 roadmap created (Phases 29-36), 40/40 requirements mapped
 progress:
   total_phases: 8
   completed_phases: 0
@@ -101,8 +105,10 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 
 ## Session Continuity
 
-Last session: 2026-07-20 — v2.0 roadmap created (Phases 29-36).
-Stopped at: ROADMAP.md written, REQUIREMENTS.md traceability populated (40/40), STATE.md updated.
+**Resume file:** .planning/phases/29-vco-test-harness-lfo-non-regression-guardrail/29-CONTEXT.md
+
+Last session: 2026-07-27T10:40:27.471Z
+Stopped at: Phase 29 context gathered
 Resume: run `/gsd-plan-phase 29` to plan the VCO test harness + LFO guardrail phase.
 
 ## Operator Next Steps
