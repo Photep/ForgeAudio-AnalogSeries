@@ -21,6 +21,15 @@
         "Low-frequency oscillator",
         "Waveshaper"
       ]
+    },
+    {
+      "slug": "ForgeAnalogVCO",
+      "name": "Analog VCO",
+      "description": "Audio-rate morphing oscillator with analog character",
+      "tags": [
+        "Voltage-controlled oscillator",
+        "Waveshaper"
+      ]
     }
   ]
 }
