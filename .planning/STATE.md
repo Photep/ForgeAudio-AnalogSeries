@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
 status: executing
-stopped_at: Completed 30-02-PLAN.md
-last_updated: "2026-07-28T22:30:26.378Z"
+stopped_at: Completed 30-05-PLAN.md
+last_updated: "2026-07-28T22:39:56.910Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 30 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 13
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-07-28 — Phase 30 execution started
 
@@ -98,6 +98,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 30]: CORE-01 invariants are measured on the OUTPUT, never on tel telemetry — and the D-16 pitch case is labelled NOT the TEST-02 tracking gate in both the file banner and the case name — A telemetry assertion only re-reads the number step() computed three lines earlier and stays green through a dead accumulator. Measured results reproduce the researcher's figures to six digits (divergence 0.233229/0.233235/0.233187 V, worst-case magnitude 5.51803 V at all three rates), confirming the landed step() body is the prototype the margins were measured against. Worst pitch error in the grid is 0.0078 %, better than one cent, which is exactly why the NOT-TEST-02 label is written twice.
 - [Phase 30]: tests/test_vco_core.cpp had to be registered in check_includes.sh [1/7] VCO_SIDE_ALLOW — a new VCO test TU is LFO-side by default and make guards exits 1 the moment it lands — Section [1/7] derives its LFO-side scan set as everything under src/, tests/ and tools/ MINUS the named VCO-side files. The new TU includes VcoBlockDriver.hpp -> VcoCore.hpp by construction, so the guard's own failure text names the remedy. Same kind of file and same documented reason as tests/test_vco_harness.cpp since Phase 29. Exact-path match proved by a near-miss fixture that still fails. Unlike plan 30-01's [2/7] change this weakens no detector, but it was NOT operator-checkpointed — flagged for 30-07's phase gate.
 - [Phase 30]: The researcher's 'sweepScenario maxes at exactly 5.0000 V' figure is BLOCK-LENGTH DEPENDENT, measured this session, and the source now records the table instead of repeating the sentence — Measured at all three rates: 5.000000 V at n=1024 and 0.05 s, 5.2104-5.2114 V at 0.25 s, 5.4383-5.4385 V at the 1 s block plan 30-03 specifies. Root cause is research's own explanation — sweepScenario anti-correlates morph=t with character=1-t, so whether the accumulator reaches peak phase while morph is still near zero depends on block length. This strengthens the case for the fixed morph 0/character 1 scenario: a sweep-only bound test has a margin that silently changes when anyone edits the block length.
+- [Phase 30]: The VCO has a Rack body — src/AnalogVCO.cpp is a four-control shell (V/OCT, MORPH, CHARACTER, OUT) that computes NOTHING: it fills forge::VcoInputs by field assignment, delegates every sample to core.step(in), and writes the voltage back, which is the only reason make test remains evidence about what Rack produces. Stock RoundBlackKnob/PJ301MPort widgets (D-08) keep src/AnalogLFO.cpp out of the milestone diff entirely. Model factory under the permanent slug ForgeAnalogVCO (D-01); registration is plan 30-06's, so the symbol exists, the plugin links, and the browser stays empty — the intended intermediate state. Durable control geometry: MORPH (30.48, 40), CHARACTER (60.96, 40), V/OCT (30.48, 100), OUT (60.96, 100) mm on a 91.44 x 128.5 mm (18.00 HP) panel.
+- [Phase 30]: The new TU joined make strict (3 -> 4 translation units), the plugin link and the CI MinGW compile-and-link loop with ZERO Makefile or CI wiring added — src/AnalogVCO.cpp was pre-registered in check_includes.sh VCO_SIDE_ALLOW (line 281) in Phase 29 before the file existed, so make guards was green on its first run, unlike 30-03's tests/test_vco_core.cpp. No guard-script edit was needed or made, and check_frozen.sh's FROZEN_EXPECTED_ENTRIES stayed at 15 for the new res/ asset.
+- [Phase 30]: The Phase-29 compile canary SURVIVED the one moment retiring it looked reasonable (T-30-10) — the three-of-eight VcoInputs field asymmetry (the shell feeds pitchCV/morph/character; src/vco_compile_canary.cpp feeds all eight, which is what makes check_canary.sh [2b/5] report eight fields runtime-live at -O3) is now written into BOTH src/AnalogVCO.cpp::process() and the .github/workflows/test.yml canary comment, so the argument survives either file being read alone. The stale CI sentence that scoped the canary to a world without src/AnalogVCO.cpp is gone; the workflow diff was comment-only, all 10 steps unrenamed and unreordered.
+- [Phase 30]: src/AnalogVCO.cpp's banner names the four forbidden C++ constructs by DESCRIPTION, not literal spelling — the plan requires the banner to state the C++11 rules AND requires a negative grep for those exact literals to return 0. Same trap class as 30-02's canary-matcher collision: a file that must document a rule it is simultaneously being grepped against. Same reason dataToJson is called "patch-state serialization" and the coordinates are not repeated in prose (mm2px must appear exactly four times).
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -130,13 +134,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P01 | 9 min | 3 tasks | 1 files |
 | Phase 30 P02 | 6 min | 3 tasks | 2 files |
 | Phase 30 P03 | 10 min | 3 tasks | 2 files |
+| Phase 30 P05 | 3 min | 3 tasks | 3 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-28T22:30:03.286Z
-Stopped at: Completed 30-02-PLAN.md
+Last session: 2026-07-28T22:39:35.090Z
+Stopped at: Completed 30-05-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
