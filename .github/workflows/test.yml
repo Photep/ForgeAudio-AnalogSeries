@@ -86,3 +86,14 @@ jobs:
           x86_64-w64-mingw32-g++ -municode -o build-ci/plugin.dll build-ci/*.o \
             -shared -L/tmp/win/Rack-SDK -lRack -static-libstdc++
           echo "win-x64 link gate: PASS"
+
+      # The two gates above only cover headers reached through a .cpp. Until
+      # Phase 30 lands src/AnalogVCO.cpp, the ONLY thing pulling the VCO headers
+      # into them is src/vco_compile_canary.cpp — so this guards the canary
+      # itself: that it still emits code (a bare-#include TU emits nothing and
+      # would leave the link leg above with nothing to resolve), that it is
+      # C++11-clean, that the C++17-ism gate demonstrably rejects known-bad
+      # synthetic TUs, and that every src/dsp/Vco*.hpp is still included by it
+      # (the D-08 growth rule). Needs no Rack SDK.
+      - name: VCO compile canary guard (D-07/D-08)
+        run: bash tests/check_canary.sh
