@@ -25,6 +25,10 @@
 #         synthetic translation units, so this guard is validated by an observed
 #         red rather than by never having been anything but green
 #   [5/5] D-08 growth rule — every src/dsp/Vco*.hpp is included by the canary
+#   [5b/5] naming rule — every header in the VCO seam is Vco*-named (or an
+#         allowed D-05 frozen shared header). Four separate guards key off that
+#         filename token, so a VCO header named anything else is invisible to all
+#         four at once while every one of them still reports PASS.
 #
 # Deliberately NOT checked here: that the ODR / in-class `static constexpr`
 # failure class is caught. It cannot be reproduced locally — Apple clang
@@ -420,6 +424,64 @@ else
 			note_fail "dsp/${base} is NOT included by ${CANARY_REL} (D-08). That header reaches neither the C++11 strict gate nor the CI MinGW link leg — add '#include \"dsp/${base}\"' to the canary."
 		fi
 	done
+fi
+
+# ---------------------------------------------------------------------------
+# [5b/5] NAMING RULE — every header in the VCO seam must be Vco*-named.
+#
+# FOUR separate guards key off the same filename tokens Vco* / MorphBlep:
+# check_includes.sh [1/7] leak detection, [2/7] Rack-free, [3/7] include hygiene,
+# and [5/5] above. All four iterate a glob, so a future VCO header named anything
+# else — dsp/OscCore.hpp, dsp/PitchChain.hpp, dsp/Antialias.hpp — is invisible to
+# ALL FOUR SIMULTANEOUSLY, and every one of them still reports PASS because the
+# glob simply matches fewer files. [5/5] guards against forgetting to INCLUDE a
+# Vco-named header; nothing guarded against forgetting to NAME it Vco-something.
+#
+# So the naming convention becomes a gate. Every dsp/ header reached by the
+# canary or by a VCO header must be either VCO-named or one of the D-05 frozen
+# shared headers the VCO is explicitly allowed to consume (one-way, D-05/D-06).
+# ---------------------------------------------------------------------------
+echo "[5b/5] Naming rule — every header in the VCO seam is Vco*-named..."
+if [[ ! -f "${CANARY}" ]]; then
+	note_fail "skipped: canary missing (see [1/5])"
+else
+	seam_srcs=("${CANARY}")
+	for h in "${ROOT}"/src/dsp/Vco*.hpp; do
+		if [[ -f "${h}" ]]; then seam_srcs+=("${h}"); fi
+	done
+	if [[ -f "${ROOT}/src/dsp/MorphBlep.hpp" ]]; then
+		seam_srcs+=("${ROOT}/src/dsp/MorphBlep.hpp")
+	fi
+	# Line comments are stripped first, so the commented Phase 32 placeholder in
+	# the canary does not count as a seam edge.
+	seam_includes="$(cat "${seam_srcs[@]}" \
+		| grep -v '^[[:space:]]*//' \
+		| sed -n 's/^[[:space:]]*#[[:space:]]*include[[:space:]]*"\(dsp\/[^"]*\)".*/\1/p' \
+		| sort -u || true)"
+	seam_bad=""
+	for inc in ${seam_includes}; do
+		b="$(basename "${inc}")"
+		case "${b}" in
+			# The VCO's own headers.
+			Vco*|MorphBlep.hpp) ;;
+			# The D-05 frozen shared headers the VCO is allowed to consume. This
+			# list is the four D-05 names; anything else under src/dsp/ is LFO
+			# internals and the VCO must not couple to it.
+			DriftEngine.hpp|MathConst.hpp|RackCompat.hpp|Waveshape.hpp) ;;
+			*) seam_bad="${seam_bad} ${inc}" ;;
+		esac
+	done
+	if [[ -n "${seam_bad}" ]]; then
+		note_fail "header(s) pulled into the VCO seam that are neither Vco*-named nor an allowed frozen shared header:${seam_bad}"
+		echo "        A VCO header that is not Vco*-named is invisible to FOUR guards at once"
+		echo "        (check_includes.sh [1/7] leak detection, [2/7] Rack-free, [3/7] include"
+		echo "        hygiene, and [5/5] above), and all four keep reporting PASS because their"
+		echo "        glob just matches fewer files. Rename it dsp/Vco*.hpp. If it is instead a"
+		echo "        frozen LFO header the VCO legitimately needs, that is a D-05 coupling"
+		echo "        decision — add it to the allowed list in this section and say why."
+	else
+		echo "  OK: every header in the VCO seam is Vco*-named or an allowed frozen shared header"
+	fi
 fi
 
 # ---------------------------------------------------------------------------

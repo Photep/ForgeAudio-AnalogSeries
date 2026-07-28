@@ -104,7 +104,12 @@ detect_vco_includes() {
 			continue
 		fi
 		printf '%s\n' "${f#${ROOT}/}" >> "${SCAN_OPENED}"
-		grep -nE "^[[:space:]]*#[[:space:]]*include[[:space:]]*[<\"][^\">]*${VCO_TOKEN}[^\">]*[>\"]" "${f}" \
+		# CASE-INSENSITIVE. On macOS's case-insensitive filesystem
+		# `#include "dsp/vcocore.hpp"` resolves perfectly well but did not match
+		# the case-sensitive token, so the leak it represents was undetectable on
+		# the primary development machine. No LFO-side include contains "vco" or
+		# "morphblep" in any casing, so this adds no false positives.
+		grep -niE "^[[:space:]]*#[[:space:]]*include[[:space:]]*[<\"][^\">]*${VCO_TOKEN}[^\">]*[>\"]" "${f}" \
 			| sed "s|^|${f#${ROOT}/}:|" || true
 	done
 }
