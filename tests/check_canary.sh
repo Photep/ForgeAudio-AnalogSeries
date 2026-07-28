@@ -339,26 +339,56 @@ cat > "${TMP}/nc_maybe_unused.cpp" <<'EOF'
 float ncProbe(int i) { [[maybe_unused]] int unusedLocal = i; return 0.f; }
 EOF
 
-# label | file | mode (hard = must be rejected; info = report only)
+# label | file | mode (hard = must be rejected; info = report only) | expected diagnostic
+#
+# The fourth argument is load-bearing. This function used to treat ANY non-zero
+# compiler exit as proof that "the C++11 pedantic gate rejected the C++17-ism",
+# and threw the diagnostic away with 2>/dev/null. Any unrelated failure — a typo
+# in a fixture, a renamed header, a missing include path — produced the same
+# green. Verified: breaking dsp/VcoCore.hpp with a bogus #include made all four
+# controls print "OK: ... rejected by the C++11 pedantic gate" without one of
+# them reaching its C++17 construct.
+#
+# This section exists specifically to be validated by an OBSERVED RED rather than
+# by never having been anything but green. A control that cannot tell the
+# intended red from an accidental one does not deliver that. So each control now
+# (a) requires its fixture to compile CLEAN at -std=c++17, which catches a broken
+# fixture before it can masquerade as a rejection, and (b) requires the C++11
+# diagnostic to actually name the construct under test.
+#
+# The expected-diagnostic patterns cover both spellings in play: Apple clang says
+# "inline variables are a C++17 extension" / "constexpr if is a C++17 extension",
+# GCC says "'inline' variables are only available with -std=c++17" / "'if
+# constexpr' only available with -std=c++17". They are matched case-insensitively.
 check_negative_control() {
-	nc_label="$1"
-	nc_file="$2"
-	nc_mode="$3"
-	if "${CXX_BIN}" "${STRICT_FLAGS[@]}" "${nc_file}" 2>/dev/null; then
+	local nc_label="$1" nc_file="$2" nc_mode="$3" nc_expect="$4"
+
+	# Sanity: the fixture must be VALID C++17. Otherwise a typo in it is
+	# indistinguishable from the rejection this control is trying to observe.
+	if ! "${CXX_BIN}" -std=c++17 -fsyntax-only -I"${ROOT}/src" "${nc_file}" 2>"${TMP}/nc_sanity.txt"; then
+		note_fail "${nc_label}: the fixture does not compile even at -std=c++17, so its rejection at C++11 proves nothing about C++17-isms:"
+		sed 's/^/    /' "${TMP}/nc_sanity.txt"
+		return
+	fi
+
+	if "${CXX_BIN}" "${STRICT_FLAGS[@]}" "${nc_file}" 2>"${TMP}/nc_err.txt"; then
 		if [[ "${nc_mode}" == "hard" ]]; then
 			note_fail "${nc_label}: ACCEPTED by the C++11 pedantic gate — the gate is not biting, so a C++17-ism could reach the VCV Library toolchain unnoticed"
 		else
 			echo "  INFO: ${nc_label}: accepted by this compiler (informational only — GCC may merely warn; not a failure)"
 		fi
+	elif grep -qiE -- "${nc_expect}" "${TMP}/nc_err.txt"; then
+		echo "  OK: ${nc_label}: rejected for the expected reason"
 	else
-		echo "  OK: ${nc_label}: rejected by the C++11 pedantic gate"
+		note_fail "${nc_label}: rejected, but NOT for the C++17 reason this control tests. The gate may be biting on something unrelated (a broken fixture, a renamed header), in which case this control is reporting a green it has not earned:"
+		sed 's/^/    /' "${TMP}/nc_err.txt"
 	fi
 }
 
-check_negative_control "namespace-scope 'inline constexpr' variable" "${TMP}/nc_inline_constexpr.cpp" hard
-check_negative_control "'if constexpr' statement"                    "${TMP}/nc_if_constexpr.cpp"     hard
-check_negative_control "'std::clamp' call"                           "${TMP}/nc_std_clamp.cpp"        hard
-check_negative_control "'[[maybe_unused]]' attribute"                "${TMP}/nc_maybe_unused.cpp"     info
+check_negative_control "namespace-scope 'inline constexpr' variable" "${TMP}/nc_inline_constexpr.cpp" hard "'?inline'?[[:space:]]+variables?"
+check_negative_control "'if constexpr' statement"                    "${TMP}/nc_if_constexpr.cpp"     hard "constexpr[[:space:]]+if|if[[:space:]]+constexpr"
+check_negative_control "'std::clamp' call"                           "${TMP}/nc_std_clamp.cpp"        hard "clamp"
+check_negative_control "'[[maybe_unused]]' attribute"                "${TMP}/nc_maybe_unused.cpp"     info "maybe_unused"
 
 # ---------------------------------------------------------------------------
 # [5/5] D-08 growth rule — every VCO header is carried by the canary.
