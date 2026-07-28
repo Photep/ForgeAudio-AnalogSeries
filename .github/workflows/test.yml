@@ -115,3 +115,22 @@ jobs:
       # Rack SDK.
       - name: Include / dependency-direction audit (D-06)
         run: bash tests/check_includes.sh
+
+      # P-5, one level up. The three steps above and the Makefile's GUARD_SCRIPTS
+      # list were independent hardcoded lists of the same three scripts, and CI
+      # invoked only the scripts — so `make guards`, the command the Makefile
+      # banner advertises as "one local command for every standing guard this
+      # milestone adds", had NO execution coverage at all. A guard added in a
+      # later phase and wired into CI (satisfying check_includes.sh [7/7]) but
+      # omitted from GUARD_SCRIPTS would leave the local command silently
+      # incomplete, which is the exact P-5 failure mode one level up.
+      #
+      # This step gives the Makefile list execution coverage. [7/7] additionally
+      # requires every guard script to BE in GUARD_SCRIPTS, so the two lists
+      # cannot drift apart in either direction. Deliberately additive rather than
+      # a replacement for the three steps above: keeping the direct invocations
+      # means a failure still names which guard failed in the CI step list.
+      #
+      # Needs no Rack SDK — `guards` is in the Makefile's plugin.mk skip filter.
+      - name: LFO non-regression guard suite via make (P-5)
+        run: make guards

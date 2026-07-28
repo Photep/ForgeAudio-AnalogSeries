@@ -525,6 +525,44 @@ else
 	WORKFLOW_EXEC="${TMP}/workflow_exec.txt"
 	grep -v '^[[:space:]]*#' "${WORKFLOW}" | grep -vE '^[[:space:]]*(-[[:space:]]+)?name:' > "${WORKFLOW_EXEC}" || true
 
+	# THE SAME RULE, ONE LEVEL UP. `make guards` and this workflow were two
+	# independent hardcoded lists of the same scripts, and CI ran only the
+	# scripts — so the Makefile list, which the Makefile banner advertises as "one
+	# local command for every standing guard this milestone adds", had zero
+	# execution coverage. A guard wired into CI but forgotten in GUARD_SCRIPTS
+	# left it silently incomplete: P-5 again, one level up. CI now runs `make
+	# guards` too, and every guard must appear in BOTH lists, so they cannot
+	# drift apart in either direction.
+	MAKEFILE_REL="Makefile"
+	MAKEFILE="${ROOT}/${MAKEFILE_REL}"
+	make_guards_in_ci=0
+	if grep -qE '(^|[^[:alnum:]_./-])make[[:space:]]+guards([[:space:]]|;|&|\||$)' "${WORKFLOW_EXEC}"; then
+		make_guards_in_ci=1
+	fi
+	# Collect GUARD_SCRIPTS, following backslash line-continuations.
+	guard_list=""
+	if [[ -f "${MAKEFILE}" ]]; then
+		guard_list="$(awk '
+			/^GUARD_SCRIPTS[[:space:]]*:?=/ { collecting = 1 }
+			collecting {
+				line = $0
+				sub(/^GUARD_SCRIPTS[[:space:]]*:?=/, "", line)
+				sub(/\\$/, "", line)
+				printf "%s ", line
+				if ($0 !~ /\\$/) collecting = 0
+			}
+		' "${MAKEFILE}")"
+	fi
+	if [[ ! -f "${MAKEFILE}" ]]; then
+		note_fail "missing ${MAKEFILE_REL} — \`make guards\` cannot exist, so every guard below has one fewer way of being run"
+	elif [[ -z "${guard_list// /}" ]]; then
+		note_fail "no GUARD_SCRIPTS assignment found in ${MAKEFILE_REL} — \`make guards\` runs nothing, and this section can no longer tell whether it does"
+	elif [[ "${make_guards_in_ci}" -eq 0 ]]; then
+		note_fail "${WORKFLOW_REL} never runs \`make guards\`, so the Makefile's GUARD_SCRIPTS list has NO execution coverage. A guard omitted from it would leave the advertised one-command local guard suite silently incomplete."
+	else
+		echo "  OK: ${WORKFLOW_REL} runs \`make guards\`, so GUARD_SCRIPTS is executed by CI"
+	fi
+
 	for g in "${ROOT}"/tests/check_*.sh; do
 		[[ -f "${g}" ]] || continue
 		gbase="$(basename "${g}")"
@@ -534,7 +572,31 @@ else
 		for e in "${GUARD_WIRING_EXEMPT[@]}"; do
 			if [[ "${gbase}" == "${e}" ]]; then exempt=1; fi
 		done
+		# In GUARD_SCRIPTS? A guard missing from it is skipped by `make guards`.
+		in_make_list=0
+		case " ${guard_list} " in
+			*" ${grel} "*) in_make_list=1 ;;
+		esac
+
+		wired_workflow=0
 		if grep -qE "((bash|sh)[[:space:]]+|\./)${grel_re}([[:space:]]|;|&|\||$)" "${WORKFLOW_EXEC}"; then
+			wired_workflow=1
+		fi
+
+		# Running via `make guards` is real CI wiring too, so a guard reached only
+		# that way is not reported as unwired.
+		wired=0
+		if [[ "${wired_workflow}" -eq 1 ]]; then
+			wired=1
+		elif [[ "${in_make_list}" -eq 1 ]] && [[ "${make_guards_in_ci}" -eq 1 ]]; then
+			wired=1
+		fi
+
+		if [[ "${wired}" -eq 1 ]] && [[ "${in_make_list}" -eq 0 ]]; then
+			note_fail "${grel} is invoked by ${WORKFLOW_REL} but is NOT in the Makefile GUARD_SCRIPTS list, so \`make guards\` silently skips it. The command the Makefile advertises as covering every standing guard would then be incomplete, and a developer running it locally would get a green that CI would not."
+		fi
+
+		if [[ "${wired}" -eq 1 ]]; then
 			if [[ "${exempt}" -eq 1 ]]; then
 				echo "  OK: ${grel} — wired into CI (it may be removed from the exemption list)"
 			else
