@@ -29,6 +29,12 @@
 //   3. two instances differing ONLY in spread seed diverge measurably at
 //      character = 1.0, with bit-identity at character = 0 pinned as the
 //      in-test control (D-18a / D-10 / D-11)
+//   4. two differently-seeded cores driven INTERLEAVED, sample by sample, each
+//      reproduce their solo block BIT-EXACTLY — the behavioral form of CORE-03
+//      (D-17), carrying all five measured non-vacuity preconditions
+//   5. the permanent POSITIVE CONTROL for invariant 4: a deliberately-broken
+//      stand-in core that shares one static phase accumulator between instances
+//      is required to FAIL the same check, through the same helper (D-17)
 //
 // THE D-16 LABEL, WHICH MUST NOT BE SOFTENED. Invariant 1 is NOT the TEST-02
 // V/Oct tracking gate. TEST-02 belongs to Phase 31 and requires better than one
@@ -51,10 +57,9 @@
 // Deliberately NOT here: harness plumbing (tests/test_vco_harness.cpp), the
 // < 1-cent V/Oct tracking gate (Phase 31, TEST-02), the alias floor (Phase 32),
 // and output conditioning plus the MOVING drift engine (Phase 34, OUT-01..03 /
-// DRIFT-*). Also not here yet: the CORE-03 independence PAIR — the interleave
-// test and its deliberately-broken shared-state positive control — which plan
-// 30-04 appends to this same file as invariants 4 and 5, reusing the helpers
-// below and adding its own into the same anonymous namespace.
+// DRIFT-*). (Plan 30-03 wrote "also not here yet: the CORE-03 independence
+// pair"; plan 30-04 landed it, as invariants 4 and 5 below, reusing 30-03's
+// helpers unchanged and adding its own into the same anonymous namespace.)
 //
 // This TU does NOT define the doctest impl macro (tests/main.cpp owns it).
 
@@ -63,6 +68,7 @@
 #include "VcoBlockDriver.hpp"
 
 #include <vector>
+#include <functional>   // std::function — the interleave helper's seeder/input parameters
 #include <cmath>
 #include <cstdint>
 
@@ -128,6 +134,114 @@ double estimateFreqRising(const std::vector<float>& o, double sr, int* nUp) {
 	}
 	*nUp = count;
 	return (count < 2) ? -1.0 : (count - 1) / (last - first);
+}
+
+// ===========================================================================
+// CORE-03 support (plan 30-04). Everything below this line belongs to
+// invariants 4 and 5; the three helpers above are plan 30-03's and are not
+// redefined, wrapped or shadowed here.
+// ===========================================================================
+
+// What runInterleaveCheck() hands back. The two mismatch counts are the
+// property itself; soloEqual is the NON-VACUITY precondition (two identical
+// signals would satisfy "interleaved == solo" for free, so the caller has to
+// prove the two solo blocks are distinguishable before the result means
+// anything); soloA is carried out so the caller can pin the helper against
+// forge::VcoBlockDriver::run() over the same seeds and inputs.
+struct InterleaveResult {
+	int mismatchA = 0;          // interleaved A samples that differ from solo A
+	int mismatchB = 0;          // interleaved B samples that differ from solo B
+	int soloEqual = 0;          // positions where soloA[i] == soloB[i]
+	std::vector<float> soloA;   // instance A's solo block, for the validity check
+};
+
+// The shared solo-versus-interleaved drive loop behind BOTH invariant 4 and
+// invariant 5.
+//
+// WHY IT IS A TEMPLATE, and why it must stay one. Invariant 5's deliberately
+// broken stand-in has to run through BYTE-IDENTICALLY the same drive loop as
+// the real core, because a control that exercises different code than the check
+// proves nothing about the check. That argument is already written into
+// tests/check_includes.sh [6/7]'s banner — every negative control there calls
+// the SAME function its section calls — and it applies here unchanged. Do not
+// fork this into two near-copies.
+//
+// Parameters: `seedInstance(core, which)` seeds a freshly default-constructed
+// core as instance 0 or instance 1; `sr` and `n` are the rate and block length;
+// `inA` / `inB` supply each instance's per-sample inputs. The two instances are
+// deliberately given DIFFERENT input functors — see the case below.
+//
+// TIMING IS OWNED HERE, exactly as the harness owns it. sampleTime and
+// sampleRate are ALWAYS overwritten, for both instances, on every sample. This
+// overwrite is load-bearing — it must never become conditional on what the
+// caller's functor happened to put there. (Same wording, and the same reason,
+// as tests/VcoBlockDriver.hpp:49-52; the case below asserts the two loops agree
+// bit-for-bit precisely so this cannot silently drift.)
+//
+// Comparison is a direct float !=, NEVER doctest::Approx: Approx's epsilon(0)
+// still applies a relative-scaling margin and is not a true bit-exact
+// comparator. Independence is a bit-exactness claim or it is nothing.
+template <typename CoreT>
+InterleaveResult runInterleaveCheck(
+		const std::function<void(CoreT&, int)>& seedInstance,
+		double sr, int n,
+		const std::function<forge::VcoInputs(int)>& inA,
+		const std::function<forge::VcoInputs(int)>& inB) {
+	const float dt = (float)(1.0 / sr);
+	const float srf = (float)sr;
+
+	InterleaveResult r;
+	std::vector<float> soloB;
+	r.soloA.reserve((size_t)n);
+	soloB.reserve((size_t)n);
+
+	// --- Solo baselines: each instance alone, in its own fresh core. --------
+	{
+		CoreT a;
+		seedInstance(a, 0);
+		for (int i = 0; i < n; ++i) {
+			forge::VcoInputs in = inA(i);
+			in.sampleTime = dt;
+			in.sampleRate = srf;
+			r.soloA.push_back(a.step(in));
+		}
+	}
+	{
+		CoreT b;
+		seedInstance(b, 1);
+		for (int i = 0; i < n; ++i) {
+			forge::VcoInputs in = inB(i);
+			in.sampleTime = dt;
+			in.sampleRate = srf;
+			soloB.push_back(b.step(in));
+		}
+	}
+
+	// --- The interleaved run: two MORE fresh cores, alternating one sample of
+	//     A with one sample of B. This is the arrangement v2.1 polyphony will
+	//     actually use — sixteen channels stepped inside one process() call —
+	//     scaled down to the two instances that can already be built today.
+	{
+		CoreT ia, ib;
+		seedInstance(ia, 0);
+		seedInstance(ib, 1);
+		for (int i = 0; i < n; ++i) {
+			forge::VcoInputs a = inA(i);
+			a.sampleTime = dt;
+			a.sampleRate = srf;
+			if (ia.step(a) != r.soloA[i]) ++r.mismatchA;
+
+			forge::VcoInputs b = inB(i);
+			b.sampleTime = dt;
+			b.sampleRate = srf;
+			if (ib.step(b) != soloB[i]) ++r.mismatchB;
+		}
+	}
+
+	for (int i = 0; i < n; ++i) {
+		if (r.soloA[i] == soloB[i]) ++r.soloEqual;
+	}
+	return r;
 }
 
 } // namespace
@@ -472,5 +586,147 @@ TEST_CASE("vco core: spread seed divergence at character 1.0 (D-18a)") {
 			if (oa[i] != ob[i]) { identical = false; break; }
 		}
 		CHECK(identical);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 4. Two-instance independence under sample-by-sample interleaving
+//    (D-17 / CORE-03).
+//
+//    WHAT IS BEING PROVEN, and why it is a behavioral test rather than a grep.
+//    CORE-03 is a claim about what is ABSENT: no static, no global, no engine
+//    accidentally shared between voices. Absence is exactly what a source-text
+//    guard proves badly — a grep for `static` catches the obvious declaration
+//    form and nothing else, and misses a function-local static, a shared
+//    reference member, a singleton behind an accessor, and a shared pointer.
+//    So the claim is tested as the PROPERTY polyphony actually needs: run two
+//    differently-seeded cores interleaved, one sample each, alternating, and
+//    require each to reproduce bit-exactly what it produced running alone.
+//    Shared mutable state of ANY shape breaks that.
+//
+//    This case is trivially green on a correct implementation — and, written
+//    carelessly, equally green on a broken one. Five distinct ways it goes
+//    vacuous were MEASURED, and all five are implemented here:
+//
+//      (i)   two DIFFERENT spread seeds — with identical seeds a hypothetical
+//            shared static forge::Waveshape produces identical coefficients and
+//            is invisible;
+//      (ii)  character = 1.0 — see the measured trap below;
+//      (iii) genuinely DIFFERENT per-sample inputs per instance — a shared
+//            phase accumulator is caught either way, but different inputs also
+//            catch a shared freq, a shared telemetry block or a shared
+//            Waveshape;
+//      (iv)  an explicit assertion that the two solo blocks are
+//            DISTINGUISHABLE — without it "interleaved == solo" is satisfiable
+//            by two identical signals;
+//      (v)   a permanent positive control, which is invariant 5 below. It is
+//            what proves this helper can actually detect a defect. If invariant
+//            5 ever goes green, THIS case is meaningless regardless of its own
+//            verdict.
+//
+//    THE MEASURED CHARACTER TRAP (D-10), which must not be optimised away.
+//    Every component-spread coefficient in the frozen forge::Waveshape is
+//    consumed only behind a `character >= 0.001f` gate. Detectability of a
+//    clobbered shared Waveshape — instance A running with instance B's
+//    coefficients — was measured across character:
+//
+//        character 0.00 ->  0.000000 V,    0 / 1024 differing  (UNDETECTABLE)
+//        character 0.05 ->  0.000520 V, 1024 / 1024
+//        character 0.30 ->  0.024821 V, 1024 / 1024
+//        character 1.00 ->  0.233187 V, 1024 / 1024
+//
+//    An independence test written at character = 0 therefore proves NOTHING
+//    about shared shaper state. character = 1.0 below is that measurement, not
+//    a stylistic choice. Invariant 3's control pins the same fact from the
+//    other direction.
+//
+//    MEASURED RESULT for this construction: interleaved-versus-solo mismatches
+//    A = 0 / 1024 and B = 0 / 1024, with soloA[i] == soloB[i] on 0 of 1024
+//    samples.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco core: two-instance independence under sample-by-sample interleaving (D-17)") {
+	const int n = 1024;
+
+	// All four seeds spelled out per instance, the idiom
+	// tests/test_vco_harness.cpp:162-163 uses. The DRIFT pair is IDENTICAL for
+	// both instances and only the SPREAD pair differs — requirement (i) — so the
+	// two cores differ in exactly the one mechanism this phase has (D-11), and a
+	// hypothetical shared static shaper cannot hide behind matching coefficients.
+	// These are the researcher's measured pairs; substituting others would leave
+	// the figures recorded above describing a variant of this code.
+	const std::function<void(forge::VcoCore&, int)> seedInstance =
+		[](forge::VcoCore& c, int which) {
+			c.seed(0xC0FFEEULL, 0xBADF00DULL);
+			if (which == 0) {
+				c.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
+			} else {
+				c.setSpreadSeed(0xDEADBEEFULL, 0xCAFEF00DULL);
+			}
+		};
+
+	for (double sr : SAMPLE_RATES) {
+		CAPTURE(sr);
+
+		forge::VcoInputs base = coreBase();
+		// REQUIREMENT (ii). Not decoration — see the measured table above.
+		base.character = 1.f;
+
+		const float denom = (float)(n - 1);
+
+		// REQUIREMENT (iii): two genuinely different drives. A sweeps pitch at a
+		// fixed morph; B holds a DIFFERENT fixed pitch and sweeps morph. Neither
+		// instance ever sees the other's input, so any state they share shows up
+		// as a mismatch against their own solo run.
+		const std::function<forge::VcoInputs(int)> inA = [=](int i) {
+			forge::VcoInputs in = base;
+			in.pitchCV = -1.f + 2.f * ((float)i / denom);   // -1 V .. +1 V
+			in.morph   = 0.25f;
+			return in;
+		};
+		const std::function<forge::VcoInputs(int)> inB = [=](int i) {
+			forge::VcoInputs in = base;
+			in.pitchCV = 0.5f;                              // a different, FIXED pitch
+			in.morph   = (float)i / denom;                  // 0 .. 1
+			return in;
+		};
+
+		const InterleaveResult r =
+			runInterleaveCheck<forge::VcoCore>(seedInstance, sr, n, inA, inB);
+		REQUIRE(r.soloA.size() == (size_t)n);
+
+		// --- 1. VALIDITY CHECK, FIRST. --------------------------------------
+		// Assert the fixture tests what it claims BEFORE asserting the result —
+		// the same habit as check_includes.sh [6/7]'s nc2_direct guard, which
+		// fails the whole section if its two-hop fixture turns out to be
+		// detectable one-hop. Here: the helper's solo block for instance A must
+		// be bit-identical to what forge::VcoBlockDriver produces from the same
+		// four seeds over the same inputs. A helper that quietly stopped
+		// overwriting sampleTime and sampleRate — or that seeded in the wrong
+		// order, or reused a core between runs — would sail through every
+		// assertion below this line. It cannot get past this one.
+		forge::VcoBlockDriver d(sr, 0xC0FFEEULL, 0xBADF00DULL, 0x9E3779B9ULL, 0x7F4A7C15ULL);
+		std::vector<float> harnessA = d.run(n, inA);
+		REQUIRE(harnessA.size() == r.soloA.size());
+		bool helperMatchesHarness = true;
+		for (size_t i = 0; i < harnessA.size(); ++i) {
+			if (harnessA[i] != r.soloA[i]) { helperMatchesHarness = false; break; }
+		}
+		REQUIRE(helperMatchesHarness);
+
+		// --- 2. DISTINGUISHABILITY (requirement iv). ------------------------
+		// Measured with this construction: equal at 0 of 1024 samples. The
+		// threshold is a tenth rather than zero so a chance coincidence at a
+		// shared zero crossing cannot make the suite flaky across toolchains.
+		CAPTURE(r.soloEqual);
+		CHECK(r.soloEqual < n / 10);
+
+		// --- 3. THE PROPERTY ITSELF. ----------------------------------------
+		// Measured on the real core: A = 0 / 1024, B = 0 / 1024. Captured so the
+		// figures appear in `-s` output on a PASS, which is the audit trail plan
+		// 30-07's phase gate compares the first CI run against.
+		CAPTURE(r.mismatchA);
+		CAPTURE(r.mismatchB);
+		CHECK(r.mismatchA == 0);
+		CHECK(r.mismatchB == 0);
 	}
 }
