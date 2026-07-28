@@ -19,7 +19,9 @@ DISTRIBUTABLES += $(wildcard presets)
 # ../Rack-SDK is absent (e.g. GitHub Actions ubuntu/macos runners), so skip it
 # when `test` is the goal — the TEST_-namespaced target needs nothing from
 # plugin.mk and $(CXX) falls back to the make default (CR-01).
-ifeq ($(filter test capture,$(MAKECMDGOALS)),)
+# `guards` joins the filter for the same reason (R-11 / P-6): the guard suite is
+# pure shell plus a checksum tool and must run on a runner with no Rack SDK.
+ifeq ($(filter test capture guards,$(MAKECMDGOALS)),)
 include $(RACK_DIR)/plugin.mk
 endif
 
@@ -75,3 +77,31 @@ strict:
 	$(CXX) -std=c++11 -pedantic-errors -fsyntax-only -Wall -Wextra -Wno-unused-parameter \
 		-Isrc -isystem $(RACK_DIR)/include -isystem $(RACK_DIR)/dep/include $(wildcard src/*.cpp)
 	@echo "strict C++11 gate: PASS"
+
+# ---------------------------------------------------------------------------
+# LFO non-regression guard suite (Phase 29) — purely additive.
+#
+# One local command for every standing guard this milestone adds, so the D-05
+# and D-06 negative controls are reproducible off CI instead of only in it.
+# `make`, `make dist`, `make install`, `make test`, `make capture` and
+# `make strict` are all unchanged: every variable below is GUARD_-namespaced and
+# this target deliberately shares NOTHING with TEST_CXXFLAGS (R-4) — a guard that
+# could perturb the test compiler flags could move the golden float results it
+# exists to protect.
+#
+# Rack-free: needs only bash, a checksum tool and (for the canary guard) a C++
+# compiler. `guards` is in the plugin.mk skip filter above, so this runs on a
+# machine with no ../Rack-SDK (R-11 / P-6).
+#
+# GNU Make 3.81 compatible — a plain shell `for` loop, no $(file ...), no ::=,
+# no reliance on .ONESHELL.
+# ---------------------------------------------------------------------------
+GUARD_SCRIPTS := tests/check_frozen.sh tests/check_includes.sh tests/check_canary.sh
+
+.PHONY: guards
+guards:
+	@for s in $(GUARD_SCRIPTS); do \
+		echo "=== $$s ==="; \
+		bash $$s || exit 1; \
+	done
+	@echo "guard suite: PASS"

@@ -33,15 +33,17 @@
 #     invitation to mistake a tripwire for a security primitive.
 #
 # Enforces:
-#   [1/6] no LFO translation unit includes a VCO file
-#   [2/6] VCO headers are Rack-free
-#   [3/6] VCO headers include only dsp/ siblings and standard headers
-#   [4/6] R-9 ODR guard — exactly one forge::Inputs, in src/dsp/LfoCore.hpp
-#   [5/6] no hashing implementation under src/
-#   [6/6] NEGATIVE CONTROL — the section-1 detector demonstrably reports a
+#   [1/7] no LFO translation unit includes a VCO file
+#   [2/7] VCO headers are Rack-free
+#   [3/7] VCO headers include only dsp/ siblings and standard headers
+#   [4/7] R-9 ODR guard — exactly one forge::Inputs, in src/dsp/LfoCore.hpp
+#   [5/7] no hashing implementation under src/
+#   [6/7] NEGATIVE CONTROL — the section-1 detector demonstrably reports a
 #         synthetic violation, so this audit is validated rather than merely
 #         green. It runs the SAME function section 1 runs: a control that
 #         exercises different code than the guard proves nothing.
+#   [7/7] guard wiring (P-5) — every tests/check_*.sh is referenced by
+#         .github/workflows/test.yml, or is on a documented exemption list
 #
 # Needs no compiler and no Rack SDK, runs from any working directory, and leaves
 # no artifacts. Returns 0 (PASS) only when every group passes.
@@ -55,7 +57,7 @@ ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 fail=0
 note_fail() { echo "  FAIL: $1"; fail=1; }
 
-# Scratch dir for the synthetic fixture in [6/6]; removed on exit so a run never
+# Scratch dir for the synthetic fixture in [6/7]; removed on exit so a run never
 # leaves residue in the working tree.
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
@@ -66,9 +68,9 @@ trap 'rm -rf "${TMP}"' EXIT
 # Takes a list of files and echoes one "path:line:text" record per include
 # directive whose target names a VCO file. Empty output means clean.
 #
-# This is deliberately a function rather than an inline grep: [6/6] runs THIS
+# This is deliberately a function rather than an inline grep: [6/7] runs THIS
 # function over a synthetic violating fixture, so the negative control validates
-# the exact code path [1/6] depends on. A control that re-implements the check it
+# the exact code path [1/7] depends on. A control that re-implements the check it
 # is validating proves only that two greps agree.
 # ---------------------------------------------------------------------------
 VCO_TOKEN='(Vco|MorphBlep)'
@@ -81,7 +83,7 @@ detect_vco_includes() {
 	done
 }
 
-# Collect the VCO header set once — used by [2/6] and [3/6].
+# Collect the VCO header set once — used by [2/7] and [3/7].
 VCO_HEADERS=()
 for h in "${ROOT}"/src/dsp/Vco*.hpp; do
 	[[ -f "${h}" ]] && VCO_HEADERS+=("${h}")
@@ -90,7 +92,7 @@ done
 [[ -f "${ROOT}/src/dsp/MorphBlep.hpp" ]] && VCO_HEADERS+=("${ROOT}/src/dsp/MorphBlep.hpp")
 
 # ---------------------------------------------------------------------------
-# [1/6] No LFO translation unit includes a VCO file.
+# [1/7] No LFO translation unit includes a VCO file.
 #
 # An EXPLICIT allowlist, not a glob. The VCO's own files and this phase's new
 # test files (tests/VcoBlockDriver.hpp, tests/test_vco_harness.cpp) legitimately
@@ -107,7 +109,7 @@ done
 # here nor VCO code is a file this gate does not cover, which is why the list is
 # spelled out rather than derived.
 # ---------------------------------------------------------------------------
-echo "[1/6] No LFO translation unit includes a VCO file..."
+echo "[1/7] No LFO translation unit includes a VCO file..."
 LFO_SCAN=(
 	# shipped shell + Rack registration
 	"${ROOT}/src/AnalogLFO.cpp"
@@ -149,7 +151,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# [2/6] VCO headers are Rack-free.
+# [2/7] VCO headers are Rack-free.
 #
 # Also enforced by construction — the Makefile `test` target passes no
 # -I$(RACK_DIR)/include, so a Rack include in a VCO header would fail to
@@ -157,7 +159,7 @@ fi
 # (to the test target, to a new target, or by vendoring a header), which would
 # make the breach compile silently.
 # ---------------------------------------------------------------------------
-echo "[2/6] VCO headers are Rack-free..."
+echo "[2/7] VCO headers are Rack-free..."
 if [[ "${#VCO_HEADERS[@]}" -eq 0 ]]; then
 	note_fail "no src/dsp/Vco*.hpp found at all — the VCO seam has vanished"
 else
@@ -174,13 +176,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# [3/6] VCO headers include only dsp/ siblings and standard headers.
+# [3/7] VCO headers include only dsp/ siblings and standard headers.
 #
 # Every include must be either <angle-bracket> (standard library) or a quoted
 # path beginning with dsp/. Anything else — a tests/ header, a relative ../
 # escape, a vendored third-party path — is a dependency this seam must not have.
 # ---------------------------------------------------------------------------
-echo "[3/6] VCO headers include only dsp/ siblings and standard headers..."
+echo "[3/7] VCO headers include only dsp/ siblings and standard headers..."
 if [[ "${#VCO_HEADERS[@]}" -gt 0 ]]; then
 	for h in "${VCO_HEADERS[@]}"; do
 		rel="${h#${ROOT}/}"
@@ -207,7 +209,7 @@ if [[ "${#VCO_HEADERS[@]}" -gt 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# [4/6] R-9 ODR guard — exactly one forge::Inputs, and it is LfoCore.hpp's.
+# [4/7] R-9 ODR guard — exactly one forge::Inputs, and it is LfoCore.hpp's.
 #
 # Why this is not paranoia: two definitions of `forge::Inputs` with different
 # members are an ODR violation across translation units. Each TU that sees only
@@ -217,7 +219,7 @@ fi
 # a construct that is locally clean and globally wrong. The VCO's input POD is
 # named forge::VcoInputs precisely so this can never happen by accident.
 # ---------------------------------------------------------------------------
-echo "[4/6] R-9 ODR guard — exactly one forge::Inputs..."
+echo "[4/7] R-9 ODR guard — exactly one forge::Inputs..."
 inputs_decls="$(grep -rnE '^[[:space:]]*struct[[:space:]]+Inputs[[:space:]]*[{:]' \
 	--include='*.hpp' --include='*.h' --include='*.cpp' "${ROOT}/src" || true)"
 inputs_files="$(printf '%s\n' "${inputs_decls}" | grep -v '^$' | cut -d: -f1 | sort -u || true)"
@@ -236,7 +238,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# [5/6] Placement rule — no hashing IMPLEMENTATION under src/.
+# [5/7] Placement rule — no hashing IMPLEMENTATION under src/.
 #
 # The SHA-256 in this milestone is an integrity tripwire for frozen sources and
 # golden fixtures. It is NOT a security control: nothing about it resists an
@@ -251,7 +253,7 @@ fi
 # support. The constant check below is unrestricted and would still catch an
 # implementation smuggled in under any filename.
 # ---------------------------------------------------------------------------
-echo "[5/6] No hashing implementation under src/..."
+echo "[5/7] No hashing implementation under src/..."
 hash_named="$(find "${ROOT}/src" -type f \
 	\( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' -o -name '*.cc' -o -name '*.cxx' \) \
 	-name '*ha256*' 2>/dev/null || true)"
@@ -272,38 +274,94 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# [6/6] NEGATIVE CONTROL — the detector must report a real violation.
+# [6/7] NEGATIVE CONTROL — the detector must report a real violation.
 #
 # A guard that has only ever been observed green is unvalidated. This writes a
 # synthetic LFO-side translation unit that includes a VCO header, runs the SAME
-# detect_vco_includes function [1/6] runs, and REQUIRES a hit. If the detector
-# reports the fixture clean, [1/6]'s green above means nothing and this section
+# detect_vco_includes function [1/7] runs, and REQUIRES a hit. If the detector
+# reports the fixture clean, [1/7]'s green above means nothing and this section
 # fails the gate.
 # ---------------------------------------------------------------------------
-echo "[6/6] NEGATIVE CONTROL — the audit must detect a synthetic violation..."
+echo "[6/7] NEGATIVE CONTROL — the audit must detect a synthetic violation..."
 cat > "${TMP}/nc_lfo_leak.cpp" <<'EOF'
 // Synthetic fixture: an LFO-side translation unit that pulls in VCO code.
-// This is exactly the breach [1/6] exists to prevent.
+// This is exactly the breach [1/7] exists to prevent.
 #include "dsp/LfoCore.hpp"
 #include "dsp/VcoCore.hpp"
 float ncLeakProbe() { return 0.f; }
 EOF
 nc_hits="$(detect_vco_includes "${TMP}/nc_lfo_leak.cpp")"
 if [[ -n "${nc_hits}" ]]; then
-	echo "  OK: synthetic violation detected by the same detector [1/6] uses:"
+	echo "  OK: synthetic violation detected by the same detector [1/7] uses:"
 	printf '%s\n' "${nc_hits}" | sed 's/^/    /'
 else
-	note_fail "negative control DID NOT FIRE: detect_vco_includes reported a fixture that plainly includes dsp/VcoCore.hpp as clean. The detector is broken, so [1/6]'s PASS above is meaningless."
+	note_fail "negative control DID NOT FIRE: detect_vco_includes reported a fixture that plainly includes dsp/VcoCore.hpp as clean. The detector is broken, so [1/7]'s PASS above is meaningless."
 fi
 echo "  NOTE: this negative control is what makes this audit VALIDATED rather than"
 echo "        merely green. It runs on every invocation. Do not remove it."
+
+# ---------------------------------------------------------------------------
+# [7/7] Guard wiring (P-5) — every guard script must be invoked by CI.
+#
+# This repository has already proven the failure mode. tests/check_docs.sh is a
+# complete, correct, passing gate that has been referenced by NOTHING since it
+# was written in Phase 27 — not the Makefile, not the workflow. It has provided
+# exactly zero assurance for its entire existence while appearing, to anyone
+# reading the tests directory, to be a guard. An unwired guard is worse than no
+# guard: it is a guard plus a false belief.
+#
+# So the wiring itself is now a gate. Every tests/check_*.sh must be named in
+# .github/workflows/test.yml, or be on the exemption list below with a reason.
+# A future guard script that is neither wired nor exempted fails this audit.
+# ---------------------------------------------------------------------------
+echo "[7/7] Guard wiring (P-5) — every guard script is invoked by CI..."
+WORKFLOW_REL=".github/workflows/test.yml"
+WORKFLOW="${ROOT}/${WORKFLOW_REL}"
+
+# Documented exemptions. Each entry needs a reason, in a comment, right here.
+#
+#   check_docs.sh — a Phase 27 user-manual documentation gate (brand denylist,
+#     section-file existence, code-fact tokens). It passes today but is invoked
+#     by nothing. Wiring it is a one-line CI step and is deliberately OUT OF
+#     SCOPE for Phase 29, whose subject is the LFO non-regression guardrail, not
+#     the manual. It is tracked as a real, visible task in
+#     .planning/todos/pending/wire-check-docs-into-ci.md rather than being
+#     silently absorbed by this exemption list.
+GUARD_WIRING_EXEMPT=(
+	"check_docs.sh"
+)
+
+if [[ ! -f "${WORKFLOW}" ]]; then
+	note_fail "missing ${WORKFLOW_REL} — every guard in this repository is now unwired"
+else
+	for g in "${ROOT}"/tests/check_*.sh; do
+		[[ -f "${g}" ]] || continue
+		gbase="$(basename "${g}")"
+		grel="tests/${gbase}"
+		exempt=0
+		for e in "${GUARD_WIRING_EXEMPT[@]}"; do
+			[[ "${gbase}" == "${e}" ]] && exempt=1
+		done
+		if grep -qF -- "${grel}" "${WORKFLOW}"; then
+			if [[ "${exempt}" -eq 1 ]]; then
+				echo "  OK: ${grel} — wired into CI (it may be removed from the exemption list)"
+			else
+				echo "  OK: ${grel} — wired into CI"
+			fi
+		elif [[ "${exempt}" -eq 1 ]]; then
+			echo "  EXEMPT: ${grel} — documented exemption, not wired (see the comment above and .planning/todos/pending/wire-check-docs-into-ci.md)"
+		else
+			note_fail "${grel} is a guard script that NOTHING invokes. It is not referenced by ${WORKFLOW_REL} and it is not on the documented exemption list. Add a CI step for it in the same commit that created it (P-5), or add it to GUARD_WIRING_EXEMPT with a written reason."
+		fi
+	done
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo "--------------------------------------------------"
 if [[ "${fail}" -eq 0 ]]; then
-	echo "PASS: dependency-direction audit clean (D-06 + R-9 ODR + hasher placement + negative control)."
+	echo "PASS: dependency-direction audit clean (D-06 + R-9 ODR + hasher placement + negative control + guard wiring)."
 	exit 0
 else
 	echo "FAIL: dependency-direction audit found problems (see above)."

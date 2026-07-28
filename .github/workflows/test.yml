@@ -97,3 +97,21 @@ jobs:
       # (the D-08 growth rule). Needs no Rack SDK.
       - name: VCO compile canary guard (D-07/D-08)
         run: bash tests/check_canary.sh
+
+      # D-05 tripwire. src/dsp/FROZEN.sha256 pins the shipped LFO's eleven-header
+      # include closure, its shell, the two self-witnessing test files and the
+      # fixture provenance record. A frozen file may change ONLY via a deliberate
+      # manifest bump in the same commit (which is exactly what Phase 34 does for
+      # DriftEngine.hpp). Text digests are computed over CR-stripped bytes so the
+      # gate is correct on a CRLF checkout too; this runner is LF, where the
+      # normalized and raw digests are identical. Needs no Rack SDK.
+      - name: Frozen-header hash guard (D-05)
+        run: bash tests/check_frozen.sh
+
+      # D-06 tripwire. Asserts the one-way dependency boundary: VCO code may use
+      # frozen shared headers, but no LFO translation unit may include a VCO
+      # file. Also carries the R-9 ODR guard (exactly one forge::Inputs) and the
+      # rule that the tripwire hasher never enters src/. Needs no compiler and no
+      # Rack SDK.
+      - name: Include / dependency-direction audit (D-06)
+        run: bash tests/check_includes.sh
