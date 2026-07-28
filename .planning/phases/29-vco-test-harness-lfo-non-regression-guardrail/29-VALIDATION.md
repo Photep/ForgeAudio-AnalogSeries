@@ -1,8 +1,8 @@
 ---
 phase: 29
 slug: vco-test-harness-lfo-non-regression-guardrail
-status: draft
-nyquist_compliant: false
+status: complete
+nyquist_compliant: true
 wave_0_complete: true
 created: 2026-07-28
 ---
@@ -59,24 +59,33 @@ created: 2026-07-28
 | TEST-01 | Output finite (no NaN/Inf) | unit | `CHECK(std::isfinite(out[i]))` | ✅ W0 delivered | ⚠️ **green-but-weak (P-7)** — `std::isfinite(0.f)` is trivially true while the seam is silent. **Not full coverage.** Becomes load-bearing in **Phase 30** once the core emits a real waveform; re-evidence there. |
 | TEST-04 | 6 LFO golden replays still green | regression | `./build-test/test -tc="golden*"` | ✅ exists — byte-unchanged vs `v2.0.1` | ✅ green — 6/6 passed, 49,164 assertions; `git diff --exit-code v2.0.1` over the six `.f32` fixtures → exit 0 |
 | TEST-04 | Golden bytes unchanged (D-04) | property/hash | new case in `tests/test_lfo_guardrail.cpp` | ✅ W0 delivered | ✅ green — 7/7 passed, incl. the single-byte-change negative control and three published FIPS vectors |
-| TEST-04 | Frozen headers unchanged (D-05) | property/hash | `bash tests/check_frozen.sh` (via `make guards`) + ubuntu CI step | ✅ `src/dsp/FROZEN.sha256` + `tests/check_frozen.sh` | ✅ green **locally** — `make guards` exit 0, 15/15 entries OK. CI leg wired but **not yet observed executing** (see § CI Observation Status). |
-| TEST-04 | Dependency direction (D-06) | static analysis | `bash tests/check_includes.sh` (via `make guards`) + CI step | ✅ `tests/check_includes.sh` | ✅ green **locally** — `make guards` exit 0, all 7 sections. CI leg wired but **not yet observed executing** (see § CI Observation Status). |
-| TEST-06 | VCO headers compile at `-std=c++11 -pedantic-errors` | compile gate | `make strict` | ✅ target + `src/vco_compile_canary.cpp` | ✅ green — `strict C++11 gate: PASS`, canary TU named in the compile line |
-| TEST-06 | VCO headers survive MinGW compile **+ link vs libRack** | CI-only link gate | `toolchain-gate` job on push | ✅ job + canary TU exist | ⬜ **pending** — the gate's *negative* control is CI-only and is plan 29-05 Task 2. Green locally proves nothing here: Apple clang was measured linking the v2.0.0 failure class cleanly at `-O0` **and** `-O3`. |
+| TEST-04 | Frozen headers unchanged (D-05) | property/hash | `bash tests/check_frozen.sh` (via `make guards`) + ubuntu CI step | ✅ `src/dsp/FROZEN.sha256` + `tests/check_frozen.sh` | ✅ green — `make guards` exit 0, 15/15 entries OK, **and** CI step 8 `success` on run [30340075121](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30340075121) |
+| TEST-04 | Dependency direction (D-06) | static analysis | `bash tests/check_includes.sh` (via `make guards`) + CI step | ✅ `tests/check_includes.sh` | ✅ green — `make guards` exit 0, all 7 sections, **and** CI step 9 `success` on run [30340075121](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30340075121) |
+| TEST-06 | VCO headers compile at `-std=c++11 -pedantic-errors` | compile gate | `make strict` | ✅ target + `src/vco_compile_canary.cpp` | ⚠️ green **but proven non-sufficient** — `strict C++11 gate: PASS` with the canary TU named in the compile line, but the 29-05 Task 2 control showed this gate reporting PASS on genuinely broken code, **locally and on the runner**. Necessary, never sufficient. See § The P-2 Correction. |
+| TEST-06 | VCO headers survive MinGW compile **+ link vs libRack** | CI-only link gate | `toolchain-gate` job on push | ✅ job + canary TU exist | ✅ green **and observed red** — the only gate in this phase that caught the v2.0.0 failure class. Red: run [30339957128](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30339957128) (`undefined reference to 'forge::VcoCore::ODR_PROBE_TBL'`). Green after revert: run [30340075121](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30340075121) step 6 `success`. |
 
 *Status: ⬜ pending · ✅ green · ⚠️ green-but-weak (passes, but cannot currently fail) · ❌ red*
 
-### CI Observation Status (recorded 29-05 Task 1, honest scope statement)
+### CI Observation Status — RESOLVED by Task 2
 
-At the time Task 1 ran, `main` was **28 commits ahead of `origin/main`** and the newest Actions run
-on the repository dated from 2026-07-13 — i.e. **no Phase 29 commit has ever been pushed**, so the
-three `toolchain-gate` steps added by plans 29-03 and 29-04
+**Finding (recorded at Task 1, 2026-07-28).** `main` was **28 commits ahead of `origin/main`** and the
+newest Actions run on the repository dated from 2026-07-13 — i.e. **no Phase 29 commit had ever been
+pushed**, so the three `toolchain-gate` steps added by plans 29-03 and 29-04
 (`VCO compile canary guard (D-07/D-08)`, `Frozen-header hash guard (D-05)`,
-`Include / dependency-direction audit (D-06)`) have **never executed on a runner**. They are wired
-and are proven green locally through `make guards`, which runs the identical scripts, but their
-CI-leg execution is unobserved until the phase's work is pushed. ROADMAP success criterion 4
-("runs on every push and is green") is therefore **not yet evidenced** and is closed out by Task 2,
-whose procedure pushes and observes both jobs.
+`Include / dependency-direction audit (D-06)`) had **never executed on a runner**. They were wired and
+green locally through `make guards`, but their CI-leg execution was unobserved, so ROADMAP success
+criterion 4 was unevidenced.
+
+**Resolution (Task 2).** `main` is now pushed and level with `origin/main` at `57b4bca`. All four jobs
+are green on run [30340075121](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30340075121),
+and the three new guard steps are recorded there as `success` — their **first ever execution on a
+runner**. Criterion 4 now has evidence.
+
+**Sub-finding worth carrying forward:** on the *failing* run, steps 7, 8 and 9 (the three guard steps)
+were reported `skipped`, because `toolchain-gate` fail-fasts at step 6. A red link leg therefore
+suppresses all downstream guard reporting. That is correct fail-fast behavior, not a defect, but it
+means a future red run must not be read as "the guards passed" or "the guards failed" — they simply
+did not run. First real execution was the green `main` run above.
 
 ---
 
@@ -111,7 +120,7 @@ A green run proves nothing for a guard. Four deliverables are guards; each needs
 | D-04 golden hash lock | Unit-test the hasher against the NIST vector `SHA-256("abc") = ba7816bf…f20015ad` **and** assert a one-byte-perturbed in-memory copy of a golden yields a different digest. Permanent, non-destructive | local + all CI | `tests/test_lfo_guardrail.cpp` — case `golden hash lock detects a single-byte change (negative control)`, plus three published FIPS 180-4 vector cases | **Yes** — permanent, runs in every `make test`. Observed 2026-07-28: 7/7 `lfo guardrail*` cases pass, 38 assertions. The control asserts the perturbed copy's digest **differs**, so a hasher that returned a constant would fail it. |
 | D-05 frozen-header guard | Run the guard against a synthetic fixture with an appended blank line; assert non-zero exit | local + ubuntu CI | `tests/check_frozen.sh` `[3/3]` — a perturbed scratch copy of `MathConst.hpp` hashed through `hash_norm`, the **same function** `[1/3]` uses | **Yes**, twice. Permanent control runs on every `make guards` (perturbed copy `4a5bba22…` vs manifest `091eba70…`). Plus a one-off hand-run RED demo in 29-04: a corrupted digest in a scratch manifest → **observed exit 1**, `FROZEN FILE CHANGED: src/dsp/Waveshape.hpp`. |
 | D-06 include audit | Run the grep against a synthetic fixture directory containing a deliberate violation; assert non-zero exit | local + CI | `tests/check_includes.sh` `[6/7]` — a synthetic TU including `dsp/VcoCore.hpp`, run through `detect_vco_includes`, the **same function** `[1/7]` uses | **Yes**, twice. Permanent control runs on every `make guards`. Plus a one-off hand-run RED demo in 29-04: `#include "dsp/VcoCore.hpp"` appended to a scratch copy of `LfoCore.hpp` → **observed exit 1**, `VCO header(s) reached the LFO build graph`. |
-| **D-07 ODR link gate** | **CI-only.** Add a temporary in-class `static constexpr` array with runtime indexing (no out-of-line definition) to `VcoCore.hpp`, push, observe `toolchain-gate` MinGW link fail with `undefined reference`, revert. **Cannot be reproduced locally** — Apple clang links it clean at `-O0` and `-O3` (verified experimentally) | **push to CI only** | Plan 29-05 Task 2 — a `checkpoint:human-verify` operator procedure on throwaway branch `p29-odr-negative-control` | ⬜ **PENDING — awaiting the Task 2 CI observation.** No local substitute exists and none was attempted; a local link check would report success and constitute a false green. Until this row is filled with a failing run URL and the verbatim `undefined reference` line, **ROADMAP success criterion 3 is asserted, not demonstrated.** |
+| **D-07 ODR link gate** | **CI-only.** Add a temporary in-class `static constexpr` array with runtime indexing (no out-of-line definition) to `VcoCore.hpp`, push, observe `toolchain-gate` MinGW link fail with `undefined reference`, revert. **Cannot be reproduced locally** — Apple clang links it clean at `-O0` and `-O3` (verified experimentally) | **push to CI only** | Plan 29-05 Task 2 — one-time operator-run control on throwaway branch `p29-odr-negative-control` (commit `e117cff`, since deleted). No local substitute exists and none was attempted. | ✅ **YES — OBSERVED RED THEN GREEN.** Red: run [30339957128](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30339957128), job `toolchain-gate`, step 6 `win-x64 leg reproduction (compile + full link vs libRack)` failed with:<br>`x86_64-w64-mingw32-ld: build-ci/vco_compile_canary.cpp.o:vco_compile_canary.cpp:(.rdata$.refptr._ZN5forge7VcoCore13ODR_PROBE_TBLE[...]+0x0): undefined reference to 'forge::VcoCore::ODR_PROBE_TBL'` / `collect2: error: ld returned 1 exit status`.<br>Every per-file MinGW compile succeeded; only the final `-o build-ci/plugin.dll` link failed — the failure is genuinely link-class. Green after revert: run [30340075121](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30340075121), step 6 `success`. **ROADMAP success criterion 3 is now demonstrated, not asserted.** |
 | D-07 C++17-ism gate | `inline constexpr` / `if constexpr` / `[[maybe_unused]]` / `std::clamp` each hard-error under `-std=c++11 -pedantic-errors -fsyntax-only` (all four verified) | local | `tests/check_canary.sh` `[4/5]` — each of the four C++17-isms compiled against the real canary TU and required to hard-error | **Yes** — permanent, runs on every `make guards`. Observed 2026-07-28 as part of `PASS: VCO compile canary guard clean`. |
 
 **A note on what these controls do and do not cover.** Four of the five above are *syntax/hash* class
@@ -121,6 +130,40 @@ v2.0.0 rejected. Apple clang materialises an in-class `static constexpr` array a
 local symbol and links the failure class cleanly at every optimisation level measured (`-O0`, `-O3`).
 Local green on this machine is therefore **not evidence about the CI gate**, and the four green rows
 above must not be read as covering the fifth.
+
+---
+
+### The P-2 Correction — the blind spot is wider than the plan assumed
+
+Pitfall P-2 was written as *"`make strict` will report PASS on the broken code."* The Task 2
+observation shows that understated it in two directions, and the corrected form is the one that
+should be carried into Phases 30–36.
+
+**Direction 1 — it is the entire local gate, not just `make strict`.** Measured on the deliberately
+broken commit `e117cff`:
+
+| Local command | Result on genuinely broken code |
+|---|---|
+| `make strict` | exit 0 — `strict C++11 gate: PASS` (compile line named `src/vco_compile_canary.cpp`) |
+| `make test` | exit 0 — 64/64, 2,615,099 assertions |
+| `bash tests/check_canary.sh` | exit 0 — PASS |
+| `make guards` | exit 0 — `guard suite: PASS` |
+
+Every single local gate this phase built was green on code that could not link for the target
+toolchain. Not one of them is capable of seeing this class.
+
+**Direction 2 — the strict gate is blind on the runner too, not only on macOS.** On the failing run,
+`toolchain-gate` step 4 `Strict C++11 pedantic gate (our code only)` also reported **`success`** on the
+broken commit. The blindness is structural, not a macOS/Apple-clang artifact: `-fsyntax-only` never
+links, so no `-fsyntax-only` gate on any platform can ever catch a link-class defect. Only step 6,
+which performs a real link against `libRack`, caught it.
+
+**The operative rule for every subsequent phase.** A fully green local gate — `make test` +
+`make strict` + `make guards`, all exit 0 — is **necessary and provably not sufficient** as a pre-tag
+signal. Green local plus green `make strict` was exactly the state in which v2.0.0 was tagged and
+rejected, and this phase has now reproduced that state deliberately and watched it happen. **No tag
+or VCV Library resubmission may be cut on local evidence alone; the CI `toolchain-gate` link leg must
+be observed green on the exact commit being tagged.**
 
 **Plan requirements derived from this:**
 - The D-04 hasher self-test and the D-06 fixture negative control become **permanent automated cases**.
@@ -134,6 +177,16 @@ above must not be read as covering the fifth.
 |----------|-------------|------------|-------------------|
 | MinGW ODR link gate actually fails on a real ODR violation | TEST-06 | Cannot be reproduced on macOS/clang — verified experimentally that clang links the v2.0.0 failure class clean at `-O0` and `-O3` | Introduce the known-bad in-class `static constexpr` array in `VcoCore.hpp`, push, confirm `toolchain-gate` fails with `undefined reference`, revert, confirm green |
 
+**Status: COMPLETED 2026-07-28 (plan 29-05 Task 2).** Executed by the operator on throwaway branch
+`p29-odr-negative-control`. Observed red on run
+[30339957128](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30339957128) and green
+after revert on run
+[30340075121](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30340075121).
+Cleanup verified independently: `git status --porcelain` empty; `grep -rn "ODR_PROBE_TBL\|odrProbe" src/`
+returns nothing; the branch is absent both locally (`git branch --list`) and on the remote
+(`git ls-remote --heads origin`); the broken commit `e117cff` is reachable from no branch. This
+verification is not repeated in later phases — it is a one-time proof that the gate bites.
+
 *No in-Rack UAT required for Phase 29 — D-01 makes the VCO core silent by design, so there is no audio surface.*
 
 ---
@@ -145,7 +198,15 @@ above must not be read as covering the fifth.
 - [x] Wave 0 covers all MISSING references — every ❌ W0 entry in the Per-Task Verification Map is now ✅, verified file-by-file on disk.
 - [x] No watch-mode flags — `make test`, `make strict` and `make guards` are all one-shot; no `--watch`, no `-w`.
 - [x] Feedback latency < 30s — **measured 4.3 s** for the complete local gate (`make test` 0.47 s + `make strict` 1.61 s + `make guards` 2.24 s, incremental).
-- [ ] Every guard has a negative control (observed red), not only a green run — **4 of 5 observed red.** D-04, D-05, D-06 and the D-07 C++17-ism gate all have controls that fire; the **D-07 ODR link gate is unobserved** and blocks this item until plan 29-05 Task 2 completes.
-- [ ] `nyquist_compliant: true` set in frontmatter — deliberately held at `false` until the Task 2 ODR evidence exists. Setting it before that observation would be the exact posture in which v2.0.0 was tagged and rejected.
+- [x] Every guard has a negative control (observed red), not only a green run — **5 of 5 observed red.** D-04, D-05, D-06 and the D-07 C++17-ism gate fire on every run locally; the D-07 ODR link gate was observed red in CI on run [30339957128](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30339957128) and green after revert on [30340075121](https://github.com/Photep/ForgeAudio-AnalogSeries/actions/runs/30340075121).
+- [x] `nyquist_compliant: true` set in frontmatter — set **only after** the Task 2 ODR evidence existed, not before.
 
-**Approval:** pending — blocked solely on the plan 29-05 Task 2 CI observation.
+**Approval: SIGNED OFF 2026-07-28** (plan 29-05). All four ROADMAP success criteria are evidenced
+rather than asserted, with two honest carve-outs recorded above and repeated here so they are not
+lost:
+
+1. **Two TEST-01 rows are green-but-weak (P-7)** — seam determinism and output-finiteness pass only
+   because `VcoCore::step()` is silent by construction (D-01). They are not full coverage. **Phase 30**
+   deletes the TOMBSTONE case and must re-evidence both rows once the core emits a real waveform.
+2. **The whole local gate is provably blind to the link-class defect** (§ The P-2 Correction). No tag
+   or VCV Library resubmission may be cut on local evidence alone.
