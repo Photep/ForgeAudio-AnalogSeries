@@ -481,15 +481,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# [6/7] NEGATIVE CONTROL — the detector must report a real violation.
+# [6/7] NEGATIVE CONTROLS — the detectors must report real violations.
 #
-# A guard that has only ever been observed green is unvalidated. This writes a
-# synthetic LFO-side translation unit that includes a VCO header, runs the SAME
-# detect_vco_includes function [1/7] runs, and REQUIRES a hit. If the detector
-# reports the fixture clean, [1/7]'s green above means nothing and this section
-# fails the gate.
+# A guard that has only ever been observed green is unvalidated. This section
+# validates TWO detectors, each by running the EXACT function its section runs
+# over a synthetic fixture:
+#
+#   * detect_vco_includes, which [1/7] depends on — a DIRECT (one-hop) fixture
+#     and a TWO-HOP fixture, both of which must produce a hit.
+#   * detect_rack_sdk_includes, which [2/7] depends on — a fixture carrying a
+#     genuine Rack SDK include, which must produce a hit, AND a fixture
+#     carrying only the exempted shim path, which must NOT. Both directions
+#     are required: the first alone would still pass if the exemption were
+#     widened to a substring match, and the second alone would still pass if
+#     the detector were deleted outright. Together they pin the exemption to
+#     exactly the width it is documented to have.
+#
+# If any of these fixtures behaves the wrong way, the corresponding section's
+# green above means nothing and this section fails the gate.
 # ---------------------------------------------------------------------------
-echo "[6/7] NEGATIVE CONTROL — the audit must detect a synthetic violation..."
+echo "[6/7] NEGATIVE CONTROLS — the VCO-leak and Rack-free detectors must behave on synthetic fixtures..."
 cat > "${TMP}/nc_lfo_leak.cpp" <<'EOF'
 // Synthetic fixture: an LFO-side translation unit that pulls in VCO code.
 // This is exactly the breach [1/7] exists to prevent.
@@ -537,6 +548,43 @@ elif [[ -n "${nc2_hits}" ]]; then
 	printf '%s\n' "${nc2_hits}" | sed "s|${TMP}/|<scratch>/|" | sed 's/^/    /'
 else
 	note_fail "two-hop negative control DID NOT FIRE: a fixture that reaches dsp/VcoCore.hpp through ONE intermediate header was reported clean. expand_include_closure is not resolving includes, so [1/7] has silently reverted to catching DIRECT includes only — the exact bypass it was rewritten to close."
+fi
+
+# EXEMPTION CONTROLS for [2/7], in BOTH directions.
+#
+# [2/7] carries a documented exact-path exemption for "dsp/RackCompat.hpp". An
+# exemption nobody exercises is indistinguishable from a hole: widen it by one
+# character and the section keeps reporting PASS on a VCO header that really
+# does pull in the Rack SDK. These two fixtures run through
+# detect_rack_sdk_includes — the SAME function [2/7] calls, for the same reason
+# the controls above call the same function [1/7] calls. A control that
+# exercises different code than the guard proves nothing.
+cat > "${TMP}/VcoNcRackSdkProbe.hpp" <<'EOF'
+#pragma once
+// Synthetic fixture: a VCO-shaped header carrying a GENUINE Rack SDK include.
+// This is exactly the breach [2/7] exists to prevent.
+#include <rack.hpp>
+EOF
+nc3_hits="$(detect_rack_sdk_includes "${TMP}/VcoNcRackSdkProbe.hpp")"
+if [[ -n "${nc3_hits}" ]]; then
+	echo "  OK: [2/7] detector still reports a genuine Rack SDK include:"
+	printf '%s\n' "${nc3_hits}" | sed "s|${TMP}/|<scratch>/|" | sed 's/^/    /'
+else
+	note_fail "the Rack-free negative control DID NOT FIRE: detect_rack_sdk_includes reported a fixture that plainly includes <rack.hpp> as clean. The RackCompat exemption has swallowed the whole detector, so [2/7]'s PASS above is meaningless."
+fi
+
+cat > "${TMP}/VcoNcRackShimProbe.hpp" <<'EOF'
+#pragma once
+// Synthetic fixture: a VCO-shaped header carrying ONLY the exempted path —
+// the repo's own Rack-FREE shim, which D-14 makes mandatory for the VCO.
+#include "dsp/RackCompat.hpp"
+EOF
+nc4_hits="$(detect_rack_sdk_includes "${TMP}/VcoNcRackShimProbe.hpp")"
+if [[ -z "${nc4_hits}" ]]; then
+	echo "  OK: [2/7] detector ignores the one exempted path, dsp/RackCompat.hpp"
+else
+	note_fail "the documented exemption is NOT in effect: detect_rack_sdk_includes flagged a fixture whose only include is the exempted \"dsp/RackCompat.hpp\". D-14's mandated forge::exp2_taylor5 lives in that shim, so every VCO header that includes what it uses will hard-fail this build gate:"
+	printf '%s\n' "${nc4_hits}" | sed "s|${TMP}/|<scratch>/|" | sed 's/^/    /'
 fi
 
 echo "  NOTE: these negative controls are what make this audit VALIDATED rather than"
