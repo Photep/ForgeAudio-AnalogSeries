@@ -64,9 +64,13 @@
 #
 # Enforces:
 #   [1/3] every file in src/dsp/FROZEN.sha256 matches its recorded digest
-#         (CR-normalized, because the frozen set is all text)
+#         (CR-normalized, because the frozen set is all text), the manifest has
+#         exactly the expected NUMBER of entries (so removing a line cannot
+#         silently unguard a file), and every shipped LFO header plus the LFO
+#         shell is actually present in it (so a file cannot go unpinned)
 #   [2/3] every file in tests/golden/SHA256SUMS matches its recorded digest
-#         (raw bytes, because the fixtures are binary)
+#         (raw bytes, because the fixtures are binary), with the same entry-count
+#         and completeness coverage as [1/3]
 #   [3/3] NEGATIVE CONTROL — a one-line modification IS detected, proven on
 #         every single run against a scratch copy
 #
@@ -81,6 +85,23 @@ ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 FROZEN_REL="src/dsp/FROZEN.sha256"
 GOLDEN_REL="tests/golden/SHA256SUMS"
+
+# ---------------------------------------------------------------------------
+# COVERAGE PINS — the manifests pin the FILES, and these pin the MANIFESTS.
+#
+# Without them this gate iterated whatever lines happened to be present and
+# asserted nothing about how many there should be. DELETING a manifest line is
+# strictly easier than bumping a digest and produced a full green with no signal
+# at all: dropping the src/AnalogLFO.cpp line while editing src/AnalogLFO.cpp in
+# the same commit passed cleanly. The `(N pinned entries checked)` line was
+# printed and never compared.
+#
+# Bump these two numbers in the SAME commit that adds or removes a manifest
+# entry, exactly like a digest bump. That is the point: unguarding a shipped
+# file should cost at least as much deliberate typing as changing one.
+# ---------------------------------------------------------------------------
+FROZEN_EXPECTED_ENTRIES=15
+GOLDEN_EXPECTED_ENTRIES=6
 
 fail=0
 note_fail() { echo "  FAIL: $1"; fail=1; }
@@ -149,6 +170,46 @@ else
 		fi
 	done < "${ROOT}/${FROZEN_REL}"
 	echo "  (${frozen_count} pinned entries checked)"
+
+	# --- Coverage floor. A digest mismatch is loud; a DELETED line was silent. ---
+	if [[ "${frozen_count}" -ne "${FROZEN_EXPECTED_ENTRIES}" ]]; then
+		note_fail "${FROZEN_REL} has ${frozen_count} entries, expected ${FROZEN_EXPECTED_ENTRIES}."
+		if [[ "${frozen_count}" -lt "${FROZEN_EXPECTED_ENTRIES}" ]]; then
+			echo "        A file was REMOVED from the manifest. That unguards it SILENTLY, which"
+			echo "        is strictly worse than a digest mismatch: the gate then reports a green"
+			echo "        it has not earned for a file that is already published. ${BUMP_HINT}"
+		else
+			echo "        Entries were ADDED. That is welcome, but update FROZEN_EXPECTED_ENTRIES"
+			echo "        in this script in the SAME commit so the floor keeps pace with the manifest."
+		fi
+	fi
+
+	# --- Completeness. The floor above catches removals; this catches a frozen
+	# file that was never pinned in the first place. It sweeps the directory
+	# rather than a list, so a header added by a later phase must be pinned or
+	# named as VCO-side — there is no third option that passes. This also closes
+	# the "new unpinned header under src/dsp/" half of the check_includes.sh
+	# leak bypass. ---
+	frozen_unpinned=""
+	for f in "${ROOT}"/src/dsp/*.hpp "${ROOT}/src/AnalogLFO.cpp"; do
+		[[ -f "${f}" ]] || continue
+		rel="${f#${ROOT}/}"
+		# The VCO's own headers are NOT frozen — they are the thing being built.
+		case "${rel}" in
+			src/dsp/Vco*.hpp|src/dsp/MorphBlep.hpp) continue ;;
+		esac
+		if ! awk -v p="${rel}" '$2 == p { found = 1 } END { exit !found }' "${ROOT}/${FROZEN_REL}"; then
+			frozen_unpinned="${frozen_unpinned} ${rel}"
+		fi
+	done
+	if [[ -n "${frozen_unpinned}" ]]; then
+		note_fail "these file(s) exist on the shipped LFO side but are NOT pinned in ${FROZEN_REL}:${frozen_unpinned}"
+		echo "        An unpinned file is an unguarded file. Add a digest line for each (or, if"
+		echo "        it is VCO code, name it src/dsp/Vco*.hpp so it is on the other side of the"
+		echo "        boundary) and bump FROZEN_EXPECTED_ENTRIES in this script to match."
+	else
+		echo "  OK: every shipped LFO header and the LFO shell are pinned (completeness)"
+	fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -182,6 +243,26 @@ else
 		fi
 	done < "${ROOT}/${GOLDEN_REL}"
 	echo "  (${golden_count} pinned fixtures checked)"
+
+	# The identical hole, in the identical shape: dropping a line here silently
+	# unguards a golden fixture that is the LFO's ONLY behavioral witness.
+	if [[ "${golden_count}" -ne "${GOLDEN_EXPECTED_ENTRIES}" ]]; then
+		note_fail "${GOLDEN_REL} has ${golden_count} entries, expected ${GOLDEN_EXPECTED_ENTRIES}. A removed line unguards a golden fixture silently; an added one needs GOLDEN_EXPECTED_ENTRIES in this script bumped in the same commit."
+	fi
+
+	golden_unpinned=""
+	for f in "${ROOT}"/tests/golden/*.f32; do
+		[[ -f "${f}" ]] || continue
+		rel="${f#${ROOT}/}"
+		if ! awk -v p="${rel}" '$2 == p { found = 1 } END { exit !found }' "${ROOT}/${GOLDEN_REL}"; then
+			golden_unpinned="${golden_unpinned} ${rel}"
+		fi
+	done
+	if [[ -n "${golden_unpinned}" ]]; then
+		note_fail "these golden fixture(s) exist but are NOT pinned in ${GOLDEN_REL}:${golden_unpinned}"
+	else
+		echo "  OK: every tests/golden/*.f32 fixture is pinned (completeness)"
+	fi
 fi
 
 # ---------------------------------------------------------------------------
