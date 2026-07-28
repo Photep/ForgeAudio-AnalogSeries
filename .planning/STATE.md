@@ -4,15 +4,15 @@ milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 29
 current_phase_name: VCO Test Harness & LFO Non-Regression Guardrail
-status: planning
-stopped_at: Phase 29 context gathered
-last_updated: "2026-07-27T10:40:27.478Z"
-last_activity: 2026-07-20
-last_activity_desc: v2.0 roadmap created (Phases 29-36), 40/40 requirements mapped
+status: planned
+stopped_at: Phase 29 planned — ready to execute
+last_updated: "2026-07-28T00:00:00.000Z"
+last_activity: 2026-07-28
+last_activity_desc: Phase 29 planned — 5 plans across 4 waves, plan-checker passed, 3/3 requirements + 8/8 decisions covered
 progress:
   total_phases: 8
   completed_phases: 0
-  total_plans: 0
+  total_plans: 5
   completed_plans: 0
   percent: 0
 ---
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 29 (VCO Test Harness & LFO Non-Regression Guardrail) — not started
-Plan: —
-Status: Roadmap created; ready to plan Phase 29
-Last activity: 2026-07-20 — v2.0 roadmap created (Phases 29-36), 40/40 requirements mapped
+Phase: 29 (VCO Test Harness & LFO Non-Regression Guardrail) — planned, not started
+Plan: 5 plans (29-01…29-05) across 4 waves — 0/5 executed
+Status: Ready to execute
+Last activity: 2026-07-28 — Phase 29 planned; research + patterns + validation strategy written, plan-checker passed with no issues
 
 ## Performance Metrics
 
