@@ -99,7 +99,7 @@ See: `.planning/milestones/v1.4-ROADMAP.md` for full details.
 
 > **⚠ MILESTONE GUARDRAIL — the shipped LFO must not regress.** The Analog LFO is live in the VCV Library and pinned by bit-exact `.f32` goldens. All VCO work is additive (new files: `VcoCore.hpp`, `MorphBlep.hpp`, a separate `DriftEngine` instance). The four shared `src/dsp/` headers stay frozen; any unavoidable additive touch (only `DriftEngine.hpp`, Phase 34) is gated by a byte-identical LFO golden replay. Any LFO-regression risk — shared-header edits, `plugin.json`/version/registration changes — is surfaced to the operator with impact + remediation options + a recommendation before proceeding. Tripwires: LFO goldens + `make strict` (C++11) + the CI MinGW link leg, wired as a standing canary in Phase 29.
 
-- [ ] **Phase 29: VCO Test Harness & LFO Non-Regression Guardrail** - Stand up the Rack-free VcoCore harness and wire the LFO golden + strict/MinGW canary before any VCO DSP lands
+- [x] **Phase 29: VCO Test Harness & LFO Non-Regression Guardrail** - Stand up the Rack-free VcoCore harness and wire the LFO golden + strict/MinGW canary before any VCO DSP lands (completed 2026-07-28)
 - [ ] **Phase 30: VcoCore Skeleton & Module Registration** - Pitch-accurate (aliased-on-purpose) VcoCore behind the POD boundary, registered as a second module
 - [ ] **Phase 31: Pitch, Tuning & Exponential FM** - Accurate 1V/oct + coarse/fine tune + audio-rate expo FM, all summed before one exp2, proven to <1 cent
 - [ ] **Phase 32: Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP)** - The linchpin: band-limit the continuous character-deformed morph crossfade in an isolated wrapper header
@@ -122,7 +122,7 @@ See: `.planning/milestones/v1.4-ROADMAP.md` for full details.
   3. `make strict` (C++11, `-pedantic-errors`) and the CI MinGW **link** leg both cover the new `AnalogVCO` translation unit and VCO headers, failing on any ODR / C++17-ism (the exact class that rejected v2.0.0).
   4. The full test + strict + MinGW canary runs in CI on every push and is green.
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans complete
 Plans:
 **Wave 1**
 
@@ -139,7 +139,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 29-05-PLAN.md — Full local phase gate + CI-only ODR link-gate negative control (push red, revert, confirm green)
+- [x] 29-05-PLAN.md — Full local phase gate + CI-only ODR link-gate negative control (push red, revert, confirm green)
 
 **Guardrail**: This phase *is* the guardrail — the standing LFO-golden replay + strict/MinGW canary it wires (TEST-04/06) runs automatically at the end of every subsequent phase.
 
@@ -250,7 +250,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 29. VCO Test Harness & LFO Guardrail | 4/5 | In Progress|  |
+| 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete   | 2026-07-28 |
 | 30. VcoCore Skeleton & Registration | 0/? | Not started | - |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |

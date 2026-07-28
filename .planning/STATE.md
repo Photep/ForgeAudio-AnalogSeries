@@ -4,17 +4,17 @@ milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 29
 current_phase_name: vco-test-harness-lfo-non-regression-guardrail
-status: executing
-stopped_at: Completed 29-03-PLAN.md
-last_updated: "2026-07-28T07:39:14.148Z"
+status: verifying
+stopped_at: Completed 29-05-PLAN.md — Phase 29 complete, all 5 plans executed
+last_updated: "2026-07-28T08:00:33.449Z"
 last_activity: 2026-07-28
-last_activity_desc: Phase 29 execution started
+last_activity_desc: Phase 29 complete — CI link gate observed red then green (ODR negative control)
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 4
-  percent: 0
+  completed_plans: 5
+  percent: 13
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 29 — vco-test-harness-lfo-non-regression-guardrail
+**Current focus:** Phase 29 complete — next: Phase 30 (VcoCore skeleton & module registration)
 
 > **⚠ MILESTONE GUARDRAIL — protect the shipped LFO.** No breaking/behavioral changes to the Analog LFO (live in VCV Library, golden-pinned) while adding the VCO. Prefer additive code over editing shared `src/dsp/` headers. Any LFO-regression risk (shared-header edits, plugin.json/version/registration) → surface to operator with impact + remediation options + a recommendation before acting. Tripwires: LFO `.f32` goldens + `make strict` + CI MinGW link leg. See PROJECT.md Constraints.
 
 ## Current Position
 
-Phase: 29 (vco-test-harness-lfo-non-regression-guardrail) — EXECUTING
+Phase: 29 (vco-test-harness-lfo-non-regression-guardrail) — COMPLETE, awaiting verification
 Plan: 5 of 5
-Status: Ready to execute
-Last activity: 2026-07-28 — Phase 29 execution started
+Status: Phase complete — ready for verification
+Last activity: 2026-07-28 — Phase 29 complete; the D-07 MinGW link gate was observed failing on a real ODR violation (run 30339957128) and green after revert (run 30340075121)
 
 ## Performance Metrics
 
@@ -85,6 +85,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 29]: The SHA-256 hasher is vendored in tests/Sha256.hpp and validated by a permanent negative control, never by a green run — Three published FIPS 180-4 vectors plus a one-byte-perturbed in-memory copy of a real golden; no external hashing tool (sha256sum is absent on macOS) and no new dependency
 - [Phase 29]: Phase 29 D-07 compile canary lives at src/vco_compile_canary.cpp (operator: option-a) — Covered for free by all four C++11/ODR gates via the existing src/*.cpp globs, so no build wiring can silently rot; identical to how Phase 30's AnalogVCO.cpp will be gated. Cost: one unused namespaced symbol forge::vcoCompileCanaryProbe ships in the released plugin binary, disclosed in the file banner.
 - [Phase 29]: The compile canary must ODR-USE the VCO headers, not merely #include them — An include-only TU emits no code and is ODR-used by nothing, leaving the CI MinGW link leg nothing to resolve — permanently and silently green (P-1). A forward declaration plus a runtime-derived loop trip count ((i & 3) + 1) defeats dead-symbol elimination and constant folding; tests/check_canary.sh [2/5] asserts the emitted symbol via nm.
+- [Phase 29]: The CI MinGW link gate is PROVEN to bite — run 30339957128 failed with 'undefined reference to forge::VcoCore::ODR_PROBE_TBL', green again after revert on run 30340075121 — ROADMAP criterion 3 is now demonstrated rather than asserted; the referencing object was vco_compile_canary.cpp.o, proving the canary's ODR-use design (P-1) works
+- [Phase 29]: P-2 CORRECTED and widened — the ENTIRE local gate returned exit 0 on the deliberately broken commit, and the strict gate reported success on the Ubuntu runner too — make test, make strict, make guards and check_canary.sh all passed on code that could not link; -fsyntax-only never links, so no syntax-only gate on any platform can catch a link-class defect. Only the real-link step 6 caught it.
+- [Phase 29]: No tag or VCV Library resubmission may be cut on local evidence alone — the CI toolchain-gate link leg must be observed green on the exact commit being tagged — Green local plus green make strict was precisely the state in which v2.0.0 was tagged and rejected; this phase reproduced that state deliberately and measured it
+- [Phase 29]: The two P-7 TEST-01 rows (seam determinism, output finiteness) are recorded as green-but-weak, NOT coverage — They pass only because VcoCore::step() is silent by D-01 — determinism compares two all-zero blocks and isfinite(0.f) is trivially true. Phase 30 must re-evidence both when it deletes the TOMBSTONE case.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -113,14 +117,15 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 29 P02 | 6 min | 3 tasks | 3 files |
 | Phase 29 P03 | 6 min | 3 tasks | 3 files |
 | Phase 29 P04 | 8 min | 3 tasks | 6 files |
+| Phase 29 P05 | 16 min | 2 tasks | 2 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-28T07:39:04.780Z
-Stopped at: Completed 29-03-PLAN.md
-Resume: run `/gsd-plan-phase 29` to plan the VCO test harness + LFO guardrail phase.
+Last session: 2026-07-28T08:00:33.442Z
+Stopped at: Completed 29-05-PLAN.md — Phase 29 complete, all 5 plans executed
+Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
 
