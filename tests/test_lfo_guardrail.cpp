@@ -31,6 +31,8 @@
 
 #include "Sha256.hpp"
 
+#include <cstddef>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -48,6 +50,77 @@ const char* const VEC_TWOBLOCK_MESSAGE =
 	"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
 const char* const VEC_TWOBLOCK_DIGEST =
 	"248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1";
+
+// ===========================================================================
+// D-04 GOLDEN BYTE LOCK — THESE BYTES ARE FROZEN.
+// ===========================================================================
+//
+// Each entry pins the SHA-256 of one shipped-LFO golden fixture. These files
+// back the six behavioral replays in tests/test_golden.cpp, which are the
+// regression canary for a plugin that is LIVE in the VCV Library.
+//
+// A golden may change ONLY through a deliberate, reviewed edit of THIS FILE.
+// If a replay in tests/test_golden.cpp goes red, the LFO's behavior changed —
+// that is the finding, not a stale fixture. NEVER run `make capture` to make a
+// failing replay green: regenerating the fixtures overwrites the evidence and
+// silently launders a real regression into a "new baseline".
+//
+// Paths are repo-root-relative, matching the literals in tests/test_golden.cpp.
+// Digests below were recomputed from the working tree with `shasum -a 256` and
+// agree with 29-RESEARCH.md and tests/golden/SHA256SUMS.
+struct GoldenFixture {
+	const char* path;
+	const char* digest;
+};
+
+const GoldenFixture GOLDENS[] = {
+	{"tests/golden/freerun_44100.f32",
+	 "86f110db82efafc140d6ebc4e13a3015c30afcc3ba761d596d3a3855a01f16c7"},
+	{"tests/golden/freerun_44100_driftoff.f32",
+	 "cf947ae18b32c4a52c1dfbb48e7a26466ac43bcc245319d999a124ecc2f3b1a5"},
+	{"tests/golden/freerun_48000.f32",
+	 "51e274fe2c2477da0ba71a1acdd97eca2bd9dd7ff421237a03530e1f9e0e77c8"},
+	{"tests/golden/freerun_48000_driftoff.f32",
+	 "e3ed634ef50352fd6b81288bb548bb73079521009168deaf1aa5ac4164118be5"},
+	{"tests/golden/freerun_96000.f32",
+	 "a450d0963e5eda8fcba15084978f49e3bc22d9d6001104d81432b4f181229b74"},
+	{"tests/golden/freerun_96000_driftoff.f32",
+	 "b935779570067988a23282c60d2e6a33b4ea691f4f31b36a4d36ecdf07be3af2"}
+};
+
+const size_t GOLDEN_COUNT = sizeof(GOLDENS) / sizeof(GOLDENS[0]);
+
+// 8192 float32 samples per fixture (tests/golden/freerun_seeds.txt).
+const size_t GOLDEN_BYTES = 32768u;
+
+// Look the pinned digest up by path so a table reorder cannot silently
+// mis-pair a fixture with someone else's digest.
+std::string pinnedDigestFor(const std::string& path) {
+	for (size_t i = 0; i < GOLDEN_COUNT; ++i) {
+		if (path == std::string(GOLDENS[i].path))
+			return std::string(GOLDENS[i].digest);
+	}
+	return std::string();
+}
+
+// Raw byte reader. Mirrors the std::ios::binary relative-path shape of
+// tests/test_golden.cpp's loadF32(), but reads bytes rather than floats.
+std::vector<unsigned char> readAllBytes(const std::string& path) {
+	std::vector<unsigned char> v;
+	std::ifstream f(path.c_str(), std::ios::binary);
+	if (!f.is_open())
+		return v;
+	char chunk[8192];
+	while (f) {
+		f.read(chunk, (std::streamsize)sizeof chunk);
+		const std::streamsize n = f.gcount();
+		if (n <= 0)
+			break;
+		for (std::streamsize i = 0; i < n; ++i)
+			v.push_back((unsigned char)chunk[(size_t)i]);
+	}
+	return v;
+}
 
 // A digest is always exactly 64 lowercase hex characters.
 bool isLowerHex64(const std::string& s) {
@@ -106,4 +179,58 @@ TEST_CASE("lfo guardrail: SHA-256 of a missing file is reported as an empty dige
 	const std::string gotLf =
 		forge::sha256HexFileLfNormalized("tests/golden/this_file_does_not_exist.f32");
 	CHECK(gotLf.empty());
+}
+
+// --- D-04: the golden byte lock ---------------------------------------------
+
+TEST_CASE("lfo guardrail: golden .f32 bytes are unchanged (D-04 checksum lock)") {
+	for (size_t i = 0; i < GOLDEN_COUNT; ++i) {
+		const std::string path = GOLDENS[i].path;
+		CAPTURE(path);
+		const std::string got = forge::sha256HexFile(path);
+		// A missing or unreadable fixture must fail LOUDLY here, never slip
+		// through as a silent pass further down.
+		REQUIRE(!got.empty());
+		CHECK(got == std::string(GOLDENS[i].digest));
+	}
+}
+
+// --- The negative control ----------------------------------------------------
+//
+// DO NOT DELETE THIS CASE. A guard that has only ever been observed green is
+// unvalidated: it proves the hasher ran, not that it would notice a change.
+// This case perturbs a single bit of an IN-MEMORY copy of a real golden and
+// requires the digest to move. It is what makes the D-04 lock *validated*
+// rather than merely green. The on-disk fixture is never written.
+TEST_CASE("lfo guardrail: golden hash lock detects a single-byte change (negative control)") {
+	const std::string path = "tests/golden/freerun_44100_driftoff.f32";
+	const std::string pinned = pinnedDigestFor(path);
+	REQUIRE(!pinned.empty());
+
+	const std::vector<unsigned char> bytes = readAllBytes(path);
+	REQUIRE(bytes.size() == GOLDEN_BYTES);
+
+	// Positive leg: the untouched buffer reproduces the pinned digest.
+	CHECK(forge::sha256HexBytes(bytes) == pinned);
+
+	// Negative leg: flip the low bit of one byte near the middle of the copy.
+	std::vector<unsigned char> perturbed = bytes;
+	const size_t idx = perturbed.size() / 2;
+	perturbed[idx] = (unsigned char)(perturbed[idx] ^ (unsigned char)0x01u);
+	REQUIRE(perturbed.size() == bytes.size());
+	CHECK(perturbed[idx] != bytes[idx]);
+	CHECK(forge::sha256HexBytes(perturbed) != pinned);
+}
+
+// --- Length assertions -------------------------------------------------------
+//
+// Catches a truncated fixture before the digest comparison, so the failure
+// message says "wrong length" instead of only "wrong hash".
+TEST_CASE("lfo guardrail: golden fixtures are the expected 32768-byte length") {
+	for (size_t i = 0; i < GOLDEN_COUNT; ++i) {
+		const std::string path = GOLDENS[i].path;
+		CAPTURE(path);
+		const std::vector<unsigned char> bytes = readAllBytes(path);
+		CHECK(bytes.size() == GOLDEN_BYTES);
+	}
 }
