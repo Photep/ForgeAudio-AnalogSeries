@@ -155,7 +155,7 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: 5/7 plans executed
+**Plans**: 6/7 plans executed
 Plans:
 **Wave 1**
 
@@ -173,7 +173,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 30-04-PLAN.md — CORE-03 two-instance interleave independence + the permanent deliberately-broken-core positive control
-- [ ] 30-06-PLAN.md — Additive registration under slug `ForgeAnalogVCO`: `plugin.hpp` extern, `plugin.cpp` `addModel`, second `plugin.json` `modules[]` entry, LFO entry proven byte-unchanged
+- [x] 30-06-PLAN.md — Additive registration under slug `ForgeAnalogVCO`: `plugin.hpp` extern, `plugin.cpp` `addModel`, second `plugin.json` `modules[]` entry, LFO entry proven byte-unchanged
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -274,7 +274,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
-| 30. VcoCore Skeleton & Registration | 5/7 | In Progress|  |
+| 30. VcoCore Skeleton & Registration | 6/7 | In Progress|  |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |

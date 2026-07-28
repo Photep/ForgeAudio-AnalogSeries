@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
 status: executing
-stopped_at: Completed 30-04-PLAN.md
-last_updated: "2026-07-28T22:55:11.068Z"
+stopped_at: Completed 30-06-PLAN.md
+last_updated: "2026-07-28T23:03:36.979Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 30 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 13
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-07-28 — Phase 30 execution started
 
@@ -105,6 +105,8 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 30]: CORE-03 is closed BEHAVIORALLY: two differently-seeded VcoCore instances driven interleaved sample by sample each reproduce their solo block bit-exactly (0/1024 mismatches, both instances, all three rates), and the check is validated on every run by a permanent DeliberatelyBrokenSharedStateCore measured at 512/512 — Absence of shared state is what a source-text guard proves badly - a grep for static misses a function-local static, a shared reference member, a singleton behind an accessor and a shared pointer. Sensitivity is MEASURED not argued: with phase made a shared static the case exits 1 with 1024/1024 mismatches on both instances at all three rates. v2.1 POLY-01 is now an evidenced additive shell change
 - [Phase 30]: The interleave helper is TEMPLATED over the core type so the positive control exercises byte-identically the drive loop the real check uses, and the case REQUIREs the helper's solo block bit-identical to VcoBlockDriver::run() before asserting anything else — A control that runs its own copy of the loop proves nothing about the loop under test - the check_includes.sh [6/7] argument (every negative control calls the SAME function its section calls). The validity-first REQUIRE is the nc2_direct habit: a helper that quietly stopped overwriting sampleTime/sampleRate would otherwise pass everything below it. Proved: the static-phase probe made that REQUIRE fire first
 - [Phase 30]: The D-17 sensitivity probe used 'static inline double phase', and the control asserts totalMismatch > 0 rather than an exact count — A bare in-class 'static double phase = 0.0;' is ill-formed in BOTH C++11 and C++17 (in-class initializers on static members need const integral or inline), so the plan's literal splice would have produced a compile error - which proves nothing about whether the assertions can see the defect. And the control's own solo baselines are polluted by design (all four helper runs share the one static), so an exact count would pin an accident of run order: measured 512/512 here vs the researcher's 511/512
+- [Phase 30]: The VCO is REGISTERED: extern in src/plugin.hpp, addModel in src/plugin.cpp init(), and a second plugin.json modules[] element under the operator-approved permanent slug ForgeAnalogVCO
+- [Phase 30]: Assert byte identity by reading BYTES, not by counting git diff markers
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -139,13 +141,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P03 | 10 min | 3 tasks | 2 files |
 | Phase 30 P05 | 3 min | 3 tasks | 3 files |
 | Phase 30 P04 | 6 min | 2 tasks | 1 files |
+| Phase 30 P06 | 4 min | 3 tasks | 3 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-28T22:55:11.061Z
-Stopped at: Completed 30-04-PLAN.md
+Last session: 2026-07-28T23:03:36.973Z
+Stopped at: Completed 30-06-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
