@@ -74,7 +74,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 - [ ] **TEST-03**: An alias-floor / spectral invariant asserts high-note aliasing stays below a defined threshold
 - [x] **TEST-04**: The shipped LFO's `.f32` goldens are replayed byte-identical in the same `make test` run as a standing non-regression canary
 - [ ] **TEST-05**: New VCO goldens — drift-off fixtures are cross-platform portable; drift-on fixtures are macOS-gated (matching the LFO policy)
-- [ ] **TEST-06**: The strict C++11 gate (`make strict`) and the CI MinGW link leg cover the new `AnalogVCO.cpp` translation unit (ODR / C++17-ism protection)
+- [x] **TEST-06**: The strict C++11 gate (`make strict`) and the CI MinGW link leg cover the new `AnalogVCO.cpp` translation unit (ODR / C++17-ism protection)
 
 ### Release
 
@@ -154,7 +154,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | TEST-03 | Phase 32 | Pending |
 | TEST-04 | Phase 29 | Complete |
 | TEST-05 | Phase 36 | Pending |
-| TEST-06 | Phase 29 | Pending |
+| TEST-06 | Phase 29 | Complete |
 | REL-01 | Phase 36 | Pending |
 
 **Coverage:**

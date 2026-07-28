@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 29
 current_phase_name: vco-test-harness-lfo-non-regression-guardrail
 status: executing
-stopped_at: Completed 29-02-PLAN.md
-last_updated: "2026-07-28T05:35:23.186Z"
+stopped_at: Completed 29-03-PLAN.md
+last_updated: "2026-07-28T07:26:29.296Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 29 execution started
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
+  completed_plans: 3
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 29 (vco-test-harness-lfo-non-regression-guardrail) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-28 — Phase 29 execution started
 
@@ -83,6 +83,8 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 29]: Phase 29 VcoCore::step() returns silence and a TOMBSTONE test asserts it; Phase 30 must delete that test — D-01 scopes Phase 29 to the boundary contract only; the tombstone forces Phase 30 to consciously revisit the weak-by-construction invariants
 - [Phase 29]: D-04 golden digests are pinned as source literals in tests/test_lfo_guardrail.cpp, not in a data file — Changing a golden then requires a reviewed CODE diff; a data-file manifest could be regenerated silently alongside the fixtures
 - [Phase 29]: The SHA-256 hasher is vendored in tests/Sha256.hpp and validated by a permanent negative control, never by a green run — Three published FIPS 180-4 vectors plus a one-byte-perturbed in-memory copy of a real golden; no external hashing tool (sha256sum is absent on macOS) and no new dependency
+- [Phase 29]: Phase 29 D-07 compile canary lives at src/vco_compile_canary.cpp (operator: option-a) — Covered for free by all four C++11/ODR gates via the existing src/*.cpp globs, so no build wiring can silently rot; identical to how Phase 30's AnalogVCO.cpp will be gated. Cost: one unused namespaced symbol forge::vcoCompileCanaryProbe ships in the released plugin binary, disclosed in the file banner.
+- [Phase 29]: The compile canary must ODR-USE the VCO headers, not merely #include them — An include-only TU emits no code and is ODR-used by nothing, leaving the CI MinGW link leg nothing to resolve — permanently and silently green (P-1). A forward declaration plus a runtime-derived loop trip count ((i & 3) + 1) defeats dead-symbol elimination and constant folding; tests/check_canary.sh [2/5] asserts the emitted symbol via nm.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -109,13 +111,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Scope (v2.1) | Polyphony (up to 16 voices) + per-voice drift seeding — enabled by CORE-03, additive shell change | Deferred to v2.1 | v2.0 scoping |
 | Phase 29 P01 | 12min | 3 tasks | 3 files |
 | Phase 29 P02 | 6 min | 3 tasks | 3 files |
+| Phase 29 P03 | 6 min | 3 tasks | 3 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-28T05:35:23.181Z
-Stopped at: Completed 29-02-PLAN.md
+Last session: 2026-07-28T07:26:29.290Z
+Stopped at: Completed 29-03-PLAN.md
 Resume: run `/gsd-plan-phase 29` to plan the VCO test harness + LFO guardrail phase.
 
 ## Operator Next Steps
