@@ -28,7 +28,11 @@ The three-knob analog engine — morph, character, drift — that lets users dia
 
 **v1.4 Tempered — SHIPPED 2026-07-10.** The feature-complete Analog LFO is now a published, VCV-Library-submitted plugin. Repo `Photep/ForgeAudio-AnalogSeries` is public; release commit `4d7b0a8` is tagged `v2.0.0` (Rack-major convention); VCV Library submission issue [#929](https://github.com/VCVRack/library/issues/929) is the permanent update channel. All 28 v1.4 requirements delivered (2 BUG manual in-Rack UAT checks deferred with automated regression coverage — see STATE.md).
 
-**Milestone v2.0 Forge Analog VCO — IN PROGRESS (requirements being defined).** Second module in the same plugin; see the "Current Milestone" section above for goal, structure, and lean scope.
+**Milestone v2.0 Forge Analog VCO — IN PROGRESS.** Second module in the same plugin; see the "Current Milestone" section above for goal, structure, and lean scope.
+
+**Phase 29 complete (2026-07-28) — VCO test harness + LFO non-regression guardrail.** Before any VCO DSP exists, the Rack-free VCO harness and the shipped-LFO guardrail are standing and green: a `VcoCore` boundary seam, a `VcoBlockDriver` running at 44.1/48/96 kHz with no libRack linked, a golden byte-lock over the LFO's `.f32` fixtures, a frozen-header hash manifest, a dependency-direction audit, and a compile canary that carries VCO headers into both the strict C++11 gate and the CI MinGW link leg. The link gate was proven to bite by observation, not assertion — a deliberately broken branch made CI fail with the exact `undefined reference` class that got v2.0.0 rejected, then reverted green.
+
+**Standing rule adopted in Phase 29:** no tag or VCV resubmission on local evidence alone. Every local gate (`make test`, `make strict`, `make guards`) was measured green on code that could not link, because `-fsyntax-only` never invokes a linker on any platform. `toolchain-gate` must be observed green on the exact commit being tagged.
 
 **v1.4 delivered:** automated test harness (Rack-independent DSP core + `make test` + headless BlockDriver + golden regression + CI); 4 functional bug fixes pinned by regressions; 5 display/code cleanups; VCV compliance (GPL-3.0 LICENSE, NOTICES, populated manifest URLs, trial-font removal + git-history purge verified clean); GitHub-Markdown user manual under `docs/`; verified `.vcvplugin` packaging; public source publication + Library submission.
 
@@ -216,4 +220,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-20 — v1.4 Tempered shipped and ACCEPTED into the VCV Library (live, issue #929). Started milestone v2.0 Forge Analog VCO: second module in the same plugin, lean core scope (advanced FM/phase-distortion/oversampling deferred to v2.1), research-first, phase numbering continues from 29.*
+*Last updated: 2026-07-28 — Phase 29 complete: VCO test harness and shipped-LFO non-regression guardrail stood up and proven by observed CI failure/recovery before any VCO DSP exists. Next: Phase 30 (VcoCore skeleton & module registration).*
