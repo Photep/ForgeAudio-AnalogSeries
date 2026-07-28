@@ -12,7 +12,8 @@
 //   4. default seeds are non-degenerate (never the (0,0) Xoroshiro fixed point)
 //   5. seam determinism — same seeds produce bit-identical blocks
 //   6. output is finite (no NaN, no Inf)
-//   7. TOMBSTONE — the seam is silent by construction (D-01)
+//   7. the seam is a LIVE oscillator — the swept block is neither silent nor
+//      constant (D-15; this slot held the Phase 29 silence tombstone)
 //
 // Known coverage caveat (P-7, stated rather than papered over): invariants 5
 // and 6 are WEAK while step() returns 0.f — they are trivially satisfied by a
@@ -187,21 +188,39 @@ TEST_CASE("vco harness: output is finite (no NaN, no Inf)") {
 }
 
 // ---------------------------------------------------------------------------
-// 7. TOMBSTONE.
-//    Phase 30 (CORE-01) is REQUIRED to DELETE this test case when it lands real
-//    VCO DSP. Its failure is not a bug — it is the intended signal that the
-//    Phase 29 seam changed from "silent by construction" to a real oscillator,
-//    and that the weak invariants above must be revisited at the same time.
+// 7. The seam is ALIVE (D-15).
+//    This slot held the Phase 29 TOMBSTONE, which asserted the seam was silent
+//    by construction (D-01). Phase 30 (CORE-01) INVERTED it in place rather than
+//    deleting it: same slot, same drive, opposite assertion. A future refactor
+//    that reverts VcoCore::step() to a stub — or breaks the phase accumulator so
+//    the block degenerates to DC — fails HERE, loudly, instead of quietly
+//    turning the whole VCO suite vacuous again.
+//
+//    Two independent scans, and neither implies the other: a constant non-zero
+//    DC block passes "not all zero" and fails "not all the same", and that is
+//    precisely the degenerate shape a dead accumulator produces. The inversion
+//    was proven non-vacuous by construction, not by reading — with an early
+//    `return 0.f;` spliced into step() this case was OBSERVED to go red.
 // ---------------------------------------------------------------------------
-TEST_CASE("vco harness: TOMBSTONE - the Phase 29 seam is silent by construction (D-01)") {
+TEST_CASE("vco harness: the seam is a live oscillator - the swept block is neither silent nor constant (D-15)") {
 	const double sr = 48000.0;
 	const int n = 1024;
 	forge::VcoBlockDriver d(sr);
 	auto out = d.run(n, forge::VcoBlockDriver::sweepScenario(n, harnessBase()));
 	REQUIRE(out.size() == (size_t)n);
-	bool allSilent = true;
+
+	// Direct float != throughout (NOT doctest::Approx — see the comment on
+	// invariant 5): these are existence claims about exact values, and an
+	// Approx-based scan would call a near-silent block silent.
+	bool anyNonZero = false;
 	for (size_t i = 0; i < out.size(); ++i) {
-		if (out[i] != 0.f) { allSilent = false; break; }
+		if (out[i] != 0.f) { anyNonZero = true; break; }
 	}
-	CHECK(allSilent);
+	CHECK(anyNonZero);
+
+	bool anyVarying = false;
+	for (size_t i = 0; i < out.size(); ++i) {
+		if (out[i] != out[0]) { anyVarying = true; break; }
+	}
+	CHECK(anyVarying);
 }
