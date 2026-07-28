@@ -15,15 +15,20 @@
 //   7. the seam is a LIVE oscillator — the swept block is neither silent nor
 //      constant (D-15; this slot held the Phase 29 silence tombstone)
 //
-// Known coverage caveat (P-7, stated rather than papered over): invariants 5
-// and 6 are WEAK while step() returns 0.f — they are trivially satisfied by a
-// silent core. They are driven with a varying input sweep so they become
-// load-bearing the moment Phase 30 lands DSP, and invariant 7 exists to force
-// Phase 30 to acknowledge that the seam changed. Invariants 2, 3 and 4 are
-// non-vacuous today: they read real telemetry and a real spread-RNG draw.
+// Coverage caveat CLOSED in Phase 30 (D-19). Phase 29 recorded invariants 5 and
+// 6 as green-but-weak and explicitly NOT coverage, because a silent step() made
+// both trivially true. Phase 30 landed real DSP into the seam, so the debt is
+// PAID rather than quietly dropped: both are now driven through a live
+// accumulator and a live seeded Waveshape by the varying sweep the Phase 29
+// driver was built to supply, and the reason each one now counts is written into
+// its own banner below. Invariants 2, 3 and 4 were non-vacuous from day one:
+// they read real telemetry and a real spread-RNG draw.
 //
-// Deliberately NOT here: pitch accuracy, alias floor and output bounds. Those
-// belong to Phases 31, 32 and 34 and would be meaningless against a silent seam.
+// Deliberately NOT here: pitch accuracy, output magnitude bounds and
+// per-instance spread-seed divergence — those live in tests/test_vco_core.cpp
+// (plans 30-03 / 30-04). The alias floor belongs to Phase 32 (this oscillator is
+// deliberately aliased), and the < 1-cent V/Oct tracking gate is Phase 31's
+// TEST-02, which needs coarse/fine/FM summing that does not exist yet.
 //
 // This TU does NOT define the doctest impl macro (tests/main.cpp owns it).
 
@@ -137,12 +142,16 @@ TEST_CASE("vco harness: default seeds are non-degenerate (never the (0,0) Xorosh
 }
 
 // ---------------------------------------------------------------------------
-// 5. Seam determinism.
-//    WEAK BY CONSTRUCTION TODAY: D-01 makes step() silent, so two blocks of
-//    zeros compare equal no matter what the seeds are. It is kept, and driven
-//    with a VARYING sweep rather than a constant input, so it becomes
-//    load-bearing the moment Phase 30 lands real DSP over the seeded
-//    DriftEngine. Do not delete it as "vacuous" — revisit it in Phase 30.
+// 5. Seam determinism. LOAD-BEARING as of Phase 30 (D-19 closed).
+//    Phase 29 recorded this row as green-but-weak: D-01 made step() silent, so
+//    two blocks of zeros compared equal no matter what the seeds were. That is
+//    no longer the situation. The sweep varies pitch, morph and character across
+//    the block; every sample now runs through a real double-precision phase
+//    accumulator and a real seeded forge::Waveshape whose five spread
+//    coefficients came from this driver's spread seeds. Bit-identical output
+//    from two identically-seeded drivers is therefore a genuine determinism
+//    claim about real DSP — it would break on any hidden global, any
+//    uninitialised member and any per-sample RNG draw that ignored the seed.
 // ---------------------------------------------------------------------------
 TEST_CASE("vco harness: seam determinism (same seeds produce bit-identical blocks)") {
 	for (double sr : SAMPLE_RATES) {
@@ -168,9 +177,19 @@ TEST_CASE("vco harness: seam determinism (same seeds produce bit-identical block
 }
 
 // ---------------------------------------------------------------------------
-// 6. Finiteness. Same "weak while the seam is silent" caveat as invariant 5:
-//    0.f is trivially finite. Driven with the varying sweep so it starts
-//    catching real NaN/Inf the moment Phase 30 DSP lands.
+// 6. Finiteness. LOAD-BEARING as of Phase 30 (D-19 closed).
+//    Phase 29 booked this row as green-but-weak alongside invariant 5, because
+//    isfinite(0.f) is trivially true. Over a real oscillator it is a real claim:
+//    the sweep drives pitch from -2 V to +2 V through exp2_taylor5 and the
+//    frozen morphedWave, and a NaN or Inf anywhere in that chain lands here.
+//
+//    THE SHARP EDGE, measured rather than assumed: finiteness alone does NOT
+//    catch a runaway phase accumulator. With the Nyquist guard removed,
+//    pitchCV = +10 drives the output to -8,655,011 V — and every one of those
+//    samples is perfectly std::isfinite, so this case stays green through a
+//    catastrophic failure. The invariant that catches it is the output
+//    MAGNITUDE BOUND in tests/test_vco_core.cpp (plan 30-03). The two are
+//    complementary, not redundant: do not delete either as covered by the other.
 // ---------------------------------------------------------------------------
 TEST_CASE("vco harness: output is finite (no NaN, no Inf)") {
 	for (double sr : SAMPLE_RATES) {
