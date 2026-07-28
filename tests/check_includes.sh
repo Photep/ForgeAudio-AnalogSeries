@@ -511,15 +511,30 @@ GUARD_WIRING_EXEMPT=(
 if [[ ! -f "${WORKFLOW}" ]]; then
 	note_fail "missing ${WORKFLOW_REL} — every guard in this repository is now unwired"
 else
+	# MENTIONING IS NOT RUNNING — which is the entire premise of this section.
+	#
+	# The check used to be `grep -qF -- "${grel}" "${WORKFLOW}"`, which matches
+	# anywhere in the file: a YAML comment, a `name:` string, a changed-paths
+	# filter. A script named in a comment but never invoked — precisely the
+	# check_docs.sh situation this section was written to prevent — reported
+	# "OK: ... wired into CI". The section's implementation only checked the very
+	# thing its premise says is insufficient.
+	#
+	# So: strip comment lines and `name:` strings, then require the path to appear
+	# in an EXECUTABLE position — as the argument of bash/sh, or invoked directly.
+	WORKFLOW_EXEC="${TMP}/workflow_exec.txt"
+	grep -v '^[[:space:]]*#' "${WORKFLOW}" | grep -vE '^[[:space:]]*(-[[:space:]]+)?name:' > "${WORKFLOW_EXEC}" || true
+
 	for g in "${ROOT}"/tests/check_*.sh; do
 		[[ -f "${g}" ]] || continue
 		gbase="$(basename "${g}")"
 		grel="tests/${gbase}"
+		grel_re="${grel//./\\.}"
 		exempt=0
 		for e in "${GUARD_WIRING_EXEMPT[@]}"; do
-			[[ "${gbase}" == "${e}" ]] && exempt=1
+			if [[ "${gbase}" == "${e}" ]]; then exempt=1; fi
 		done
-		if grep -qF -- "${grel}" "${WORKFLOW}"; then
+		if grep -qE "((bash|sh)[[:space:]]+|\./)${grel_re}([[:space:]]|;|&|\||$)" "${WORKFLOW_EXEC}"; then
 			if [[ "${exempt}" -eq 1 ]]; then
 				echo "  OK: ${grel} — wired into CI (it may be removed from the exemption list)"
 			else
@@ -528,7 +543,7 @@ else
 		elif [[ "${exempt}" -eq 1 ]]; then
 			echo "  EXEMPT: ${grel} — documented exemption, not wired (see the comment above and .planning/todos/pending/wire-check-docs-into-ci.md)"
 		else
-			note_fail "${grel} is a guard script that NOTHING invokes. It is not referenced by ${WORKFLOW_REL} and it is not on the documented exemption list. Add a CI step for it in the same commit that created it (P-5), or add it to GUARD_WIRING_EXEMPT with a written reason."
+			note_fail "${grel} is a guard script that NOTHING invokes. It is not INVOKED by ${WORKFLOW_REL} (being named in a comment or a step title does not count — mentioning is not running) and it is not on the documented exemption list. Add a CI step for it in the same commit that created it (P-5), or add it to GUARD_WIRING_EXEMPT with a written reason."
 		fi
 	done
 fi
