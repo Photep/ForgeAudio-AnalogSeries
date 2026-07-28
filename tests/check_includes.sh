@@ -334,7 +334,26 @@ fi
 # named forge::VcoInputs precisely so this can never happen by accident.
 # ---------------------------------------------------------------------------
 echo "[4/7] R-9 ODR guard — exactly one forge::Inputs..."
-inputs_decls="$(grep -rnE '^[[:space:]]*struct[[:space:]]+Inputs[[:space:]]*[{:]' \
+# The brace must NOT be required on the same line. The previous regex ended in
+# [{:], so Allman style —
+#
+#     struct Inputs
+#     {
+#         float x = 0.f;
+#     };
+#
+# — did not match, and a second forge::Inputs (the exact R-9 trap this section is
+# dedicated to) sailed through. Allman is common enough that this was not
+# hypothetical. Verified evasion before the change.
+#
+# The trailing group is what keeps this precise while dropping that requirement:
+# after `struct Inputs` the line must end (Allman), or continue with `{` or `:`.
+#   struct Inputs {        -> match      struct Inputs : Base {  -> match
+#   struct Inputs          -> match      struct Inputs;          -> NO match (fwd decl)
+#   struct Inputs in;      -> NO match   struct InputsFoo {      -> NO match
+# Forward declarations therefore fall out for free — `;` is neither `{`, `:` nor
+# end of line — with no second grep to keep in sync.
+inputs_decls="$(grep -rnE '^[[:space:]]*struct[[:space:]]+Inputs[[:space:]]*([{:].*)?$' \
 	--include='*.hpp' --include='*.h' --include='*.cpp' "${ROOT}/src" || true)"
 inputs_files="$(printf '%s\n' "${inputs_decls}" | grep -v '^$' | cut -d: -f1 | sort -u || true)"
 inputs_count="$(printf '%s\n' "${inputs_files}" | grep -c . || true)"
