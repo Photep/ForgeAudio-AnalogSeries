@@ -1,12 +1,32 @@
 #pragma once
 // src/dsp/VcoCore.hpp
 //
-// Phase 29 VCO boundary seam (D-01): a POD forge::VcoInputs goes in, an output
-// voltage comes out, and last-step telemetry is left behind for the shell. That
-// is the WHOLE contract. step() deliberately returns silence (0 V) — there is
-// NO VCO DSP in Phase 29. Phase 30 (CORE-01) lands the naive morphed oscillator
-// and Phase 31 (CORE-03 / PITCH-*) lands the pitch chain; this header exists now
-// so Phases 30-36 inherit a boundary that never has to churn.
+// VCO core (CORE-01): a POD forge::VcoInputs goes in, an output voltage comes
+// out, and last-step telemetry is left behind for the shell. The boundary shape
+// is Phase 29's (D-03) and does not churn — Phase 30 filled the seam without
+// touching it. step() is now a NAIVE, DELIBERATELY ALIASED morphed oscillator:
+// one forge::exp2_taylor5 pitch off the C4 reference, a Nyquist-guarded
+// frequency, a double-precision phase accumulator, and one call into the FROZEN
+// forge::Waveshape::morphedWave, scaled x5 and returned unconditioned.
+//
+// The crude, aliased timbre is EXPECTED, not a defect. Phase 32 (CORE-02 /
+// AA-01..05) owns band-limiting (morph-aware polyBLEP/polyBLAMP), and no
+// assertion over this body claims anything about spectral cleanliness. Phase 31
+// (PITCH-01..05) owns the REAL pitch chain — coarse, fine and FM summed in the
+// volt domain before a single exp2, plus the non-provisional Nyquist policy;
+// the pitch handling here reads in.pitchCV alone and is knowingly incomplete.
+// Phase 34 (OUT-01..03) owns output conditioning; see the x5 note in step().
+//
+// Source-shape contract (tests/check_canary.sh [2b/5]): the `struct VcoCore`
+// declaration line and the `float step(...)` signature line must each stay on
+// ONE line together with their opening brace. The canary line-matches both
+// patterns to build a perturbed copy of this file; Allman braces, a wrapped
+// parameter list or an added `noexcept` make `make guards` hard-fail with
+// "could not perturb src/dsp/VcoCore.hpp" — a guard error, not a DSP error.
+// NOTE for future editors: the step matcher is UNANCHORED, so quoting the full
+// signature verbatim in a comment ON A LINE THAT ALSO CONTAINS `{` makes the
+// canary perturb the COMMENT and the guard fails with unrelated compile errors.
+// That is why the signature is abbreviated above. (Observed, not theorised.)
 //
 // Naming landmine (R-9): the POD is forge::VcoInputs, NOT forge::Inputs.
 // forge::Inputs already belongs to the LFO (src/dsp/LfoCore.hpp:40). A second
@@ -47,9 +67,21 @@
 
 #include <cstdint>
 
+// RackCompat.hpp is included EXPLICITLY even though DriftEngine.hpp would supply
+// it transitively — include-what-you-use, matching src/dsp/LfoCore.hpp:29. This
+// is the include tests/check_includes.sh [2/7]'s exact-path exemption exists for
+// (plan 30-01): the shim is Rack-FREE, only its filename carries the substring.
+#include "dsp/RackCompat.hpp"    // forge::exp2_taylor5, forge::clamp
+#include "dsp/Waveshape.hpp"     // forge::Waveshape::morphedWave (FROZEN — call it, never edit it)
 #include "dsp/DriftEngine.hpp"   // forge::DriftEngine
 
 namespace forge {
+
+// Namespace-scope plain constexpr — the src/dsp/MathConst.hpp idiom this file's
+// banner mandates above. NOT `inline constexpr` (C++17), NOT an in-class
+// `static constexpr` (declaration-only under C++11 → MinGW undefined reference).
+constexpr float kVcoFreqC4 = 261.6256f;         // C4 = 0 V, the standard VCV V/OCT reference (PITCH-01)
+constexpr float kVcoNyquistGuardFrac = 0.49f;   // PROVISIONAL — PITCH-04 (Phase 31) owns the real Nyquist policy; Phase 31 replaces this constant rather than rediscovering the intent
 
 // POD core boundary (D-03; RESEARCH "Recommended VcoInputs field set"). Each
 // field maps to the params[]/inputs[]/ProcessArgs source the shell will read;
@@ -76,6 +108,14 @@ struct VcoCore {
 	// DSP lands. Holding + seeding an RNG is not DSP.
 	DriftEngine drift;
 
+	// Per-instance oscillator state, mirroring src/dsp/LfoCore.hpp:58-63. Both
+	// members are INSTANCE state, not static or shared — which is literally what
+	// CORE-03 asserts: two cores stepped interleaved must not see each other.
+	// `phase` is double for the same reason LfoCore's is (PITFALLS 2.2): a float
+	// accumulator loses low-order increments at audio rates over long blocks.
+	double phase = 0.0;
+	Waveshape wave;
+
 	// --- Last-step telemetry (the shell reads these to feed display atomics;
 	//     NOT part of the audio path). Populated by step() each sample. ---
 	struct Telemetry {
@@ -92,20 +132,74 @@ struct VcoCore {
 	Telemetry tel;
 
 	void seed(uint64_t s0, uint64_t s1 = 0) { drift.seed(s0, s1); }
-	void setSpreadSeed(uint64_t s0, uint64_t s1 = 0) { drift.setSpreadSeed(s0, s1); }
 
-	// step() — the Phase 29 seam. Records the injected timing so the harness can
-	// prove it, counts the sample, and returns SILENCE.
+	// D-11: this five-coefficient copy is the WHOLE of the phase's per-instance
+	// divergence. Static component variation only — no OU drift stepping and no
+	// per-sample RNG draw anywhere in step(), which is exactly why the shipped
+	// LFO's goldens cannot move. Mirrors src/dsp/LfoCore.hpp:102-112 field for
+	// field. `characterSpread` is deliberately NOT copied: LfoCore does not copy
+	// it either (its shell folds it into in.character), and folding it in here
+	// would silently change what character = 1.0 means.
+	void setSpreadSeed(uint64_t s0, uint64_t s1 = 0) {
+		drift.setSpreadSeed(s0, s1);
+		wave.triAsymmetrySpread = drift.triAsymmetrySpread;
+		wave.sawCurvatureSpread = drift.sawCurvatureSpread;
+		wave.squareDutySpread   = drift.squareDutySpread;
+		wave.pulseEdgeSpread    = drift.pulseEdgeSpread;
+		wave.bleedSpread        = drift.bleedSpread;
+	}
+
+	// step() — one sample of the naive morphed oscillator (CORE-01 / D-12/13/14).
+	// Records the injected timing so the harness can prove it, counts the sample,
+	// then does the pitch -> guard -> accumulate -> waveshape -> scale sequence.
 	float step(const VcoInputs& in) {
 		tel.lastSampleTime = in.sampleTime;
 		tel.lastSampleRate = in.sampleRate;
 		++tel.stepCount;
 
-		// Returning 0 V is D-01, not an oversight: Phase 29 is the boundary
-		// contract only. Phase 30 (CORE-01) replaces this body with the naive
-		// morphed oscillator, at which point tests/test_vco_harness.cpp's
-		// "silent by construction" tombstone case must be deleted.
-		return 0.f;
+		// D-14 pitch: exp2 off C4 = 0 V, using the frozen Rack polynomial
+		// approximation forge::exp2_taylor5 and NEVER libm std::exp2/std::pow —
+		// bit-identity of the FM path (Phase 31) depends on this exact function.
+		// Phase 31 sums coarse/fine/FM into the volt domain BEFORE this call.
+		float freq = kVcoFreqC4 * exp2_taylor5(in.pitchCV);
+		const float maxFreq = kVcoNyquistGuardFrac * in.sampleRate;
+
+		// The guard is LOAD-BEARING, not cosmetic. Written negated so a NaN also
+		// lands at zero (NaN fails `freq > 0.f`). Research MEASURED that without
+		// the clamp, pitchCV = +10 drives the accumulator to phase 1,014,986 and
+		// the output to -8,655,011 V while EVERY sample stays std::isfinite — so
+		// a finiteness test cannot see this failure; the magnitude bound in
+		// tests/test_vco_core.cpp is what observes it.
+		if (!(freq > 0.f)) freq = 0.f;
+		if (freq > maxFreq) freq = maxFreq;
+		tel.freqHz = freq;
+
+		// Double-precision accumulate, mirroring LfoCore. The SINGLE subtract
+		// wrap below is correct ONLY because the guard above bounds deltaPhase at
+		// kVcoNyquistGuardFrac (0.49) < 1.0. Removing or widening the guard turns
+		// this line into an unbounded ramp — use a loop or fmod if that ever
+		// changes.
+		double deltaPhase = (double)freq * (double)in.sampleTime;
+		phase += deltaPhase;
+		if (phase >= 1.0) phase -= 1.0;
+
+		const float p = (float)phase;
+		const float morph = clamp(in.morph, 0.f, 1.f);
+		const float character = clamp(in.character, 0.f, 1.f);
+
+		// D-12: ONE call into the frozen Waveshape — a call, never an edit.
+		// bleedLfo = 0.f is the OU-layer-0 read, and 0 is correct because this
+		// phase steps no OU layer (D-11: no drift stepping, no per-sample RNG).
+		// Phase 34 passes the real layer-0 state here.
+		const float sample = wave.morphedWave(p, morph, character, 0.f);
+		tel.displayPhase = p;
+
+		// D-13: returned UNCONDITIONED by decision — no DC blocker, no
+		// saturation, no hard +/-5 V clamp. The measured >5 V overshoot at high
+		// character (ceiling ~+/-5.55 V, well inside Rack's +/-12 V norms) is the
+		// behavior Phase 34's OUT-01..03 exists to fix; hiding it here would
+		// create work Phase 34 must undo.
+		return 5.f * sample;
 	}
 };
 
