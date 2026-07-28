@@ -261,6 +261,13 @@ done
 #     belongs on the other side of this boundary.
 #   * tests/VcoBlockDriver.hpp, tests/test_vco_harness.cpp — Phase 29's VCO
 #     harness; scanning them would flag the gate into uselessness on its first run.
+#   * tests/test_vco_core.cpp — Phase 30's CORE-01/CORE-03 behavioral suite
+#     (plans 30-03 / 30-04). Same reason as the harness suite above, and it is
+#     the same KIND of file: a VCO-side test TU whose entire purpose is to drive
+#     forge::VcoCore through tests/VcoBlockDriver.hpp. It is not an LFO
+#     translation unit, it links into no LFO build graph, and it cannot exist
+#     without the include this section would otherwise flag. Adding it changes
+#     the LFO-side scan set by exactly one file, and that file is VCO code.
 # src/dsp/Vco*.hpp and src/dsp/MorphBlep.hpp are the VCO's own headers — the
 # other side of the boundary, not scan targets.
 #
@@ -274,6 +281,7 @@ VCO_SIDE_ALLOW=(
 	"src/AnalogVCO.cpp"
 	"tests/VcoBlockDriver.hpp"
 	"tests/test_vco_harness.cpp"
+	"tests/test_vco_core.cpp"
 )
 LFO_SCAN=()
 while IFS= read -r f; do
