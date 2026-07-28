@@ -5,8 +5,8 @@ milestone_name: Forge Analog VCO
 current_phase: 29
 current_phase_name: vco-test-harness-lfo-non-regression-guardrail
 status: executing
-stopped_at: Phase 29 planned — ready to execute
-last_updated: "2026-07-28T05:27:16.994Z"
+stopped_at: Completed 29-02-PLAN.md
+last_updated: "2026-07-28T05:35:23.186Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 29 execution started
 progress:
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 29 (vco-test-harness-lfo-non-regression-guardrail) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-07-28 — Phase 29 execution started
 
@@ -81,6 +81,8 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 29]: VCO POD is forge::VcoInputs, never a second forge::Inputs (cross-TU ODR hazard, R-9) — A duplicate forge::Inputs compiles silently in TUs including only one header and detonates on the CI MinGW link leg — the class that got v2.0.0 rejected
 - [Phase 29]: tests/BlockDriver.hpp and tests/VcoBlockDriver.hpp stay independent files forever — never templated or subclassed — BlockDriver feeds the macOS bit-exact drift-ON golden leg of the shipped LFO; any change moves tests/golden/freerun_*.f32 (R-2/P-4)
 - [Phase 29]: Phase 29 VcoCore::step() returns silence and a TOMBSTONE test asserts it; Phase 30 must delete that test — D-01 scopes Phase 29 to the boundary contract only; the tombstone forces Phase 30 to consciously revisit the weak-by-construction invariants
+- [Phase 29]: D-04 golden digests are pinned as source literals in tests/test_lfo_guardrail.cpp, not in a data file — Changing a golden then requires a reviewed CODE diff; a data-file manifest could be regenerated silently alongside the fixtures
+- [Phase 29]: The SHA-256 hasher is vendored in tests/Sha256.hpp and validated by a permanent negative control, never by a green run — Three published FIPS 180-4 vectors plus a one-byte-perturbed in-memory copy of a real golden; no external hashing tool (sha256sum is absent on macOS) and no new dependency
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -106,13 +108,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Scope (v2.1) | Through-zero FM, phase distortion, oversampling (Off/2×/4×), tracking-error modeling | Deferred to v2.1 | v2.0 scoping |
 | Scope (v2.1) | Polyphony (up to 16 voices) + per-voice drift seeding — enabled by CORE-03, additive shell change | Deferred to v2.1 | v2.0 scoping |
 | Phase 29 P01 | 12min | 3 tasks | 3 files |
+| Phase 29 P02 | 6 min | 3 tasks | 3 files |
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/29-vco-test-harness-lfo-non-regression-guardrail/29-CONTEXT.md
+**Resume file:** None
 
-Last session: 2026-07-28T05:27:16.987Z
-Stopped at: Phase 29 context gathered
+Last session: 2026-07-28T05:35:23.181Z
+Stopped at: Completed 29-02-PLAN.md
 Resume: run `/gsd-plan-phase 29` to plan the VCO test harness + LFO guardrail phase.
 
 ## Operator Next Steps
