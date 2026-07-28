@@ -73,20 +73,48 @@ float vcoCompileCanaryProbe(int i) {
 	in.sampleTime = 1.f / 44100.f;
 	in.sampleRate = 44100.f;
 
-	// The runtime-derived trip count is load-bearing, exactly like the external
-	// linkage above. A compile-time-constant count would let the compiler fold
-	// the loop away; then this translation unit emits nothing, the VCO headers
-	// are odr-used by nothing, and the MinGW link leg has nothing to resolve.
-	// Those two properties together are what make the canary bite.
+	// LOAD-BEARING — DO NOT REPLACE THESE WITH LITERALS.
+	//
+	// Every DSP field the seam may index, branch or table-look-up on must be
+	// derived from the runtime parameter `i`. A literal here (including the NSDMI
+	// defaults, which are literals) lets -O2/-O3 constant-propagate the value into
+	// the index after inlining, fold the lookup to a constant, and DELETE the
+	// odr-use before the linker is ever consulted — which is precisely the failure
+	// this file exists to catch. Measured: with an in-class `static constexpr float
+	// kTable[4]` indexed by `in.pitchCV` in dsp/VcoCore.hpp, a canary fed only
+	// constants emits NO kTable symbol at -O3 at all, so the MinGW link leg has
+	// nothing to fail on and every gate reports PASS.
+	//
+	// A runtime-derived LOOP TRIP COUNT is NOT sufficient on its own: it preserves
+	// how many times step() is called, but nothing inside step() depends on it.
+	// tests/check_canary.sh [2b/5] asserts this property mechanically.
+	in.pitchCV     = (float)(i & 7) - 4.f;
+	in.coarse      = (float)((i >> 3) & 3);
+	in.fine        = (float)((i >> 5) & 3);
+	in.fmVolts     = (float)((i >> 7) & 7) * 0.25f;
+	in.fmAtten     = (float)((i >> 10) & 3) * 0.5f - 1.f;
+	in.fmConnected = ((i >> 12) & 1) != 0;
+	in.morph       = (float)(i & 15) / 15.f;
+	in.character   = (float)((i >> 4) & 15) / 15.f;
+	in.drift       = (float)((i >> 8) & 15) / 15.f;
+
+	// The runtime-derived trip count is load-bearing too, exactly like the external
+	// linkage above. A compile-time-constant count would let the compiler unroll
+	// and collapse the loop; combined with constant inputs the translation unit
+	// then emits nothing, the VCO headers are odr-used by nothing, and the MinGW
+	// link leg has nothing to resolve.
 	const int reps = (i & 3) + 1;
 	float acc = 0.f;
 	for (int n = 0; n < reps; ++n) {
+		// Keeps every iteration distinct, so per-iteration folding cannot collapse
+		// the loop body to a single constant evaluation either.
+		in.pitchCV += (float)n * 0.125f;
 		acc += core.step(in);
 	}
 
 	// Reading telemetry odr-uses the nested Telemetry type as well, so the whole
 	// seam — not just step() — is carried into both gates.
-	return acc + core.tel.displayPhase;
+	return acc + core.tel.displayPhase + core.tel.freqHz;
 }
 
 } // namespace forge

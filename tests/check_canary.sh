@@ -16,6 +16,10 @@
 # Enforces:
 #   [1/5] the canary exists and both declares and defines its probe
 #   [2/5] the canary EMITS a defined external-linkage probe symbol (P-1 guard)
+#   [2b/5] the canary ODR-USES the seam under -O3 — every VcoInputs DSP field is
+#         fed a RUNTIME value, so a runtime-indexed in-class `static constexpr`
+#         inside step() cannot be constant-folded out of existence before the
+#         MinGW linker sees it (this is the property [2/5] only claims to test)
 #   [3/5] the canary compiles clean under -std=c++11 -pedantic-errors
 #   [4/5] NEGATIVE CONTROL — the C++17-ism gate demonstrably REJECTS known-bad
 #         synthetic translation units, so this guard is validated by an observed
@@ -111,6 +115,167 @@ elif nm "${TMP}/canary.o" | grep -qE " [TtWw] [^ ]*${PROBE}"; then
 	echo "  OK: defined symbol emitted at -O3 — $(nm "${TMP}/canary.o" | grep -E " [TtWw] [^ ]*${PROBE}" | awk '{print $2, $3}' | head -1)"
 else
 	note_fail "no DEFINED ${PROBE} symbol in the canary object — the translation unit emits no code, so it odr-uses nothing and the CI MinGW link leg has nothing to resolve. This canary would be permanently and silently green. Restore the external-linkage forward declaration and the runtime-derived loop trip count."
+fi
+
+# ---------------------------------------------------------------------------
+# [2b/5] The canary ODR-USES the seam, not merely emits a symbol.
+#
+# WHY [2/5] IS NOT ENOUGH. [2/5] greps nm for the PROBE symbol, which is emitted
+# even when the whole body has been folded to `return 0.f`. Its failure message
+# ("the translation unit emits no code, so it odr-uses nothing") therefore
+# describes a property it does not actually test. This section tests it.
+#
+# THE DEFECT THIS CATCHES — measured, not theorised. If the canary hands
+# VcoInputs only compile-time constants (and the NSDMI defaults ARE constants),
+# then after inlining, -O2/-O3 constant-propagates every field into whatever
+# step() does with it. An in-class `static constexpr float kTable[4]` indexed by
+# in.pitchCV then folds to a literal and its symbol DISAPPEARS FROM THE OBJECT
+# ENTIRELY — verified at -O3: zero kTable symbol of any kind, while the probe
+# symbol [2/5] looks for is still happily present. That is the exact construct
+# that got v2.0.0 rejected from the VCV Library, and with a constant-fed canary
+# the MinGW link leg has nothing left to fail on: every gate reports PASS.
+#
+# A runtime-derived LOOP TRIP COUNT does not help. It preserves how many times
+# step() is called; nothing INSIDE step() depends on it.
+#
+# HOW THIS TESTS IT. Build a perturbed copy of dsp/VcoCore.hpp in a scratch
+# include dir carrying one in-class `static constexpr` table per float field of
+# VcoInputs, each indexed at runtime by ITS OWN field, and compile the REAL
+# canary against it at -O3. A table whose field carries a runtime value survives
+# in the object (a defined local symbol on clang, an UNDEFINED reference on
+# GCC — either way the odr-use reached the object and the linker has something
+# to resolve). A table that vanished names a field the canary is feeding a
+# constant. The field list is derived FROM the header, so a field added by a
+# later phase is covered the moment it lands rather than when someone remembers.
+#
+# The real dsp/VcoCore.hpp is never touched: everything happens under mktemp -d,
+# removed by the EXIT trap.
+# ---------------------------------------------------------------------------
+echo "[2b/5] Canary ODR-USES the seam under -O3 (constant-fold guard)..."
+VCO_CORE_REL="src/dsp/VcoCore.hpp"
+VCO_CORE="${ROOT}/${VCO_CORE_REL}"
+if ! command -v nm >/dev/null 2>&1; then
+	note_fail "nm not found — cannot prove the canary odr-uses the seam (see [2/5])"
+elif [[ ! -f "${CANARY}" ]]; then
+	note_fail "skipped: canary missing (see [1/5])"
+elif [[ ! -f "${VCO_CORE}" ]]; then
+	note_fail "skipped: ${VCO_CORE_REL} missing — the VCO seam has vanished"
+else
+	# Precondition. If this compiler folds a runtime-indexed in-class static
+	# constexpr away even when the index is genuinely runtime, the per-field check
+	# below could not tell a constant-fed canary from a compiler quirk. Report
+	# that rather than failing on it — the CI GCC/MinGW leg is the gate that matters.
+	mkdir -p "${TMP}/odrcap"
+	cat > "${TMP}/odrcap/cap.cpp" <<'EOF'
+// Self-contained: no VCO header, so this measures the COMPILER, not the seam.
+struct CanaryOdrCapability {
+	static constexpr float kCanaryOdrCapTable[4] = {0.f, 1.f, 2.f, 3.f};
+	float pick(int i) const { return kCanaryOdrCapTable[i & 3]; }
+};
+float canaryOdrCapCall(int i);
+float canaryOdrCapCall(int i) { CanaryOdrCapability p; return p.pick(i); }
+EOF
+	odr_capable=0
+	if "${CXX_BIN}" -std=c++11 -O3 -c "${TMP}/odrcap/cap.cpp" -o "${TMP}/odrcap.o" 2>/dev/null; then
+		# nm into a file, never into `grep -q`: an early-exiting grep can SIGPIPE nm
+		# and `set -o pipefail` would then report a MATCH as a failure.
+		nm "${TMP}/odrcap.o" > "${TMP}/odrcap_nm.txt" 2>/dev/null || true
+		if grep -q 'kCanaryOdrCapTable' "${TMP}/odrcap_nm.txt"; then
+			odr_capable=1
+			echo "  OK: this compiler keeps a runtime-indexed in-class static constexpr at -O3"
+		fi
+	fi
+	if [[ "${odr_capable}" -eq 0 ]]; then
+		echo "  INFO: this compiler erases even a genuinely runtime-indexed in-class static"
+		echo "        constexpr at -O3, so the per-field check below cannot distinguish anything"
+		echo "        here. It still runs on the CI GCC leg, which is the one that matters."
+	else
+		# Derive the runtime-varying DSP fields from the header itself. sampleTime and
+		# sampleRate are excluded on purpose: they are INJECTED timing, the canary sets
+		# them from 44100 literals deliberately, and no DSP indexes a table with them.
+		odr_fields="$(awk '
+			/^[[:space:]]*struct[[:space:]]+VcoInputs[[:space:]]*\{/ { inb = 1; next }
+			inb && /^[[:space:]]*\}/ { inb = 0 }
+			inb && $1 == "float" && $3 == "=" { print $2 }
+		' "${VCO_CORE}" | grep -vE '^(sampleTime|sampleRate)$' || true)"
+		odr_field_count="$(echo ${odr_fields} | wc -w | tr -d ' ')"
+
+		if [[ -z "${odr_fields}" ]]; then
+			note_fail "could not derive a single float field from 'struct VcoInputs' in ${VCO_CORE_REL}. This check cannot run, so the constant-fold hole above is UNGUARDED — do not leave it in this state."
+		else
+			ODR_INC="${TMP}/odrseam"
+			mkdir -p "${ODR_INC}/dsp"
+			PERT="${ODR_INC}/dsp/VcoCore.hpp"
+			: > "${PERT}"
+			odr_struct_hit=0
+			odr_step_hit=0
+			while IFS= read -r pline || [[ -n "${pline}" ]]; do
+				case "${pline}" in
+				"struct VcoCore"*"{"*)
+					printf '%s\n' "${pline}" >> "${PERT}"
+					odr_n=0
+					for f in ${odr_fields}; do
+						odr_n=$((odr_n + 1))
+						# Distinct values per table so identical constant data cannot be
+						# merged into one symbol and mask a folded field.
+						printf '\tstatic constexpr float kCanaryOdr_%s[4] = {%d.f, %d.f, %d.f, %d.f};\n' \
+							"${f}" "$((odr_n * 4))" "$((odr_n * 4 + 1))" "$((odr_n * 4 + 2))" "$((odr_n * 4 + 3))" \
+							>> "${PERT}"
+					done
+					odr_struct_hit=1
+					;;
+				*"float step(const VcoInputs& in)"*"{"*)
+					# Wrap rather than rewrite: the real body is renamed and still called,
+					# so this stays correct when Phase 30 replaces `return 0.f` with DSP.
+					printf '\tfloat step(const VcoInputs& in) {\n\t\tfloat odrAcc = 0.f;\n' >> "${PERT}"
+					for f in ${odr_fields}; do
+						printf '\t\todrAcc += kCanaryOdr_%s[((int)(in.%s * 8.f)) & 3];\n' "${f}" "${f}" >> "${PERT}"
+					done
+					printf '\t\treturn stepCanaryOdrReal(in) + odrAcc;\n\t}\n' >> "${PERT}"
+					printf '%s\n' "${pline/float step(/float stepCanaryOdrReal(}" >> "${PERT}"
+					odr_step_hit=1
+					;;
+				*)
+					printf '%s\n' "${pline}" >> "${PERT}"
+					;;
+				esac
+			done < "${VCO_CORE}"
+
+			# The canary is COPIED next to the perturbed header rather than compiled in
+			# place. A quoted #include is resolved against the INCLUDING FILE'S OWN
+			# DIRECTORY before any -I path, so compiling ${CANARY_REL} where it lives
+			# would silently pick up the real src/dsp/VcoCore.hpp and this whole
+			# section would be vacuously green — the precise failure mode it exists to
+			# catch, one level up. dsp/DriftEngine.hpp and friends are not in the
+			# scratch dsp/ dir, so they still fall through to -I${ROOT}/src.
+			cp "${CANARY}" "${ODR_INC}/odr_canary.cpp"
+
+			if [[ "${odr_struct_hit}" -ne 1 ]] || [[ "${odr_step_hit}" -ne 1 ]]; then
+				note_fail "could not perturb ${VCO_CORE_REL}: expected a 'struct VcoCore {' line and a 'float step(const VcoInputs& in) {' line. The seam was renamed or reshaped, so this check silently covers nothing — update the two case patterns in this section."
+			elif ! "${CXX_BIN}" -std=c++11 -O3 -I"${ODR_INC}" -I"${ROOT}/src" -c "${ODR_INC}/odr_canary.cpp" -o "${TMP}/odr_canary.o" 2>"${TMP}/odr_err.txt"; then
+				note_fail "the canary does not compile against the perturbed seam at -O3, so this check cannot run:"
+				sed 's/^/    /' "${TMP}/odr_err.txt"
+			else
+				nm "${TMP}/odr_canary.o" > "${TMP}/odr_nm.txt" 2>/dev/null || true
+				odr_missing=""
+				for f in ${odr_fields}; do
+					grep -q "kCanaryOdr_${f}" "${TMP}/odr_nm.txt" || odr_missing="${odr_missing} ${f}"
+				done
+				if [[ -n "${odr_missing}" ]]; then
+					note_fail "at -O3 the canary constant-folds these VcoInputs field(s) away:${odr_missing}"
+					echo "        A runtime-indexed in-class \`static constexpr\` reached through any of"
+					echo "        them emits NO symbol at all, so the CI MinGW link leg has nothing to"
+					echo "        fail on and the exact failure class that got v2.0.0 REJECTED passes"
+					echo "        every gate. Fix: feed each of those fields a value DERIVED FROM THE"
+					echo "        RUNTIME PARAMETER in ${CANARY_REL} (see the LOAD-BEARING block there)."
+					echo "        A runtime loop trip count is NOT sufficient — nothing inside step()"
+					echo "        depends on it."
+				else
+					echo "  OK: all ${odr_field_count} VcoInputs DSP field(s) stay runtime-live through step() at -O3"
+				fi
+			fi
+		fi
+	fi
 fi
 
 # ---------------------------------------------------------------------------
