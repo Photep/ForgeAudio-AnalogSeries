@@ -22,6 +22,10 @@
 //   1. naive pitch tracks the C4 reference ON THE OUTPUT within 1 % across the
 //      full measured-safe grid (D-16) — explicitly NOT the TEST-02 tracking
 //      gate; see the label below
+//   2. |out| stays inside a LOOSE 6.0 V bound over the harness sweep, the fixed
+//      worst case and hostile V/OCT — and the worst case is proven to actually
+//      exceed 5.1 V, so the bound is exercised rather than merely satisfied
+//      (D-18b / T-30-01)
 //
 // THE D-16 LABEL, WHICH MUST NOT BE SOFTENED. Invariant 1 is NOT the TEST-02
 // V/Oct tracking gate. TEST-02 belongs to Phase 31 and requires better than one
@@ -197,6 +201,164 @@ TEST_CASE("vco core: naive pitch tracks the C4 reference on the OUTPUT within 1 
 					const double relErr = std::fabs(measured - expected) / expected;
 					CHECK(relErr < 0.01);
 				}
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 2. Output magnitude stays inside a LOOSE 6.0 V bound (D-18b / T-30-01).
+//
+//    BOUND PROVENANCE. 6.0 V sits about 8 % above the hard ANALYTIC ceiling of
+//    5.55 V. That ceiling is derived, not guessed: for character >= 0.001 the
+//    sine path is f(s) = 0.32s^3 + 0.06s^2 + 0.76s - 0.03 whose derivative is
+//    strictly positive, so f is monotone on [-1,1] with range [-1.05, +1.11];
+//    triangle, saw, square and pulse are each bounded by 1; the morph crossfade
+//    is a linear interpolation and cannot exceed the larger of its two shapes;
+//    and the bleed step is a convex combination, which cannot raise a maximum.
+//    Hence |morphedWave| <= 1.11 and |out| = 5 * |morphedWave| <= 5.55 V. That
+//    was then confirmed numerically over 161 million (morph, character, phase)
+//    points at five spread configurations. 6.0 V is a REAL bound, not a round
+//    number — and it is roughly six orders of magnitude below the measured
+//    unguarded runaway this case also has to catch.
+//
+//    THIS IS EXPLICITLY NOT A +/-5 V OUTPUT-RANGE ASSERTION. D-13 returns the
+//    waveform UNCONDITIONED by decision — no DC blocker, no saturation, no
+//    clamp — so a >5 V overshoot at high character is the expected behavior,
+//    not a defect. Phase 34's OUT-01..03 owns output conditioning; writing a
+//    +/-5 V assertion here would contradict D-13 and pin an output stage that
+//    has not been designed yet.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)") {
+	const float kLooseBoundV = 6.0f;
+
+	for (double sr : SAMPLE_RATES) {
+		// --- Scenario one: the harness sweep. -------------------------------
+		// Included because it is the drive every other VCO invariant uses, so a
+		// regression that only the sweep can see still lands here. On its own it
+		// is NOT sufficient — see scenario two.
+		{
+			CAPTURE(sr);
+			// INFO with a stream insertion, not CAPTURE: doctest stringifies a
+			// bare const char* as a POINTER, which would name the scenario as a
+			// hex address and defeat the whole point of labelling it.
+			INFO("scenario: sweepScenario");
+
+			const int n = (int)std::lround(sr);   // one second
+			forge::VcoBlockDriver d(sr);
+			std::vector<float> out = d.run(n, forge::VcoBlockDriver::sweepScenario(n, coreBase()));
+			REQUIRE(out.size() == (size_t)n);
+
+			float maxAbs = 0.f;
+			for (size_t i = 0; i < out.size(); ++i) {
+				const float a = std::fabs(out[i]);
+				if (a > maxAbs) maxAbs = a;
+			}
+			// Captured so the measured figure appears in `-s` output on a PASS,
+			// not only on a failure: this suite's job is to record what the
+			// oscillator actually does, and doctest does not decompose the
+			// values of a successful assertion.
+			CAPTURE(maxAbs);
+			CHECK(maxAbs <= kLooseBoundV);
+		}
+
+		// --- Scenario two: the fixed worst case. ----------------------------
+		// THE LOAD-BEARING SCENARIO. The `> 5.1f` assertion below must not be
+		// softened or deleted.
+		//
+		// sweepScenario sets morph = t and character = 1-t, so the two are
+		// ANTI-CORRELATED: the peak combination (morph = 0 WITH character = 1)
+		// exists only in the sweep's first few samples, before the phase
+		// accumulator has reached the peak phase of 0.2499. The consequence is
+		// that the sweep's maximum is an ACCIDENT OF BLOCK LENGTH rather than a
+		// property of the oscillator. Measured, with the driver's default spread
+		// seed, at all three sample rates:
+		//
+		//     n = 1024        -> 5.000000 V   (the harness's own block size)
+		//     n = 0.05 s      -> 5.000000 V
+		//     n = 0.25 s      -> 5.2104 .. 5.2114 V
+		//     n = 1.00 s      -> 5.4383 .. 5.4385 V   (this case's block)
+		//
+		// So a bound test driven ONLY by the sweep is worse than weak: at the
+		// block sizes the rest of this suite uses it maxes at exactly 5.0000 V
+		// and would still pass with the bound set to 5.001 V, and its margin
+		// silently changes if anyone edits the block length. It can never be the
+		// evidence that the D-13 overshoot exists.
+		//
+		// The fixed scenario has no such dependence: measured at 5.51803 V at
+		// 44.1 / 48 / 96 kHz, against an analytic ceiling of 5.55 V. Asserting
+		// that it EXCEEDS 5.1 V is what makes the 6.0 V bound evidence rather
+		// than decoration — it proves the bound is exercised, and it fails
+		// loudly if a future change quietly conditions the output here instead
+		// of in Phase 34 where that work belongs.
+		{
+			CAPTURE(sr);
+			INFO("scenario: fixed worst case - morph 0.0 / character 1.0 / pitchCV 0");
+
+			const int n = (int)std::lround(sr);   // one second
+			forge::VcoInputs base = coreBase();
+			base.pitchCV   = 0.f;
+			base.morph     = 0.f;
+			base.character = 1.f;
+
+			forge::VcoBlockDriver d(sr);
+			std::vector<float> out = d.run(n, [=](int) { return base; });
+			REQUIRE(out.size() == (size_t)n);
+
+			float maxAbs = 0.f;
+			for (size_t i = 0; i < out.size(); ++i) {
+				const float a = std::fabs(out[i]);
+				if (a > maxAbs) maxAbs = a;
+			}
+			// Captured so `-s` records the OBSERVED overshoot at every sample
+			// rate, which is the audit trail plan 30-07's phase gate compares
+			// the CI figures against.
+			CAPTURE(maxAbs);
+			CHECK(maxAbs <= kLooseBoundV);
+			CHECK(maxAbs > 5.1f);
+		}
+
+		// --- Scenario three: hostile V/OCT. ---------------------------------
+		// What this guards, measured rather than imagined: with the Nyquist
+		// clamp removed, pitchCV = +10 drove the phase accumulator to 1,014,986
+		// and the output to -8,655,011 V — and EVERY SINGLE SAMPLE of that
+		// catastrophe stayed std::isfinite. Finiteness therefore cannot see a
+		// runaway accumulator; this magnitude bound is the only invariant in the
+		// suite that can. That is precisely why the two assertions sit side by
+		// side here instead of one being deleted as redundant with the other, or
+		// with the harness suite's finiteness case. Do not merge them.
+		//
+		// The residual, deliberately not asserted on: a NaN pitchCV. The frozen
+		// forge::exp2Floor casts with (int32_t)x, which is UB for NaN, and the
+		// header cannot change. PITCH-04 (Phase 31) hardens the correct surface
+		// by clamping the summed pitch BEFORE the exp2.
+		{
+			static const float HOSTILE_PITCH[] = {10.f, 14.f};
+			for (float pitchCV : HOSTILE_PITCH) {
+				CAPTURE(sr);
+				INFO("scenario: hostile V/OCT - morph 0.0 / character 1.0");
+				CAPTURE(pitchCV);
+
+				const int n = 4096;
+				forge::VcoInputs base = coreBase();
+				base.pitchCV   = pitchCV;
+				base.morph     = 0.f;
+				base.character = 1.f;
+
+				forge::VcoBlockDriver d(sr);
+				std::vector<float> out = d.run(n, [=](int) { return base; });
+				REQUIRE(out.size() == (size_t)n);
+
+				float maxAbs = 0.f;
+				bool allFinite = true;
+				for (size_t i = 0; i < out.size(); ++i) {
+					if (!std::isfinite(out[i])) { allFinite = false; break; }
+					const float a = std::fabs(out[i]);
+					if (a > maxAbs) maxAbs = a;
+				}
+				CAPTURE(maxAbs);
+				CHECK(maxAbs <= kLooseBoundV);
+				CHECK(allFinite);
 			}
 		}
 	}
