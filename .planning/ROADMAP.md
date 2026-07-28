@@ -155,7 +155,30 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: TBD
+**Plans**: 7 plans
+Plans:
+**Wave 1**
+
+- [ ] 30-01-PLAN.md — `check_includes.sh [2/7]` exact-path exemption for the Rack-free shim + a two-direction negative control, opened by the D-05 blocking operator checkpoint on the permanent slug and the guard weakening
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 30-02-PLAN.md — The real `VcoCore::step()` body (D-11/D-12/D-13/D-14) + D-15 tombstone inversion in place + D-19 re-evidencing of the two green-but-weak rows
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 30-03-PLAN.md — New `tests/test_vco_core.cpp`: the three CORE-01 cases (output-measured pitch, 6.0 V magnitude bound, spread-seed divergence) with measured non-vacuity
+- [ ] 30-05-PLAN.md — `src/AnalogVCO.cpp` minimum-viable Rack shell (four live controls, stock widgets, non-degenerate seeding) + the throwaway 18 HP `res/AnalogVCO.svg`
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 30-04-PLAN.md — CORE-03 two-instance interleave independence + the permanent deliberately-broken-core positive control
+- [ ] 30-06-PLAN.md — Additive registration under slug `ForgeAnalogVCO`: `plugin.hpp` extern, `plugin.cpp` `addModel`, second `plugin.json` `modules[]` entry, LFO entry proven byte-unchanged
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 30-07-PLAN.md — Phase gate: full local gate at 72 cases, CI `toolchain-gate` MinGW **link**-leg observed green on the pushed commit, and the in-Rack UAT opening with a stale-install flush
+
 **Guardrail**: Registration touches `plugin.cpp` / `plugin.hpp` / `plugin.json` additively (a second module entry). A permanent VCO slug is chosen here — surface the slug and the registration diff to the operator before committing; the LFO entry stays byte-unchanged.
 
 ### Phase 31: Pitch, Tuning & Exponential FM
