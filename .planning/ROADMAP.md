@@ -250,7 +250,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete   | 2026-07-28 |
+| 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
 | 30. VcoCore Skeleton & Registration | 0/? | Not started | - |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
