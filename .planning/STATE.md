@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
 status: executing
-stopped_at: Phase 30 planned — 7 plans, 5 waves, plan-checker PASSED
-last_updated: "2026-07-28T22:00:15.419Z"
+stopped_at: Completed 30-02-PLAN.md
+last_updated: "2026-07-28T22:12:22.305Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 30 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 12
-  completed_plans: 6
+  completed_plans: 7
   percent: 13
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-07-28 — Phase 30 execution started
 
@@ -91,6 +91,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 29]: The two P-7 TEST-01 rows (seam determinism, output finiteness) are recorded as green-but-weak, NOT coverage — They pass only because VcoCore::step() is silent by D-01 — determinism compares two all-zero blocks and isfinite(0.f) is trivially true. Phase 30 must re-evidence both when it deletes the TOMBSTONE case.
 - [Phase 30]: Operator selected option-a (exact-path exemption) for the check_includes.sh [2/7] guard weakening, and confirmed the permanent slug ForgeAnalogVCO as specified — Both approvals were given on one surface before any Phase 30 commit existed (D-05). option-a keeps VcoCore.hpp including what it uses, ships a two-direction negative control in the same commit, ends the [2/7] vs check_canary.sh [5b/5] contradiction about RackCompat.hpp, and disarms the identical trap waiting for Phase 32 MorphBlep.hpp. The slug is a one-way door: display name "Analog VCO", tags "Voltage-controlled oscillator" + "Waveshaper", plugin.json version held at 2.0.1 (D-04). Plan 30-06 acts on this; Phase 36 needs it for the #929 update.
 - [Phase 30]: The [2/7] Rack-free exemption is exact-path and is pinned by two mutation-proved controls inside [6/7], not by inspection — A widened-exemption mutant (bare [Rr]ack substring) and a removed-exemption mutant each make the guard exit 1 at the matching control. The fire-direction control alone would still pass under a substring widening; the ignore-direction control alone would still pass if the detector were deleted. Both are required to pin the exemption to its documented width.
+- [Phase 30]: The VcoCore seam carries the researcher-measured naive oscillator verbatim (CORE-01): kVcoFreqC4 * exp2_taylor5(pitchCV), a NaN-safe zero test, a Nyquist clamp at 0.49 * sampleRate, a double-precision accumulate with a single-subtract wrap, one call into the frozen Waveshape::morphedWave with bleedLfo = 0, and an unconditioned x5 — the guard and the wrap are ONE invariant: without the clamp, pitchCV = +10 reaches phase 1,014,986 and -8,655,011 V while every sample stays isfinite, so no finiteness test can see it and plan 30-03's magnitude bound is what does
+- [Phase 30]: D-11 divergence is the five-coefficient setSpreadSeed copy into Waveshape and nothing else — no OU drift stepping, no per-sample RNG draw, characterSpread deliberately not copied — which is exactly why all six shipped-LFO goldens stayed byte-identical through the DSP landing
+- [Phase 30]: D-15 and D-19 are closed: the Phase-29 silence tombstone was INVERTED in place (same slot, still 7 harness cases) and OBSERVED red against a silenced core, failing both the not-silent and not-constant scans; the two rows Phase 29 booked as green-but-weak are re-evidenced under real DSP with the reason written in place
+- [Phase 30]: check_canary.sh [2b/5]'s step matcher is UNANCHORED — quoting the full step() signature in a comment on a line that also contains a brace makes the canary perturb the COMMENT, and make guards hard-fails with unrelated 'unknown type name VcoInputs' errors. VcoCore.hpp's banner abbreviates the signature as float step(...) and documents the trap for future editors
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -121,13 +125,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 29 P04 | 8 min | 3 tasks | 6 files |
 | Phase 29 P05 | 16 min | 2 tasks | 2 files |
 | Phase 30 P01 | 9 min | 3 tasks | 1 files |
+| Phase 30 P02 | 6 min | 3 tasks | 2 files |
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/30-vcocore-skeleton-module-registration/30-01-PLAN.md
+**Resume file:** None
 
-Last session: 2026-07-28T21:59:46.222Z
-Stopped at: Phase 30 planned — 7 plans, 5 waves, plan-checker PASSED
+Last session: 2026-07-28T22:12:22.298Z
+Stopped at: Completed 30-02-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps

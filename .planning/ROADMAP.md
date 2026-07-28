@@ -155,7 +155,7 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: 1/7 plans executed
+**Plans**: 2/7 plans executed
 Plans:
 **Wave 1**
 
@@ -163,7 +163,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 30-02-PLAN.md — The real `VcoCore::step()` body (D-11/D-12/D-13/D-14) + D-15 tombstone inversion in place + D-19 re-evidencing of the two green-but-weak rows
+- [x] 30-02-PLAN.md — The real `VcoCore::step()` body (D-11/D-12/D-13/D-14) + D-15 tombstone inversion in place + D-19 re-evidencing of the two green-but-weak rows
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -274,7 +274,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
-| 30. VcoCore Skeleton & Registration | 1/7 | In Progress|  |
+| 30. VcoCore Skeleton & Registration | 2/7 | In Progress|  |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |
