@@ -79,10 +79,31 @@ trap 'rm -rf "${TMP}"' EXIT
 # is validating proves only that two greps agree.
 # ---------------------------------------------------------------------------
 VCO_TOKEN='(Vco|MorphBlep)'
+
+# The detector runs inside $( ), i.e. a SUBSHELL, so it cannot set `fail` or
+# increment a counter for its caller — anything it learns has to come back
+# through the filesystem. These two logs are how: one records every file
+# actually OPENED, the other every file that was handed to the detector but does
+# not exist. The caller resets them, then reads them after the call.
+#
+# The count matters. This section used to report ${#LFO_SCAN[@]} — the array
+# LENGTH — as "N files scanned", while `[[ -f ]] || continue` silently skipped
+# anything missing. With one LFO header moved aside the gate still printed
+# "OK: 25 LFO-side files scanned". Renaming any LFO file reduced coverage while
+# the output claimed otherwise.
+SCAN_OPENED="${TMP}/scan_opened.txt"
+SCAN_MISSING="${TMP}/scan_missing.txt"
+: > "${SCAN_OPENED}"
+: > "${SCAN_MISSING}"
+
 detect_vco_includes() {
 	local f
 	for f in "$@"; do
-		[[ -f "${f}" ]] || continue
+		if [[ ! -f "${f}" ]]; then
+			printf '%s\n' "${f#${ROOT}/}" >> "${SCAN_MISSING}"
+			continue
+		fi
+		printf '%s\n' "${f#${ROOT}/}" >> "${SCAN_OPENED}"
 		grep -nE "^[[:space:]]*#[[:space:]]*include[[:space:]]*[<\"][^\">]*${VCO_TOKEN}[^\">]*[>\"]" "${f}" \
 			| sed "s|^|${f#${ROOT}/}:|" || true
 	done
@@ -221,7 +242,17 @@ else
 		[[ -n "${f}" ]] && LFO_CLOSURE+=("${f}")
 	done < <(expand_include_closure "${LFO_SCAN[@]}")
 
+	: > "${SCAN_OPENED}"
+	: > "${SCAN_MISSING}"
 	lfo_hits="$(detect_vco_includes "${LFO_CLOSURE[@]}")"
+	# The REAL number of files opened, not the array length. These can only differ
+	# if a path was handed to the detector and did not exist, which is reported
+	# immediately below rather than skipped in silence.
+	scanned="$(grep -c . "${SCAN_OPENED}" || true)"
+	if [[ -s "${SCAN_MISSING}" ]]; then
+		note_fail "the scan set names file(s) that are not on disk, so this section covers LESS than it reports:"
+		sed 's/^/    /' "${SCAN_MISSING}"
+	fi
 	if [[ -n "${lfo_hits}" ]]; then
 		note_fail "VCO header(s) reached the LFO build graph — this changes what the SHIPPED module compiles to:"
 		echo "${lfo_hits}" | sed 's/^/    /'
@@ -229,7 +260,7 @@ else
 		echo "        reaches it through an include chain. Break the chain, or move the"
 		echo "        file to the VCO side of the boundary in VCO_SIDE_ALLOW above."
 	else
-		echo "  OK: ${#LFO_SCAN[@]} LFO-side root file(s), ${#LFO_CLOSURE[@]} file(s) in their transitive include closure, zero VCO includes"
+		echo "  OK: ${#LFO_SCAN[@]} LFO-side root file(s), ${scanned} file(s) opened across their transitive include closure, zero VCO includes"
 	fi
 fi
 
