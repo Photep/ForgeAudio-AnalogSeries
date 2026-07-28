@@ -141,6 +141,31 @@ hash_norm() { tr -d '\r' < "$1" | hash_stdin; }
 # Raw digest (binary entries).
 hash_raw() { hash_stdin < "$1"; }
 
+# ---------------------------------------------------------------------------
+# MANIFEST READER — every read of either manifest goes through this.
+#
+# Two defects it fixes, both of which reached CR-02's failure mode (a silently
+# unguarded file) without anyone editing a manifest line:
+#
+# (a) A manifest whose FINAL LINE lacks a trailing newline lost that entry in
+#     silence, because `while read -r a b` returns non-zero on the last partial
+#     line and the loop body never runs for it. Demonstrated:
+#         printf 'aaa one\nbbb two' | while read -r a b; do echo "$a"; done
+#     prints only `aaa`. Both manifests end with 0x0a today, so this was latent —
+#     but it is CR-02's hole reachable by an editor setting rather than an edit.
+#     The trailing `echo` guarantees a final newline.
+#
+# (b) The CR-normalization apparatus above (hash_norm) exists so this gate is
+#     "correct on a CRLF checkout too". The MANIFESTS themselves are text files
+#     with no .gitattributes protecting them, so on a Windows checkout `relpath`
+#     carried a trailing \r, `[[ -f "${ROOT}/${relpath}" ]]` was false for EVERY
+#     entry, and the gate reported every pinned file as MISSING. The stated
+#     Windows-correctness property did not hold. Not hit in CI (the guards run on
+#     the ubuntu toolchain-gate job), but `make guards` is a documented local
+#     developer command.
+# ---------------------------------------------------------------------------
+manifest_lines() { tr -d '\r' < "$1"; echo; }
+
 echo "using hasher: ${HASHER}"
 
 # ---------------------------------------------------------------------------
@@ -152,7 +177,12 @@ if [[ ! -f "${ROOT}/${FROZEN_REL}" ]]; then
 else
 	frozen_count=0
 	while read -r expected relpath; do
-		[[ -z "${expected:-}" ]] && continue
+		# Blank lines (including the one manifest_lines appends) and comments are
+		# not entries. A '#' line previously produced a spurious "pinned file is
+		# MISSING" failure, which trains a reader to ignore this gate's output.
+		if [[ -z "${expected:-}" ]] || [[ "${expected}" == \#* ]]; then
+			continue
+		fi
 		frozen_count=$((frozen_count + 1))
 		target="${ROOT}/${relpath}"
 		if [[ ! -f "${target}" ]]; then
@@ -168,7 +198,7 @@ else
 			echo "        actual:   ${actual}"
 			echo "        ${BUMP_HINT}"
 		fi
-	done < "${ROOT}/${FROZEN_REL}"
+	done < <(manifest_lines "${ROOT}/${FROZEN_REL}")
 	echo "  (${frozen_count} pinned entries checked)"
 
 	# --- Coverage floor. A digest mismatch is loud; a DELETED line was silent. ---
@@ -198,7 +228,7 @@ else
 		case "${rel}" in
 			src/dsp/Vco*.hpp|src/dsp/MorphBlep.hpp) continue ;;
 		esac
-		if ! awk -v p="${rel}" '$2 == p { found = 1 } END { exit !found }' "${ROOT}/${FROZEN_REL}"; then
+		if ! manifest_lines "${ROOT}/${FROZEN_REL}" | awk -v p="${rel}" '$2 == p { found = 1 } END { exit !found }'; then
 			frozen_unpinned="${frozen_unpinned} ${rel}"
 		fi
 	done
@@ -225,7 +255,9 @@ if [[ ! -f "${ROOT}/${GOLDEN_REL}" ]]; then
 else
 	golden_count=0
 	while read -r expected relpath; do
-		[[ -z "${expected:-}" ]] && continue
+		if [[ -z "${expected:-}" ]] || [[ "${expected}" == \#* ]]; then
+			continue
+		fi
 		golden_count=$((golden_count + 1))
 		target="${ROOT}/${relpath}"
 		if [[ ! -f "${target}" ]]; then
@@ -241,7 +273,7 @@ else
 			echo "        actual:   ${actual}"
 			echo "        Goldens are regenerated ONLY by a deliberate \`make capture\` run. If you did not run it, the LFO's output has moved."
 		fi
-	done < "${ROOT}/${GOLDEN_REL}"
+	done < <(manifest_lines "${ROOT}/${GOLDEN_REL}")
 	echo "  (${golden_count} pinned fixtures checked)"
 
 	# The identical hole, in the identical shape: dropping a line here silently
@@ -254,7 +286,7 @@ else
 	for f in "${ROOT}"/tests/golden/*.f32; do
 		[[ -f "${f}" ]] || continue
 		rel="${f#${ROOT}/}"
-		if ! awk -v p="${rel}" '$2 == p { found = 1 } END { exit !found }' "${ROOT}/${GOLDEN_REL}"; then
+		if ! manifest_lines "${ROOT}/${GOLDEN_REL}" | awk -v p="${rel}" '$2 == p { found = 1 } END { exit !found }'; then
 			golden_unpinned="${golden_unpinned} ${rel}"
 		fi
 	done
@@ -282,7 +314,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
 NC_REL="src/dsp/MathConst.hpp"
-nc_expected="$(awk -v p="${NC_REL}" '$2 == p {print $1}' "${ROOT}/${FROZEN_REL}" 2>/dev/null || true)"
+nc_expected="$(manifest_lines "${ROOT}/${FROZEN_REL}" 2>/dev/null | awk -v p="${NC_REL}" '$2 == p {print $1}' || true)"
 if [[ -z "${nc_expected}" ]]; then
 	note_fail "negative control cannot run: ${NC_REL} is not in ${FROZEN_REL}"
 elif [[ ! -f "${ROOT}/${NC_REL}" ]]; then
