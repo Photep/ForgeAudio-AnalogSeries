@@ -33,15 +33,20 @@
 #     invitation to mistake a tripwire for a security primitive.
 #
 # Enforces:
-#   [1/7] no LFO translation unit includes a VCO file
+#   [1/7] no LFO translation unit includes a VCO file, DIRECTLY OR TRANSITIVELY.
+#         The LFO side is DERIVED (everything under src/, tests/ and tools/ that
+#         is not an explicitly named VCO-side file), not hand-listed, so a new
+#         file is covered the moment it lands.
 #   [2/7] VCO headers are Rack-free
 #   [3/7] VCO headers include only dsp/ siblings and standard headers
 #   [4/7] R-9 ODR guard — exactly one forge::Inputs, in src/dsp/LfoCore.hpp
 #   [5/7] no hashing implementation under src/
-#   [6/7] NEGATIVE CONTROL — the section-1 detector demonstrably reports a
-#         synthetic violation, so this audit is validated rather than merely
-#         green. It runs the SAME function section 1 runs: a control that
-#         exercises different code than the guard proves nothing.
+#   [6/7] NEGATIVE CONTROLS — the section-1 machinery demonstrably reports both a
+#         DIRECT and a TWO-HOP synthetic violation, so this audit is validated
+#         rather than merely green. They run the SAME functions section 1 runs: a
+#         control that exercises different code than the guard proves nothing,
+#         and a control that only covers the direct shape validates the regex
+#         rather than the scope.
 #   [7/7] guard wiring (P-5) — every tests/check_*.sh is referenced by
 #         .github/workflows/test.yml, or is on a documented exemption list
 #
@@ -83,6 +88,62 @@ detect_vco_includes() {
 	done
 }
 
+# ---------------------------------------------------------------------------
+# TRANSITIVE INCLUDE RESOLUTION.
+#
+# The detector above only sees DIRECT include lines, so ONE intermediate hop
+# defeats it: an LFO-side file includes a helper, the helper includes a VCO
+# header, and nothing in the scanned file names a VCO token. That bypass was
+# built and confirmed green against the previous version of this gate.
+#
+# resolve_quoted_include maps a quoted include target to a real path the same
+# way the compiler does — the INCLUDING FILE'S OWN DIRECTORY first, then the
+# -Isrc / -Itests search paths the Makefile passes. expand_include_closure walks
+# the resulting graph with a worklist and a seen set and echoes every file
+# reachable from the given roots, roots included, each exactly once.
+#
+# Everything here is newline-delimited on purpose: this repository is developed
+# under a directory whose name contains a space, so a space-delimited seen set
+# or an unquoted path expansion would be silently and invisibly wrong.
+# ---------------------------------------------------------------------------
+resolve_quoted_include() {
+	local includer="$1" target="$2" cand d
+	d="$(dirname "${includer}")"
+	for cand in "${d}/${target}" "${ROOT}/src/${target}" "${ROOT}/tests/${target}" "${ROOT}/${target}"; do
+		if [[ -f "${cand}" ]]; then
+			printf '%s\n' "${cand}"
+			return 0
+		fi
+	done
+	# Unresolvable (a system header, or a path this script cannot see). Not an
+	# error: [3/7] is what constrains which includes a VCO header may carry.
+	return 0
+}
+
+CLOSURE_SEEN="${TMP}/include_closure_seen.txt"
+expand_include_closure() {
+	local work=("$@")
+	local idx=0 cur tgt res
+	: > "${CLOSURE_SEEN}"
+	while [[ "${idx}" -lt "${#work[@]}" ]]; do
+		cur="${work[${idx}]}"
+		idx=$((idx + 1))
+		[[ -f "${cur}" ]] || continue
+		if grep -Fxq -- "${cur}" "${CLOSURE_SEEN}"; then
+			continue
+		fi
+		printf '%s\n' "${cur}" >> "${CLOSURE_SEEN}"
+		printf '%s\n' "${cur}"
+		while IFS= read -r tgt; do
+			[[ -n "${tgt}" ]] || continue
+			res="$(resolve_quoted_include "${cur}" "${tgt}")"
+			if [[ -n "${res}" ]]; then
+				work+=("${res}")
+			fi
+		done < <(sed -n 's/^[[:space:]]*#[[:space:]]*include[[:space:]]*"\([^"]*\)".*/\1/p' "${cur}" || true)
+	done
+}
+
 # Collect the VCO header set once — used by [2/7] and [3/7].
 VCO_HEADERS=()
 for h in "${ROOT}"/src/dsp/Vco*.hpp; do
@@ -92,62 +153,84 @@ done
 [[ -f "${ROOT}/src/dsp/MorphBlep.hpp" ]] && VCO_HEADERS+=("${ROOT}/src/dsp/MorphBlep.hpp")
 
 # ---------------------------------------------------------------------------
-# [1/7] No LFO translation unit includes a VCO file.
+# [1/7] No LFO translation unit includes a VCO file, directly or transitively.
 #
-# An EXPLICIT allowlist, not a glob. The VCO's own files and this phase's new
-# test files (tests/VcoBlockDriver.hpp, tests/test_vco_harness.cpp) legitimately
-# include VCO headers and must not be scanned — a glob would flag them and the
-# gate would be edited into uselessness on its first run.
+# A DENYLIST, NOT AN ALLOWLIST — this is load-bearing and was changed for cause.
 #
-# Also intentionally outside the scan set:
+# This section used to grep a hand-written 25-file list for DIRECT include lines.
+# That scope was narrower than the contract in two independent ways, and both
+# bypasses were built and confirmed fully green:
+#
+#   (a) A new file is not in the list, so it is not scanned. A new header under
+#       src/dsp/ that includes dsp/VcoCore.hpp, pulled into src/plugin.cpp (which
+#       is deliberately NOT pinned by check_frozen.sh), put VCO code in the
+#       shipped plugin's registration translation unit with every gate green.
+#   (b) Only DIRECT includes were matched, so one intermediate hop was invisible
+#       even for a file that WAS in the list.
+#
+# The list is therefore derived, not written: everything under src/, tests/ and
+# tools/ is LFO-side BY DEFAULT, and only the explicitly-named VCO-side files
+# below are exempt. A file added by any future phase is covered the moment it
+# lands rather than when someone remembers to add it here. The closure walk then
+# closes (b).
+#
+# The VCO-side exemptions, each for a stated reason:
 #   * src/vco_compile_canary.cpp — a src/ file that includes dsp/VcoCore.hpp on
 #     purpose (D-07). That is the sanctioned direction, not a violation.
 #   * src/AnalogVCO.cpp — Phase 30's VCO shell. When it lands it is VCO code and
 #     belongs on the other side of this boundary.
+#   * tests/VcoBlockDriver.hpp, tests/test_vco_harness.cpp — Phase 29's VCO
+#     harness; scanning them would flag the gate into uselessness on its first run.
+# src/dsp/Vco*.hpp and src/dsp/MorphBlep.hpp are the VCO's own headers — the
+# other side of the boundary, not scan targets.
 #
-# When a new LFO-side file is added, add it here. A file that is neither listed
-# here nor VCO code is a file this gate does not cover, which is why the list is
-# spelled out rather than derived.
+# ADDING TO THE EXEMPTION LIST IS THE DANGEROUS EDIT HERE. Removing a file from
+# the scan is now the only way to unguard it, which is exactly the property the
+# old allowlist did not have.
 # ---------------------------------------------------------------------------
-echo "[1/7] No LFO translation unit includes a VCO file..."
-LFO_SCAN=(
-	# shipped shell + Rack registration
-	"${ROOT}/src/AnalogLFO.cpp"
-	"${ROOT}/src/plugin.cpp"
-	"${ROOT}/src/plugin.hpp"
-	# the eleven-header LFO include closure
-	"${ROOT}/src/dsp/Anim.hpp"
-	"${ROOT}/src/dsp/ClockTracker.hpp"
-	"${ROOT}/src/dsp/DisplayFill.hpp"
-	"${ROOT}/src/dsp/DriftEngine.hpp"
-	"${ROOT}/src/dsp/LfoCore.hpp"
-	"${ROOT}/src/dsp/MathConst.hpp"
-	"${ROOT}/src/dsp/PatchParse.hpp"
-	"${ROOT}/src/dsp/RackCompat.hpp"
-	"${ROOT}/src/dsp/RatioTable.hpp"
-	"${ROOT}/src/dsp/Swing.hpp"
-	"${ROOT}/src/dsp/Waveshape.hpp"
-	# the LFO test driver
-	"${ROOT}/tests/BlockDriver.hpp"
-	# the nine test translation units that predate Phase 29
-	"${ROOT}/tests/test_anim.cpp"
-	"${ROOT}/tests/test_display.cpp"
-	"${ROOT}/tests/test_dsp_stateful.cpp"
-	"${ROOT}/tests/test_dsp_units.cpp"
-	"${ROOT}/tests/test_extraction.cpp"
-	"${ROOT}/tests/test_golden.cpp"
-	"${ROOT}/tests/test_invariants.cpp"
-	"${ROOT}/tests/test_regression.cpp"
-	"${ROOT}/tests/test_smoke.cpp"
-	# the golden capture tool — its output IS the LFO's frozen behavior
-	"${ROOT}/tools/capture_golden.cpp"
+echo "[1/7] No LFO translation unit includes a VCO file (directly or transitively)..."
+VCO_SIDE_ALLOW=(
+	"src/vco_compile_canary.cpp"
+	"src/AnalogVCO.cpp"
+	"tests/VcoBlockDriver.hpp"
+	"tests/test_vco_harness.cpp"
 )
-lfo_hits="$(detect_vco_includes "${LFO_SCAN[@]}")"
-if [[ -n "${lfo_hits}" ]]; then
-	note_fail "VCO header(s) reached the LFO build graph — this changes what the SHIPPED module compiles to:"
-	echo "${lfo_hits}" | sed 's/^/    /'
+LFO_SCAN=()
+while IFS= read -r f; do
+	rel="${f#${ROOT}/}"
+	case "${rel}" in
+		src/dsp/Vco*.hpp|src/dsp/MorphBlep.hpp) continue ;;
+	esac
+	skip=0
+	for a in "${VCO_SIDE_ALLOW[@]}"; do
+		if [[ "${rel}" == "${a}" ]]; then skip=1; fi
+	done
+	if [[ "${skip}" -eq 0 ]]; then
+		LFO_SCAN+=("${f}")
+	fi
+done < <(find "${ROOT}/src" "${ROOT}/tests" "${ROOT}/tools" -type f \
+	\( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) | sort)
+
+if [[ "${#LFO_SCAN[@]}" -eq 0 ]]; then
+	note_fail "derived ZERO LFO-side files from src/, tests/ and tools/. The find above returned nothing, so this section is scanning an empty set and its PASS would mean nothing."
 else
-	echo "  OK: ${#LFO_SCAN[@]} LFO-side files scanned, zero VCO includes"
+	# Follow one level of indirection and then some: the closure covers a chain of
+	# any depth, so no number of intermediate hops hides the include.
+	LFO_CLOSURE=()
+	while IFS= read -r f; do
+		[[ -n "${f}" ]] && LFO_CLOSURE+=("${f}")
+	done < <(expand_include_closure "${LFO_SCAN[@]}")
+
+	lfo_hits="$(detect_vco_includes "${LFO_CLOSURE[@]}")"
+	if [[ -n "${lfo_hits}" ]]; then
+		note_fail "VCO header(s) reached the LFO build graph — this changes what the SHIPPED module compiles to:"
+		echo "${lfo_hits}" | sed 's/^/    /'
+		echo "        A hit on a file that is not itself LFO code means an LFO-side file"
+		echo "        reaches it through an include chain. Break the chain, or move the"
+		echo "        file to the VCO side of the boundary in VCO_SIDE_ALLOW above."
+	else
+		echo "  OK: ${#LFO_SCAN[@]} LFO-side root file(s), ${#LFO_CLOSURE[@]} file(s) in their transitive include closure, zero VCO includes"
+	fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -292,13 +375,48 @@ float ncLeakProbe() { return 0.f; }
 EOF
 nc_hits="$(detect_vco_includes "${TMP}/nc_lfo_leak.cpp")"
 if [[ -n "${nc_hits}" ]]; then
-	echo "  OK: synthetic violation detected by the same detector [1/7] uses:"
+	echo "  OK: direct (one-hop) violation detected by the same detector [1/7] uses:"
 	printf '%s\n' "${nc_hits}" | sed 's/^/    /'
 else
 	note_fail "negative control DID NOT FIRE: detect_vco_includes reported a fixture that plainly includes dsp/VcoCore.hpp as clean. The detector is broken, so [1/7]'s PASS above is meaningless."
 fi
-echo "  NOTE: this negative control is what makes this audit VALIDATED rather than"
-echo "        merely green. It runs on every invocation. Do not remove it."
+
+# TWO-HOP control. The one-hop fixture above uses a DIRECT #include, which is the
+# one shape the raw detector always handled — on its own it validates the regex,
+# not the scope. This fixture uses the shape the real bypass used: an LFO-side
+# translation unit that names no VCO token anywhere in its own text, reaching a
+# VCO header through an intermediate header. It exercises expand_include_closure
+# AND the detector together, which is the combination [1/7] actually depends on.
+mkdir -p "${TMP}/nc2/dsp"
+cat > "${TMP}/nc2/dsp/NcIntermediate.hpp" <<'EOF'
+#pragma once
+// The intermediate hop.
+#include "dsp/VcoCore.hpp"
+EOF
+cat > "${TMP}/nc2/nc_two_hop.cpp" <<'EOF'
+// Synthetic fixture: an LFO-side translation unit that reaches VCO code through
+// ONE intermediate header. Grepping this file's own text finds nothing.
+#include "dsp/LfoCore.hpp"
+#include "dsp/NcIntermediate.hpp"
+float ncTwoHopProbe() { return 0.f; }
+EOF
+nc2_files=()
+while IFS= read -r ncf; do
+	[[ -n "${ncf}" ]] && nc2_files+=("${ncf}")
+done < <(expand_include_closure "${TMP}/nc2/nc_two_hop.cpp")
+nc2_direct="$(detect_vco_includes "${TMP}/nc2/nc_two_hop.cpp")"
+nc2_hits="$(detect_vco_includes "${nc2_files[@]}")"
+if [[ -n "${nc2_direct}" ]]; then
+	note_fail "two-hop negative control is INVALID: the fixture's own text matches the detector, so it is not testing indirection at all. Rewrite nc_two_hop.cpp so it names no VCO token."
+elif [[ -n "${nc2_hits}" ]]; then
+	echo "  OK: TWO-HOP violation detected through the same include closure [1/7] uses:"
+	printf '%s\n' "${nc2_hits}" | sed "s|${TMP}/|<scratch>/|" | sed 's/^/    /'
+else
+	note_fail "two-hop negative control DID NOT FIRE: a fixture that reaches dsp/VcoCore.hpp through ONE intermediate header was reported clean. expand_include_closure is not resolving includes, so [1/7] has silently reverted to catching DIRECT includes only — the exact bypass it was rewritten to close."
+fi
+
+echo "  NOTE: these negative controls are what make this audit VALIDATED rather than"
+echo "        merely green. They run on every invocation. Do not remove them."
 
 # ---------------------------------------------------------------------------
 # [7/7] Guard wiring (P-5) — every guard script must be invoked by CI.
