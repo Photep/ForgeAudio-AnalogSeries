@@ -26,6 +26,7 @@
 // Validated by tests/test_lfo_guardrail.cpp against three published FIPS 180-4
 // vectors plus a one-byte perturbation negative control.
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -38,13 +39,36 @@ namespace forge {
 // Streaming SHA-256 state. Feed bytes with update(), read the digest with hex().
 // hex() finalizes on first call and is idempotent: calling it twice returns the
 // same string and never corrupts the state (guarded by `finalized`).
+//
+// ONE-WAY STATE MACHINE. hex() SEALS the hasher. update() after hex() is a
+// caller bug and asserts; it does not quietly do nothing. Read sealed() to ask.
+//
+// This used to return early with no error, no assert and no return value, so a
+// caller who streamed, read an intermediate digest, then streamed more got the
+// digest of the FIRST SEGMENT ONLY with no indication anything had been dropped:
+//
+//     h.update("abc"); d1 = h.hex();
+//     h.update("def"); d2 = h.hex();
+//     d1 == d2  ->  YES   (both ba7816bf..., i.e. sha256("abc"), not "abcdef")
+//
+// For a file whose whole job is being a TRIPWIRE, a silently-short digest is the
+// exact failure mode that would launder a regression: it is a plausible-looking
+// 64-hex string that attests to less data than the caller believes. A silent
+// wrong answer is the wrong default here, so it is now loud.
 struct Sha256 {
 	void update(const unsigned char* data, size_t len) {
+		// Feeding a finalized hasher would silently produce the digest of a PREFIX
+		// of the message. Never ignore that quietly.
+		assert(!finalized && "Sha256::update() after hex(): the digest is already sealed");
 		if (finalized || data == 0 || len == 0)
 			return;
 		totalBits += (uint64_t)len * (uint64_t)8;
 		absorb(data, len);
 	}
+
+	// True once hex() has been called. Lets a caller (and the tests) observe the
+	// seal without tripping the assert above.
+	bool sealed() const { return finalized; }
 
 	std::string hex() {
 		finalize();

@@ -169,6 +169,33 @@ TEST_CASE("lfo guardrail: SHA-256 hasher matches the published two-block vector"
 	CHECK(forge::sha256Hex(msg) == VEC_TWOBLOCK_DIGEST);
 }
 
+TEST_CASE("lfo guardrail: SHA-256 streaming state machine is sealed by hex()") {
+	// The behaviour this pins: multi-segment streaming must equal the one-shot
+	// digest of the concatenation. update() used to return early and SILENTLY
+	// after hex(), so a caller who streamed, read an intermediate digest, then
+	// streamed more got the digest of the first segment only with no indication
+	// anything had been dropped. That is now an assert, and sealed() lets the
+	// seal be observed without tripping it.
+	forge::Sha256 h;
+	CHECK_FALSE(h.sealed());
+
+	const std::string a = "a";
+	const std::string bc = "bc";
+	h.update(reinterpret_cast<const unsigned char*>(a.data()), a.size());
+	CHECK_FALSE(h.sealed()); // still open between segments
+	h.update(reinterpret_cast<const unsigned char*>(bc.data()), bc.size());
+	CHECK_FALSE(h.sealed());
+
+	const std::string first = h.hex();
+	CHECK(h.sealed()); // hex() seals; a further update() would now assert
+
+	// Segmented "a" + "bc" is the published "abc" vector, NOT sha256("a").
+	CHECK(first == VEC_ABC_DIGEST);
+	// hex() is idempotent and does not corrupt state on a second call.
+	CHECK(h.hex() == first);
+	CHECK(h.sealed());
+}
+
 TEST_CASE("lfo guardrail: SHA-256 of a missing file is reported as an empty digest") {
 	// A missing fixture must surface as a mismatch, never as a silent pass:
 	// the empty string can never equal a pinned 64-character digest.
