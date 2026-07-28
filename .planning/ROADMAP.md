@@ -118,7 +118,13 @@ See: `.planning/milestones/v1.4-ROADMAP.md` for full details.
   2. A `VcoBlockDriver` (mirroring `BlockDriver`) drives a `forge::VcoCore` over sample blocks at 44.1 / 48 / 96 kHz with no libRack linked, using non-degenerate default seeds (no `(0,0)` Xoroshiro fixed point).
   3. `make strict` (C++11, `-pedantic-errors`) and the CI MinGW **link** leg both cover the new `AnalogVCO` translation unit and VCO headers, failing on any ODR / C++17-ism (the exact class that rejected v2.0.0).
   4. The full test + strict + MinGW canary runs in CI on every push and is green.
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 29-01-PLAN.md — Bare POD `VcoCore` seam (D-01/D-03) + Rack-free `VcoBlockDriver` + TEST-01 harness invariants at 44.1/48/96 kHz
+- [ ] 29-02-PLAN.md — Test-scope SHA-256 + D-04 golden-byte checksum lock with published-vector and flipped-bit negative controls
+- [ ] 29-03-PLAN.md — D-07/D-08 compile canary that ODR-uses the VCO headers, placement decision checkpoint, and `check_canary.sh` wired into CI
+- [ ] 29-04-PLAN.md — D-05 frozen-header manifest + D-06 dependency-direction audit, `make guards`, and the standing guard-wiring assertion
+- [ ] 29-05-PLAN.md — Full local phase gate + CI-only ODR link-gate negative control (push red, revert, confirm green)
 **Guardrail**: This phase *is* the guardrail — the standing LFO-golden replay + strict/MinGW canary it wires (TEST-04/06) runs automatically at the end of every subsequent phase.
 
 ### Phase 30: VcoCore Skeleton & Module Registration
