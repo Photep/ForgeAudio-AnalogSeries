@@ -122,7 +122,7 @@ See: `.planning/milestones/v1.4-ROADMAP.md` for full details.
   3. `make strict` (C++11, `-pedantic-errors`) and the CI MinGW **link** leg both cover the new `AnalogVCO` translation unit and VCO headers, failing on any ODR / C++17-ism (the exact class that rejected v2.0.0).
   4. The full test + strict + MinGW canary runs in CI on every push and is green.
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 Plans:
 **Wave 1**
 
@@ -135,7 +135,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 29-04-PLAN.md — D-05 frozen-header manifest + D-06 dependency-direction audit, `make guards`, and the standing guard-wiring assertion
+- [x] 29-04-PLAN.md — D-05 frozen-header manifest + D-06 dependency-direction audit, `make guards`, and the standing guard-wiring assertion
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -250,7 +250,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 29. VCO Test Harness & LFO Guardrail | 3/5 | In Progress|  |
+| 29. VCO Test Harness & LFO Guardrail | 4/5 | In Progress|  |
 | 30. VcoCore Skeleton & Registration | 0/? | Not started | - |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
