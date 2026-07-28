@@ -26,6 +26,9 @@
 //      worst case and hostile V/OCT — and the worst case is proven to actually
 //      exceed 5.1 V, so the bound is exercised rather than merely satisfied
 //      (D-18b / T-30-01)
+//   3. two instances differing ONLY in spread seed diverge measurably at
+//      character = 1.0, with bit-identity at character = 0 pinned as the
+//      in-test control (D-18a / D-10 / D-11)
 //
 // THE D-16 LABEL, WHICH MUST NOT BE SOFTENED. Invariant 1 is NOT the TEST-02
 // V/Oct tracking gate. TEST-02 belongs to Phase 31 and requires better than one
@@ -47,9 +50,11 @@
 //
 // Deliberately NOT here: harness plumbing (tests/test_vco_harness.cpp), the
 // < 1-cent V/Oct tracking gate (Phase 31, TEST-02), the alias floor (Phase 32),
-// output conditioning and the moving drift engine (Phase 34, OUT-01..03 /
-// DRIFT-*), and CORE-03 per-instance independence, which plan 30-04 appends to
-// this same file.
+// and output conditioning plus the MOVING drift engine (Phase 34, OUT-01..03 /
+// DRIFT-*). Also not here yet: the CORE-03 independence PAIR — the interleave
+// test and its deliberately-broken shared-state positive control — which plan
+// 30-04 appends to this same file as invariants 4 and 5, reusing the helpers
+// below and adding its own into the same anonymous namespace.
 //
 // This TU does NOT define the doctest impl macro (tests/main.cpp owns it).
 
@@ -361,5 +366,111 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 				CHECK(allFinite);
 			}
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 3. Spread-seed divergence (D-18a / D-10 / D-11).
+//
+//    THE MECHANISM, written here so the assertions below are readable without
+//    cross-referencing three other files. Divergence in this phase comes from
+//    STATIC PER-INSTANCE COMPONENT SPREAD and from nothing else: the five
+//    coefficients — triAsymmetry, sawCurvature, squareDuty, pulseEdge, bleed —
+//    that VcoCore::setSpreadSeed copies out of the DriftEngine into the
+//    instance's OWN forge::Waveshape. There is no per-sample RNG draw and no OU
+//    drift stepping anywhere in step(), so a different seed changes the
+//    waveform permanently and for free. (That is also exactly why landing this
+//    DSP could not move the shipped LFO's goldens.) Phase 34 owns the MOVING
+//    drift engine; this case is the direct evidence for the roadmap's
+//    "a different seed diverges" criterion.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco core: spread seed divergence at character 1.0 (D-18a)") {
+	const int n = 2048;
+
+	for (double sr : SAMPLE_RATES) {
+		CAPTURE(sr);
+
+		forge::VcoInputs base = coreBase();
+		base.pitchCV   = 0.f;
+		base.morph     = 0.25f;
+		base.character = 1.f;
+
+		// All four seeds are spelled out at EACH construction site, the idiom
+		// tests/test_vco_harness.cpp's determinism case uses. The drift pair is
+		// IDENTICAL and only the spread pair differs, so anything this case
+		// observes can only have come from the five-coefficient spread copy.
+		// These are the researcher's measured pairs — substituting different
+		// ones would leave the figures recorded below describing a variant of
+		// this code rather than this code.
+		forge::VcoBlockDriver a(sr, 0xC0FFEEULL, 0xBADF00DULL, 0x9E3779B9ULL, 0x7F4A7C15ULL);
+		forge::VcoBlockDriver b(sr, 0xC0FFEEULL, 0xBADF00DULL, 0xDEADBEEFULL, 0xCAFEF00DULL);
+		std::vector<float> oa = a.run(n, [=](int) { return base; });
+		std::vector<float> ob = b.run(n, [=](int) { return base; });
+		REQUIRE(oa.size() == (size_t)n);
+		REQUIRE(ob.size() == (size_t)n);
+
+		// Bit-exact float != throughout, NEVER doctest::Approx: Approx's
+		// epsilon(0) still applies a relative-scaling margin and is therefore
+		// not a true bit-exact comparator. This is the same reasoning the
+		// harness suite's determinism case carries, and it matters in both
+		// directions — an Approx-based scan would call two audibly different
+		// blocks identical near the zero crossings.
+		float maxAbsDiff = 0.f;
+		int differing = 0;
+		for (size_t i = 0; i < oa.size(); ++i) {
+			if (oa[i] != ob[i]) ++differing;
+			const float d = std::fabs(oa[i] - ob[i]);
+			if (d > maxAbsDiff) maxAbsDiff = d;
+		}
+		CAPTURE(maxAbsDiff);
+		CAPTURE(differing);
+
+		// MARGINS. This exact configuration was measured at 0.2332 V with
+		// 2048 / 2048 samples differing, at all three sample rates. Across five
+		// different seed pairs at morph in {0.25, 0.50} with character = 1.0 the
+		// max-abs difference ranged 0.1380 - 0.4804 V, so a 0.01 V threshold
+		// carries at least a 13-fold margin against the LEAST divergent pair
+		// measured, while sitting roughly four orders of magnitude above float
+		// noise. The two assertions are not redundant: the first says the
+		// difference is AUDIBLE, the second says it is PERVASIVE rather than a
+		// single transient sample.
+		CHECK(maxAbsDiff > 0.01f);
+		CHECK(differing > (n * 9) / 10);
+	}
+
+	// --- THE CONTROL that keeps this case honest. ------------------------
+	// Identical construction, identical drive, one change: character = 0.
+	// Assert the two blocks are BIT-IDENTICAL.
+	//
+	// This is NOT a redundant check — it is the measured trap written down.
+	// Every spread coefficient in the frozen forge::Waveshape is consumed only
+	// behind a `character >= 0.001f` gate, so at character = 0 the divergence
+	// above was measured at EXACTLY 0.000000 V with 0 of 2048 samples differing.
+	// A version of this case written at character = 0 would therefore not merely
+	// be weak, it would be GUARANTEED TO FAIL. Pinning that here means a future
+	// reader who moves the case to a lower character value to "simplify" it
+	// breaks a green test instead of quietly producing one that proves nothing —
+	// and it is the same fact that forces plan 30-04's independence pair to run
+	// at full character.
+	for (double sr : SAMPLE_RATES) {
+		CAPTURE(sr);
+		INFO("control: character = 0 gates every spread coefficient, so the two seeds MUST be indistinguishable here");
+
+		forge::VcoInputs base = coreBase();
+		base.pitchCV   = 0.f;
+		base.morph     = 0.25f;
+		base.character = 0.f;
+
+		forge::VcoBlockDriver a(sr, 0xC0FFEEULL, 0xBADF00DULL, 0x9E3779B9ULL, 0x7F4A7C15ULL);
+		forge::VcoBlockDriver b(sr, 0xC0FFEEULL, 0xBADF00DULL, 0xDEADBEEFULL, 0xCAFEF00DULL);
+		std::vector<float> oa = a.run(n, [=](int) { return base; });
+		std::vector<float> ob = b.run(n, [=](int) { return base; });
+		REQUIRE(oa.size() == ob.size());
+
+		bool identical = true;
+		for (size_t i = 0; i < oa.size(); ++i) {
+			if (oa[i] != ob[i]) { identical = false; break; }
+		}
+		CHECK(identical);
 	}
 }
