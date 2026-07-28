@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
 status: executing
-stopped_at: Completed 30-05-PLAN.md
-last_updated: "2026-07-28T22:39:56.910Z"
+stopped_at: Completed 30-04-PLAN.md
+last_updated: "2026-07-28T22:55:11.068Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 30 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 13
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-07-28 — Phase 30 execution started
 
@@ -102,6 +102,9 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 30]: The new TU joined make strict (3 -> 4 translation units), the plugin link and the CI MinGW compile-and-link loop with ZERO Makefile or CI wiring added — src/AnalogVCO.cpp was pre-registered in check_includes.sh VCO_SIDE_ALLOW (line 281) in Phase 29 before the file existed, so make guards was green on its first run, unlike 30-03's tests/test_vco_core.cpp. No guard-script edit was needed or made, and check_frozen.sh's FROZEN_EXPECTED_ENTRIES stayed at 15 for the new res/ asset.
 - [Phase 30]: The Phase-29 compile canary SURVIVED the one moment retiring it looked reasonable (T-30-10) — the three-of-eight VcoInputs field asymmetry (the shell feeds pitchCV/morph/character; src/vco_compile_canary.cpp feeds all eight, which is what makes check_canary.sh [2b/5] report eight fields runtime-live at -O3) is now written into BOTH src/AnalogVCO.cpp::process() and the .github/workflows/test.yml canary comment, so the argument survives either file being read alone. The stale CI sentence that scoped the canary to a world without src/AnalogVCO.cpp is gone; the workflow diff was comment-only, all 10 steps unrenamed and unreordered.
 - [Phase 30]: src/AnalogVCO.cpp's banner names the four forbidden C++ constructs by DESCRIPTION, not literal spelling — the plan requires the banner to state the C++11 rules AND requires a negative grep for those exact literals to return 0. Same trap class as 30-02's canary-matcher collision: a file that must document a rule it is simultaneously being grepped against. Same reason dataToJson is called "patch-state serialization" and the coordinates are not repeated in prose (mm2px must appear exactly four times).
+- [Phase 30]: CORE-03 is closed BEHAVIORALLY: two differently-seeded VcoCore instances driven interleaved sample by sample each reproduce their solo block bit-exactly (0/1024 mismatches, both instances, all three rates), and the check is validated on every run by a permanent DeliberatelyBrokenSharedStateCore measured at 512/512 — Absence of shared state is what a source-text guard proves badly - a grep for static misses a function-local static, a shared reference member, a singleton behind an accessor and a shared pointer. Sensitivity is MEASURED not argued: with phase made a shared static the case exits 1 with 1024/1024 mismatches on both instances at all three rates. v2.1 POLY-01 is now an evidenced additive shell change
+- [Phase 30]: The interleave helper is TEMPLATED over the core type so the positive control exercises byte-identically the drive loop the real check uses, and the case REQUIREs the helper's solo block bit-identical to VcoBlockDriver::run() before asserting anything else — A control that runs its own copy of the loop proves nothing about the loop under test - the check_includes.sh [6/7] argument (every negative control calls the SAME function its section calls). The validity-first REQUIRE is the nc2_direct habit: a helper that quietly stopped overwriting sampleTime/sampleRate would otherwise pass everything below it. Proved: the static-phase probe made that REQUIRE fire first
+- [Phase 30]: The D-17 sensitivity probe used 'static inline double phase', and the control asserts totalMismatch > 0 rather than an exact count — A bare in-class 'static double phase = 0.0;' is ill-formed in BOTH C++11 and C++17 (in-class initializers on static members need const integral or inline), so the plan's literal splice would have produced a compile error - which proves nothing about whether the assertions can see the defect. And the control's own solo baselines are polluted by design (all four helper runs share the one static), so an exact count would pin an accident of run order: measured 512/512 here vs the researcher's 511/512
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -135,13 +138,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P02 | 6 min | 3 tasks | 2 files |
 | Phase 30 P03 | 10 min | 3 tasks | 2 files |
 | Phase 30 P05 | 3 min | 3 tasks | 3 files |
+| Phase 30 P04 | 6 min | 2 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-28T22:39:35.090Z
-Stopped at: Completed 30-05-PLAN.md
+Last session: 2026-07-28T22:55:11.061Z
+Stopped at: Completed 30-04-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps

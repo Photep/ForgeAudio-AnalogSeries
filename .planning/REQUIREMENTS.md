@@ -68,7 +68,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 
 - [x] **CORE-01**: A new Rack-free `forge::VcoCore` (`src/dsp/VcoCore.hpp`) mirrors the `LfoCore` POD-`Inputs` → `step()` → output+telemetry boundary
 - [ ] **CORE-02**: Anti-aliasing lives in a new additive header (`MorphBlep.hpp`) that *calls* the frozen `Waveshape.hpp` — zero edits to shared headers
-- [ ] **CORE-03**: `VcoCore` is a self-contained per-voice unit with no static/global mutable voice state — **polyphony-ready** so a future v2.1 polyphony is an additive shell change, not a rewrite
+- [x] **CORE-03**: `VcoCore` is a self-contained per-voice unit with no static/global mutable voice state — **polyphony-ready** so a future v2.1 polyphony is an additive shell change, not a rewrite
 - [x] **TEST-01**: A Rack-free test harness drives `VcoCore` over sample blocks (mirrors `BlockDriver`), runnable via `make test` with no libRack
 - [ ] **TEST-02**: V/Oct tracking accuracy is asserted (< 1 cent error) across the pitch range
 - [ ] **TEST-03**: An alias-floor / spectral invariant asserts high-note aliasing stays below a defined threshold
@@ -148,7 +148,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | PANEL-03 | Phase 30 | Complete |
 | CORE-01 | Phase 30 | Complete |
 | CORE-02 | Phase 32 | Pending |
-| CORE-03 | Phase 30 | Pending |
+| CORE-03 | Phase 30 | Complete |
 | TEST-01 | Phase 29 | Complete |
 | TEST-02 | Phase 31 | Pending |
 | TEST-03 | Phase 32 | Pending |
