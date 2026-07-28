@@ -61,6 +61,17 @@
 // pair"; plan 30-04 landed it, as invariants 4 and 5 below, reusing 30-03's
 // helpers unchanged and adding its own into the same anonymous namespace.)
 //
+// WHAT MAKES THIS SUITE VALIDATED RATHER THAN MERELY GREEN. Invariant 5 drives
+// a deliberately-broken core — one static phase accumulator shared by every
+// instance, the exact construct CORE-03 forbids — through the SAME helper
+// invariant 4 uses, and requires it to FAIL. Invariant 3 pins the same kind of
+// fact from the other direction, asserting bit-identity at the character value
+// where the divergence mechanism is switched off. Both run on EVERY invocation,
+// and both are observed detecting something rather than never having been
+// anything but green. That is the posture of check_frozen.sh [3/3],
+// check_includes.sh [6/7] and check_canary.sh [4/5], and it is the posture this
+// file is written in. Do not remove them.
+//
 // This TU does NOT define the doctest impl macro (tests/main.cpp owns it).
 
 #include "doctest.h"
@@ -243,6 +254,95 @@ InterleaveResult runInterleaveCheck(
 	}
 	return r;
 }
+
+// ---------------------------------------------------------------------------
+// DeliberatelyBrokenSharedStateCore — the PERMANENT positive control for
+// invariant 4. Read this banner before touching anything below it.
+//
+// THIS TYPE IS A TEST CONTROL. IT IS NOT PRODUCTION CODE, IT IS NOT A WORK IN
+// PROGRESS, AND IT MUST NEVER BE MOVED UNDER src/ — least of all into
+// src/dsp/VcoCore.hpp, which is the file it is a deliberately-broken copy of.
+// It implements EXACTLY the construct CORE-03 forbids: a phase accumulator held
+// in a function-local static and therefore shared by every instance in the
+// process. Landing that in the shipped core would silently destroy v2.1
+// polyphony — sixteen voices would fight over one accumulator — and the guard
+// that would catch it is the very case this type exists to validate.
+//
+// WHY IT EXISTS. A check that has only ever been observed green is unvalidated:
+// it is indistinguishable from a check that cannot fail. That is this
+// repository's standing posture, written into check_frozen.sh [3/3],
+// check_includes.sh [6/7] and check_canary.sh [4/5], each of which validates a
+// detector by running it over a synthetic fixture that MUST produce a hit. This
+// type is invariant 4's fixture. Invariant 5 drives it through the SAME
+// runInterleaveCheck() the real core goes through and REQUIRES it to fail the
+// independence property, on every single invocation of the suite.
+//
+// DO NOT delete it, do not disable it, do not convert invariant 5 into a
+// skipped or commented-out case, and do not "clean this up" because a
+// deliberately broken oscillator looks like dead code. If it goes away, or if
+// invariant 5 ever passes by NOT detecting the defect, invariant 4 stops being
+// evidence of anything and CORE-03 reverts to an assertion nobody has tested.
+//
+// It is contained by PLACEMENT: an anonymous namespace inside this test TU. It
+// has internal linkage, it is in no header, and it is in no shipped build
+// graph, so check_includes.sh, check_canary.sh and the strict C++11 gate never
+// see it — all three scan src/ only. Containment is asserted rather than
+// assumed: plan 30-04's acceptance criteria require `grep -r
+// 'DeliberatelyBrokenSharedStateCore' src/` to find nothing.
+//
+// THE DEFECT IS ISOLATED TO ONE FIELD, on purpose. Everything else mirrors
+// src/dsp/VcoCore.hpp: a PER-INSTANCE forge::Waveshape, a per-instance seeding
+// entry point performing the same D-11 five-coefficient copy, the same
+// exp2_taylor5 pitch off kVcoFreqC4, the same NaN-safe zero test and Nyquist
+// clamp, the same single-subtract wrap, the same x5 unconditioned output. That
+// isolation is what makes the control SPECIFIC: it demonstrates the helper
+// catches SHARED STATE, not merely that two different classes produce two
+// different streams of numbers.
+// ---------------------------------------------------------------------------
+struct DeliberatelyBrokenSharedStateCore {
+	// Per-instance, exactly as the real core holds them. Only `sharedPhase`
+	// inside step(...) below is broken.
+	forge::DriftEngine drift;
+	forge::Waveshape wave;
+
+	void seed(uint64_t s0, uint64_t s1 = 0) { drift.seed(s0, s1); }
+
+	// The D-11 five-coefficient copy, mirroring forge::VcoCore::setSpreadSeed
+	// field for field so the two cores can share one seeding callable.
+	void setSpreadSeed(uint64_t s0, uint64_t s1 = 0) {
+		drift.setSpreadSeed(s0, s1);
+		wave.triAsymmetrySpread = drift.triAsymmetrySpread;
+		wave.sawCurvatureSpread = drift.sawCurvatureSpread;
+		wave.squareDutySpread   = drift.squareDutySpread;
+		wave.pulseEdgeSpread    = drift.pulseEdgeSpread;
+		wave.bleedSpread        = drift.bleedSpread;
+	}
+
+	// Signature matches forge::VcoCore::step(...) so runInterleaveCheck accepts
+	// this type with no change whatsoever to the helper.
+	float step(const forge::VcoInputs& in) {
+		// >>> THE DELIBERATE DEFECT, AND THE ONLY ONE. <<<
+		// A function-local static: ONE accumulator for every instance of this
+		// type in the process. This is the whole point of the control. Do not
+		// make it a member — that would "fix" the control and quietly turn
+		// invariant 5 green, which is the failure mode the banner above warns
+		// about.
+		static double sharedPhase = 0.0;
+
+		float freq = forge::kVcoFreqC4 * forge::exp2_taylor5(in.pitchCV);
+		const float maxFreq = forge::kVcoNyquistGuardFrac * in.sampleRate;
+		if (!(freq > 0.f)) freq = 0.f;
+		if (freq > maxFreq) freq = maxFreq;
+
+		sharedPhase += (double)freq * (double)in.sampleTime;
+		if (sharedPhase >= 1.0) sharedPhase -= 1.0;
+
+		const float p = (float)sharedPhase;
+		const float morph = forge::clamp(in.morph, 0.f, 1.f);
+		const float character = forge::clamp(in.character, 0.f, 1.f);
+		return 5.f * wave.morphedWave(p, morph, character, 0.f);
+	}
+};
 
 } // namespace
 
@@ -728,5 +828,90 @@ TEST_CASE("vco core: two-instance independence under sample-by-sample interleavi
 		CAPTURE(r.mismatchB);
 		CHECK(r.mismatchA == 0);
 		CHECK(r.mismatchB == 0);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 5. THE POSITIVE CONTROL for invariant 4 (D-17 / CORE-03).
+//
+//    A deliberately-broken stand-in core that shares one static phase
+//    accumulator across every instance is driven through the SAME
+//    runInterleaveCheck() helper, with the same shape of input functors, and is
+//    REQUIRED to fail the independence property. See the banner on
+//    DeliberatelyBrokenSharedStateCore above for why the type exists, why it
+//    lives in this TU's anonymous namespace, and why it must never be deleted
+//    or moved under src/.
+//
+//    IF THIS CASE EVER GOES GREEN, INVARIANT 4 ABOVE IS MEANINGLESS AND MUST BE
+//    TREATED AS FAILING regardless of its own verdict. A green result here does
+//    not mean the shared accumulator has been fixed — the accumulator is
+//    supposed to be broken. It means runInterleaveCheck() has stopped being
+//    able to see shared state at all, which is precisely the condition that
+//    would let a real regression into forge::VcoCore pass unnoticed.
+//
+//    WHY THE ASSERTION IS "AT LEAST ONE MISMATCH" RATHER THAN AN EXACT COUNT.
+//    The control's own SOLO baselines are polluted BY DESIGN: all four runs
+//    inside the helper — solo A, solo B, and the two interleaved instances —
+//    share the one static, so the accumulator is never at the same value twice
+//    and the broken core is not even reproducible against itself. That is not
+//    a flaw in the fixture, it IS the symptom of the defect, and it is why an
+//    exact count would be pinning an accident of run order rather than the
+//    property. The researcher measured 511 of 512 and 512 of 512 mismatches
+//    with different inputs (511 of 512 with identical inputs); the contract
+//    asserted here is only the inequality that matters: the helper detects
+//    shared state.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco core: independence positive control - a shared static accumulator FAILS the same check (D-17)") {
+	// The 512-sample block the researcher measured.
+	const int n = 512;
+
+	// The same seeding shape as invariant 4: identical drift pair, different
+	// spread pairs, so the control differs from the real case in exactly one
+	// thing — the type being driven.
+	const std::function<void(DeliberatelyBrokenSharedStateCore&, int)> seedInstance =
+		[](DeliberatelyBrokenSharedStateCore& c, int which) {
+			c.seed(0xC0FFEEULL, 0xBADF00DULL);
+			if (which == 0) {
+				c.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
+			} else {
+				c.setSpreadSeed(0xDEADBEEFULL, 0xCAFEF00DULL);
+			}
+		};
+
+	for (double sr : SAMPLE_RATES) {
+		CAPTURE(sr);
+
+		forge::VcoInputs base = coreBase();
+		base.character = 1.f;
+
+		const float denom = (float)(n - 1);
+		const std::function<forge::VcoInputs(int)> inA = [=](int i) {
+			forge::VcoInputs in = base;
+			in.pitchCV = -1.f + 2.f * ((float)i / denom);
+			in.morph   = 0.25f;
+			return in;
+		};
+		const std::function<forge::VcoInputs(int)> inB = [=](int i) {
+			forge::VcoInputs in = base;
+			in.pitchCV = 0.5f;
+			in.morph   = (float)i / denom;
+			return in;
+		};
+
+		// THE SAME HELPER, instantiated on the broken type. A control that ran
+		// its own copy of the drive loop would prove nothing about the loop the
+		// real case uses.
+		const InterleaveResult r =
+			runInterleaveCheck<DeliberatelyBrokenSharedStateCore>(seedInstance, sr, n, inA, inB);
+		REQUIRE(r.soloA.size() == (size_t)n);
+
+		const int totalMismatch = r.mismatchA + r.mismatchB;
+		CAPTURE(r.mismatchA);
+		CAPTURE(r.mismatchB);
+		CAPTURE(totalMismatch);
+
+		// THE CONTRACT: the helper detects shared state. Measured 511/512 and
+		// 512/512 on this construction.
+		CHECK(totalMismatch > 0);
 	}
 }
