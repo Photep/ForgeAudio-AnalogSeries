@@ -6,14 +6,14 @@ current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
 status: executing
 stopped_at: Completed 30-02-PLAN.md
-last_updated: "2026-07-28T22:12:22.305Z"
+last_updated: "2026-07-28T22:30:26.378Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 30 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 12
-  completed_plans: 7
+  completed_plans: 8
   percent: 13
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-07-28 — Phase 30 execution started
 
@@ -95,6 +95,9 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 30]: D-11 divergence is the five-coefficient setSpreadSeed copy into Waveshape and nothing else — no OU drift stepping, no per-sample RNG draw, characterSpread deliberately not copied — which is exactly why all six shipped-LFO goldens stayed byte-identical through the DSP landing
 - [Phase 30]: D-15 and D-19 are closed: the Phase-29 silence tombstone was INVERTED in place (same slot, still 7 harness cases) and OBSERVED red against a silenced core, failing both the not-silent and not-constant scans; the two rows Phase 29 booked as green-but-weak are re-evidenced under real DSP with the reason written in place
 - [Phase 30]: check_canary.sh [2b/5]'s step matcher is UNANCHORED — quoting the full step() signature in a comment on a line that also contains a brace makes the canary perturb the COMMENT, and make guards hard-fails with unrelated 'unknown type name VcoInputs' errors. VcoCore.hpp's banner abbreviates the signature as float step(...) and documents the trap for future editors
+- [Phase 30]: CORE-01 invariants are measured on the OUTPUT, never on tel telemetry — and the D-16 pitch case is labelled NOT the TEST-02 tracking gate in both the file banner and the case name — A telemetry assertion only re-reads the number step() computed three lines earlier and stays green through a dead accumulator. Measured results reproduce the researcher's figures to six digits (divergence 0.233229/0.233235/0.233187 V, worst-case magnitude 5.51803 V at all three rates), confirming the landed step() body is the prototype the margins were measured against. Worst pitch error in the grid is 0.0078 %, better than one cent, which is exactly why the NOT-TEST-02 label is written twice.
+- [Phase 30]: tests/test_vco_core.cpp had to be registered in check_includes.sh [1/7] VCO_SIDE_ALLOW — a new VCO test TU is LFO-side by default and make guards exits 1 the moment it lands — Section [1/7] derives its LFO-side scan set as everything under src/, tests/ and tools/ MINUS the named VCO-side files. The new TU includes VcoBlockDriver.hpp -> VcoCore.hpp by construction, so the guard's own failure text names the remedy. Same kind of file and same documented reason as tests/test_vco_harness.cpp since Phase 29. Exact-path match proved by a near-miss fixture that still fails. Unlike plan 30-01's [2/7] change this weakens no detector, but it was NOT operator-checkpointed — flagged for 30-07's phase gate.
+- [Phase 30]: The researcher's 'sweepScenario maxes at exactly 5.0000 V' figure is BLOCK-LENGTH DEPENDENT, measured this session, and the source now records the table instead of repeating the sentence — Measured at all three rates: 5.000000 V at n=1024 and 0.05 s, 5.2104-5.2114 V at 0.25 s, 5.4383-5.4385 V at the 1 s block plan 30-03 specifies. Root cause is research's own explanation — sweepScenario anti-correlates morph=t with character=1-t, so whether the accumulator reaches peak phase while morph is still near zero depends on block length. This strengthens the case for the fixed morph 0/character 1 scenario: a sweep-only bound test has a margin that silently changes when anyone edits the block length.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -126,12 +129,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 29 P05 | 16 min | 2 tasks | 2 files |
 | Phase 30 P01 | 9 min | 3 tasks | 1 files |
 | Phase 30 P02 | 6 min | 3 tasks | 2 files |
+| Phase 30 P03 | 10 min | 3 tasks | 2 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-28T22:12:22.298Z
+Last session: 2026-07-28T22:30:03.286Z
 Stopped at: Completed 30-02-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 

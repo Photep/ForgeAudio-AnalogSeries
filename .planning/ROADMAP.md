@@ -155,7 +155,7 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: 2/7 plans executed
+**Plans**: 3/7 plans executed
 Plans:
 **Wave 1**
 
@@ -167,7 +167,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 30-03-PLAN.md — New `tests/test_vco_core.cpp`: the three CORE-01 cases (output-measured pitch, 6.0 V magnitude bound, spread-seed divergence) with measured non-vacuity
+- [x] 30-03-PLAN.md — New `tests/test_vco_core.cpp`: the three CORE-01 cases (output-measured pitch, 6.0 V magnitude bound, spread-seed divergence) with measured non-vacuity
 - [ ] 30-05-PLAN.md — `src/AnalogVCO.cpp` minimum-viable Rack shell (four live controls, stock widgets, non-degenerate seeding) + the throwaway 18 HP `res/AnalogVCO.svg`
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -274,7 +274,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
-| 30. VcoCore Skeleton & Registration | 2/7 | In Progress|  |
+| 30. VcoCore Skeleton & Registration | 3/7 | In Progress|  |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |
