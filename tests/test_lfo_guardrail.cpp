@@ -32,6 +32,7 @@
 #include "Sha256.hpp"
 
 #include <cstddef>
+#include <cstdio>   // std::remove, for the CRLF scratch files
 #include <fstream>
 #include <string>
 #include <vector>
@@ -206,6 +207,90 @@ TEST_CASE("lfo guardrail: SHA-256 of a missing file is reported as an empty dige
 	const std::string gotLf =
 		forge::sha256HexFileLfNormalized("tests/golden/this_file_does_not_exist.f32");
 	CHECK(gotLf.empty());
+}
+
+TEST_CASE("lfo guardrail: LF-normalized file hashing actually ignores CR bytes") {
+	// Before this case, the stripCarriageReturns == true branch of
+	// detail::hashFileImpl had ZERO coverage and no production caller anywhere in
+	// the repo. Its only call site was the missing-file case above, which returns
+	// at the is_open() check before any hashing happens. The header presents this
+	// function as the answer to pitfall P-3 (Windows CRLF checkouts) and
+	// tests/check_frozen.sh rests on the same normalization idea in shell, so the
+	// C++ half of that story was untested code that a later phase would trust.
+	const char* const kLf = "tmp_sha256_crlf_probe_lf.txt";
+	const char* const kCrlf = "tmp_sha256_crlf_probe_crlf.txt";
+	const std::string body = "one\ntwo\nthree\n";
+
+	{
+		std::ofstream a(kLf, std::ios::binary);
+		REQUIRE(a.is_open());
+		a << body;
+	}
+	{
+		std::ofstream b(kCrlf, std::ios::binary);
+		REQUIRE(b.is_open());
+		b << "one\r\ntwo\r\nthree\r\n";
+	}
+
+	const std::string lfNorm = forge::sha256HexFileLfNormalized(kLf);
+	const std::string crlfNorm = forge::sha256HexFileLfNormalized(kCrlf);
+	const std::string lfRaw = forge::sha256HexFile(kLf);
+	const std::string crlfRaw = forge::sha256HexFile(kCrlf);
+
+	REQUIRE(isLowerHex64(lfNorm));
+	// The property P-3 rests on: line endings must not change the digest.
+	CHECK(lfNorm == crlfNorm);
+	// ...and it is not vacuous. If the RAW variant also ignored CR, the
+	// normalization would be doing nothing and this case would prove nothing.
+	CHECK(lfRaw != crlfRaw);
+	// On an LF checkout the two entry points must agree, which is why
+	// `shasum -a 256 -c src/dsp/FROZEN.sha256` still works by hand from the root.
+	CHECK(lfNorm == lfRaw);
+	// Cross-check against the in-memory entry point the published vectors above
+	// already validate, so this does not merely compare the branch with itself.
+	CHECK(lfNorm == forge::sha256Hex(body));
+
+	std::remove(kLf);
+	std::remove(kCrlf);
+}
+
+TEST_CASE("lfo guardrail: LF normalization holds across the 8192-byte read chunk boundary") {
+	// hashFileImpl streams in 8192-byte chunks and filters each chunk separately,
+	// so a file larger than one chunk exercises the branch's multi-chunk path —
+	// including a CR that lands next to a chunk edge. The single-chunk case above
+	// cannot detect a per-chunk state error.
+	const char* const kLf = "tmp_sha256_crlf_chunk_lf.txt";
+	const char* const kCrlf = "tmp_sha256_crlf_chunk_crlf.txt";
+
+	std::string lfBody;
+	std::string crlfBody;
+	for (int i = 0; i < 4000; ++i) { // ~20 KB: several chunks either way
+		lfBody += "line\n";
+		crlfBody += "line\r\n";
+	}
+	REQUIRE(lfBody.size() > 8192u);
+	REQUIRE(crlfBody.size() > 8192u);
+
+	{
+		std::ofstream a(kLf, std::ios::binary);
+		REQUIRE(a.is_open());
+		a << lfBody;
+	}
+	{
+		std::ofstream b(kCrlf, std::ios::binary);
+		REQUIRE(b.is_open());
+		b << crlfBody;
+	}
+
+	const std::string lfNorm = forge::sha256HexFileLfNormalized(kLf);
+	const std::string crlfNorm = forge::sha256HexFileLfNormalized(kCrlf);
+	REQUIRE(isLowerHex64(lfNorm));
+	CHECK(lfNorm == crlfNorm);
+	CHECK(forge::sha256HexFile(kLf) != forge::sha256HexFile(kCrlf));
+	CHECK(lfNorm == forge::sha256Hex(lfBody));
+
+	std::remove(kLf);
+	std::remove(kCrlf);
 }
 
 // --- D-04: the golden byte lock ---------------------------------------------
