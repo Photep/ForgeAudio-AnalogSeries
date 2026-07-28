@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 30
-current_phase_name: VcoCore Skeleton & Module Registration
-status: verifying
+current_phase_name: vcocore-skeleton-module-registration
+status: executing
 stopped_at: Phase 30 planned — 7 plans, 5 waves, plan-checker PASSED
-last_updated: "2026-07-28T21:49:28.265Z"
+last_updated: "2026-07-28T22:00:15.419Z"
 last_activity: 2026-07-28
-last_activity_desc: Phase 29 complete, transitioned to Phase 30
+last_activity_desc: Phase 30 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 12
-  completed_plans: 5
+  completed_plans: 6
   percent: 13
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 29 complete — next: Phase 30 (VcoCore skeleton & module registration)
+**Current focus:** Phase 30 — vcocore-skeleton-module-registration
 
 > **⚠ MILESTONE GUARDRAIL — protect the shipped LFO.** No breaking/behavioral changes to the Analog LFO (live in VCV Library, golden-pinned) while adding the VCO. Prefer additive code over editing shared `src/dsp/` headers. Any LFO-regression risk (shared-header edits, plugin.json/version/registration) → surface to operator with impact + remediation options + a recommendation before acting. Tripwires: LFO `.f32` goldens + `make strict` + CI MinGW link leg. See PROJECT.md Constraints.
 
 ## Current Position
 
-Phase: 30 — VcoCore Skeleton & Module Registration
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-07-28 — Phase 29 complete, transitioned to Phase 30
+Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
+Plan: 2 of 7
+Status: Ready to execute
+Last activity: 2026-07-28 — Phase 30 execution started
 
 ## Performance Metrics
 
@@ -89,6 +89,8 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 29]: P-2 CORRECTED and widened — the ENTIRE local gate returned exit 0 on the deliberately broken commit, and the strict gate reported success on the Ubuntu runner too — make test, make strict, make guards and check_canary.sh all passed on code that could not link; -fsyntax-only never links, so no syntax-only gate on any platform can catch a link-class defect. Only the real-link step 6 caught it.
 - [Phase 29]: No tag or VCV Library resubmission may be cut on local evidence alone — the CI toolchain-gate link leg must be observed green on the exact commit being tagged — Green local plus green make strict was precisely the state in which v2.0.0 was tagged and rejected; this phase reproduced that state deliberately and measured it
 - [Phase 29]: The two P-7 TEST-01 rows (seam determinism, output finiteness) are recorded as green-but-weak, NOT coverage — They pass only because VcoCore::step() is silent by D-01 — determinism compares two all-zero blocks and isfinite(0.f) is trivially true. Phase 30 must re-evidence both when it deletes the TOMBSTONE case.
+- [Phase 30]: Operator selected option-a (exact-path exemption) for the check_includes.sh [2/7] guard weakening, and confirmed the permanent slug ForgeAnalogVCO as specified — Both approvals were given on one surface before any Phase 30 commit existed (D-05). option-a keeps VcoCore.hpp including what it uses, ships a two-direction negative control in the same commit, ends the [2/7] vs check_canary.sh [5b/5] contradiction about RackCompat.hpp, and disarms the identical trap waiting for Phase 32 MorphBlep.hpp. The slug is a one-way door: display name "Analog VCO", tags "Voltage-controlled oscillator" + "Waveshaper", plugin.json version held at 2.0.1 (D-04). Plan 30-06 acts on this; Phase 36 needs it for the #929 update.
+- [Phase 30]: The [2/7] Rack-free exemption is exact-path and is pinned by two mutation-proved controls inside [6/7], not by inspection — A widened-exemption mutant (bare [Rr]ack substring) and a removed-exemption mutant each make the guard exit 1 at the matching control. The fire-direction control alone would still pass under a substring widening; the ignore-direction control alone would still pass if the detector were deleted. Both are required to pin the exemption to its documented width.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -118,12 +120,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 29 P03 | 6 min | 3 tasks | 3 files |
 | Phase 29 P04 | 8 min | 3 tasks | 6 files |
 | Phase 29 P05 | 16 min | 2 tasks | 2 files |
+| Phase 30 P01 | 9 min | 3 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** .planning/phases/30-vcocore-skeleton-module-registration/30-01-PLAN.md
 
-Last session: 2026-07-28T21:49:28.258Z
+Last session: 2026-07-28T21:59:46.222Z
 Stopped at: Phase 30 planned — 7 plans, 5 waves, plan-checker PASSED
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 

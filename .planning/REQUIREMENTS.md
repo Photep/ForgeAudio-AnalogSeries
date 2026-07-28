@@ -62,11 +62,11 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 
 - [ ] **PANEL-01**: An 18HP Forge Noir panel for the VCO, consistent with the LFO's design language
 - [ ] **PANEL-02**: Panel exposes V/OCT in, SYNC in, FM in + attenuverter, MORPH/CHARACTER/DRIFT + their CV + attenuverters, COARSE, FINE, and OUT
-- [ ] **PANEL-03**: The VCO is registered as a second module (`addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry) without altering the LFO's registration
+- [x] **PANEL-03**: The VCO is registered as a second module (`addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry) without altering the LFO's registration
 
 ### Core & Test (boundary + guardrails)
 
-- [ ] **CORE-01**: A new Rack-free `forge::VcoCore` (`src/dsp/VcoCore.hpp`) mirrors the `LfoCore` POD-`Inputs` → `step()` → output+telemetry boundary
+- [x] **CORE-01**: A new Rack-free `forge::VcoCore` (`src/dsp/VcoCore.hpp`) mirrors the `LfoCore` POD-`Inputs` → `step()` → output+telemetry boundary
 - [ ] **CORE-02**: Anti-aliasing lives in a new additive header (`MorphBlep.hpp`) that *calls* the frozen `Waveshape.hpp` — zero edits to shared headers
 - [ ] **CORE-03**: `VcoCore` is a self-contained per-voice unit with no static/global mutable voice state — **polyphony-ready** so a future v2.1 polyphony is an additive shell change, not a rewrite
 - [x] **TEST-01**: A Rack-free test harness drives `VcoCore` over sample blocks (mirrors `BlockDriver`), runnable via `make test` with no libRack
@@ -145,8 +145,8 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | DISP-03 | Phase 35 | Pending |
 | PANEL-01 | Phase 35 | Pending |
 | PANEL-02 | Phase 35 | Pending |
-| PANEL-03 | Phase 30 | Pending |
-| CORE-01 | Phase 30 | Pending |
+| PANEL-03 | Phase 30 | Complete |
+| CORE-01 | Phase 30 | Complete |
 | CORE-02 | Phase 32 | Pending |
 | CORE-03 | Phase 30 | Pending |
 | TEST-01 | Phase 29 | Complete |

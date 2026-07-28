@@ -155,11 +155,11 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: 7 plans
+**Plans**: 1/7 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 30-01-PLAN.md — `check_includes.sh [2/7]` exact-path exemption for the Rack-free shim + a two-direction negative control, opened by the D-05 blocking operator checkpoint on the permanent slug and the guard weakening
+- [x] 30-01-PLAN.md — `check_includes.sh [2/7]` exact-path exemption for the Rack-free shim + a two-direction negative control, opened by the D-05 blocking operator checkpoint on the permanent slug and the guard weakening
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -274,7 +274,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
-| 30. VcoCore Skeleton & Registration | 0/7 | Planned     | - |
+| 30. VcoCore Skeleton & Registration | 1/7 | In Progress|  |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |
