@@ -37,16 +37,23 @@
 #         The LFO side is DERIVED (everything under src/, tests/ and tools/ that
 #         is not an explicitly named VCO-side file), not hand-listed, so a new
 #         file is covered the moment it lands.
-#   [2/7] VCO headers are Rack-free
+#   [2/7] VCO headers are Rack-free, carrying ONE documented exact-path
+#         exemption: the quoted path "dsp/RackCompat.hpp", which is this
+#         repository's own Rack-FREE compatibility shim and not a Rack SDK
+#         header at all. Every other [Rr]ack-named include still fails, and
+#         [6/7] proves that on every invocation.
 #   [3/7] VCO headers include only dsp/ siblings and standard headers
 #   [4/7] R-9 ODR guard — exactly one forge::Inputs, in src/dsp/LfoCore.hpp
 #   [5/7] no hashing implementation under src/
-#   [6/7] NEGATIVE CONTROLS — the section-1 machinery demonstrably reports both a
-#         DIRECT and a TWO-HOP synthetic violation, so this audit is validated
-#         rather than merely green. They run the SAME functions section 1 runs: a
-#         control that exercises different code than the guard proves nothing,
-#         and a control that only covers the direct shape validates the regex
-#         rather than the scope.
+#   [6/7] NEGATIVE CONTROLS — this section validates TWO detectors rather than
+#         one. For the section-1 VCO-leak detector it demonstrably reports both
+#         a DIRECT and a TWO-HOP synthetic violation. For the section-2
+#         Rack-free detector it proves BOTH directions of the documented
+#         exemption: a genuine Rack SDK include is still caught, and the one
+#         exempted shim path is not flagged. They run the SAME functions those
+#         sections run: a control that exercises different code than the guard
+#         proves nothing, and a control that only covers the direct shape
+#         validates the regex rather than the scope.
 #   [7/7] guard wiring (P-5) — every tests/check_*.sh is referenced by
 #         .github/workflows/test.yml, or is on a documented exemption list
 #
@@ -110,6 +117,53 @@ detect_vco_includes() {
 		# the primary development machine. No LFO-side include contains "vco" or
 		# "morphblep" in any casing, so this adds no false positives.
 		grep -niE "^[[:space:]]*#[[:space:]]*include[[:space:]]*[<\"][^\">]*${VCO_TOKEN}[^\">]*[>\"]" "${f}" \
+			| sed "s|^|${f#${ROOT}/}:|" || true
+	done
+}
+
+# ---------------------------------------------------------------------------
+# THE RACK-FREE DETECTOR — [2/7]'s half of the boundary.
+#
+# Takes a list of files and echoes one "path:line:text" record per include
+# directive whose target names a Rack SDK header. Empty output means clean.
+#
+# ONE PATH IS EXEMPT, AND ONLY ONE: the quoted path "dsp/RackCompat.hpp".
+#
+#   * It is this repository's own RACK-FREE compatibility shim, not a Rack SDK
+#     header. It contains zero Rack includes and its bytes are pinned by
+#     check_frozen.sh, so it cannot quietly acquire one.
+#   * It is one of the four D-05 frozen shared headers the VCO is explicitly
+#     ALLOWED to consume — check_canary.sh [5b/5] already allow-lists it by
+#     name (DriftEngine.hpp | MathConst.hpp | RackCompat.hpp | Waveshape.hpp).
+#     Without this exemption the two guards contradict each other about the
+#     same include line, which is the state this repository was in before.
+#   * Its FILENAME merely contains a substring this detector cannot tell apart
+#     from a genuine SDK include. That is the whole of the false positive.
+#   * D-14 MANDATES forge::exp2_taylor5 for V/oct → Hz, and that function lives
+#     in exactly that shim. Without the exemption this section is a guaranteed
+#     false positive the moment src/dsp/VcoCore.hpp includes what it uses —
+#     `make guards` exits 1 and the CI toolchain-gate job turns red on the
+#     first commit of the phase. Reproduced, not predicted.
+#
+# EXACT PATH, deliberately — not the basename and not a substring. A vendored
+# "dsp/rack.hpp", a "dsp/RackSDK.hpp", a "dsp/RackCompatX.hpp" and any
+# <rack...> angle-bracket SDK include all still FAIL. Widening this to a
+# basename or substring match would reopen the entire hole the section exists
+# to close.
+#
+# A function rather than an inline grep, for the same reason
+# detect_vco_includes is one: [6/7] runs THIS function over two synthetic
+# fixtures — one carrying a real SDK include, one carrying only the exempted
+# shim — so the exemption is validated in both directions on every invocation
+# rather than assumed. A control that re-implements the check it is validating
+# proves only that two greps agree.
+# ---------------------------------------------------------------------------
+detect_rack_sdk_includes() {
+	local f
+	for f in "$@"; do
+		[[ -f "${f}" ]] || continue
+		grep -nE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"][^">]*[Rr]ack[^">]*[>"]' "${f}" \
+			| grep -vE '#[[:space:]]*include[[:space:]]*"dsp/RackCompat\.hpp"' \
 			| sed "s|^|${f#${ROOT}/}:|" || true
 	done
 }
@@ -277,6 +331,12 @@ fi
 # compile there. This section catches the case where someone ADDS a Rack path
 # (to the test target, to a new target, or by vendoring a header), which would
 # make the breach compile silently.
+#
+# The detection itself lives in detect_rack_sdk_includes above, together with
+# the one documented exact-path exemption ("dsp/RackCompat.hpp", the repo's own
+# Rack-FREE shim) and the reasoning for it. [6/7] runs that same function over
+# two synthetic fixtures, so the exemption is proven both to still catch a
+# genuine SDK include and to not flag the shim, every time this script runs.
 # ---------------------------------------------------------------------------
 echo "[2/7] VCO headers are Rack-free..."
 if [[ "${#VCO_HEADERS[@]}" -eq 0 ]]; then
@@ -284,7 +344,7 @@ if [[ "${#VCO_HEADERS[@]}" -eq 0 ]]; then
 else
 	for h in "${VCO_HEADERS[@]}"; do
 		rel="${h#${ROOT}/}"
-		rack_hits="$(grep -nE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"][^">]*[Rr]ack[^">]*[>"]' "${h}" || true)"
+		rack_hits="$(detect_rack_sdk_includes "${h}")"
 		if [[ -n "${rack_hits}" ]]; then
 			note_fail "${rel} includes a Rack SDK header — VCO DSP must stay Rack-free (TEST-02):"
 			echo "${rack_hits}" | sed 's/^/    /'
