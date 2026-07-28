@@ -398,7 +398,16 @@ else
 fi
 # The SHA-256 initial hash state. Its presence is unambiguous evidence of an
 # implementation, whatever the file is called.
-const_hits="$(grep -rn '0x6a09e667' "${ROOT}/src" || true)"
+#
+# CASE-INSENSITIVE, deliberately. The comment above claims this check "is
+# unrestricted and would still catch an implementation smuggled in under any
+# filename", but `grep '0x6a09e667'` does not match `0x6A09E667u`, which is how a
+# large fraction of published SHA-256 implementations write it — so the claim was
+# false for the most common spelling. Verified.
+#
+# Two constants rather than one: H0 alone can be omitted or computed, while a
+# partial table is still a hash implementation. 0xbb67ae85 is H1.
+const_hits="$(grep -rniE '0x6a09e667|0xbb67ae85' "${ROOT}/src" || true)"
 if [[ -n "${const_hits}" ]]; then
 	note_fail "SHA-256 initial-state constant found under src/ — a hash implementation has entered the shipped build graph:"
 	printf '%s\n' "${const_hits}" | sed "s|${ROOT}/||" | sed 's/^/    /'
