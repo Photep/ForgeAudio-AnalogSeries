@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 29
-current_phase_name: VCO Test Harness & LFO Non-Regression Guardrail
-status: planned
+current_phase_name: vco-test-harness-lfo-non-regression-guardrail
+status: executing
 stopped_at: Phase 29 planned — ready to execute
-last_updated: "2026-07-28T00:00:00.000Z"
+last_updated: "2026-07-28T05:27:16.994Z"
 last_activity: 2026-07-28
-last_activity_desc: Phase 29 planned — 5 plans across 4 waves, plan-checker passed, 3/3 requirements + 8/8 decisions covered
+last_activity_desc: Phase 29 execution started
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 5
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** v2.0 Forge Analog VCO — roadmap created (8 phases, 29-36); ready to plan Phase 29.
+**Current focus:** Phase 29 — vco-test-harness-lfo-non-regression-guardrail
 
 > **⚠ MILESTONE GUARDRAIL — protect the shipped LFO.** No breaking/behavioral changes to the Analog LFO (live in VCV Library, golden-pinned) while adding the VCO. Prefer additive code over editing shared `src/dsp/` headers. Any LFO-regression risk (shared-header edits, plugin.json/version/registration) → surface to operator with impact + remediation options + a recommendation before acting. Tripwires: LFO `.f32` goldens + `make strict` + CI MinGW link leg. See PROJECT.md Constraints.
 
 ## Current Position
 
-Phase: 29 (VCO Test Harness & LFO Non-Regression Guardrail) — planned, not started
-Plan: 5 plans (29-01…29-05) across 4 waves — 0/5 executed
+Phase: 29 (vco-test-harness-lfo-non-regression-guardrail) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-28 — Phase 29 planned; research + patterns + validation strategy written, plan-checker passed with no issues
+Last activity: 2026-07-28 — Phase 29 execution started
 
 ## Performance Metrics
 
@@ -78,6 +78,9 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - Phase 26: plugin.json submission-ready (manifest URLs, minRackVersion 2.0.0, version 2.0.0 Rack-major); portable drift-off goldens for 3-OS CI, drift-on macOS-gated.
 - Phase 27: docs/ GitHub-Markdown manual (hub + 4 code-fact sections + install/changelog/license); manualUrl added.
 - Phase 28: release ff-only to main, tag v2.0.0 (commit 4d7b0a81f7aabed83626a11951956fff173b6ad7); public flip gated on fresh-mirror CLEAN verdict; VCV Library submission #929 filed with full 40-char hash — the PERMANENT update thread (all future bumps are comments on #929).
+- [Phase 29]: VCO POD is forge::VcoInputs, never a second forge::Inputs (cross-TU ODR hazard, R-9) — A duplicate forge::Inputs compiles silently in TUs including only one header and detonates on the CI MinGW link leg — the class that got v2.0.0 rejected
+- [Phase 29]: tests/BlockDriver.hpp and tests/VcoBlockDriver.hpp stay independent files forever — never templated or subclassed — BlockDriver feeds the macOS bit-exact drift-ON golden leg of the shipped LFO; any change moves tests/golden/freerun_*.f32 (R-2/P-4)
+- [Phase 29]: Phase 29 VcoCore::step() returns silence and a TOMBSTONE test asserts it; Phase 30 must delete that test — D-01 scopes Phase 29 to the boundary contract only; the tombstone forces Phase 30 to consciously revisit the weak-by-construction invariants
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -102,12 +105,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Verification (UAT) | Phase 23 BUG-04 manual in-Rack check — corrupt spreadSeed hex patch loads without crashing (automated red→green regression covers the fix) | Acknowledged / deferred | v1.4 close (2026-07-10) |
 | Scope (v2.1) | Through-zero FM, phase distortion, oversampling (Off/2×/4×), tracking-error modeling | Deferred to v2.1 | v2.0 scoping |
 | Scope (v2.1) | Polyphony (up to 16 voices) + per-voice drift seeding — enabled by CORE-03, additive shell change | Deferred to v2.1 | v2.0 scoping |
+| Phase 29 P01 | 12min | 3 tasks | 3 files |
 
 ## Session Continuity
 
 **Resume file:** .planning/phases/29-vco-test-harness-lfo-non-regression-guardrail/29-CONTEXT.md
 
-Last session: 2026-07-27T10:40:27.471Z
+Last session: 2026-07-28T05:27:16.987Z
 Stopped at: Phase 29 context gathered
 Resume: run `/gsd-plan-phase 29` to plan the VCO test harness + LFO guardrail phase.
 

@@ -69,7 +69,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 - [ ] **CORE-01**: A new Rack-free `forge::VcoCore` (`src/dsp/VcoCore.hpp`) mirrors the `LfoCore` POD-`Inputs` → `step()` → output+telemetry boundary
 - [ ] **CORE-02**: Anti-aliasing lives in a new additive header (`MorphBlep.hpp`) that *calls* the frozen `Waveshape.hpp` — zero edits to shared headers
 - [ ] **CORE-03**: `VcoCore` is a self-contained per-voice unit with no static/global mutable voice state — **polyphony-ready** so a future v2.1 polyphony is an additive shell change, not a rewrite
-- [ ] **TEST-01**: A Rack-free test harness drives `VcoCore` over sample blocks (mirrors `BlockDriver`), runnable via `make test` with no libRack
+- [x] **TEST-01**: A Rack-free test harness drives `VcoCore` over sample blocks (mirrors `BlockDriver`), runnable via `make test` with no libRack
 - [ ] **TEST-02**: V/Oct tracking accuracy is asserted (< 1 cent error) across the pitch range
 - [ ] **TEST-03**: An alias-floor / spectral invariant asserts high-note aliasing stays below a defined threshold
 - [ ] **TEST-04**: The shipped LFO's `.f32` goldens are replayed byte-identical in the same `make test` run as a standing non-regression canary
@@ -149,7 +149,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | CORE-01 | Phase 30 | Pending |
 | CORE-02 | Phase 32 | Pending |
 | CORE-03 | Phase 30 | Pending |
-| TEST-01 | Phase 29 | Pending |
+| TEST-01 | Phase 29 | Complete |
 | TEST-02 | Phase 31 | Pending |
 | TEST-03 | Phase 32 | Pending |
 | TEST-04 | Phase 29 | Pending |
@@ -158,11 +158,13 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | REL-01 | Phase 36 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 40 total (enumerated IDs; supersedes the earlier "37" summary miscount)
 - Mapped to phases: 40 ✓
 - Unmapped: 0 ✓
 
 **Phase → requirement rollup:**
+
 - Phase 29 (Test Harness & Guardrail): TEST-01, TEST-04, TEST-06
 - Phase 30 (Skeleton & Registration): CORE-01, CORE-03, PANEL-03
 - Phase 31 (Pitch, Tuning & FM): PITCH-01..05, FM-01..03, TEST-02
