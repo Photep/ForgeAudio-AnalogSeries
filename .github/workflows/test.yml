@@ -87,14 +87,25 @@ jobs:
             -shared -L/tmp/win/Rack-SDK -lRack -static-libstdc++
           echo "win-x64 link gate: PASS"
 
-      # The two gates above only cover headers reached through a .cpp. Until
-      # Phase 30 lands src/AnalogVCO.cpp, the ONLY thing pulling the VCO headers
-      # into them is src/vco_compile_canary.cpp — so this guards the canary
-      # itself: that it still emits code (a bare-#include TU emits nothing and
-      # would leave the link leg above with nothing to resolve), that it is
-      # C++11-clean, that the C++17-ism gate demonstrably rejects known-bad
-      # synthetic TUs, and that every src/dsp/Vco*.hpp is still included by it
-      # (the D-08 growth rule). Needs no Rack SDK.
+      # The two gates above only cover headers reached through a .cpp. Since
+      # Phase 30 landed src/AnalogVCO.cpp, the Rack shell also pulls the VCO
+      # headers into them — but it does NOT replace src/vco_compile_canary.cpp,
+      # and the difference is measured rather than asserted (Phase-29 D-08 +
+      # Phase-30 research Finding 7). The shell feeds runtime-derived values
+      # into only THREE of the eight VcoInputs DSP fields (pitchCV, morph,
+      # character); the canary feeds all EIGHT, which is what makes
+      # check_canary.sh [2b/5] report eight fields staying runtime-live at -O3.
+      # Swapping one for the other would silently reduce constant-fold coverage
+      # in exactly the fields Phases 31, 33 and 34 are about to make
+      # load-bearing, and would delete four guard sections whose bodies all
+      # begin by requiring the canary file to be present.
+      #
+      # So this step guards the canary itself: that it still emits code (a
+      # bare-#include TU emits nothing and would leave the link leg above with
+      # nothing to resolve), that it is C++11-clean, that the C++17-ism gate
+      # demonstrably rejects known-bad synthetic TUs, and that every
+      # src/dsp/Vco*.hpp is still included by it (the D-08 growth rule).
+      # Needs no Rack SDK.
       - name: VCO compile canary guard (D-07/D-08)
         run: bash tests/check_canary.sh
 
