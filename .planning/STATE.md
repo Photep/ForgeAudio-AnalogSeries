@@ -5,8 +5,8 @@ milestone_name: Forge Analog VCO
 current_phase: 31
 current_phase_name: Pitch, Tuning & Exponential FM
 status: executing
-stopped_at: Phase 30 complete (10/10 plans, verification passed, CI link leg observed green on f314609)
-last_updated: "2026-07-29T04:56:32.486Z"
+stopped_at: Phase 31 context gathered
+last_updated: "2026-07-29T09:56:23.093Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 30 complete, transitioned to Phase 31
 progress:
@@ -164,10 +164,10 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 
 ## Session Continuity
 
-**Resume file:** None
+**Resume file:** .planning/phases/31-pitch-tuning-exponential-fm/31-CONTEXT.md
 
-Last session: 2026-07-29T03:44:58.885Z
-Stopped at: Completed 30-09-PLAN.md
+Last session: 2026-07-29T09:56:23.085Z
+Stopped at: Phase 31 context gathered
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
