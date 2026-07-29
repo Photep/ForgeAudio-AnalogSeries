@@ -659,6 +659,21 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 	//     first place. Note that a NaN sample fails allFinite but NOT the
 	//     magnitude bound (every comparison against NaN is false), which is
 	//     precisely why both are asserted.
+	//   freqNyquistBounded — the WR-06 pin, and the assertion that makes the
+	//     ceiling's OWN job observable rather than merely its side effects. The
+	//     four assertions above check that nothing DOWNSTREAM of the ceiling
+	//     breaks; none of them checks that the ceiling actually fired. It did
+	//     not, for one input class: with a NaN sampleRate, maxFreq is NaN and
+	//     `freq > maxFreq` is false for every freq, so freq passed through
+	//     completely unclamped and tel.freqHz carried it. MEASURED at
+	//     sampleRate = NaN, pitchCV = +10: tel.freqHz = 267904.625 Hz against a
+	//     ceiling that should have bounded it. freqNonNegative could not see it
+	//     (the unclamped value is positive, so it passes trivially) and the
+	//     other three could not either, because the independent
+	//     kVcoMaxDeltaPhase bound absorbs the oversized frequency and keeps the
+	//     OUTPUT healthy. Phase 35 is the named future consumer of tel.freqHz
+	//     for a display; an arbitrary non-Nyquist-relative number reaching it is
+	//     the user-visible failure this pins.
 	//
 	// The seeds are the proven non-degenerate literals used everywhere else in
 	// this suite. NEVER a pair of zeros (T-30-02): a degenerate Xoroshiro seed
@@ -709,16 +724,33 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 					float maxAbs          = 0.f;
 					int   firstBadStep    = -1;
 
+					// WR-06. The ceiling the core is SUPPOSED to have applied,
+					// recomputed here from the same constant and the same
+					// sanitising rule the header uses, so the test states the
+					// contract independently rather than echoing whatever the
+					// header happened to compute. A non-positive OR NaN rate has
+					// no meaningful Nyquist limit, so the only defensible bound
+					// is zero — `rate > 0.f` is false for negatives, for zero and
+					// for NaN alike, which is exactly the classification wanted.
+					const float expectedMaxFreq =
+						forge::kVcoNyquistGuardFrac * ((rate > 0.f) ? rate : 0.f);
+					bool  freqNyquistBounded = true;
+					float maxFreqSeen        = 0.f;
+
 					for (int i = 0; i < nHostile; ++i) {
 						const float s = core.step(in);
 						const float a = std::fabs(s);
 						if (a > maxAbs) maxAbs = a;
+						if (core.tel.freqHz > maxFreqSeen) maxFreqSeen = core.tel.freqHz;
 
 						bool bad = false;
 						if (!std::isfinite(s))                            { allFinite = false;       bad = true; }
 						if (a > kLooseBoundV)                             {                          bad = true; }
 						if (!(core.phase >= 0.0 && core.phase < 1.0))     { phaseInRange = false;    bad = true; }
 						if (!(core.tel.freqHz >= 0.f))                    { freqNonNegative = false; bad = true; }
+						// Negated so a NaN freqHz also counts as a failure, the
+						// same way the header's own floor is written negated.
+						if (!(core.tel.freqHz <= expectedMaxFreq))        { freqNyquistBounded = false; bad = true; }
 						if (bad && firstBadStep < 0) firstBadStep = i;
 					}
 
@@ -726,6 +758,8 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 					CAPTURE(dt);
 					CAPTURE(pitchCV);
 					CAPTURE(maxAbs);
+					CAPTURE(maxFreqSeen);
+					CAPTURE(expectedMaxFreq);
 					CAPTURE(firstBadStep);
 					INFO("scenario: hostile timing driven straight into the core - no driver, nothing overwrites sampleTime/sampleRate");
 
@@ -733,6 +767,7 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 					CHECK(maxAbs <= kLooseBoundV);
 					CHECK(phaseInRange);
 					CHECK(freqNonNegative);
+					CHECK(freqNyquistBounded);
 				}
 			}
 		}
