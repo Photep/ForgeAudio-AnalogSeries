@@ -1,82 +1,67 @@
 ---
-status: complete
+status: testing
 phase: 30-vcocore-skeleton-module-registration
 source: [30-VERIFICATION.md]
-started: 2026-07-29T00:45:03Z
-updated: 2026-07-29T01:15:00Z
+started: 2026-07-29T04:02:21Z
+updated: 2026-07-29T04:02:21Z
+note: |
+  Second UAT round, opened by the gap-closure re-verification. The first round
+  (2 passed, 1 issue — the issue being WR-02, closed by plan 30-09) is preserved
+  at 30-UAT-pre-gap-closure.md.
+
+  Only test 3 needs a decision. Tests 1 and 2 are closure confirmations for items
+  the operator already resolved in round one; they are carried here so the
+  re-verification record shows them traced through rather than silently dropped.
 ---
 
 ## Current Test
 
-[testing complete]
-
-<!-- resolved: 1 issue (test 1, CR-01 — fix now), 2 accepted (tests 2 and 3)
 number: 3
-name: WR-02 — every live VCO instance in a patch is a bit-identical clone
+name: WR-06 — the Nyquist ceiling silently no-ops when `sampleRate` is NaN
 expected: |
-  Roadmap success criterion 4 states "same seed → bit-identical block; different seed
-  diverges." At the `forge::VcoCore` level this is fully satisfied and proven
-  non-vacuously by two passing tests. But `src/AnalogVCO.cpp:96-97` hardcodes the seed
-  and spread-seed literals for every instance, so two live VCO modules in the same Rack
-  patch are bit-identical clones — measured 0/2048 differing samples, reproduced
-  independently by the verifier.
+  Reproduced independently by both the gap-closure code review and the verifier:
+  drive `forge::VcoCore::step()` with `in.sampleRate = NaN`, `in.pitchCV = +10`,
+  `morph = 0.5`, `character = 1.0`. `maxFreq` becomes NaN, so the comparison
+  `freq > maxFreq` is false for every value and the ceiling never fires.
+  Measured: `tel.freqHz = 267904.625` Hz — unbounded relative to any Nyquist limit.
 
-  This is a scope ambiguity, not a code defect. The hardcoded seed was an explicit
-  planned must-have in 30-05 (T-30-02), chosen deliberately to avoid a real Rack-hang
-  bug from a degenerate (0,0) seed. No requirement in REQUIREMENTS.md asks for
-  per-instance shell entropy in Phase 30.
+  The audio output itself stays safe (`out = 5.0`, finite, in-bound), but only
+  because the independent `kVcoMaxDeltaPhase` bound added by 30-08 masks it — a
+  different mechanism than the one whose declared job this is. The header comment
+  calls that guard LOAD-BEARING.
 
-  HOWEVER: the comment at `src/AnalogVCO.cpp:83-85` asserts the seeding "produces
-  per-instance analog variation," which is FALSE for the shipped module as written.
-  That part is an inaccurate comment, not deferred work.
+  This does not fail any roadmap Success Criterion or any of CORE-01 / CORE-03 /
+  PANEL-03 as worded. It is the only open finding in the phase without a named
+  owner in deferred-items.md.
 
-  DECISION: (a) accept SC4 as satisfied at the VcoCore level, file the follow-up so
-  Phase 34/35 doesn't inherit undocumented debt, and correct the misleading comment in
-  the same pass; or (b) treat per-instance module divergence as in-scope for Phase 30
-  and open a gap.
+  Decision needed:
+    (a) Accept as follow-on debt — log in deferred-items.md with a named owner
+        before Phase 31 starts driving this seam from new call sites.
+    (b) Fix now — the reviewer's suggested fix is one line, and is
+        bit-identical for every finite positive sample rate.
 awaiting: user response
--->
-
 
 ## Tests
 
-### 1. CR-01 — Nyquist guard clamp ordering produces a non-finite runaway
-expected: Drive `forge::VcoCore::step()` directly with `in.sampleRate = -44100.f`, `pitchCV = 0`, `morph = 0.5`, `character = 1.0` for 20000 steps. Output reaches ~1.48e38 V and goes non-finite, contradicting the guard's own "LOAD-BEARING" comment. Fix is a one-line clamp-order swap, bit-identical for all finite positive rates so no golden can move.
-result: issue
-reported: "fix now"
-severity: major
+### 1. CR-02 — `forge::clamp` is NaN-transparent (closure confirmation only)
+expected: `forge::clamp(NaN, 0.f, 1.f)` returns NaN, so `step()`'s morph/character clamps are inert against NaN. Not reachable today — Rack sanitises param NaN before `getValue()` — and becomes reachable once Phase 31/34 add MORPH/CHARACTER CV inputs. Already accepted by the operator at round-one UAT test 2 and recorded in `deferred-items.md` item 3 with owner Phase 31 or 34, constrained so the fix must be a VcoCore-local NaN-safe helper and never an edit to the frozen shared `forge::clamp`. No new action expected.
+result: [pending]
 
-### 2. CR-02 — `forge::clamp` is NaN-transparent, so VcoCore's defensive clamps are inert
-expected: `src/dsp/VcoCore.hpp:187-188` clamps morph/character as its "only defensive validation." `forge::clamp` is a comparison ladder (`x < lo ? lo : (x > hi ? hi : x)`) — both comparisons are false for NaN, so NaN passes through unchanged and `step()` emits a non-finite sample straight to the module output. This diverges silently from `rack::math::clamp`, which is `fmax(fmin(...))` and discards NaN. Not reachable today (Rack's `ParamQuantity::setValue` sanitises NaN), but becomes reachable the moment Phase 31/34 add MORPH/CHARACTER CV inputs, since Rack does not sanitise cable voltages. **`forge::clamp` is FROZEN and consumed by the shipped LFO** (`src/dsp/LfoCore.hpp:168,212-213,216`), so any fix must be a local VcoCore-scoped helper, never an edit to the shared primitive.
-result: pass
-reported: "Pass"
-note: "Accepted for Phase 30 — not reachable while Rack sanitises params. Becomes reachable when Phase 31/34 add MORPH/CHARACTER CV inputs; track there. Any future fix must be a local VcoCore-scoped helper, never an edit to the frozen shared `forge::clamp`."
+### 2. WR-02 module-level scope — every `AnalogVCO` instance is a bit-identical clone (closure confirmation only)
+expected: Roadmap SC4 ("same seed → bit-identical block; different seed diverges") holds at the `forge::VcoCore` level, proven by two passing tests. `src/AnalogVCO.cpp` still hardcodes identical seed and spread-seed literals in every constructor, so two live VCO modules in one patch measure 0/2048 differing samples. Already resolved by the operator at round-one UAT test 3, option (a): SC4 accepted as satisfied at the VcoCore level, per-instance shell entropy explicitly out of Phase-30 scope, filed as `deferred-items.md` item 2 with owner Phase 34/35 and a re-validate-on-deserialize constraint. The misleading comment was corrected in the same pass by plan 30-09. No new action expected.
+result: [pending]
 
-### 3. WR-02 — every live VCO instance in a patch is a bit-identical clone
-expected: Roadmap success criterion 4 states "same seed → bit-identical block; different seed diverges." At the `forge::VcoCore` level this is fully satisfied and proven non-vacuously by two passing tests. But `src/AnalogVCO.cpp:96-97` hardcodes the seed and spread-seed literals for every instance, so two live VCO modules in the same Rack patch are bit-identical clones — measured 0/2048 differing samples, reproduced independently by the verifier.
-
-  This is a scope ambiguity, not a code defect. The hardcoded seed was an explicit planned must-have in 30-05 (T-30-02), chosen deliberately to avoid a real Rack-hang bug from a degenerate (0,0) seed. No requirement asks for per-instance shell entropy in Phase 30. However, the comment at `src/AnalogVCO.cpp:83-85` asserts the seeding "produces per-instance analog variation," which is false for the shipped module as written — an inaccurate comment, not merely a deferred feature.
-
-  DECISION: (a) accept SC4 as satisfied at the VcoCore level, file the follow-up so Phase 34/35 doesn't inherit undocumented debt, and correct the misleading comment in the same pass; or (b) treat per-instance module divergence as in-scope for Phase 30 and open a gap.
-result: pass
-reported: "pass"
-note: "Option (a). SC4 accepted as satisfied at the `forge::VcoCore` level — proven non-vacuously by 'vco harness: seam determinism' and 'vco core: spread seed divergence at character 1.0'. Per-instance shell entropy is NOT Phase 30 scope; deferred to Phase 34/35 and filed in deferred-items.md. One action carried into gap closure: correct the false comment at src/AnalogVCO.cpp:83-85, which claims the hardcoded seeding 'produces per-instance analog variation'."
+### 3. WR-06 — Nyquist ceiling silently no-ops when `sampleRate` is NaN (decision required)
+expected: See Current Test above. Accept-and-track with a named owner, or fix now.
+result: [pending]
 
 ## Summary
 
 total: 3
-passed: 2
-issues: 1
-pending: 0
+passed: 0
+issues: 0
+pending: 3
 skipped: 0
 blocked: 0
 
 ## Gaps
-
-- truth: "The Nyquist guard in `forge::VcoCore::step()` bounds the output — the header at src/dsp/VcoCore.hpp:167-172 documents it as LOAD-BEARING, and 30-02 asserted it as a must-have."
-  status: failed
-  reason: "User reported: fix now — the ceiling clamp runs after the floor clamp, so a negative sampleRate re-introduces a negative frequency; phase ramps unboundedly negative and output reaches ~1.48e38 V, non-finite. Reproduced independently by both the code reviewer and the verifier."
-  severity: major
-  test: 1
-  artifacts: []
-  missing: []
