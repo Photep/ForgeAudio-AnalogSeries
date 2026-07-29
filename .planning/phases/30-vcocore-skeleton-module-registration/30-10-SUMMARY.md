@@ -309,6 +309,13 @@ None — no external service configuration required.
 - **Phase 31** inherits CR-02 as a live constraint: the plan that adds MORPH/CHARACTER CV inputs must land a NaN-safe helper **local to `VcoCore`** — never an edit to the frozen `forge::clamp` the shipped LFO consumes — pinned by a case that fails before it lands.
 - **Phase 36** inherits the standing caveat above: re-observe the link leg on whatever commit it tags. It may stand on this record for the shape of the gate, never for the verdict.
 
+## Self-Check: PASSED
+
+- `.planning/phases/30-vcocore-skeleton-module-registration/30-10-SUMMARY.md` — FOUND
+- Gap-closure commits reachable: `679ef0e`, `a518345`, `a9519c4`, `badde5e` (30-08); `4cc5cc7`, `05b0db2`, `0cf5f82` (30-09); `e65bb07` (this SUMMARY) — all FOUND
+- Post-commit deletion check: no deletions
+- Untracked files: none
+
 ---
 *Phase: 30-vcocore-skeleton-module-registration*
 *Completed: 2026-07-29*

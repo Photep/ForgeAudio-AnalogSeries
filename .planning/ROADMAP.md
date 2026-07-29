@@ -155,7 +155,7 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: 9/10 plans executed
+**Plans**: 10/10 plans complete
 Plans:
 **Wave 1**
 
@@ -186,7 +186,7 @@ Plans:
 
 **Gap closure — Wave 2** *(blocked on both wave-1 gap plans)*
 
-- [ ] 30-10-PLAN.md — Gap-closure gate: combined local gate, whole-range four-file diff audit, one push, and the CI `win-x64 leg reproduction` **step's own conclusion** observed on the exact pushed SHA
+- [x] 30-10-PLAN.md — Gap-closure gate: combined local gate, whole-range four-file diff audit, one push, and the CI `win-x64 leg reproduction` **step's own conclusion** observed on the exact pushed SHA
 
 **Guardrail**: Registration touches `plugin.cpp` / `plugin.hpp` / `plugin.json` additively (a second module entry). A permanent VCO slug is chosen here — surface the slug and the registration diff to the operator before committing; the LFO entry stays byte-unchanged.
 
@@ -283,7 +283,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
-| 30. VcoCore Skeleton & Registration | 9/10 | In Progress|  |
+| 30. VcoCore Skeleton & Registration | 10/10 | Complete   | 2026-07-29 |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |

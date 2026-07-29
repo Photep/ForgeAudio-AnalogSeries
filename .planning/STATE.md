@@ -6,15 +6,15 @@ current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
 status: executing
 stopped_at: Completed 30-09-PLAN.md
-last_updated: "2026-07-29T03:16:43.811Z"
+last_updated: "2026-07-29T03:46:00.392Z"
 last_activity: 2026-07-29
-last_activity_desc: 30-08 gap closure complete (CR-01 guard fix + WR-03 coverage)
+last_activity_desc: 30-09 gap closure complete (WR-02 comment correction + four owned deferred items)
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 15
-  completed_plans: 14
-  percent: 13
+  completed_plans: 15
+  percent: 25
 ---
 
 # Project State
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
-Plan: 9 of 10 (30-09 complete; 30-10 remains)
+Plan: 10 of 10 (30-09 complete; 30-10 remains)
 Status: Ready to execute 30-10
 Last activity: 2026-07-29 — 30-09 gap closure complete (WR-02 comment correction + four owned deferred items)
 
@@ -119,6 +119,9 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 30]: A doctest -s before/after capture cannot be diffed raw - every SUCCESS line carries its own source line number
 - [Phase 30]: The T-30-02 seed literals are byte-unchanged (sha256 ba3ec29a identical before/after) — only the comment above them claimed a property the module does not have. Every AnalogVCO in a patch is a bit-identical clone at 0 of 2048 differing samples, and the corrected comment now scopes tests/test_vco_core.cpp's divergence invariants as evidence about forge::VcoCore, NOT about the shipped module. Per-instance entropy plus patch persistence is Phase 34/35's, tracked as deferred item 2 with the shipped LFO's draw/reject-(0,0)/persist/non-throwing-parse pattern and a MUST re-validate-on-deserialize requirement attached.
 - [Phase 30]: Plan 30-09's Task-1 gate folded the LFO SOURCE FILENAME into the same zero-count as the LFO model symbol and slug, which is unsatisfiable by construction — plan 30-05 deliberately wrote two AnalogLFO.cpp mentions into the D-08 banner explaining why stock SDK widgets are used. Split into ForgeAnalogLFO|modelAnalogLFO = 0 (the landmine's canonical list) plus AnalogLFO.cpp unchanged at its baseline of 2 (the landmine's actual prose: do not ADD a mention). Same failure class as 30-08's doctest line-number diff — a gate whose regex is wider than the prose it encodes.
+- [Phase 30]: Phase 30's gap closure is CLOSED on OBSERVED CI evidence: run 30419429579 on SHA 0cf5f82e12148b7dc096a3fc1c89a4d8ecc6a820, toolchain-gate job success AND its 'win-x64 leg reproduction (compile + full link vs libRack)' step's OWN conclusion = success ('win-x64 link gate: PASS') — This is the first gate measured on the COMBINED tip of 30-08 and 30-09 — 30-08 gated its own two commits and 30-09 its own two, and the composition had never been measured. The run was located BY SHA, never by recency, and every returned run's headSha was compared to the pushed SHA before any conclusion was read. The job conclusion is recorded but never sufficient. The full local gate (72/72/0 at 2,616,064 assertions, guards with and without a real RACK_DIR, strict over four TUs, frozen, canary, and a real Rack-SDK link) is recorded as a PRECONDITION: Phase 29 measured that exact combination green on code that could not link.
+- [Phase 30]: The plan's own CI-run selector was unsatisfiable: it matched select(.name|test("toolchain";"i")) against the RUN name, but toolchain-gate is a JOB inside the single workflow named 'test' — The selector returns an empty RID, so the block's own 'test -n $RID' fails regardless of CI health. Corrected to select by headSha equality — strictly MORE faithful to landmine 1 (locate BY SHA, never by name or recency) and what the task prose already asks for ('extract, across all jobs, the step whose name is ...'). Third occurrence in one gap-closure wave of the same failure class as 30-08's doctest line-number diff and 30-09's LFO-filename zero-count: a gate whose mechanism does not match the prose it encodes. The prose was correct all three times; the mechanism was not.
+- [Phase 30]: The three-OS matrix gap is discharged by ACCOUNTING for it, not by asserting it is expected: 72 macOS vs 69 Ubuntu/Windows is exactly 3 cases AND exactly 24,582 assertions — tests/test_golden.cpp contains exactly three #if defined(__APPLE__) TEST_CASEs (the drift-ON bit-exact goldens at 44.1k/48k/96k, Phase-26 decision: std::normal_distribution is not portable across standard libraries), and those three cases were measured locally at exactly 24,582 assertions — matching both matrix deltas on both axes. Nothing else was dropped, so all 5 'vco core:' and all 7 'vco harness:' cases ran on all three legs. That is what confirms 30-08's hostile-timing scenario four — the first NaN and negative-zero-adjacent float comparisons the VCO suite has ever run, kept stable by -ffp-contract=off — cross-toolchain rather than on Apple clang alone.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -157,12 +160,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P07 | 27 min | 3 tasks | 0 files |
 | Phase 30 P08 | 9 | 3 tasks | 2 files |
 | Phase 30 P09 | 14 min | 2 tasks | 2 files |
+| Phase 30 P10 | 7 min | 2 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-29T03:16:43.804Z
+Last session: 2026-07-29T03:44:58.885Z
 Stopped at: Completed 30-09-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
