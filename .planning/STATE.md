@@ -5,14 +5,14 @@ milestone_name: Forge Analog VCO
 current_phase: 31
 current_phase_name: Pitch, Tuning & Exponential FM
 status: executing
-stopped_at: Phase 31 context gathered
-last_updated: "2026-07-29T09:56:23.093Z"
-last_activity: 2026-07-29
-last_activity_desc: Phase 30 complete, transitioned to Phase 31
+stopped_at: Phase 31 planned — 9 plans, 7 waves, ready to execute
+last_updated: "2026-07-30T00:00:00.000Z"
+last_activity: 2026-07-30
+last_activity_desc: Phase 31 planned (9 plans, 7 waves); plan-checker passed first iteration
 progress:
   total_phases: 8
   completed_phases: 2
-  total_plans: 15
+  total_plans: 24
   completed_plans: 15
   percent: 25
 ---
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 30 — vcocore-skeleton-module-registration
+**Current focus:** Phase 31 — pitch-tuning-exponential-fm
 
 > **⚠ MILESTONE GUARDRAIL — protect the shipped LFO.** No breaking/behavioral changes to the Analog LFO (live in VCV Library, golden-pinned) while adding the VCO. Prefer additive code over editing shared `src/dsp/` headers. Any LFO-regression risk (shared-header edits, plugin.json/version/registration) → surface to operator with impact + remediation options + a recommendation before acting. Tripwires: LFO `.f32` goldens + `make strict` + CI MinGW link leg. See PROJECT.md Constraints.
 
 ## Current Position
 
 Phase: 31 — Pitch, Tuning & Exponential FM
-Plan: Not started
-Status: Ready to execute 30-10
-Last activity: 2026-07-29 — Phase 30 complete, transitioned to Phase 31
+Plan: Not started (9 plans across 7 waves)
+Status: Ready to execute 31-01
+Last activity: 2026-07-30 — Phase 31 planned (9 plans, 7 waves); plan-checker passed first iteration
 
 ## Performance Metrics
 
