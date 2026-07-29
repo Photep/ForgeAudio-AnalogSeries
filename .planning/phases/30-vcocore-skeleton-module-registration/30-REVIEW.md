@@ -12,7 +12,11 @@ findings:
   warning: 1
   info: 1
   total: 2
-status: issues_found
+status: resolved
+resolution:
+  WR-06: "FIXED in plan 30-11 (fdddb4a RED / a01921a fix) after the operator chose fix-now at UAT. The rate is now sanitised before it is scaled. Suite 72/72, 2,616,112 assertions; bit-identity for finite positive rates proven mechanically."
+  IN-05: "ACCEPTED as debt, filed as deferred-items.md item 6 with owner Phase 32."
+
 ---
 
 # Phase 30: Code Review Report (gap-closure re-review)
@@ -20,7 +24,7 @@ status: issues_found
 **Reviewed:** 2026-07-29
 **Depth:** standard
 **Files Reviewed:** 3
-**Status:** issues_found
+**Status:** resolved (WR-06 fixed in plan 30-11; IN-05 accepted as deferred-items.md item 6)
 
 ## Summary
 
