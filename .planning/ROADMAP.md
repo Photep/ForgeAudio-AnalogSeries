@@ -155,7 +155,7 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: 8/10 plans executed
+**Plans**: 9/10 plans executed
 Plans:
 **Wave 1**
 
@@ -182,7 +182,7 @@ Plans:
 **Gap closure — Wave 1** *(from `30-UAT.md`: CR-01 marked "fix now"; WR-02 comment correction carried out of test 3, option a)*
 
 - [x] 30-08-PLAN.md — CR-01 Nyquist guard clamp-order fix (ceiling before the NaN-safe floor) + the WR-01 phase-increment bound the hostile grid requires, with the WR-03 driverless coverage case OBSERVED RED first and bit-identity proven by a before/after `-s` diff
-- [ ] 30-09-PLAN.md — Correct the false per-instance-variation claim in `src/AnalogVCO.cpp` (the seed literals themselves stay byte-unchanged, T-30-02) + file WR-02 / CR-02 / WR-04 / WR-05 into `deferred-items.md` with owning phases
+- [x] 30-09-PLAN.md — Correct the false per-instance-variation claim in `src/AnalogVCO.cpp` (the seed literals themselves stay byte-unchanged, T-30-02) + file WR-02 / CR-02 / WR-04 / WR-05 into `deferred-items.md` with owning phases
 
 **Gap closure — Wave 2** *(blocked on both wave-1 gap plans)*
 
@@ -283,7 +283,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
-| 30. VcoCore Skeleton & Registration | 8/10 | In Progress|  |
+| 30. VcoCore Skeleton & Registration | 9/10 | In Progress|  |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |

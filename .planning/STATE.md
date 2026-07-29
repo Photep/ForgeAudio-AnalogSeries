@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
 status: executing
-stopped_at: Completed 30-08-PLAN.md
-last_updated: "2026-07-29T03:09:06.382Z"
+stopped_at: Completed 30-09-PLAN.md
+last_updated: "2026-07-29T03:16:43.811Z"
 last_activity: 2026-07-29
-last_activity_desc: Phase 30 execution started
+last_activity_desc: 30-08 gap closure complete (CR-01 guard fix + WR-03 coverage)
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
   percent: 13
 ---
 
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
-Plan: 8 of 10 (30-08 complete; 30-09 and 30-10 remain)
-Status: Ready to execute 30-09
-Last activity: 2026-07-29 — 30-08 gap closure complete (CR-01 guard fix + WR-03 coverage)
+Plan: 9 of 10 (30-09 complete; 30-10 remains)
+Status: Ready to execute 30-10
+Last activity: 2026-07-29 — 30-09 gap closure complete (WR-02 comment correction + four owned deferred items)
 
 ## Performance Metrics
 
@@ -117,6 +117,8 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 30]: WR-03 closed by a DRIVERLESS scenario - the bypass IS the coverage
 - [Phase 30]: Green after a multi-part fix is not evidence that either part bites - each guard was proven load-bearing by a revert-one-only probe producing a DIFFERENT red
 - [Phase 30]: A doctest -s before/after capture cannot be diffed raw - every SUCCESS line carries its own source line number
+- [Phase 30]: The T-30-02 seed literals are byte-unchanged (sha256 ba3ec29a identical before/after) — only the comment above them claimed a property the module does not have. Every AnalogVCO in a patch is a bit-identical clone at 0 of 2048 differing samples, and the corrected comment now scopes tests/test_vco_core.cpp's divergence invariants as evidence about forge::VcoCore, NOT about the shipped module. Per-instance entropy plus patch persistence is Phase 34/35's, tracked as deferred item 2 with the shipped LFO's draw/reject-(0,0)/persist/non-throwing-parse pattern and a MUST re-validate-on-deserialize requirement attached.
+- [Phase 30]: Plan 30-09's Task-1 gate folded the LFO SOURCE FILENAME into the same zero-count as the LFO model symbol and slug, which is unsatisfiable by construction — plan 30-05 deliberately wrote two AnalogLFO.cpp mentions into the D-08 banner explaining why stock SDK widgets are used. Split into ForgeAnalogLFO|modelAnalogLFO = 0 (the landmine's canonical list) plus AnalogLFO.cpp unchanged at its baseline of 2 (the landmine's actual prose: do not ADD a mention). Same failure class as 30-08's doctest line-number diff — a gate whose regex is wider than the prose it encodes.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -154,13 +156,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P06 | 4 min | 3 tasks | 3 files |
 | Phase 30 P07 | 27 min | 3 tasks | 0 files |
 | Phase 30 P08 | 9 | 3 tasks | 2 files |
+| Phase 30 P09 | 14 min | 2 tasks | 2 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-29T03:09:06.375Z
-Stopped at: Completed 30-08-PLAN.md
+Last session: 2026-07-29T03:16:43.804Z
+Stopped at: Completed 30-09-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
