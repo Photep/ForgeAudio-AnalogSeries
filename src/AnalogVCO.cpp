@@ -80,9 +80,24 @@ struct AnalogVCO : Module {
 
 		// T-30-02. BOTH calls are required and neither is optional. seed()
 		// seeds only the drift RNG; without the spread seed every
-		// component-spread coefficient stays at zero and the instance carries
-		// no per-instance analog variation at all — which is precisely the
-		// divergence D-11 exists to produce.
+		// component-spread coefficient stays at zero and the D-11 spread
+		// mechanism does nothing at all.
+		//
+		// READ THIS BEFORE TRUSTING THE DIVERGENCE TESTS. The four literals
+		// below are HARDCODED, so every AnalogVCO in a patch is constructed
+		// from the same pair of seeds: two instances are bit-identical clones
+		// of one another, measured at 0 of 2048 differing samples and
+		// reproduced independently by this phase's code review and by its
+		// verification. What the D-11 spread actually buys here is divergence
+		// from an UNSPREAD default core — not divergence from the next VCO the
+		// user adds. tests/test_vco_core.cpp's divergence invariants drive two
+		// DIFFERENTLY-seeded cores, which this shell never constructs, so they
+		// are evidence about forge::VcoCore and must NOT be read as describing
+		// the shipped module. Shell-forwarded per-instance entropy plus patch
+		// persistence is Phase 34/35's, tracked as item 2 in this phase's
+		// deferred-items.md. The pattern does not need designing — the shipped
+		// LFO module already draws its seed from std::random_device and
+		// persists the drawn spread seed in the patch.
 		//
 		// The four literals are copied VERBATIM from tests/VcoBlockDriver.hpp,
 		// which already documents them as proven non-degenerate. Do not invent
@@ -90,9 +105,12 @@ struct AnalogVCO : Module {
 		// seeded (0,0) is a fixed point emitting an all-zero stream, which makes
 		// the rejection loop inside std::normal_distribution never terminate.
 		// In Rack that is a HANG ON PATCH LOAD, not a failing test — the user's
-		// Rack stops responding while opening a patch. Phases 34/35 replace
-		// these literals with shell-forwarded entropy plus patch persistence,
-		// and must re-validate any deserialized value the same way.
+		// Rack stops responding while opening a patch. That prohibition covers
+		// the clone behavior too: do NOT "fix" the cloning here by hand-picking
+		// a different pair of literals — route it through the deferred item.
+		// Phases 34/35 replace these literals with shell-forwarded entropy plus
+		// patch persistence, and must re-validate any deserialized value the
+		// same way.
 		core.seed(0x1234ULL, 0x5678ULL);
 		core.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
 	}
