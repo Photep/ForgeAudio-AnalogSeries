@@ -155,7 +155,7 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: 7/7 plans complete
+**Plans**: 7/7 complete + 3 gap-closure plans (30-08..30-10) from `30-UAT.md`
 Plans:
 **Wave 1**
 
@@ -178,6 +178,15 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [x] 30-07-PLAN.md — Phase gate: full local gate at 72 cases, CI `toolchain-gate` MinGW **link**-leg observed green on the pushed commit, and the in-Rack UAT opening with a stale-install flush
+
+**Gap closure — Wave 1** *(from `30-UAT.md`: CR-01 marked "fix now"; WR-02 comment correction carried out of test 3, option a)*
+
+- [ ] 30-08-PLAN.md — CR-01 Nyquist guard clamp-order fix (ceiling before the NaN-safe floor) + the WR-01 phase-increment bound the hostile grid requires, with the WR-03 driverless coverage case OBSERVED RED first and bit-identity proven by a before/after `-s` diff
+- [ ] 30-09-PLAN.md — Correct the false per-instance-variation claim in `src/AnalogVCO.cpp` (the seed literals themselves stay byte-unchanged, T-30-02) + file WR-02 / CR-02 / WR-04 / WR-05 into `deferred-items.md` with owning phases
+
+**Gap closure — Wave 2** *(blocked on both wave-1 gap plans)*
+
+- [ ] 30-10-PLAN.md — Gap-closure gate: combined local gate, whole-range four-file diff audit, one push, and the CI `win-x64 leg reproduction` **step's own conclusion** observed on the exact pushed SHA
 
 **Guardrail**: Registration touches `plugin.cpp` / `plugin.hpp` / `plugin.json` additively (a second module entry). A permanent VCO slug is chosen here — surface the slug and the registration diff to the operator before committing; the LFO entry stays byte-unchanged.
 
