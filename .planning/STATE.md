@@ -4,17 +4,17 @@ milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
-status: executing
+status: verifying
 stopped_at: Completed 30-06-PLAN.md
-last_updated: "2026-07-28T23:03:36.979Z"
+last_updated: "2026-07-29T00:27:45.308Z"
 last_activity: 2026-07-28
 last_activity_desc: Phase 30 execution started
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 12
-  completed_plans: 11
-  percent: 13
+  completed_plans: 12
+  percent: 25
 ---
 
 # Project State
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-28 — Phase 30 execution started
 
 ## Performance Metrics
@@ -107,6 +107,11 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 30]: The D-17 sensitivity probe used 'static inline double phase', and the control asserts totalMismatch > 0 rather than an exact count — A bare in-class 'static double phase = 0.0;' is ill-formed in BOTH C++11 and C++17 (in-class initializers on static members need const integral or inline), so the plan's literal splice would have produced a compile error - which proves nothing about whether the assertions can see the defect. And the control's own solo baselines are polluted by design (all four helper runs share the one static), so an exact count would pin an accident of run order: measured 512/512 here vs the researcher's 511/512
 - [Phase 30]: The VCO is REGISTERED: extern in src/plugin.hpp, addModel in src/plugin.cpp init(), and a second plugin.json modules[] element under the operator-approved permanent slug ForgeAnalogVCO
 - [Phase 30]: Assert byte identity by reading BYTES, not by counting git diff markers
+- [Phase 30]: Phase 30 closed on OBSERVED CI evidence, not local green: run 30407971115 on SHA 7933fae36ad98882ac8964f17d6c1b15f60087fd, toolchain-gate = success AND its 'win-x64 leg reproduction' step's OWN conclusion = success ('win-x64 link gate: PASS') — The job's conclusion is never sufficient: a step that fail-fasts upstream is reported 'skipped', which scans as 'not red' in a job summary. The run was located BY SHA, never by recency. Phase 36 stands on this record for the tag and the #929 update, and must re-observe on whatever commit IT tags. Full local gate (72/72/0, strict, guards, canary, goldens) was recorded as a PRECONDITION — Phase 29 measured that exact combination green on code that could not link.
+- [Phase 30]: Every future in-Rack UAT must flush the WHOLE extracted plugin directory from dist/, not just plugin.dylib and res/ — a stale install is a stale PLUGIN VERSION, not a stale binary — Measured at the 30-07 gate: the extracted install was a complete v2.0.0 LFO-only plugin — plugin.json at version 2.0.0 with ONE modules[] entry, res/ without AnalogVCO.svg, and a Jul 9 dylib exporting only _modelAnalogLFO. The plan's Step 2 refreshes only res/ and plugin.dylib; executing it literally would have satisfied the hash assertion while Rack kept reading a one-module manifest, so the VCO still would not have appeared — the exact false negative the flush exists to prevent, reached THROUGH the safeguard. Correct form: rsync -a dist/ForgeAudio-AnalogSeries/ into plugins-mac-arm64/ForgeAudio-AnalogSeries/, then cp plugin.dylib. Phases 31-35 all end in an in-Rack check.
+- [Phase 30]: Research assumption A5 is CLOSED — the Apple-clang-only CORE-01/CORE-03 tolerances hold under GCC/libstdc++ and MinGW g++ — The three-OS matrix reported 69 cases on Ubuntu/Windows vs 72 on macOS. The gap is exactly the three #if defined(__APPLE__) drift-ON bit-exact golden cases in tests/test_golden.cpp (Phase-26 decision: portable drift-off goldens for 3-OS CI, drift-on macOS-gated because std::normal_distribution is not portable across standard libraries). No Phase-30 case was dropped: all 7 'vco harness:' and all 5 'vco core:' cases ran and passed on all three OSes, so 30-03's 1% pitch tolerance, its 6.0 V bound with the >5.1 V exercise assertion, its 0.01 V divergence threshold and 30-04's 0/1024 and 512/512 figures are confirmed cross-toolchain.
+- [Phase 30]: Operator UAT sign-off 'Approved' — all four controls audibly live (D-07) and the shipped Analog LFO visually and audibly unchanged in the same session; NO timbre or output-level observation was raised — Recorded explicitly so Phase 32 reads its starting point as the crude aliased baseline AS DESIGNED rather than as an unreported problem, and so Phase 34 inherits no reported level problem. The expected-results block (crude/buzzy/harsh timbre; excursions above 5 V at high CHARACTER, measured 5.51803 V against a 5.55 V analytic ceiling; the deliberately ugly unlabelled panel) was presented in full before the reply, so its absence from the answer is an absence of complaint, not an absence of exposure. No observations were invented.
+- [Phase 30]: All four items flagged for the phase gate resolved: [1/7] VCO_SIDE_ALLOW entry confirmed exact-path; PANEL-03 confirmed genuinely satisfied (not un-checked); the plugin.json diff-shape discrepancy reproduced and judged; invariant 5 confirmed green BY DETECTING — 1) tests/check_includes.sh:294 matches with [[ "${rel}" == "${a}" ]] — a QUOTED RHS, so literal comparison: no glob, no substring, no basename. It weakens no detector, unlike 30-01's [2/7] change. 2) All three PANEL-03 edits present (plugin.hpp:8, plugin.cpp:8, plugin.json:26); manifest still 2 modules, LFO first, version 2.0.1. 3) All four git diff algorithms render 0 deleted lines, not the predicted 1; the byte invariant holds directly (lines 1-23 identical, new[23] == old[23] + ','). 0 < 1 is the SAFE direction — the assertion was a ceiling on damage. 4) Invariant 5's -s output shows mismatchA/B := 512 and totalMismatch := 1024 at all three rates, so it passes BECAUSE it detected its own defect — which is what makes invariant 4 (0/1024) meaningful.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -142,12 +147,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P05 | 3 min | 3 tasks | 3 files |
 | Phase 30 P04 | 6 min | 2 tasks | 1 files |
 | Phase 30 P06 | 4 min | 3 tasks | 3 files |
+| Phase 30 P07 | 27 min | 3 tasks | 0 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-28T23:03:36.973Z
+Last session: 2026-07-29T00:26:18.093Z
 Stopped at: Completed 30-06-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 

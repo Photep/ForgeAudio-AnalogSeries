@@ -23,3 +23,15 @@ them; each names the plan that should resolve it.
 - **Resolve at:** plan **30-07**'s phase gate — confirm 30-06 actually landed all three
   registration edits before accepting PANEL-03 as satisfied. If the gate finds them
   missing, PANEL-03 is a false green rather than a bookkeeping quirk.
+- **RESOLVED — 2026-07-29, plan 30-07's phase gate. CONFIRMED, not un-checked.**
+  All three edits PANEL-03's text names are present and were verified individually:
+  `src/plugin.hpp:8` (`extern Model* modelAnalogVCO;`), `src/plugin.cpp:8`
+  (`p->addModel(modelAnalogVCO);`) and `plugin.json:26` (`"slug": "ForgeAnalogVCO"`).
+  The LFO's registration is unaltered — the manifest parses to exactly 2 modules with
+  `ForgeAnalogLFO` still first and `version` still `2.0.1` — and the slug matches
+  `src/AnalogVCO.cpp:159`'s `createModel<...>("ForgeAnalogVCO")` character for
+  character. The operator's Task 3 sign-off ("Approved") closes the user-visible half:
+  the module appears in Rack's browser as `Analog VCO` beside `Analog LFO`.
+  **PANEL-03 is genuinely satisfied**; the premature `[x]` at `docs(30-01)` was a
+  bookkeeping ordering quirk, not a false green. Full record in `30-07-SUMMARY.md`
+  § "Gate findings on the four items earlier plans deferred to this phase gate", item 2.

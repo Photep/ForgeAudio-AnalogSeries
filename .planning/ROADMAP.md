@@ -100,7 +100,7 @@ See: `.planning/milestones/v1.4-ROADMAP.md` for full details.
 > **⚠ MILESTONE GUARDRAIL — the shipped LFO must not regress.** The Analog LFO is live in the VCV Library and pinned by bit-exact `.f32` goldens. All VCO work is additive (new files: `VcoCore.hpp`, `MorphBlep.hpp`, a separate `DriftEngine` instance). The four shared `src/dsp/` headers stay frozen; any unavoidable additive touch (only `DriftEngine.hpp`, Phase 34) is gated by a byte-identical LFO golden replay. Any LFO-regression risk — shared-header edits, `plugin.json`/version/registration changes — is surfaced to the operator with impact + remediation options + a recommendation before proceeding. Tripwires: LFO goldens + `make strict` (C++11) + the CI MinGW link leg, wired as a standing canary in Phase 29.
 
 - [x] **Phase 29: VCO Test Harness & LFO Non-Regression Guardrail** - Stand up the Rack-free VcoCore harness and wire the LFO golden + strict/MinGW canary before any VCO DSP lands (completed 2026-07-28)
-- [ ] **Phase 30: VcoCore Skeleton & Module Registration** - Pitch-accurate (aliased-on-purpose) VcoCore behind the POD boundary, registered as a second module
+- [x] **Phase 30: VcoCore Skeleton & Module Registration** - Pitch-accurate (aliased-on-purpose) VcoCore behind the POD boundary, registered as a second module (completed 2026-07-29)
 - [ ] **Phase 31: Pitch, Tuning & Exponential FM** - Accurate 1V/oct + coarse/fine tune + audio-rate expo FM, all summed before one exp2, proven to <1 cent
 - [ ] **Phase 32: Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP)** - The linchpin: band-limit the continuous character-deformed morph crossfade in an isolated wrapper header
 - [ ] **Phase 33: Hard Sync** - Click-free hard sync reusing the anti-aliasing machinery at the master's sub-sample fraction
@@ -155,7 +155,7 @@ Plans:
   3. The VCO appears as a second selectable module in Rack via a second `addModel` + `plugin.hpp` extern + `plugin.json` `modules[]` entry, with the LFO's registration and slug untouched.
   4. Fixed-seed determinism holds: same seed → bit-identical block; different seed diverges.
 
-**Plans**: 6/7 plans executed
+**Plans**: 7/7 plans complete
 Plans:
 **Wave 1**
 
@@ -177,7 +177,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 30-07-PLAN.md — Phase gate: full local gate at 72 cases, CI `toolchain-gate` MinGW **link**-leg observed green on the pushed commit, and the in-Rack UAT opening with a stale-install flush
+- [x] 30-07-PLAN.md — Phase gate: full local gate at 72 cases, CI `toolchain-gate` MinGW **link**-leg observed green on the pushed commit, and the in-Rack UAT opening with a stale-install flush
 
 **Guardrail**: Registration touches `plugin.cpp` / `plugin.hpp` / `plugin.json` additively (a second module entry). A permanent VCO slug is chosen here — surface the slug and the registration diff to the operator before committing; the LFO entry stays byte-unchanged.
 
@@ -274,7 +274,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
-| 30. VcoCore Skeleton & Registration | 6/7 | In Progress|  |
+| 30. VcoCore Skeleton & Registration | 7/7 | Complete   | 2026-07-29 |
 | 31. Pitch, Tuning & Exponential FM | 0/? | Not started | - |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |
