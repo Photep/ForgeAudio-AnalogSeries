@@ -128,3 +128,26 @@ them; each names the plan that should resolve it.
   telemetry contract Phase 35 will cross; ~40 lines of duplicated input functors between
   test invariants 4 and 5; and a miscounted helper reference in a file banner. None is
   planned; `30-REVIEW.md` is the record.
+
+---
+
+## 6. `IN-05` — the hostile-timing grid does not cover `±inf`, subnormal, or very-large-finite timing values
+
+- **Found during:** Phase 30 gap-closure re-review (`30-REVIEW.md`), which also surfaced
+  WR-06. **WR-06 itself is NOT deferred — it was fixed in this phase** (plan 30-11,
+  commits `fdddb4a` RED / `a01921a` fix), so it is deliberately absent from this file.
+- **Observation:** scenario four of `tests/test_vco_core.cpp` drives `sampleRate` over
+  `{-44100, 0, 44100, NaN}` and `sampleTime` over `{-1/44100, 0, 1/44100, 1/1000, 999,
+  NaN}`. Neither grid includes `+inf`, `-inf`, a subnormal, or a very-large-finite value.
+- **Why it is worth a note:** the reviewer hand-traced all four classes as safe by
+  construction, and the WR-06 fix makes `+inf`/`-inf` on `sampleRate` provably safe as
+  well — `inf > 0.f` is true so `maxFreq` becomes `+inf` and the ceiling correctly never
+  needs to fire, while `-inf > 0.f` is false so it lands on the zero fallback with every
+  other non-positive rate. But *hand-traced safe* is exactly the standing this phase
+  learned not to trust: WR-03 existed because hostile timing had only ever been argued
+  about, and CR-01 was the bug that argument was hiding.
+- **Not fixed here, deliberately.** The operator's decision on this round was scoped to
+  WR-06. Extending the grid is additive test surface with no known defect behind it.
+- **Resolve at:** the **next phase that extends scenario four** — most likely **Phase 32**,
+  whose oversampled inner loop is the named future caller that decouples `sampleTime`
+  from `sampleRate` on purpose and is therefore the first real source of exotic timing.
