@@ -173,7 +173,32 @@ struct VcoCore {
 		// bit-identity of the FM path (Phase 31) depends on this exact function.
 		// Phase 31 sums coarse/fine/FM into the volt domain BEFORE this call.
 		float freq = kVcoFreqC4 * exp2_taylor5(in.pitchCV);
-		const float maxFreq = kVcoNyquistGuardFrac * in.sampleRate;
+
+		// The rate is sanitised BEFORE it is scaled, not after (WR-06). Written
+		// positively rather than negated, because here the NaN case wants the
+		// FALLBACK branch, not the pass-through: `in.sampleRate > 0.f` is false
+		// for negatives, for zero and for NaN alike, and all three land on 0.f.
+		//
+		// MEASURED, computing maxFreq straight from in.sampleRate: a NaN rate
+		// makes maxFreq NaN, and every comparison against NaN is false, so the
+		// ceiling below never fires and freq passes through COMPLETELY
+		// unclamped. At in.sampleRate = NaN, in.pitchCV = +10 that reached
+		// tel.freqHz = 267904.625 Hz -- reproduced independently by the code
+		// reviewer and the verifier. The floor could not catch it either, since
+		// an unclamped freq is positive and so clears `freq > 0.f`, and the four
+		// original assertions in scenario four could not see it because the
+		// independent kVcoMaxDeltaPhase bound absorbs the oversized frequency
+		// and leaves the OUTPUT healthy. Phase 35 is the named future consumer
+		// of tel.freqHz for a display, which is where an arbitrary
+		// non-Nyquist-relative number would have become user-visible.
+		//
+		// A non-positive or NaN rate has no meaningful Nyquist limit, so zero is
+		// the only defensible ceiling: freq is driven to 0 rather than left
+		// unguarded. BIT-IDENTICAL for every finite POSITIVE in.sampleRate --
+		// i.e. every rate Rack has ever delivered -- because the ternary returns
+		// in.sampleRate unchanged on that entire branch.
+		const float safeRate = (in.sampleRate > 0.f) ? in.sampleRate : 0.f;
+		const float maxFreq = kVcoNyquistGuardFrac * safeRate;
 
 		// The guard is LOAD-BEARING, not cosmetic, and THE ORDER OF THESE TWO
 		// LINES IS LOAD-BEARING TOO. The floor is written negated so a NaN also
