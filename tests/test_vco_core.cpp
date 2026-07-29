@@ -299,6 +299,19 @@ InterleaveResult runInterleaveCheck(
 // isolation is what makes the control SPECIFIC: it demonstrates the helper
 // catches SHARED STATE, not merely that two different classes produce two
 // different streams of numbers.
+//
+// THE GUARD SEQUENCE IS MIRRORED DELIBERATELY AND MUST BE KEPT IN STEP WITH THE
+// REAL CORE (plan 30-08). When src/dsp/VcoCore.hpp's frequency clamps were
+// reordered (ceiling first, NaN-safe floor last) and a direct bound on the phase
+// increment was added, the same two changes were made below. If they had not
+// been, this control would differ from the shipped core in TWO things rather
+// than the one field its banner promises, and the banner sentence above would
+// have become exactly the class of false comment plan 30-08 exists to remove.
+// The mirror is behaviorally INERT at this control's own inputs — pitchCV in
+// [-1, +1] and 0.5 with sampleTime = 1/sampleRate gives an increment of roughly
+// 0.006 to 0.012, so neither guard can fire — and invariant 5's captured
+// mismatch figures (512, 512, total 1024) are unchanged by it, proven by plan
+// 30-08 Task 3's before/after diff rather than asserted by eye.
 // ---------------------------------------------------------------------------
 struct DeliberatelyBrokenSharedStateCore {
 	// Per-instance, exactly as the real core holds them. Only `sharedPhase`
@@ -332,10 +345,17 @@ struct DeliberatelyBrokenSharedStateCore {
 
 		float freq = forge::kVcoFreqC4 * forge::exp2_taylor5(in.pitchCV);
 		const float maxFreq = forge::kVcoNyquistGuardFrac * in.sampleRate;
-		if (!(freq > 0.f)) freq = 0.f;
+		// GUARD SEQUENCE MIRRORED FROM src/dsp/VcoCore.hpp — ceiling first, then
+		// the NaN-safe floor as the last writer, then the direct bound on the
+		// increment. Kept in step with the real core deliberately (plan 30-08);
+		// see the banner above.
 		if (freq > maxFreq) freq = maxFreq;
+		if (!(freq > 0.f)) freq = 0.f;
 
-		sharedPhase += (double)freq * (double)in.sampleTime;
+		double deltaPhase = (double)freq * (double)in.sampleTime;
+		if (!(deltaPhase > 0.0)) deltaPhase = 0.0;
+		if (deltaPhase > forge::kVcoMaxDeltaPhase) deltaPhase = forge::kVcoMaxDeltaPhase;
+		sharedPhase += deltaPhase;
 		if (sharedPhase >= 1.0) sharedPhase -= 1.0;
 
 		const float p = (float)sharedPhase;

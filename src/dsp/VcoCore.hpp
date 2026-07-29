@@ -83,6 +83,17 @@ namespace forge {
 constexpr float kVcoFreqC4 = 261.6256f;         // C4 = 0 V, the standard VCV V/OCT reference (PITCH-01)
 constexpr float kVcoNyquistGuardFrac = 0.49f;   // PROVISIONAL — PITCH-04 (Phase 31) owns the real Nyquist policy; Phase 31 replaces this constant rather than rediscovering the intent
 
+// WRAP-CORRECTNESS bound on the phase increment (plan 30-08 / CR-01 / T-30-01).
+// This is a DIFFERENT KIND OF CONSTANT from kVcoNyquistGuardFrac above and must
+// not be confused with it. kVcoNyquistGuardFrac is a Nyquist POLICY bound on the
+// FREQUENCY, expressed as a fraction of the sample rate, and Phase 31 (PITCH-04)
+// replaces it. kVcoMaxDeltaPhase is a CORRECTNESS bound on the per-sample phase
+// INCREMENT, and it exists solely so the single-subtract wrap in step(...) below
+// is valid — any value strictly less than 1.0 satisfies the wrap. Phase 31 must
+// leave this one alone when it retires the Nyquist constant.
+// It is a double because the accumulator it bounds is a double.
+constexpr double kVcoMaxDeltaPhase = 0.5;
+
 // POD core boundary (D-03; RESEARCH "Recommended VcoInputs field set"). Each
 // field maps to the params[]/inputs[]/ProcessArgs source the shell will read;
 // the core never sees Rack indices. Field set covers the near-term Phase 30/31
@@ -164,22 +175,64 @@ struct VcoCore {
 		float freq = kVcoFreqC4 * exp2_taylor5(in.pitchCV);
 		const float maxFreq = kVcoNyquistGuardFrac * in.sampleRate;
 
-		// The guard is LOAD-BEARING, not cosmetic. Written negated so a NaN also
-		// lands at zero (NaN fails `freq > 0.f`). Research MEASURED that without
-		// the clamp, pitchCV = +10 drives the accumulator to phase 1,014,986 and
-		// the output to -8,655,011 V while EVERY sample stays std::isfinite — so
-		// a finiteness test cannot see this failure; the magnitude bound in
-		// tests/test_vco_core.cpp is what observes it.
-		if (!(freq > 0.f)) freq = 0.f;
+		// The guard is LOAD-BEARING, not cosmetic, and THE ORDER OF THESE TWO
+		// LINES IS LOAD-BEARING TOO. The floor is written negated so a NaN also
+		// lands at zero (NaN fails `freq > 0.f`), and it must run LAST so it is
+		// always the final writer.
+		//
+		// MEASURED, with the two lines the other way round (CR-01, reproduced
+		// independently by the code reviewer and the verifier at
+		// in.sampleRate = -44100, morph = 0.5, 20000 steps): a non-positive
+		// in.sampleRate makes maxFreq negative, the ceiling then writes that
+		// negative frequency straight over the value the floor had just
+		// sanitised, and the wrap below has no negative branch — so the
+		// accumulator is unbounded DOWNWARD. Observed tel.freqHz = -21609.00,
+		// phase = -9800.00, |out| = 1.476e38 V, std::isfinite = 0. DO NOT SWAP
+		// THESE TWO LINES BACK. Scenario four of tests/test_vco_core.cpp pins it,
+		// and plan 30-08's revert-one-only probe P1 observed that scenario going
+		// red on freqNonNegative ALONE with this order undone.
+		//
+		// Still true, and still the reason the ceiling exists at all: research
+		// MEASURED that without any ceiling, pitchCV = +10 drives the accumulator
+		// to phase 1,014,986 and the output to -8,655,011 V while EVERY sample
+		// stays std::isfinite — so a finiteness test cannot see that failure; the
+		// magnitude bound in tests/test_vco_core.cpp is what observes it.
+		//
+		// BIT-IDENTITY of the reordering, for every finite POSITIVE in.sampleRate
+		// (i.e. every rate Rack has ever delivered): with maxFreq > 0 the two
+		// orders agree on all five input classes — NaN, non-positive, in range,
+		// above the ceiling, and positive infinity — so nothing the suite already
+		// measures can move. Plan 30-08 Task 3 proved that MECHANICALLY with a
+		// before/after doctest `-s` diff rather than by this argument.
 		if (freq > maxFreq) freq = maxFreq;
+		if (!(freq > 0.f)) freq = 0.f;
 		tel.freqHz = freq;
 
 		// Double-precision accumulate, mirroring LfoCore. The SINGLE subtract
-		// wrap below is correct ONLY because the guard above bounds deltaPhase at
-		// kVcoNyquistGuardFrac (0.49) < 1.0. Removing or widening the guard turns
-		// this line into an unbounded ramp — use a loop or fmod if that ever
-		// changes.
+		// wrap below is correct for any increment inside [0, 1) — and the
+		// increment is therefore bounded DIRECTLY, immediately below, rather than
+		// being inferred from the frequency guard above.
+		//
+		// WHY INFERRING IT FROM THE FREQUENCY GUARD IS WRONG (WR-01). The ceiling
+		// above is computed from in.sampleRate; the increment is computed from
+		// in.sampleTime; and NOTHING in forge::VcoInputs couples the two. MEASURED
+		// at in.sampleRate = 44100 with in.sampleTime = 1/1000 and pitchCV = +6:
+		// the increment reaches 16.7 and phase reaches 314,880 — an unbounded ramp
+		// at a perfectly legitimate sample rate. Phase 32's oversampled inner loop
+		// is the obvious future caller that decouples them on purpose.
+		//
+		// WHY 0.5 AND NOT kVcoNyquistGuardFrac. At a COUPLED rate the guarded
+		// frequency yields an increment of 0.49 plus float rounding, so a 0.49
+		// ceiling could fire on a legitimate input and MOVE SAMPLES. 0.5 clears
+		// that maximum by roughly two percent, leaves every existing measurement
+		// bit-identical, and still satisfies the wrap (any bound < 1.0 does).
+		//
+		// The floor is negated for the same reason the frequency floor is: a NaN
+		// in.sampleTime makes deltaPhase NaN, which fails `deltaPhase > 0.0` and
+		// lands at zero instead of poisoning the accumulator forever.
 		double deltaPhase = (double)freq * (double)in.sampleTime;
+		if (!(deltaPhase > 0.0)) deltaPhase = 0.0;
+		if (deltaPhase > kVcoMaxDeltaPhase) deltaPhase = kVcoMaxDeltaPhase;
 		phase += deltaPhase;
 		if (phase >= 1.0) phase -= 1.0;
 
