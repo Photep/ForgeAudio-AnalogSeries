@@ -198,7 +198,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. The V/OCT input tracks 1V/octave from a standard `C4 = 0V → 261.6256 Hz` reference, reusing `forge::exp2_taylor5` verbatim; measured tracking error stays **< 1 cent** across the pitch range (TEST-02 is the phase gate).
-  2. COARSE sweeps ±5 octaves continuously and FINE trims ±2 semitones for detuning/beating.
+  2. COARSE sweeps ±5 octaves continuously and FINE trims ±1 semitone (±100 cents) for detuning/beating.
   3. Exponential FM (input × bipolar attenuverter × depth) sums into the pitch volt domain **before** the single `exp2_taylor5` call — musical exponential FM, not multiplicative.
   4. Frequency is clamped just below Nyquist and phase accumulates in double precision, so extreme pitch/FM never aliases via an out-of-range frequency and high-note sub-sample crossing placement stays accurate for later band-limiting.
 

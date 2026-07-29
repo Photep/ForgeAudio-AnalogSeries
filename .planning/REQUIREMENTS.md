@@ -14,7 +14,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 
 - [ ] **PITCH-01**: V/Oct input tracks 1V/octave across the audio range (C4 = 0V reference), reusing `forge::exp2_taylor5` for the exponential pitch law (no new exponential; shared-core bit-identity preserved)
 - [ ] **PITCH-02**: COARSE tune knob sweeps ±5 octaves continuously
-- [ ] **PITCH-03**: FINE tune knob trims ±2 semitones for detuning/beating
+- [ ] **PITCH-03**: FINE tune knob trims ±1 semitone (±100 cents) for detuning/beating
 - [ ] **PITCH-04**: Frequency is clamped just below Nyquist so extreme pitch/FM/sync never aliases via out-of-range frequency
 - [ ] **PITCH-05**: Phase accumulation uses double precision so high-frequency phase-crossing placement stays accurate for band-limiting
 
