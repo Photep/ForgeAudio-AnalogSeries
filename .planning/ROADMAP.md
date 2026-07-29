@@ -202,7 +202,37 @@ Plans:
   3. Exponential FM (input × bipolar attenuverter × depth) sums into the pitch volt domain **before** the single `exp2_taylor5` call — musical exponential FM, not multiplicative.
   4. Frequency is clamped just below Nyquist and phase accumulates in double precision, so extreme pitch/FM never aliases via an out-of-range frequency and high-note sub-sample crossing placement stays accurate for later band-limiting.
 
-**Plans**: TBD
+**Plans**: 9 plans
+Plans:
+**Wave 1**
+
+- [ ] 31-01-PLAN.md — Pre-register `tests/test_vco_pitch.cpp` in `check_includes.sh` `VCO_SIDE_ALLOW` (D-23) and fold in deferred item 5's `[2/7]` anchoring fix with a new `[6/7]` control
+- [ ] 31-02-PLAN.md — PITCH-04's settled Nyquist policy: `kVcoNyquistGuardFrac` → `0.495f` (D-11) with derived ceilings, D-10's hard-clamp rationale, and the `kVcoMaxDeltaPhase` margin arithmetic corrected
+
+**Wave 2** *(blocked on Wave 1 — same header)*
+
+- [ ] 31-03-PLAN.md — The volt-domain summation, the `fmConnected` gate and the `kVcoMaxPitchVolts` bound before the single `exp2_taylor5`, with D-22's one-shot UBSan RED→GREEN transcript
+
+**Wave 3**
+
+- [ ] 31-04-PLAN.md — Shell + panel: COARSE, FINE, FM DEPTH and FM IN declared with exact ranges/units (D-02/03/04/07/16), five bare POD assignments (D-17), four widgets and four rects
+- [ ] 31-05-PLAN.md — NEW `tests/test_vco_pitch.cpp`: derived-boundary self-check plus the TEST-02 tracking gate and its secondary telemetry tier, libm ground truth, this phase's own measured figures (D-18/19/20/21)
+
+**Wave 4** *(blocked on Wave 3 — same test TU)*
+
+- [ ] 31-06-PLAN.md — COARSE/FINE range + continuity cases, the FM summation identity/bipolarity/connected gate/one-octave-per-volt, and the multiplicative negative control that must FAIL
+
+**Wave 5** *(blocked on Wave 4 — same test TU)*
+
+- [ ] 31-07-PLAN.md — PITCH-04's pitch-driven clamp-fires case (D-10), D-22's standing hostile-pitch case pinned at the bound, PITCH-05 compile-time pin, and the `test_vco_core.cpp` stand-in mirror brought in step
+
+**Wave 6** *(blocked on Waves 3-5)*
+
+- [ ] 31-08-PLAN.md — Phase gate: TEST-02 as a hard gate with per-selector matched counts, whole-diff prohibition sweep, CI observed green BY SHA, and the deferred register incl. D-24
+
+**Wave 7** *(blocked on Wave 6)*
+
+- [ ] 31-09-PLAN.md — Full `dist/` flush, install-freshness proof, and the blocking operator in-Rack UAT checkpoint
 
 ### Phase 32: Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP)
 
