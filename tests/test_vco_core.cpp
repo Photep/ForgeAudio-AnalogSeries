@@ -82,6 +82,7 @@
 #include <functional>   // std::function — the interleave helper's seeder/input parameters
 #include <cmath>
 #include <cstdint>
+#include <limits>       // std::numeric_limits<float>::quiet_NaN() — scenario four's hostile timing grid
 
 namespace {
 
@@ -542,10 +543,21 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 		// clamp removed, pitchCV = +10 drove the phase accumulator to 1,014,986
 		// and the output to -8,655,011 V — and EVERY SINGLE SAMPLE of that
 		// catastrophe stayed std::isfinite. Finiteness therefore cannot see a
-		// runaway accumulator; this magnitude bound is the only invariant in the
-		// suite that can. That is precisely why the two assertions sit side by
-		// side here instead of one being deleted as redundant with the other, or
-		// with the harness suite's finiteness case. Do not merge them.
+		// runaway accumulator; this magnitude bound is what sees a runaway caused
+		// by PITCH. That is precisely why the two assertions sit side by side
+		// here instead of one being deleted as redundant with the other, or with
+		// the harness suite's finiteness case. Do not merge them.
+		//
+		// SCOPE, corrected by plan 30-08. The sentence above used to claim this
+		// was "the only invariant in the suite that can" see a runaway
+		// accumulator. That held for a runaway caused by PITCH and for nothing
+		// else: this scenario varies pitchCV alone, and every drive in this file
+		// routes through forge::VcoBlockDriver or runInterleaveCheck, both of
+		// which unconditionally overwrite sampleTime and sampleRate — so a
+		// runaway caused by TIMING could not reach step() from here at all.
+		// Scenario four below is the other half of the pair: it calls step()
+		// DIRECTLY with hostile timing, with no driver in the way. Read the two
+		// together; neither one covers the other's runaway.
 		//
 		// The residual, deliberately not asserted on: a NaN pitchCV. The frozen
 		// forge::exp2Floor casts with (int32_t)x, which is UB for NaN, and the
@@ -578,6 +590,130 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 				CAPTURE(maxAbs);
 				CHECK(maxAbs <= kLooseBoundV);
 				CHECK(allFinite);
+			}
+		}
+	}
+
+	// --- Scenario four: hostile TIMING, driven straight into the core. ------
+	// Plan 30-08. This scenario supplies its OWN sampleTime and sampleRate, so
+	// it deliberately sits OUTSIDE the `for (double sr : SAMPLE_RATES)` loop
+	// above and inherits none of its rates.
+	//
+	// THE COVERAGE GAP THIS CLOSES, and why it existed. Every other drive in
+	// this file goes through forge::VcoBlockDriver or through
+	// runInterleaveCheck, and BOTH overwrite in.sampleTime and in.sampleRate
+	// unconditionally on every sample (tests/VcoBlockDriver.hpp:49-52 says so in
+	// its own banner, and says the overwrite must never become conditional).
+	// That is correct for them — it is what makes timing injected rather than
+	// ambient — and it is exactly why hostile timing was the ONE input class
+	// forge::VcoCore::step() had never been exposed to. So this scenario calls
+	// core.step(in) DIRECTLY on a caller-built forge::VcoInputs. The bypass IS
+	// the coverage. Do not "tidy" this onto the driver: routing it through
+	// either helper silently deletes the entire scenario while leaving it green.
+	//
+	// WHAT WAS MEASURED HERE BEFORE THE FIX (CR-01, reproduced independently by
+	// the code reviewer and the verifier at sampleRate = -44100, morph = 0.5,
+	// 20000 steps): freqHz = -21609.00, phase = -9800.00, maxAbs = 1.476e38 V,
+	// isfinite = 0. The old guard applied its zero-floor BEFORE its ceiling, so
+	// a non-positive sampleRate made maxFreq negative and the ceiling wrote a
+	// negative frequency straight over the value the floor had just sanitised.
+	// This scenario was OBSERVED RED against that header before the fix landed.
+	//
+	// THE FOUR ASSERTIONS, and why none of them is redundant with its
+	// neighbours:
+	//
+	//   freqNonNegative — the CR-01-SPECIFIC pin, and the only one of the four
+	//     that a clamp-order defect can still trip once the increment bound in
+	//     src/dsp/VcoCore.hpp exists. Without it the increment bound absorbs the
+	//     negative step and the OUTPUT looks perfectly healthy while tel.freqHz
+	//     hands Phase 35's display a negative frequency. Do not delete it as
+	//     redundant; the revert-one-only probe P1 in plan 30-08 shows this
+	//     assertion going red ALONE.
+	//   phaseInRange — the WR-01 pin. The single-subtract wrap in step() is
+	//     correct only for an increment inside [0, 1), and NOTHING in
+	//     forge::VcoInputs couples sampleTime to sampleRate: the ceiling is
+	//     computed from the rate while the increment is computed from the time.
+	//     Probe P2 shows this one going red while freqNonNegative stays green.
+	//   allFinite and the 6.0 V magnitude bound — the user-visible consequence,
+	//     and the reason src/dsp/VcoCore.hpp calls its guard LOAD-BEARING in the
+	//     first place. Note that a NaN sample fails allFinite but NOT the
+	//     magnitude bound (every comparison against NaN is false), which is
+	//     precisely why both are asserted.
+	//
+	// The seeds are the proven non-degenerate literals used everywhere else in
+	// this suite. NEVER a pair of zeros (T-30-02): a degenerate Xoroshiro seed
+	// is a fixed point emitting an all-zero stream, which makes
+	// std::normal_distribution's rejection loop never terminate — in Rack that
+	// is a hang on patch load, not a failing test.
+	{
+		// -44100 is the reproduced CR-01 case; 0 is the other non-positive rate;
+		// 44100 is the legitimate CONTROL rate; NaN is what a mis-wired host or
+		// an uninitialised ProcessArgs would deliver.
+		static const float HOSTILE_RATES[] = {
+			-44100.f, 0.f, 44100.f, std::numeric_limits<float>::quiet_NaN()
+		};
+		// 1/44100 paired with 44100 is the one legitimate control point. 1/1000
+		// and 999 are DECOUPLED from every rate above — the shape Phase 32's
+		// oversampled inner loop will produce naturally.
+		static const float HOSTILE_TIMES[] = {
+			-1.f / 44100.f, 0.f, 1.f / 44100.f, 1.f / 1000.f, 999.f,
+			std::numeric_limits<float>::quiet_NaN()
+		};
+		// Named _T4 on purpose: HOSTILE_PITCH is already taken by scenario three
+		// inside this same TEST_CASE.
+		static const float HOSTILE_PITCH_T4[] = {0.f, 10.f};
+
+		// The step count both the code reviewer and the verifier reproduced at.
+		const int nHostile = 20000;
+
+		for (float rate : HOSTILE_RATES) {
+			for (float dt : HOSTILE_TIMES) {
+				for (float pitchCV : HOSTILE_PITCH_T4) {
+					forge::VcoCore core;
+					core.seed(0xC0FFEEULL, 0xBADF00DULL);
+					core.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
+
+					forge::VcoInputs in = coreBase();
+					in.pitchCV    = pitchCV;
+					in.morph      = 0.5f;
+					in.character  = 1.f;
+					in.sampleTime = dt;
+					in.sampleRate = rate;
+
+					// ACCUMULATED, not asserted per sample: 48 configs at 20000
+					// steps would otherwise add nearly four million assertions to
+					// a 2.6 million assertion suite. Same idiom as scenario three.
+					bool  allFinite       = true;
+					bool  phaseInRange    = true;
+					bool  freqNonNegative = true;
+					float maxAbs          = 0.f;
+					int   firstBadStep    = -1;
+
+					for (int i = 0; i < nHostile; ++i) {
+						const float s = core.step(in);
+						const float a = std::fabs(s);
+						if (a > maxAbs) maxAbs = a;
+
+						bool bad = false;
+						if (!std::isfinite(s))                            { allFinite = false;       bad = true; }
+						if (a > kLooseBoundV)                             {                          bad = true; }
+						if (!(core.phase >= 0.0 && core.phase < 1.0))     { phaseInRange = false;    bad = true; }
+						if (!(core.tel.freqHz >= 0.f))                    { freqNonNegative = false; bad = true; }
+						if (bad && firstBadStep < 0) firstBadStep = i;
+					}
+
+					CAPTURE(rate);
+					CAPTURE(dt);
+					CAPTURE(pitchCV);
+					CAPTURE(maxAbs);
+					CAPTURE(firstBadStep);
+					INFO("scenario: hostile timing driven straight into the core - no driver, nothing overwrites sampleTime/sampleRate");
+
+					CHECK(allFinite);
+					CHECK(maxAbs <= kLooseBoundV);
+					CHECK(phaseInRange);
+					CHECK(freqNonNegative);
+				}
 			}
 		}
 	}
