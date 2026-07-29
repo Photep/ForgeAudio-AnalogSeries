@@ -170,3 +170,25 @@ Phase 30's goal — a pitch-accurate, intentionally aliased `VcoCore` behind the
 
 _Verified: 2026-07-29T06:15:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## CI Link-Gate Re-Observation (post-WR-06 fix)
+
+The limitation recorded above — that the link-gate observation bound to `0cf5f82`
+while the WR-06 fix commits had not been seen by CI — is now **closed**. The
+operator chose to satisfy the standing rule rather than make an exception to it.
+
+| Check | Value |
+|-------|-------|
+| Pushed | `0cf5f82..f314609` on `main`, no force, no tags |
+| Run | `30423554742` (workflow `test`) |
+| `headSha` compared BEFORE any conclusion was read | `f314609be2a403c9ffe68125a35c12974624daca` — MATCH |
+| Run conclusion | `success` |
+| `toolchain-gate` job conclusion | `success` |
+| **`win-x64 leg reproduction (compile + full link vs libRack)` — the step's OWN conclusion** | **`success`** |
+| Link genuinely ran (not fail-fasted into a `skipped`) | Log carries `x86_64-w64-mingw32-g++ -municode -o build-ci/plugin.dll ... -shared -L/tmp/win/Rack-SDK -lRack -static-libstdc++` followed by `win-x64 link gate: PASS` |
+| All jobs | `toolchain-gate`, `test (macos-latest)`, `test (ubuntu-latest)`, `test (windows-latest)` — all `success` |
+
+Standing caveat, unchanged: this observation binds to `f314609` and no other.
+Phase 36 must re-observe the link leg on whatever commit it tags.
