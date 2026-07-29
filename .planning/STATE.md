@@ -4,17 +4,17 @@ milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 30
 current_phase_name: vcocore-skeleton-module-registration
-status: verifying
-stopped_at: Completed 30-06-PLAN.md
-last_updated: "2026-07-29T00:27:45.308Z"
-last_activity: 2026-07-28
+status: executing
+stopped_at: Completed 30-08-PLAN.md
+last_updated: "2026-07-29T03:09:06.382Z"
+last_activity: 2026-07-29
 last_activity_desc: Phase 30 execution started
 progress:
   total_phases: 8
-  completed_phases: 2
-  total_plans: 12
-  completed_plans: 12
-  percent: 25
+  completed_phases: 1
+  total_plans: 15
+  completed_plans: 13
+  percent: 13
 ---
 
 # Project State
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 30 (vcocore-skeleton-module-registration) — EXECUTING
-Plan: 7 of 7
-Status: Phase complete — ready for verification
-Last activity: 2026-07-28 — Phase 30 execution started
+Plan: 8 of 10 (30-08 complete; 30-09 and 30-10 remain)
+Status: Ready to execute 30-09
+Last activity: 2026-07-29 — 30-08 gap closure complete (CR-01 guard fix + WR-03 coverage)
 
 ## Performance Metrics
 
@@ -112,6 +112,11 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 30]: Research assumption A5 is CLOSED — the Apple-clang-only CORE-01/CORE-03 tolerances hold under GCC/libstdc++ and MinGW g++ — The three-OS matrix reported 69 cases on Ubuntu/Windows vs 72 on macOS. The gap is exactly the three #if defined(__APPLE__) drift-ON bit-exact golden cases in tests/test_golden.cpp (Phase-26 decision: portable drift-off goldens for 3-OS CI, drift-on macOS-gated because std::normal_distribution is not portable across standard libraries). No Phase-30 case was dropped: all 7 'vco harness:' and all 5 'vco core:' cases ran and passed on all three OSes, so 30-03's 1% pitch tolerance, its 6.0 V bound with the >5.1 V exercise assertion, its 0.01 V divergence threshold and 30-04's 0/1024 and 512/512 figures are confirmed cross-toolchain.
 - [Phase 30]: Operator UAT sign-off 'Approved' — all four controls audibly live (D-07) and the shipped Analog LFO visually and audibly unchanged in the same session; NO timbre or output-level observation was raised — Recorded explicitly so Phase 32 reads its starting point as the crude aliased baseline AS DESIGNED rather than as an unreported problem, and so Phase 34 inherits no reported level problem. The expected-results block (crude/buzzy/harsh timbre; excursions above 5 V at high CHARACTER, measured 5.51803 V against a 5.55 V analytic ceiling; the deliberately ugly unlabelled panel) was presented in full before the reply, so its absence from the answer is an absence of complaint, not an absence of exposure. No observations were invented.
 - [Phase 30]: All four items flagged for the phase gate resolved: [1/7] VCO_SIDE_ALLOW entry confirmed exact-path; PANEL-03 confirmed genuinely satisfied (not un-checked); the plugin.json diff-shape discrepancy reproduced and judged; invariant 5 confirmed green BY DETECTING — 1) tests/check_includes.sh:294 matches with [[ "${rel}" == "${a}" ]] — a QUOTED RHS, so literal comparison: no glob, no substring, no basename. It weakens no detector, unlike 30-01's [2/7] change. 2) All three PANEL-03 edits present (plugin.hpp:8, plugin.cpp:8, plugin.json:26); manifest still 2 modules, LFO first, version 2.0.1. 3) All four git diff algorithms render 0 deleted lines, not the predicted 1; the byte invariant holds directly (lines 1-23 identical, new[23] == old[23] + ','). 0 < 1 is the SAFE direction — the assertion was a ceiling on damage. 4) Invariant 5's -s output shows mismatchA/B := 512 and totalMismatch := 1024 at all three rates, so it passes BECAUSE it detected its own defect — which is what makes invariant 4 (0/1024) meaningful.
+- [Phase 30]: CR-01 closed: the Nyquist floor now runs LAST so it is always the final writer
+- [Phase 30]: forge::kVcoMaxDeltaPhase = 0.5 bounds the phase increment DIRECTLY, and is a different KIND of constant from kVcoNyquistGuardFrac
+- [Phase 30]: WR-03 closed by a DRIVERLESS scenario - the bypass IS the coverage
+- [Phase 30]: Green after a multi-part fix is not evidence that either part bites - each guard was proven load-bearing by a revert-one-only probe producing a DIFFERENT red
+- [Phase 30]: A doctest -s before/after capture cannot be diffed raw - every SUCCESS line carries its own source line number
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -148,13 +153,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P04 | 6 min | 2 tasks | 1 files |
 | Phase 30 P06 | 4 min | 3 tasks | 3 files |
 | Phase 30 P07 | 27 min | 3 tasks | 0 files |
+| Phase 30 P08 | 9 | 3 tasks | 2 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-29T00:26:18.093Z
-Stopped at: Completed 30-06-PLAN.md
+Last session: 2026-07-29T03:09:06.375Z
+Stopped at: Completed 30-08-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps

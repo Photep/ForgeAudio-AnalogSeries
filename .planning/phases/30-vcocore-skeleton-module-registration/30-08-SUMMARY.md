@@ -384,6 +384,11 @@ None. No new network endpoint, auth path, file access pattern or schema change w
 - **Phase 32** is the caller that will decouple `sampleTime` from `sampleRate` on purpose (an oversampled inner loop). The increment bound is now in place ahead of it, and scenario four's `sampleTime = 1/1000` and `999` columns are the standing regression for that shape.
 - **Phase 35** can read `tel.freqHz` knowing it is never negative.
 
+## Self-Check: PASSED
+
+- Files claimed present, all FOUND: `.planning/phases/30-vcocore-skeleton-module-registration/30-08-SUMMARY.md`, `src/dsp/VcoCore.hpp`, `tests/test_vco_core.cpp`, `build-test/gap-evidence/before-vco-s.txt`, `build-test/gap-evidence/after-vco-s.txt` (the last two gitignored by design).
+- Commits claimed, all FOUND in `git log`: `679ef0e` (Task 1, RED), `a518345` (Task 2, GREEN), `a9519c4` (this SUMMARY).
+
 ---
 *Phase: 30-vcocore-skeleton-module-registration*
 *Completed: 2026-07-29*
