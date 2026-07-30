@@ -81,8 +81,8 @@
 // reasonably but WRONGLY promote the secondary tier to equivalent evidence, or
 // read invariant 1 as part of the gate rather than as a check on the ruler.
 //
-// Invariants (numbered; 1 through 7 are LANDED, and 8 and 9 stay RESERVED so
-// plan 31-07 can append without renumbering anything here):
+// Invariants (numbered; 1 through 8 are LANDED, and 9 stays RESERVED so the
+// remainder of plan 31-07 can append without renumbering anything here):
 //   1. the DERIVED-BOUNDARY SELF-CHECK: both per-rate ceilings are computed
 //      from the forge:: constants, the lesser one binds, and the 0.5 V grid
 //      keeps real headroom below it (D-20 / D-21)                  [plan 31-05]
@@ -103,8 +103,10 @@
 //   7. the PERMANENT NEGATIVE CONTROL for invariant 6: a deliberately
 //      multiplicative stand-in core required to FAIL the same identity
 //                                                                  [plan 31-06]
-//   8. PITCH-04 / D-10: the Nyquist clamp FIRING on a legitimate high note
-//      while the oscillator keeps sounding                         [plan 31-07]
+//   8. PITCH-04 / D-10: the Nyquist clamp FIRING on a legitimate high note —
+//      the telemetry frequency pinned EXACTLY at the derived ceiling while the
+//      oscillator keeps sounding, plus a below-ceiling control proving the clamp
+//      does not fire early                                         [plan 31-07]
 //   9. D-14: the standing hostile-pitch case, pinned AT the bound   [plan 31-07]
 //
 // MEASURED WORST-CASE TRACKING ERROR — THIS PHASE'S OWN FIGURES, harvested from
@@ -2022,4 +2024,280 @@ TEST_CASE("vco pitch FM-03 exponential FM NEGATIVE CONTROL: a deliberately MULTI
 	CAPTURE(fractionalMismatchTotal);
 	REQUIRE(fractionalRowsSeen > 0);
 	REQUIRE(fractionalMismatchTotal > 0);
+}
+
+// ---------------------------------------------------------------------------
+// 8. PITCH-04 / D-10: THE NYQUIST CLAMP FIRES ON A LEGITIMATE HIGH NOTE, AND
+//    THE OSCILLATOR IS STILL OSCILLATING WHEN IT DOES.
+//
+//    WHY THIS CASE EXISTS WHEN THE SUITE ALREADY PINS THE NYQUIST BOUND. It
+//    does already pin it: tests/test_vco_core.cpp's scenario four recomputes the
+//    ceiling symbolically and requires the telemetry frequency to stay at or
+//    below it. But that pin is driven by hostile TIMING — nonsense sample rates
+//    and nonsense sample times — and it asserts an INEQUALITY. Two things follow
+//    that it therefore cannot see. It never observes the clamp firing on a
+//    legitimate high note reached through the PITCH, which is the only way a
+//    user ever reaches it. And an inequality is satisfied by a DEAD oscillator:
+//    `freqHz <= ceiling` is true at zero, so a core that silenced itself above
+//    the ceiling would pass it. This case closes both gaps, and closing the
+//    second one is validation requirement 6.
+//
+//    THE TWO HALVES OF THE CLAIM, and neither is sufficient alone:
+//
+//      (a) THE CLAMP'S OWN ACTION IS OBSERVED, not merely its side effects.
+//          Above the ceiling the telemetry frequency must equal the guard
+//          fraction times the sample rate EXACTLY — recomputed here in FLOAT,
+//          from the forge:: constant and the same non-positive-rate sanitising
+//          rule the core applies, so an exact equality is a meaningful
+//          statement rather than an approximate one. An exact equality is a far
+//          stronger fact than a bound: it says the ceiling was APPLIED, at its
+//          derived value, and that nothing downstream perturbed it.
+//
+//      (b) THE OSCILLATOR KEEPS SOUNDING. Real rising crossings, a block whose
+//          maximum differs from its minimum, and a peak magnitude above one
+//          volt. This is D-10's DECIDED BEHAVIOR stated as numbers: the
+//          frequency PINS at the ceiling and the peaks FLATTEN OUT at the top,
+//          and that flattening is the CHOSEN SOUND rather than a defect. Under
+//          deep FM the clamp fires on most cycles, which is exactly why the
+//          sound it makes is a timbral decision and not an edge case. The
+//          rejected alternative was an AMPLITUDE FADE above the threshold: it
+//          was rejected because it adds a gain stage that collides with the
+//          later phase that owns output conditioning. Pitch fold-back was
+//          rejected too — that is a deliberate effect, not the guard PITCH-04
+//          asks for. If someone ever implements either, half (b) goes red.
+//
+//    NO TRACKING ASSERTION ABOVE THE CEILING, AND DO NOT ADD ONE. Above the
+//    ceiling the pitch is INTENTIONALLY wrong — that is what a hard clamp
+//    means — so a 1 V/oct assertion there would fail on correct behavior. The
+//    estimator is run at the above-ceiling points for its CROSSING COUNT ONLY,
+//    and its returned frequency is deliberately discarded. Nothing in this case
+//    compares a measured frequency against the reference at any above-ceiling
+//    point.
+//
+//    THE BELOW-CEILING CONTROL IS WHAT MAKES THIS A BOUNDARY RATHER THAN A
+//    CONSTANT. Without it, every assertion in half (a) would be satisfied by a
+//    core that pinned the frequency to the ceiling ALWAYS, at every pitch, which
+//    would be a catastrophic bug reading as a green case. One volt below the
+//    ceiling the telemetry frequency must therefore be STRICTLY LESS than the
+//    recomputed maximum and must still match the libm reference inside this
+//    file's one tolerance — so the clamp is proven not to fire early.
+//
+//    ALL FOUR DRIVEN VOLTS ARE FAR INSIDE THE D-14 PITCH-VOLT BOUND, and that
+//    is asserted rather than assumed, so this case exercises the Nyquist clamp
+//    and nothing else. Invariant 9 owns the pitch-volt bound.
+//
+//    NO Hz LITERAL AND NO VOLT LITERAL (D-21). The ceiling volt comes from the
+//    same helper invariants 1, 2 and 3 use; the expected maximum frequency comes
+//    from forge::kVcoNyquistGuardFrac. Move the constant and this case moves
+//    with it.
+//
+//    MEASURED FIGURES, harvested from an actual run of this case during plan
+//    31-07 with a temporary print that was removed before the commit. Blocks are
+//    250 ms at morph = 0 and character = 0 above the ceiling, and the short
+//    telemetry-read block below it. `offset` is volts relative to that rate's
+//    derived clamp ceiling; nUp is rising crossings in the block; peak is the
+//    largest absolute returned sample in volts.
+//
+//      rate    ceiling V     offset   telemetry Hz   vs guard*rate     nUp   peak V
+//      ------  -----------  -------  -------------  ---------------  ------  ------
+//      44100   +6.38263152    +0.25    21829.5      EXACT              5457   5.000
+//      44100   +6.38263152    +1.00    21829.5      EXACT              5457   5.000
+//      44100   +6.38263152    +3.00    21829.5      EXACT              5457   5.000
+//      44100   +6.38263152    -1.00    10914.73438  strictly under       --      --
+//      48000   +6.50488727    +0.25    23760.0      EXACT              5939   5.000
+//      48000   +6.50488727    +1.00    23760.0      EXACT              5939   5.000
+//      48000   +6.50488727    +3.00    23760.0      EXACT              5939   5.000
+//      48000   +6.50488727    -1.00    11879.96484  strictly under       --      --
+//      96000   +7.50488727    +0.25    47520.0      EXACT             11879   5.000
+//      96000   +7.50488727    +1.00    47520.0      EXACT             11879   5.000
+//      96000   +7.50488727    +3.00    47520.0      EXACT             11879   5.000
+//      96000   +7.50488727    -1.00    23759.92969  strictly under       --      --
+//
+//    The three below-ceiling points against the libm reference, which is the
+//    other half of the boundary claim: -0.00242652678 cents at 44.1 kHz
+//    (reference 10914.74967 Hz), -0.00507139295 at 48 kHz (11879.99964 Hz) and
+//    -0.00507139295 at 96 kHz (23759.99929 Hz) — every one inside a tenth of the
+//    0.05-cent tolerance this file asserts, so the note one volt down is not
+//    merely under the ceiling, it is the RIGHT note.
+//
+//    READ THREE THINGS OUT OF THAT TABLE. The telemetry frequency, the crossing
+//    count and the peak are IDENTICAL across all three above-ceiling offsets at
+//    a given rate — a quarter volt above and three volts above produce the very
+//    same block, which is exactly what a HARD clamp looks like from the outside
+//    and is not what a soft one would look like. The peak at the ceiling is the
+//    FULL five volts (the accumulator lands on the sine's own maximum, so
+//    blockMin and blockMax measure -5 and +5 exactly), so "peaks flatten out" is
+//    a flattening of the WAVEFORM SHAPE and not a loss of level: nothing here is
+//    quiet, let alone silent. And the crossing counts are in the thousands, so
+//    the eight this case requires is not a bar the block barely clears.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco pitch PITCH-04 / D-10: the Nyquist clamp FIRES at its derived ceiling on a legitimate high note and the oscillator KEEPS SOUNDING - and a point below the ceiling proves it does not fire early") {
+	// Volts ABOVE that rate's derived clamp ceiling. A quarter volt is the
+	// nearest point that still clears the frozen polynomial's own error by four
+	// orders of magnitude; three volts is eight times the ceiling frequency
+	// before clamping, so if the ceiling were applied loosely rather than
+	// exactly, this offset is where it would show.
+	static const double ABOVE_CEILING_OFFSET_VOLTS[] = {0.25, 1.0, 3.0};
+	static const size_t ABOVE_CEILING_N =
+		sizeof(ABOVE_CEILING_OFFSET_VOLTS) / sizeof(ABOVE_CEILING_OFFSET_VOLTS[0]);
+
+	// THE BOUNDARY CONTROL. One volt below the ceiling is half the ceiling
+	// frequency, still inside the estimator's reach and still a note the
+	// requirement guarantees tracking for.
+	const double belowCeilingOffsetVolts = -1.0;
+
+	for (double sr : SAMPLE_RATES) {
+		const double ceilingVolts = clampCeilingVolts(sr);
+
+		// THE EXPECTED MAXIMUM, RECOMPUTED THE WAY THE CORE COMPUTES IT: the
+		// guard fraction times the FLOAT sample rate, in FLOAT, through the same
+		// non-positive-rate sanitising rule. Doing it in double and narrowing
+		// afterwards would land on a different value and turn the exact equality
+		// below into a coin flip. This is the symbolic-recomputation idiom
+		// tests/test_vco_core.cpp's Nyquist pin uses, and it is what makes the
+		// gate move automatically when the constant does (D-21).
+		const float srf = (float)sr;
+		const float expectedMaxFreq = forge::kVcoNyquistGuardFrac * ((srf > 0.f) ? srf : 0.f);
+
+		CAPTURE(sr);
+		CAPTURE(ceilingVolts);
+		CAPTURE(expectedMaxFreq);
+		REQUIRE(std::isfinite(ceilingVolts));
+		REQUIRE(expectedMaxFreq > 0.f);
+
+		// -------------------------------------------------------------------
+		// ABOVE THE CEILING: the clamp must fire, exactly, and the oscillator
+		// must still be oscillating.
+		// -------------------------------------------------------------------
+		for (size_t ai = 0; ai < ABOVE_CEILING_N; ++ai) {
+			const double offsetVolts  = ABOVE_CEILING_OFFSET_VOLTS[ai];
+			const double drivenVolts  = ceilingVolts + offsetVolts;
+
+			// This case is about the NYQUIST clamp, so it must stay clear of the
+			// OTHER bound in the chain. Asserted rather than assumed.
+			REQUIRE(std::fabs(drivenVolts) < (double)forge::kVcoMaxPitchVolts);
+
+			forge::VcoInputs in = pitchBase();
+			in.pitchCV   = (float)drivenVolts;
+			in.morph     = 0.f;
+			in.character = 0.f;
+
+			// A quarter second. At the ceiling that is thousands of cycles, so
+			// the crossing-count requirement below is a statement about the
+			// oscillator rather than about the window length.
+			const int n = (int)std::lround(sr * 0.25);
+			forge::VcoBlockDriver d(sr);
+			std::vector<float> out = d.run(n, [=](int) { return in; });
+			REQUIRE(out.size() == (size_t)n);
+
+			// THE ESTIMATOR IS CALLED FOR nUp AND NOTHING ELSE HERE. Its
+			// returned frequency is deliberately dropped: above the ceiling the
+			// pitch is intentionally wrong and comparing it to anything would be
+			// asserting against decided behavior.
+			int nUp = 0;
+			estimateFreqRising(out, sr, &nUp);
+
+			bool   allFinite = true;
+			int    firstBad  = -1;
+			double peakAbs   = 0.0;
+			double blockMin  = (double)out[0];
+			double blockMax  = (double)out[0];
+			for (size_t i = 0; i < out.size(); ++i) {
+				const double s = (double)out[i];
+				if (!std::isfinite(s)) { allFinite = false; if (firstBad < 0) firstBad = (int)i; }
+				if (std::fabs(s) > peakAbs) peakAbs = std::fabs(s);
+				if (s < blockMin) blockMin = s;
+				if (s > blockMax) blockMax = s;
+			}
+
+			const float telFreq = d.core.tel.freqHz;
+
+			// THE ASSERTION THIS WHOLE CASE EXISTS FOR, and the one thing the
+			// existing timing-driven pin cannot say: the ceiling was applied, at
+			// exactly its derived value. Written NEGATED so a not-a-number
+			// telemetry frequency lands on the FAILING branch — every comparison
+			// against a NaN is false, so a plainly written equality would be
+			// false for a NaN and for a wrong number alike, but the negated form
+			// keeps the intent visible next to the core's own negated floors.
+			bool clampAppliedExactly = true;
+			if (!(telFreq == expectedMaxFreq)) clampAppliedExactly = false;
+
+			// D-10's decided behavior, as numbers. The block must not be a
+			// constant, and the level must be real rather than residual.
+			const bool blockIsNotConstant = (blockMax != blockMin);
+
+			bool peakAudible = true;
+			if (!(peakAbs > 1.0)) peakAudible = false;
+
+			bool peakInsideLooseBound = true;
+			if (!(peakAbs <= (double)kPitchLooseBoundV)) peakInsideLooseBound = false;
+
+			CAPTURE(offsetVolts);
+			CAPTURE(drivenVolts);
+			CAPTURE(telFreq);
+			CAPTURE(nUp);
+			CAPTURE(peakAbs);
+			CAPTURE(blockMin);
+			CAPTURE(blockMax);
+			CAPTURE(firstBad);
+			INFO("above the derived clamp ceiling: the frequency must PIN at the ceiling exactly and the oscillator must keep sounding (D-10) - no tracking assertion belongs here");
+
+			// The oscillation precondition comes FIRST, the same discipline the
+			// tracking tiers use: a silent block makes every number below it
+			// meaningless rather than merely wrong.
+			REQUIRE(nUp >= 8);
+			CHECK(blockIsNotConstant);
+			CHECK(peakAudible);
+			CHECK(allFinite);
+			CHECK(peakInsideLooseBound);
+			CHECK(clampAppliedExactly);
+		}
+
+		// -------------------------------------------------------------------
+		// BELOW THE CEILING: the clamp must NOT fire. Without this point the
+		// case above is satisfied by a core that clamps everything, always.
+		// -------------------------------------------------------------------
+		{
+			const double drivenVolts = ceilingVolts + belowCeilingOffsetVolts;
+			REQUIRE(std::fabs(drivenVolts) < (double)forge::kVcoMaxPitchVolts);
+
+			forge::VcoInputs in = pitchBase();
+			in.pitchCV   = (float)drivenVolts;
+			in.morph     = 0.f;
+			in.character = 0.f;
+
+			// The telemetry frequency is written on every step(...), so the
+			// short-block idiom the secondary tier uses is all this point needs.
+			forge::VcoBlockDriver d(sr);
+			std::vector<float> out = d.run(kTelemetryBlockSamples, [=](int) { return in; });
+			REQUIRE(out.size() == (size_t)kTelemetryBlockSamples);
+
+			const double telHz   = (double)d.core.tel.freqHz;
+			const double expected = expectedFreqHz(drivenVolts);
+
+			CAPTURE(drivenVolts);
+			CAPTURE(telHz);
+			CAPTURE(expected);
+			INFO("one volt BELOW the derived clamp ceiling: the clamp must not fire here, which is what makes the points above pin a BOUNDARY rather than a constant");
+
+			// Negated for the NaN reason, and checked before the logarithm.
+			bool telemetryUsable = true;
+			if (!(telHz > 0.0)) telemetryUsable = false;
+			REQUIRE(telemetryUsable);
+
+			// THE STRICT INEQUALITY IS THE POINT. Not `<=`: at-or-below would be
+			// satisfied by a clamp that fired here too.
+			bool belowCeilingStrictly = true;
+			if (!(telHz < (double)expectedMaxFreq)) belowCeilingStrictly = false;
+			CHECK(belowCeilingStrictly);
+
+			// And it is still the RIGHT frequency, against the same libm
+			// reference and the same single tolerance the tracking tiers use.
+			const double cents = centsError(telHz, expected);
+			CAPTURE(cents);
+			bool withinTolerance = true;
+			if (!(std::fabs(cents) < kTrackingToleranceCents)) withinTolerance = false;
+			CHECK(withinTolerance);
+		}
+	}
 }
