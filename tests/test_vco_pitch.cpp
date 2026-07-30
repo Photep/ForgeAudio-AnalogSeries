@@ -5,8 +5,8 @@
 // PLUMBING and tests/test_vco_core.cpp proves the OSCILLATOR (it plays a note,
 // it stays inside a voltage bound, two differently-seeded instances sound
 // different), this file proves that the note it plays lands where 1 V/oct says
-// it must — and, once plan 31-06 lands, that coarse tune, fine tune and
-// exponential FM move it by exactly the stated amount.
+// it must, and that coarse tune, fine tune and exponential FM move it by exactly
+// the stated amount.
 //
 // THIS FILE HOLDS TEST-02, PHASE 31'S EXIT GATE. Invariants 2 and 3 below are
 // the criterion the phase is judged on. Every structural choice in them is a
@@ -18,7 +18,7 @@
 // have made it vacuous. Phase 29 measured its entire local gate returning
 // exit 0 on a commit that could not link. Phase 30 measured a hostile-input RED
 // case that was ALREADY GREEN before the fix it was supposed to justify. A test
-// that cannot fail is not evidence. The four traps this file is written
+// that cannot fail is not evidence. The five traps this file is written
 // against, by name:
 //
 //   TRAP 1 — THE TELEMETRY SHORTCUT. An assertion on the core's telemetry
@@ -55,6 +55,20 @@
 //   (D-21). No Hz ceiling and no volt ceiling is typed into code anywhere in
 //   this file.
 //
+//   TRAP 5 — AN IDENTITY THE WRONG IMPLEMENTATION ALSO SATISFIES, and it is the
+//   sharpest one here because the natural test is entirely vacuous rather than
+//   merely weak. FM-03's summation identity — a static FM voltage equals the same
+//   volts on V/OCT — is satisfied BIT-EXACTLY by the MULTIPLICATIVE shape the
+//   shipped LFO uses, on every input where EITHER pitch term is a WHOLE number of
+//   volts. Zero is a whole number, so holding V/OCT at its default and sweeping
+//   the FM jack distinguishes nothing at all. MEASURED, with the rule derived
+//   from the frozen exponential's exponent-field path and then confirmed
+//   numerically: see invariant 7's per-point table, where four rows sit at
+//   exactly zero mismatches and four diverge from the first or second sample.
+//   Hence invariant 6's grid pairs FRACTIONAL V/OCT values with fractional FM
+//   products, hence it keeps the blind rows and marks them, and hence invariant 7
+//   exists at all.
+//
 // NO ASSERTION IN THIS FILE MAY BE WRITTEN ABOUT ALIAS CONTENT, HARMONIC
 // STRUCTURE OR SPECTRAL CLEANLINESS. The Phase 30/31 oscillator is naive and
 // unband-limited and it ALIASES ON PURPOSE; Phase 32 (CORE-02 / AA-01..05) owns
@@ -67,8 +81,8 @@
 // reasonably but WRONGLY promote the secondary tier to equivalent evidence, or
 // read invariant 1 as part of the gate rather than as a check on the ruler.
 //
-// Invariants (numbered; 4 through 9 are RESERVED so plans 31-06 and 31-07 can
-// append without renumbering anything here):
+// Invariants (numbered; 1 through 7 are LANDED, and 8 and 9 stay RESERVED so
+// plan 31-07 can append without renumbering anything here):
 //   1. the DERIVED-BOUNDARY SELF-CHECK: both per-rate ceilings are computed
 //      from the forge:: constants, the lesser one binds, and the 0.5 V grid
 //      keeps real headroom below it (D-20 / D-21)                  [plan 31-05]
@@ -78,8 +92,11 @@
 //   3. TEST-02, SECONDARY TIER: the same reference against the core's telemetry
 //      frequency, over the octaves crossings cannot resolve — the WEAKER tier
 //                                                                  [plan 31-05]
-//   4. PITCH-02 COARSE tune                                        [plan 31-06]
-//   5. PITCH-03 FINE tune                                          [plan 31-06]
+//   4. PITCH-02 COARSE tune: n octaves shifts the measured pitch by exactly n
+//      octaves over the whole declared range, non-integer values included
+//                                                                  [plan 31-06]
+//   5. PITCH-03 FINE tune: +/-1 semitone is exactly +/-100 cents, which pins
+//      the semitone-to-octave divisor                              [plan 31-06]
 //   6. FM-01/02/03 exponential FM: the volt-domain summation identity, the
 //      attenuverter's bipolarity, the connected gate, audio-rate modulation
 //                                                                  [plan 31-06]
@@ -499,26 +516,50 @@ BlockDiff diffBlocks(const std::vector<float>& a, const std::vector<float>& b) {
 // it). One table, two consumers, so the control is provably driven over the
 // same inputs the check is.
 //
-// WHY `integerTerms` IS A COLUMN RATHER THAN A DERIVED PREDICATE. It is the
-// whole trap this grid is built around and it is stated by hand so a reader sees
-// it as an assertion by the author rather than as arithmetic to re-derive. See
-// invariant 7's banner for the measurement.
+// THE `blindRow` COLUMN IS THE WHOLE POINT OF THIS TABLE, AND THE RULE IT
+// ENCODES WAS MEASURED HERE RATHER THAN ASSUMED. A row is BLIND when a
+// multiplicative implementation satisfies the identity on it BIT-EXACTLY, so the
+// row cannot tell the two implementations apart. The measured rule is:
+//
+//   A ROW IS BLIND IF EITHER TERM IS A WHOLE NUMBER OF VOLTS.
+//
+// Not "if the SUM is a whole number", which is the shape the trap first looks
+// like, and not "if BOTH terms are whole". Either one suffices, and the reason is
+// exact rather than statistical: the frozen exponential splits its argument into
+// an exponent field and a fractional remainder, so adding a WHOLE number of
+// volts changes only the exponent field and leaves the polynomial's argument
+// untouched. Its value at `a + b` with `a` whole is therefore EXACTLY
+// `2^a` times its value at `b`; scaling a float by an exact power of two is
+// itself exact and so commutes with the rounding of the multiply; and the two
+// implementations land on the same bits. Verified directly, outside doctest, on
+// this toolchain: at V/OCT 0.0 the two forms agree bit-for-bit at FM values
+// +0.75, +0.481 and -4.9 alike, while at V/OCT +0.25 they differ at +0.75.
+//
+// THE CONSEQUENCE IS THE DANGEROUS PART, AND IT IS WHY THIS COLUMN IS STATED BY
+// HAND. Zero is a whole number. So the single most natural FM test anyone would
+// write -- leave V/OCT unpatched at 0 V, sweep the FM voltage, assert the
+// identity -- IS COMPLETELY BLIND TO THE MULTIPLICATIVE IMPLEMENTATION, at every
+// FM voltage, fractional or not. Row 1 below is exactly that test, kept in the
+// grid and marked blind, so the next person to widen this grid can see the shape
+// of the hole rather than rediscover it. THE V/OCT TERM MUST BE FRACTIONAL for a
+// row to be evidence.
 struct FmIdentityPoint {
 	float voct;        // V/OCT volts the connected block runs at
 	float fmVolts;     // FM jack volts
 	float fmAtten;     // the bipolar attenuverter setting
-	bool  integerTerms;  // BOTH the V/OCT volt and the FM product are whole numbers
+	bool  blindRow;    // a multiplicative core satisfies this row BIT-EXACTLY
 	const char* role;
 };
 
 const FmIdentityPoint FM_IDENTITY_GRID[] = {
-	{ 0.25f,  0.75f,  1.0f,  false, "fractional TERMS, integer sum +1.0 - the row that shows an integer SUM is not enough" },
-	{ 1.f,    2.f,    1.0f,  true,  "PURE-INTEGER TERMS, sum +3.0 - the trap row a multiplicative core also satisfies" },
-	{ -1.5f,  0.5f,   0.5f,  false, "fractional sum -1.25, half attenuverter" },
-	{ 2.f,   -3.f,    1.0f,  true,  "PURE-INTEGER TERMS again, sum -1.0, negative FM volts" },
+	{ 0.f,    0.75f,  1.0f,  true,  "BLIND: V/OCT at its 0 V default with a fractional FM voltage - the obvious test, and it proves nothing" },
+	{ 0.25f,  0.75f,  1.0f,  false, "both terms fractional, integer SUM +1.0 - an integer sum is not what matters" },
+	{ 1.f,    2.f,    1.0f,  true,  "BLIND: both terms whole, sum +3.0" },
+	{ -1.5f,  0.5f,   0.5f,  false, "both terms fractional, sum -1.25, half attenuverter" },
+	{ 2.f,   -3.f,    1.0f,  true,  "BLIND: both terms whole again, sum -1.0, negative FM volts" },
 	{ 0.5f,   1.3f,   0.37f, false, "attenuverter 0.37 - the product itself is not exactly representable, sum about +0.981" },
-	{ 3.25f, -1.75f,  1.0f,  false, "fractional sum +1.5 reached from a negative FM voltage" },
-	{ -2.f,   0.6f,  -0.5f,  false, "NEGATIVE attenuverter inside the identity grid, sum -2.3" },
+	{ 3.25f, -1.75f,  1.0f,  false, "both terms fractional, sum +1.5 reached from a negative FM voltage" },
+	{ -2.f,   0.6f,  -0.5f,  true,  "BLIND for the V/OCT term ALONE: the product -0.3 is fractional but -2.0 is whole" },
 };
 const size_t FM_IDENTITY_GRID_N = sizeof(FM_IDENTITY_GRID) / sizeof(FM_IDENTITY_GRID[0]);
 
@@ -529,6 +570,145 @@ const size_t FM_IDENTITY_GRID_N = sizeof(FM_IDENTITY_GRID) / sizeof(FM_IDENTITY_
 // round differently and the identity below is bit-exact or it is nothing.
 float fmProductOf(const FmIdentityPoint& p) { return p.fmVolts * p.fmAtten; }
 float shiftedVoctOf(const FmIdentityPoint& p) { return p.voct + fmProductOf(p); }
+
+// ---------------------------------------------------------------------------
+// DeliberatelyMultiplicativeFmCore — THE PERMANENT POSITIVE CONTROL FOR
+// INVARIANT 6. Read this banner before touching anything below it.
+//
+// THIS TYPE IS A TEST CONTROL. IT IS NOT PRODUCTION CODE, IT IS NOT A WORK IN
+// PROGRESS, AND IT MUST NEVER BE MOVED UNDER src/ — least of all into
+// src/dsp/VcoCore.hpp, which is the file it is a deliberately-broken copy of.
+// It implements exactly the shape FM-03 and D-01 forbid, and it is the shape the
+// SHIPPED Analog LFO uses: resolve a frequency from the pitch, then MULTIPLY
+// that frequency by an exponentiated modulator. Landing that in the VCO would
+// give linear-FM behavior at the wrong place in the chain — a fixed modulator
+// voltage would shift the pitch by a different number of semitones in every
+// octave — and the guard that would catch it is the very case this type exists
+// to validate.
+//
+// WHY IT EXISTS, AND WHY THE ARGUMENT IS SHARPER HERE THAN ANYWHERE ELSE IN THIS
+// SUITE. A check that has only ever been observed green is unvalidated: it is
+// indistinguishable from a check that cannot fail. Invariant 6's identity is
+// worse than merely unvalidated without this control, because the identity is
+// SATISFIABLE BY THE WRONG IMPLEMENTATION over part of its own input space. At
+// pure-integer terms the frozen polynomial produces exact powers of two by
+// writing the floating-point exponent field, and multiplying a float by an exact
+// power of two is itself exact — so the multiplying form and the summing form
+// agree BIT FOR BIT there. An integer-only grid would have passed this type.
+// This control is what turns that from an argument into a measurement, and the
+// per-point mismatch table in invariant 7's banner is the measurement.
+//
+// DO NOT delete it, do not disable it, do not convert invariant 7 into a skipped
+// or commented-out case, and do not "clean this up" because a deliberately wrong
+// oscillator looks like dead code. If it goes away, or if invariant 7 ever
+// passes by NOT detecting the defect, invariant 6 stops being evidence and FM-03
+// reverts to an assertion nobody has tested.
+//
+// IT IS CONTAINED BY PLACEMENT: this file's single anonymous namespace, inside a
+// test translation unit. It has internal linkage, it is in no header and in no
+// shipped build graph, so check_includes.sh, check_canary.sh and the strict
+// C++11 gate never see it — all three scan src/ only. Containment is ASSERTED
+// rather than assumed: plan 31-06's acceptance criteria require a recursive grep
+// for this type's name under src/ to find nothing.
+//
+// NO SHARED-STATE DEFECT LIVES HERE. The phase accumulator below is a per-
+// instance MEMBER, deliberately. The function-local-static defect belongs to
+// tests/test_vco_core.cpp's own stand-in, which validates a different invariant.
+// Two defects in one stand-in would make it prove nothing specific: a control
+// that fails an identity because it also shares state across instances does not
+// tell you the identity is sensitive to the FM ORDERING.
+//
+// THE GUARD SEQUENCE IS MIRRORED FROM src/dsp/VcoCore.hpp AND MUST BE KEPT IN
+// STEP WITH IT. The volt-domain summation of V/OCT, coarse and the divided fine
+// value; the D-14 pitch-volt bound against the same constant, written with the
+// same negated comparison FIRST as the NaN catcher; one exponential off the C4
+// reference; the sanitised rate; the Nyquist ceiling; the negated floor as the
+// LAST writer; the increment with both casts; the increment bound; the
+// single-subtract wrap; the input clamps; the x5 scaling. If the real core's
+// sequence changes and this one does not, this type diverges from it in TWO
+// things rather than the one its banner promises, and this banner becomes
+// exactly the class of false comment plan 30-08 existed to remove.
+//
+// ONE CONSEQUENCE OF THE DEFECT IS NOT A SECOND DEFECT, and it is stated here so
+// nobody counts it as one: because the FM contribution no longer enters the
+// summed volts, it no longer passes through the D-14 bound either, so a hostile
+// FM voltage would reach this type's frequency unbounded. That is downstream of
+// the single divergence, not additional to it. This control is driven only over
+// the benign identity grid, and the hostile-input claim belongs to invariant 6's
+// gate subcase over the REAL core.
+// ---------------------------------------------------------------------------
+struct DeliberatelyMultiplicativeFmCore {
+	// Per-instance, exactly as the real core holds them. The accumulator is a
+	// MEMBER — see the banner's shared-state note.
+	forge::DriftEngine drift;
+	forge::Waveshape wave;
+	double phase = 0.0;
+
+	void seed(uint64_t s0, uint64_t s1 = 0) { drift.seed(s0, s1); }
+
+	// The D-11 five-coefficient copy, mirroring forge::VcoCore::setSpreadSeed
+	// field for field so ONE seeding callable drives both types.
+	void setSpreadSeed(uint64_t s0, uint64_t s1 = 0) {
+		drift.setSpreadSeed(s0, s1);
+		wave.triAsymmetrySpread = drift.triAsymmetrySpread;
+		wave.sawCurvatureSpread = drift.sawCurvatureSpread;
+		wave.squareDutySpread   = drift.squareDutySpread;
+		wave.pulseEdgeSpread    = drift.pulseEdgeSpread;
+		wave.bleedSpread        = drift.bleedSpread;
+	}
+
+	// Signature matches forge::VcoCore's step(...) exactly, so runBlockOn accepts
+	// this type with NO change whatsoever to the helper.
+	float step(const forge::VcoInputs& in) {
+		// Mirrored: the volt-domain sum of the three NON-FM pitch terms, with the
+		// semitone-to-octave division owned by the core (D-05).
+		float pitchVolts = in.pitchCV + in.coarse + in.fine * (1.f / 12.f);
+
+		// Mirrored: the D-14 bound, negated comparison FIRST as the NaN catcher.
+		if (!(pitchVolts > -forge::kVcoMaxPitchVolts)) pitchVolts = -forge::kVcoMaxPitchVolts;
+		if (pitchVolts > forge::kVcoMaxPitchVolts) pitchVolts = forge::kVcoMaxPitchVolts;
+
+		// Mirrored: exactly one exponential off the C4 reference.
+		float freq = forge::kVcoFreqC4 * forge::exp2_taylor5(pitchVolts);
+
+		// >>> THE DELIBERATE DEFECT, AND THE ONLY ONE. <<<
+		//
+		// The real core adds the FM contribution into the SUMMED VOLTS ABOVE,
+		// BEFORE the single exponential. This applies a SECOND exponential to the
+		// FM contribution and MULTIPLIES the already-resolved frequency by it —
+		// the shipped LFO's shape, and the whole of this type's divergence from
+		// src/dsp/VcoCore.hpp.
+		//
+		// DO NOT "FIX" THIS. Making the FM term sum into pitchVolts above would
+		// quietly turn invariant 7 green — by ceasing to detect anything — and
+		// that is precisely the failure mode this warning exists for. Invariant 7
+		// requires a NON-ZERO mismatch total on the fractional grid rows, so a
+		// fixed control fails loudly rather than silently.
+		if (in.fmConnected) freq *= forge::exp2_taylor5(in.fmVolts * in.fmAtten);
+
+		// Mirrored: the rate is sanitised BEFORE it is scaled.
+		const float safeRate = (in.sampleRate > 0.f) ? in.sampleRate : 0.f;
+		const float maxFreq  = forge::kVcoNyquistGuardFrac * safeRate;
+
+		// Mirrored: ceiling first, then the NaN-safe floor as the LAST writer.
+		if (freq > maxFreq) freq = maxFreq;
+		if (!(freq > 0.f)) freq = 0.f;
+
+		// Mirrored: both casts, the negated floor, the direct increment bound and
+		// the single-subtract wrap.
+		double deltaPhase = (double)freq * (double)in.sampleTime;
+		if (!(deltaPhase > 0.0)) deltaPhase = 0.0;
+		if (deltaPhase > forge::kVcoMaxDeltaPhase) deltaPhase = forge::kVcoMaxDeltaPhase;
+		phase += deltaPhase;
+		if (phase >= 1.0) phase -= 1.0;
+
+		// Mirrored: the input clamps and the unconditioned x5 scaling.
+		const float p = (float)phase;
+		const float morph = forge::clamp(in.morph, 0.f, 1.f);
+		const float character = forge::clamp(in.character, 0.f, 1.f);
+		return 5.f * wave.morphedWave(p, morph, character, 0.f);
+	}
+};
 
 } // namespace
 
@@ -1237,21 +1417,19 @@ TEST_CASE("vco pitch PITCH-03 FINE tune: +/-1 semitone shifts the MEASURED pitch
 //    produces exactly the same audio as that same voltage added onto V/OCT with
 //    the jack unpatched -- BIT for BIT, not approximately.
 //
-//    THE TRAP, AND IT DECIDES WHETHER THIS REQUIREMENT IS ACTUALLY TESTED. The
-//    natural grid for that identity is whole volts, and A MULTIPLICATIVE
-//    IMPLEMENTATION PASSES A WHOLE-VOLT GRID EXACTLY. The shipped LFO's FM shape
-//    -- resolve a frequency, then multiply it by an exponentiated modulator --
-//    is the explicit counter-example this phase was written against, and at
-//    INTEGER volt terms it agrees with the summing form to the last bit: the
-//    frozen polynomial produces integer octaves by writing the floating-point
-//    exponent field directly, so its value at a whole number is an EXACT power
-//    of two, and multiplying a float by an exact power of two is itself exact.
-//    An integer-only identity grid would therefore have passed the wrong
-//    implementation. That is why FM_IDENTITY_GRID above carries FRACTIONAL volt
-//    pairs, and why invariant 7 exists to demonstrate the failure rather than
-//    argue for it. The measured per-point mismatch table is in invariant 7's
-//    banner, including the integer rows' ZERO -- recorded as the measured trap
-//    it is rather than quietly avoided.
+//    THE TRAP, AND IT DECIDES WHETHER THIS REQUIREMENT IS ACTUALLY TESTED. A
+//    MULTIPLICATIVE IMPLEMENTATION -- the shipped LFO's shape, and the explicit
+//    counter-example this phase was written against -- SATISFIES THIS IDENTITY
+//    BIT-EXACTLY OVER MOST OF ITS NATURAL INPUT SPACE. The measured rule, derived
+//    and then verified numerically (see FM_IDENTITY_GRID's comment and invariant
+//    7's table): the identity cannot tell the two implementations apart whenever
+//    EITHER term is a WHOLE NUMBER of volts. Zero is a whole number, so leaving
+//    V/OCT at its default and sweeping the FM voltage -- the obvious test -- is
+//    blind at every FM value. THE V/OCT TERM MUST BE FRACTIONAL for a row to be
+//    evidence, which is why FM_IDENTITY_GRID pairs fractional V/OCT values with
+//    fractional products, and why it KEEPS four blind rows and marks them: the
+//    hole is recorded rather than merely avoided. Invariant 7 is what turns all
+//    of this from an argument into a measurement.
 //
 //    WHY THE COMPARATOR MATTERS AS MUCH AS THE GRID. doctest's approximate
 //    comparator appears NOWHERE in this file. Its zero-epsilon form still
@@ -1330,7 +1508,7 @@ TEST_CASE("vco pitch FM-01/FM-02/FM-03 exponential FM: the FM voltage sums into 
 				const float  product = fmProductOf(p);
 				const float  shifted = shiftedVoctOf(p);
 				const char*  role    = p.role;
-				const bool   integerTerms = p.integerTerms;
+				const bool   blindRow = p.blindRow;
 
 				// The jack PATCHED, at this point's voltage and attenuverter.
 				forge::VcoInputs conn = pitchBase();
@@ -1365,7 +1543,7 @@ TEST_CASE("vco pitch FM-01/FM-02/FM-03 exponential FM: the FM voltage sums into 
 
 				CAPTURE(sr);
 				CAPTURE(role);
-				CAPTURE(integerTerms);
+				CAPTURE(blindRow);
 				CAPTURE(p.voct);
 				CAPTURE(p.fmVolts);
 				CAPTURE(p.fmAtten);
@@ -1670,4 +1848,178 @@ TEST_CASE("vco pitch FM-01/FM-02/FM-03 exponential FM: the FM voltage sums into 
 			CHECK(bd.mismatches > 0);
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// 7. THE PERMANENT NEGATIVE CONTROL FOR INVARIANT 6 (FM-03 non-vacuity,
+//    validation-contract requirement 5).
+//
+//    THIS CASE PASSING MEANS THE CONTROL DETECTED SOMETHING. It drives
+//    DeliberatelyMultiplicativeFmCore through the SAME runBlockOn() helper and
+//    over the SAME FM_IDENTITY_GRID invariant 6 uses, and REQUIRES the stand-in
+//    to FAIL the summation identity on the fractional grid rows. A green
+//    invariant 7 is therefore evidence that invariant 6's identity is SENSITIVE
+//    to the FM ordering rather than merely satisfied by the current code.
+//
+//    MEASURED PER-POINT MISMATCH TABLE, harvested from an actual run during plan
+//    31-06 over 512-sample blocks, with a temporary print that was removed before
+//    the commit. Row order is FM_IDENTITY_GRID's; "mismatches" counts samples out
+//    of 512 on which the patched block differs from the shifted-V/OCT block.
+//
+//      row  V/OCT   fmV    atten  product  sum      44.1kHz  48kHz  96kHz
+//      ---  ------  -----  -----  -------  -------  -------  -----  -----
+//       1    0.00   +0.75  +1.00   +0.750   +0.750        0      0      0   <-- BLIND
+//       2   +0.25   +0.75  +1.00   +0.750   +1.000      492    491    469
+//       3   +1.00   +2.00  +1.00   +2.000   +3.000        0      0      0   <-- BLIND
+//       4   -1.50   +0.50  +0.50   +0.250   -1.250      328    342    297
+//       5   +2.00   -3.00  +1.00   -3.000   -1.000        0      0      0   <-- BLIND
+//       6   +0.50   +1.30  +0.37   +0.481   +0.981      487    483    463
+//       7   +3.25   -1.75  +1.00   -1.750   +1.500      502    501    488
+//       8   -2.00   +0.60  -0.50   -0.300   -2.300        0      0      0   <-- BLIND
+//
+//    Sighted-row totals: 1809 at 44.1 kHz, 1817 at 48 kHz, 1717 at 96 kHz, and
+//    5343 across the three rates -- which is the number the REQUIRE at the bottom
+//    of this case observes to be non-zero. Every sighted row diverges from the
+//    FIRST OR SECOND SAMPLE (firstBad is 0 on five of them and 2 on row 4), so
+//    the detection is immediate rather than something that needs a long block to
+//    accumulate.
+//
+//    THE FOUR ZEROES ARE THE MEASURED TRAP, NOT A GAP IN THE CONTROL, and the
+//    rule they follow is broader and more dangerous than "integer volt sums":
+//
+//      A ROW IS BLIND IF EITHER TERM IS A WHOLE NUMBER OF VOLTS.
+//
+//    Rows 3 and 5 have both terms whole. Row 8 has a FRACTIONAL product (-0.3)
+//    and is blind anyway, purely because its V/OCT volt is -2.0. And row 1 is the
+//    one that matters most: V/OCT AT ITS 0 V DEFAULT. Zero is a whole number, so
+//    the most natural FM test anyone would write -- leave V/OCT alone, sweep the
+//    FM voltage, assert the identity -- CANNOT DISTINGUISH THE TWO
+//    IMPLEMENTATIONS AT ANY FM VOLTAGE WHATSOEVER. Note row 1 and row 2 differ
+//    only in the V/OCT term, by a quarter of a volt, and that quarter volt is the
+//    entire difference between a vacuous test and a decisive one.
+//
+//    WHY THE RULE IS EXACT RATHER THAN STATISTICAL, since a reader will want to
+//    know whether the zeroes are luck. The frozen exponential splits its argument
+//    into an exponent field and a fractional remainder. Adding a WHOLE number of
+//    volts changes only the exponent field and leaves the polynomial's argument
+//    untouched, so its value at `a + b` with `a` whole is EXACTLY `2^a` times its
+//    value at `b`. Scaling a float by an exact power of two is itself exact and
+//    therefore commutes with the rounding of the multiply. The two
+//    implementations land on identical bits, necessarily, for every `b`.
+//
+//    IF ANY OF THE FOUR ZEROES EVER BECOMES NON-ZERO, THE FROZEN POLYNOMIAL
+//    CHANGED. Look at tests/check_frozen.sh and the frozen-header manifest first,
+//    not at this test: the exponent-field path is what makes whole-number
+//    arguments exact, and it is byte-pinned. The shipped LFO's goldens would move
+//    in the same commit.
+//
+//    THE HEALTH CHECKS DISTINGUISH THE TWO WAYS A CONTROL CAN FAIL AN IDENTITY.
+//    A stand-in that produced garbage — non-finite samples, or an unbounded
+//    accumulator — would also "fail" the identity, and would prove nothing about
+//    the ORDERING. So every block driven here is also required to be finite and
+//    inside the loose magnitude bound: this control fails the identity because it
+//    multiplies, and that is asserted rather than assumed.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco pitch FM-03 exponential FM NEGATIVE CONTROL: a deliberately MULTIPLICATIVE stand-in core FAILS the same summation identity through the same drive helper - this case passing means the control DETECTED the defect") {
+	const int n = 512;
+
+	int fractionalMismatchTotal = 0;
+	int fractionalRowsSeen      = 0;
+
+	for (double sr : SAMPLE_RATES) {
+		for (size_t gi = 0; gi < FM_IDENTITY_GRID_N; ++gi) {
+			const FmIdentityPoint& p = FM_IDENTITY_GRID[gi];
+
+			const float product      = fmProductOf(p);
+			const float shifted      = shiftedVoctOf(p);
+			const char* role         = p.role;
+			const bool  blindRow = p.blindRow;
+
+			forge::VcoInputs conn = pitchBase();
+			conn.pitchCV     = p.voct;
+			conn.fmVolts     = p.fmVolts;
+			conn.fmAtten     = p.fmAtten;
+			conn.fmConnected = true;
+			conn.morph       = 0.f;
+			conn.character   = 0.f;
+
+			forge::VcoInputs unp = pitchBase();
+			unp.pitchCV     = shifted;
+			unp.fmConnected = false;
+			unp.morph       = 0.f;
+			unp.character   = 0.f;
+
+			// THE SAME HELPER, UNCHANGED. runBlockOn accepts this type because
+			// its step(...) signature matches the real core's exactly — which is
+			// the whole reason the control is evidence about invariant 6's loop
+			// rather than about a loop of its own.
+			DeliberatelyMultiplicativeFmCore connCore;
+			seedLikeDriver(connCore);
+			std::vector<float> connBlock =
+				runBlockOn(connCore, sr, n, [=](int) { return conn; });
+
+			DeliberatelyMultiplicativeFmCore unpCore;
+			seedLikeDriver(unpCore);
+			std::vector<float> unpBlock =
+				runBlockOn(unpCore, sr, n, [=](int) { return unp; });
+
+			REQUIRE(connBlock.size() == (size_t)n);
+			REQUIRE(unpBlock.size() == (size_t)n);
+
+			const BlockDiff bd = diffBlocks(connBlock, unpBlock);
+
+			// Health, accumulated over both blocks: a control that failed the
+			// identity by producing garbage is a different fact from one that
+			// failed it by multiplying.
+			bool   allFinite   = true;
+			bool   insideBound = true;
+			int    firstBad    = -1;
+			double maxAbs      = 0.0;
+			for (size_t i = 0; i < connBlock.size(); ++i) {
+				const double a = (double)connBlock[i];
+				const double b = (double)unpBlock[i];
+				if (!std::isfinite(a)) { allFinite = false; if (firstBad < 0) firstBad = (int)i; }
+				if (!std::isfinite(b)) { allFinite = false; if (firstBad < 0) firstBad = (int)i; }
+				if (!(std::fabs(a) <= (double)kPitchLooseBoundV)) { insideBound = false; if (firstBad < 0) firstBad = (int)i; }
+				if (!(std::fabs(b) <= (double)kPitchLooseBoundV)) { insideBound = false; if (firstBad < 0) firstBad = (int)i; }
+				if (std::fabs(a) > maxAbs) maxAbs = std::fabs(a);
+				if (std::fabs(b) > maxAbs) maxAbs = std::fabs(b);
+			}
+
+			CAPTURE(sr);
+			CAPTURE(role);
+			CAPTURE(blindRow);
+			CAPTURE(p.voct);
+			CAPTURE(p.fmVolts);
+			CAPTURE(p.fmAtten);
+			CAPTURE(product);
+			CAPTURE(shifted);
+			CAPTURE(bd.mismatches);
+			CAPTURE(bd.firstBad);
+			CAPTURE(maxAbs);
+			CAPTURE(firstBad);
+
+			CHECK(allFinite);
+			CHECK(insideBound);
+
+			if (blindRow) {
+				// THE MEASURED TRAP. Zero here is the expected, recorded fact —
+				// see the banner. This is a CHECK rather than a REQUIRE because a
+				// change in it is a report about the frozen polynomial, not a
+				// reason to abandon the rest of the case.
+				CHECK(bd.mismatches == 0);
+			} else {
+				fractionalMismatchTotal += bd.mismatches;
+				++fractionalRowsSeen;
+			}
+		}
+	}
+
+	// THE ASSERTION THAT MAKES THIS A CONTROL RATHER THAN A DECORATION: the
+	// stand-in is OBSERVED failing the identity, on every invocation of the
+	// suite, over the rows whose terms are not whole numbers.
+	CAPTURE(fractionalRowsSeen);
+	CAPTURE(fractionalMismatchTotal);
+	REQUIRE(fractionalRowsSeen > 0);
+	REQUIRE(fractionalMismatchTotal > 0);
 }
