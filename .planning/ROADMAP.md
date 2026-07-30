@@ -202,7 +202,7 @@ Plans:
   3. Exponential FM (input × bipolar attenuverter × depth) sums into the pitch volt domain **before** the single `exp2_taylor5` call — musical exponential FM, not multiplicative.
   4. Frequency is clamped just below Nyquist and phase accumulates in double precision, so extreme pitch/FM never aliases via an out-of-range frequency and high-note sub-sample crossing placement stays accurate for later band-limiting.
 
-**Plans**: 4/9 plans executed
+**Plans**: 5/9 plans executed
 Plans:
 **Wave 1**
 
@@ -216,7 +216,7 @@ Plans:
 **Wave 3**
 
 - [x] 31-04-PLAN.md — Shell + panel: COARSE, FINE, FM DEPTH and FM IN declared with exact ranges/units (D-02/03/04/07/16), five bare POD assignments (D-17), four widgets and four rects
-- [ ] 31-05-PLAN.md — NEW `tests/test_vco_pitch.cpp`: derived-boundary self-check plus the TEST-02 tracking gate and its secondary telemetry tier, libm ground truth, this phase's own measured figures (D-18/19/20/21)
+- [x] 31-05-PLAN.md — NEW `tests/test_vco_pitch.cpp`: derived-boundary self-check plus the TEST-02 tracking gate and its secondary telemetry tier, libm ground truth, this phase's own measured figures (D-18/19/20/21)
 
 **Wave 4** *(blocked on Wave 3 — same test TU)*
 
@@ -314,7 +314,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
-| 31. Pitch, Tuning & Exponential FM | 4/9 | In Progress|  |
+| 31. Pitch, Tuning & Exponential FM | 5/9 | In Progress|  |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |

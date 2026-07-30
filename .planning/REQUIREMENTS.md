@@ -12,7 +12,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 
 ### Pitch & Tuning
 
-- [ ] **PITCH-01**: V/Oct input tracks 1V/octave across the audio range (C4 = 0V reference), reusing `forge::exp2_taylor5` for the exponential pitch law (no new exponential; shared-core bit-identity preserved)
+- [x] **PITCH-01**: V/Oct input tracks 1V/octave across the audio range (C4 = 0V reference), reusing `forge::exp2_taylor5` for the exponential pitch law (no new exponential; shared-core bit-identity preserved)
 - [ ] **PITCH-02**: COARSE tune knob sweeps ±5 octaves continuously
 - [ ] **PITCH-03**: FINE tune knob trims ±1 semitone (±100 cents) for detuning/beating
 - [ ] **PITCH-04**: Frequency is clamped just below Nyquist so extreme pitch/FM/sync never aliases via out-of-range frequency
@@ -70,7 +70,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 - [ ] **CORE-02**: Anti-aliasing lives in a new additive header (`MorphBlep.hpp`) that *calls* the frozen `Waveshape.hpp` — zero edits to shared headers
 - [x] **CORE-03**: `VcoCore` is a self-contained per-voice unit with no static/global mutable voice state — **polyphony-ready** so a future v2.1 polyphony is an additive shell change, not a rewrite
 - [x] **TEST-01**: A Rack-free test harness drives `VcoCore` over sample blocks (mirrors `BlockDriver`), runnable via `make test` with no libRack
-- [ ] **TEST-02**: V/Oct tracking accuracy is asserted (< 1 cent error) across the pitch range
+- [x] **TEST-02**: V/Oct tracking accuracy is asserted (< 1 cent error) across the pitch range
 - [ ] **TEST-03**: An alias-floor / spectral invariant asserts high-note aliasing stays below a defined threshold
 - [x] **TEST-04**: The shipped LFO's `.f32` goldens are replayed byte-identical in the same `make test` run as a standing non-regression canary
 - [ ] **TEST-05**: New VCO goldens — drift-off fixtures are cross-platform portable; drift-on fixtures are macOS-gated (matching the LFO policy)
@@ -116,7 +116,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PITCH-01 | Phase 31 | Pending |
+| PITCH-01 | Phase 31 | Complete |
 | PITCH-02 | Phase 31 | Pending |
 | PITCH-03 | Phase 31 | Pending |
 | PITCH-04 | Phase 31 | Pending |
@@ -150,7 +150,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | CORE-02 | Phase 32 | Pending |
 | CORE-03 | Phase 30 | Complete |
 | TEST-01 | Phase 29 | Complete |
-| TEST-02 | Phase 31 | Pending |
+| TEST-02 | Phase 31 | Complete |
 | TEST-03 | Phase 32 | Pending |
 | TEST-04 | Phase 29 | Complete |
 | TEST-05 | Phase 36 | Pending |
