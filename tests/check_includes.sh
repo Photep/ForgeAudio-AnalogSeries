@@ -49,8 +49,10 @@
 #         one. For the section-1 VCO-leak detector it demonstrably reports both
 #         a DIRECT and a TWO-HOP synthetic violation. For the section-2
 #         Rack-free detector it proves BOTH directions of the documented
-#         exemption: a genuine Rack SDK include is still caught, and the one
-#         exempted shim path is not flagged. They run the SAME functions those
+#         exemption AND its WIDTH: a genuine Rack SDK include is still caught,
+#         the one exempted shim path is not flagged, and a genuine SDK include
+#         that merely quotes the exempted path in a trailing comment is still
+#         caught (WR-05). They run the SAME functions those
 #         sections run: a control that exercises different code than the guard
 #         proves nothing, and a control that only covers the direct shape
 #         validates the regex rather than the scope.
@@ -152,18 +154,44 @@ detect_vco_includes() {
 # to close.
 #
 # A function rather than an inline grep, for the same reason
-# detect_vco_includes is one: [6/7] runs THIS function over two synthetic
+# detect_vco_includes is one: [6/7] runs THIS function over three synthetic
 # fixtures — one carrying a real SDK include, one carrying only the exempted
-# shim — so the exemption is validated in both directions on every invocation
-# rather than assumed. A control that re-implements the check it is validating
-# proves only that two greps agree.
+# shim, and one carrying a real SDK include with the exempted path quoted in a
+# trailing comment — so the exemption is validated in both directions AND at its
+# exact width on every invocation rather than assumed. A control that
+# re-implements the check it is validating proves only that two greps agree.
 # ---------------------------------------------------------------------------
 detect_rack_sdk_includes() {
 	local f
 	for f in "$@"; do
 		[[ -f "${f}" ]] || continue
+		# THE EXCLUSION IS ANCHORED TO A WHOLE LINE, NOT APPLIED AS A SUBSTRING
+		# TEST (WR-05). It used to be a bare `grep -vE` for the shim's include
+		# directive with no anchors, so ANY output line containing that text
+		# anywhere was discarded — including a line whose REAL directive is a
+		# genuine SDK include and whose trailing comment merely quotes the
+		# exempted path:
+		#
+		#     #include <rack.hpp>  // superseded by #include "dsp/RackCompat.hpp"
+		#
+		# The Phase-30 reviewer reproduced that evasion against this live
+		# function body. Neither pre-existing [6/7] fixture covered the shape,
+		# because both are single-directive lines — so the exemption was wider
+		# than the banner above claims to pin, and [2/7]'s PASS meant nothing
+		# for any line carrying the shim path in a comment. [6/7]'s nc5 control
+		# is now that shape and must FIRE on every invocation.
+		#
+		# The anchor permits the `grep -n` line-number prefix ON PURPOSE: this
+		# exclusion runs DOWNSTREAM of `grep -nE`, so every line it sees is
+		# prefixed with `<lineno>:`. It also permits trailing whitespace and a
+		# trailing `//` or `/*` comment, which is load-bearing rather than
+		# generous — src/dsp/VcoCore.hpp's real exempted line carries one
+		# (`// forge::exp2_taylor5, forge::clamp`), and forbidding it would turn
+		# [2/7] red on the live VCO header. What the anchor forbids is any OTHER
+		# directive preceding the shim's, because the shim directive must now be
+		# the first non-whitespace content after the line-number prefix.
 		grep -nE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"][^">]*[Rr]ack[^">]*[>"]' "${f}" \
-			| grep -vE '#[[:space:]]*include[[:space:]]*"dsp/RackCompat\.hpp"' \
+			| grep -vE '^[0-9]+:[[:space:]]*#[[:space:]]*include[[:space:]]*"dsp/RackCompat\.hpp"[[:space:]]*((//|/\*).*)?$' \
 			| sed "s|^|${f#${ROOT}/}:|" || true
 	done
 }
@@ -362,8 +390,9 @@ fi
 # The detection itself lives in detect_rack_sdk_includes above, together with
 # the one documented exact-path exemption ("dsp/RackCompat.hpp", the repo's own
 # Rack-FREE shim) and the reasoning for it. [6/7] runs that same function over
-# two synthetic fixtures, so the exemption is proven both to still catch a
-# genuine SDK include and to not flag the shim, every time this script runs.
+# three synthetic fixtures, so every time this script runs the exemption is
+# proven to still catch a genuine SDK include, to not flag the shim, and to be
+# anchored to a whole directive rather than a whole line (WR-05).
 # ---------------------------------------------------------------------------
 echo "[2/7] VCO headers are Rack-free..."
 if [[ "${#VCO_HEADERS[@]}" -eq 0 ]]; then
@@ -516,13 +545,18 @@ fi
 #
 #   * detect_vco_includes, which [1/7] depends on — a DIRECT (one-hop) fixture
 #     and a TWO-HOP fixture, both of which must produce a hit.
-#   * detect_rack_sdk_includes, which [2/7] depends on — a fixture carrying a
-#     genuine Rack SDK include, which must produce a hit, AND a fixture
-#     carrying only the exempted shim path, which must NOT. Both directions
-#     are required: the first alone would still pass if the exemption were
-#     widened to a substring match, and the second alone would still pass if
-#     the detector were deleted outright. Together they pin the exemption to
-#     exactly the width it is documented to have.
+#   * detect_rack_sdk_includes, which [2/7] depends on — THREE fixtures. One
+#     carrying a genuine Rack SDK include, which must produce a hit. One
+#     carrying only the exempted shim path, which must NOT. And one carrying a
+#     genuine SDK include whose TRAILING COMMENT quotes the exempted path, which
+#     must produce a hit. All three are required. The first alone would still
+#     pass if the exemption were widened to a substring match; the second alone
+#     would still pass if the detector were deleted outright; and the first two
+#     TOGETHER still passed while the exemption discarded whole output lines
+#     instead of whole directives — that gap was WR-05, real and reproduced, not
+#     hypothetical, and it is what the third fixture exists for. This section
+#     previously claimed the first two pinned the exemption "to exactly the width
+#     it is documented to have". They did not. Three do.
 #
 # If any of these fixtures behaves the wrong way, the corresponding section's
 # green above means nothing and this section fails the gate.
@@ -612,6 +646,32 @@ if [[ -z "${nc4_hits}" ]]; then
 else
 	note_fail "the documented exemption is NOT in effect: detect_rack_sdk_includes flagged a fixture whose only include is the exempted \"dsp/RackCompat.hpp\". D-14's mandated forge::exp2_taylor5 lives in that shim, so every VCO header that includes what it uses will hard-fail this build gate:"
 	printf '%s\n' "${nc4_hits}" | sed "s|${TMP}/|<scratch>/|" | sed 's/^/    /'
+fi
+
+# THE WR-05 EVASION CONTROL — deferred item 5's third fixture for [2/7].
+#
+# The two fixtures above are both SINGLE-DIRECTIVE lines, which is exactly why
+# neither of them covered the shape the Phase-30 reviewer reproduced against the
+# live detect_rack_sdk_includes body: a line whose real directive is a genuine
+# Rack SDK include, with the exempted shim path quoted in a trailing comment on
+# the SAME LINE. Against the unanchored exclusion that line was discarded whole
+# and the SDK include disappeared, so nc3 (a bare <rack.hpp>) and nc4 (a bare
+# shim include) could BOTH behave correctly while the exemption was still wider
+# than its banner claims. Together the three now pin it to whole DIRECTIVES
+# rather than whole LINES.
+cat > "${TMP}/VcoNcRackSdkCommentEvasionProbe.hpp" <<'EOF'
+#pragma once
+// Synthetic fixture: a VCO-shaped header whose REAL directive is a genuine Rack
+// SDK include, carrying the exempted shim's directive verbatim in a trailing
+// comment on the same line. WR-05's evasion shape; it must still be caught.
+#include <rack.hpp>  // superseded by #include "dsp/RackCompat.hpp"
+EOF
+nc5_hits="$(detect_rack_sdk_includes "${TMP}/VcoNcRackSdkCommentEvasionProbe.hpp")"
+if [[ -n "${nc5_hits}" ]]; then
+	echo "  OK: [2/7] detector still reports a genuine Rack SDK include whose trailing comment quotes the exempted shim path (WR-05's evasion shape):"
+	printf '%s\n' "${nc5_hits}" | sed "s|${TMP}/|<scratch>/|" | sed 's/^/    /'
+else
+	note_fail "the WR-05 evasion control DID NOT FIRE: detect_rack_sdk_includes reported a fixture whose real directive is <rack.hpp> as clean, because the exempted path appears in a trailing COMMENT on that line. The exemption is swallowing whole OUTPUT LINES rather than whole DIRECTIVES, so [2/7]'s PASS above is meaningless for any line that carries the shim path in a comment — a genuine Rack SDK include hides behind five characters of comment text. This is Phase 30's deferred item 5 (WR-05) regressing: re-anchor the exclusion in detect_rack_sdk_includes to a whole grep -n line."
 fi
 
 echo "  NOTE: these negative controls are what make this audit VALIDATED rather than"

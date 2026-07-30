@@ -128,6 +128,33 @@ them; each names the plan that should resolve it.
   telemetry contract Phase 35 will cross; ~40 lines of duplicated input functors between
   test invariants 4 and 5; and a miscounted helper reference in a file banner. None is
   planned; `30-REVIEW.md` is the record.
+- **RESOLVED — 2026-07-30, plan 31-01 Task 2. Both halves of the prescribed fix landed.**
+  **Phase 31 owned it because Phase 31 touched the script.** This item's own "Resolve at"
+  named *"the next phase that touches `tests/check_includes.sh`"*, and decision **D-23**
+  made that condition true by requiring an explicit, reviewable `VCO_SIDE_ALLOW` entry for
+  `tests/test_vco_pitch.cpp` (plan 31-01 Task 1). Restating the deferral with a new owner
+  would have left it pointed at a condition that was already satisfied — the same
+  false-comment class plan 30-08 existed to remove — so `31-CONTEXT.md`'s `<deferred>`
+  block folded it in instead.
+  **Half one, the anchor.** `detect_rack_sdk_includes`'s exclusion stage is now anchored to
+  a whole `grep -n` output line: `^[0-9]+:` (the line-number prefix, permitted on purpose
+  because the exclusion runs downstream of `grep -nE`), then optional whitespace, then the
+  shim directive, then optional trailing whitespace and an optional `//` or `/*` comment,
+  then end-of-line. The trailing-comment allowance is load-bearing rather than generous —
+  `src/dsp/VcoCore.hpp:74` carries `// forge::exp2_taylor5, forge::clamp` on its real
+  exempted line, and forbidding it would have turned `[2/7]` red on the live VCO header.
+  What the anchor forbids is any OTHER directive preceding the shim's.
+  **Half two, the control that fires.** `[6/7]` gained a fifth fixture,
+  **`VcoNcRackSdkCommentEvasionProbe.hpp`** (`nc5_hits`), whose single include line is
+  `#include <rack.hpp>  // superseded by #include "dsp/RackCompat.hpp"` — the reviewer's
+  exact evasion shape. It runs through the SAME `detect_rack_sdk_includes` that `[2/7]`
+  calls and must produce a HIT on every invocation. The fix was verified by A/B rather than
+  by inspection: against the OLD unanchored pattern that fixture is reported **clean** (the
+  evasion, reproduced independently here), and against the anchored pattern it **hits**,
+  while the legitimate `VcoCore.hpp`-shaped line stays exempt under both. The four
+  pre-existing controls are preserved by name and still behave.
+  **The four Info findings above are still only RECORDED, not planned.** Nothing in this
+  plan promoted them to work; `30-REVIEW.md` remains their record.
 
 ---
 
