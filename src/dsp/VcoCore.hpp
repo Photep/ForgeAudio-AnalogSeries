@@ -119,6 +119,62 @@ constexpr float kVcoFreqC4 = 261.6256f;         // C4 = 0 V, the standard VCV V/
 // INCREMENT declared just below, which D-12 leaves untouched.
 constexpr float kVcoNyquistGuardFrac = 0.495f;  // 0.5 x sampleRate x 0.99 (PITCH-04 / D-11)
 
+// HOSTILE-INPUT bound on the SUMMED PITCH VOLTS, applied BEFORE the exponential
+// (D-14 / T-31-01 / T-31-02). This is a third KIND of constant again: not a
+// Nyquist policy on the frequency and not a correctness bound on the phase
+// increment, but an UNDEFINED-BEHAVIOR bound on the argument handed to a FROZEN
+// helper.
+//
+// WHAT IT GUARDS. forge::exp2Floor (src/dsp/RackCompat.hpp:104-111, reached
+// through forge::exp2_taylor5) adds 127 to its argument, casts the result to
+// int32_t, and then shifts that integer LEFT BY 23 into a float union:
+//     x += 127.f;  int32_t xi = (int32_t)x;  ...  yii = xi << 23;
+// Casting a NaN, an infinity or an out-of-int32_t float to int32_t is undefined
+// behavior, and left-shifting a negative or over-large int32_t is undefined
+// behavior as well. Rack does NOT sanitise cable voltages -- an upstream module
+// may deliver NaN, +/-infinity or an arbitrary magnitude -- and the FM term
+// summed in step(...) below is the FIRST term that routes such a voltage into
+// that argument. Before FM, the only route was the V/OCT jack; FM widens it.
+//
+// WHY THE FIX IS HERE AND NOT THERE. The natural place to bound the argument is
+// inside the helper. That helper lives in a FROZEN header: it is byte-pinned by
+// tests/check_frozen.sh (which runs inside `make guards`) and it is consumed by
+// the SHIPPED Analog LFO, whose goldens replay bit-exact inside `make test`.
+// Editing it is a GUARDRAIL EVENT requiring operator sign-off and a golden
+// re-verification, not a VCO fix. So the bound is LOCAL to this core, on this
+// side of the call. (The shipped LFO reaches the identical latent UB through its
+// own FM path -- src/AnalogLFO.cpp:320 into src/dsp/LfoCore.hpp:183-184. That is
+// recorded as a deferred item, deliberately unfixed, and is why NO repo-wide
+// sanitizer gate is wired into `make test` or CI: it would turn the live module
+// red. D-24.)
+//
+// THE MEASURED ENVELOPE. The frozen helper is well defined only while its
+// argument lands in [-127, +128], i.e. while x + 127 lands in [0, 255].
+//
+// THE MEASURED REACHABLE MUSICAL WORST CASE is about 29.08 V: Rack's +/-12 V
+// cable norm on V/OCT, plus +/-5 octaves of coarse tune, plus one twelfth of an
+// octave of fine tune, plus +/-12 V of FM at the 1.0 octave-per-volt contract a
+// full-clockwise attenuverter delivers (D-06). 64 therefore sits about 2.2x
+// OUTSIDE anything a legitimate patch can produce -- so this bound can never
+// fire on real music -- and about 2.0x INSIDE the undefined-behavior boundary.
+//
+// WHY 64 AND NOT A NEIGHBOUR. It is a power of two and therefore exactly
+// representable as a float, so neither comparison below carries any rounding.
+// And the resulting frequency stays FINITE at BOTH extremes -- MEASURED
+// 4.826e21 Hz at +64 V and 1.418e-17 Hz at -64 V -- so the ceiling and floor
+// downstream operate on real numbers. A bound of 120 or 126 is equally safe for
+// the shift, but MEASURED produces a positive INFINITY at the top and hands the
+// downstream ceiling an infinity instead of a number, which is strictly less
+// clean. 32 V was rejected as too tight (only 1.10x over the reachable 29.08 V).
+//
+// THE CONSEQUENCE AT THE NEGATIVE BOUND IS DELIBERATE, and it is D-13's stated
+// behavior rather than a regression: at -64 V the frequency becomes
+// denormal-small (1.418e-17 Hz), the existing negated frequency floor does NOT
+// fire because that value is POSITIVE, the phase increment is about 3.2e-22,
+// and the output is effectively DC. PITCH-04 speaks only to the top end; no
+// low-end frequency floor is added here or anywhere.
+constexpr float kVcoMaxPitchVolts = 64.f;       // UB bound on the exp2 argument (D-14), well inside the frozen helper's [-127, +128]
+
 // WRAP-CORRECTNESS bound on the phase increment (plan 30-08 / CR-01 / T-30-01).
 // This is a DIFFERENT KIND OF CONSTANT from kVcoNyquistGuardFrac above and must
 // not be confused with it. kVcoNyquistGuardFrac is a Nyquist POLICY bound on the
@@ -208,9 +264,79 @@ struct VcoCore {
 
 		// D-14 pitch: exp2 off C4 = 0 V, using the frozen Rack polynomial
 		// approximation forge::exp2_taylor5 and NEVER libm std::exp2/std::pow —
-		// bit-identity of the FM path (Phase 31) depends on this exact function.
-		// Phase 31 sums coarse/fine/FM into the volt domain BEFORE this call.
-		float freq = kVcoFreqC4 * exp2_taylor5(in.pitchCV);
+		// bit-identity of the FM path depends on this exact function.
+		//
+		// ONE EXPONENTIAL, FED BY A VOLT-DOMAIN SUM (D-01 / FM-03). All four
+		// pitch terms — the V/OCT jack, coarse tune in octaves, fine tune in
+		// semitones and the gated FM contribution — are added together in the
+		// VOLT domain, and the sum passes through EXACTLY ONE
+		// forge::exp2_taylor5 call. That is what makes the FM musical
+		// EXPONENTIAL FM: a fixed modulator voltage shifts the pitch by a fixed
+		// number of SEMITONES no matter what note is playing.
+		//
+		// THE TWO WAYS TO GET THIS WRONG, both rejected here. Multiplying the
+		// resolved FREQUENCY by an exponentiated modulator gives LINEAR-FM
+		// behavior at the wrong place in the chain; calling the exponential
+		// TWICE and combining the results detunes by a different amount in every
+		// octave. This ordering exists to avoid both. The SHIPPED LFO's FM path
+		// (src/dsp/LfoCore.hpp:181-187) is the COUNTER-EXAMPLE, not the
+		// template: it resolves a frequency first and then multiplies it by an
+		// exponentiated modulator, and it scales the modulator down for
+		// sub-audio wobble. Exactly ONE thing is borrowed from it — the
+		// `in.fmConnected` gate. The frequency multiply is rejected by D-01, the
+		// sub-audio scaling factor by D-06, and its low-frequency clamp by D-13.
+		//
+		// NO DEPTH CONSTANT, BY DECISION (D-06). Full clockwise on the
+		// attenuverter is 1.0 OCTAVE PER VOLT, so the FM jack at full depth is
+		// simply a SECOND V/OCT input. That contract is expressed by the bare
+		// product `in.fmVolts * in.fmAtten` and is recorded here in words: a
+		// named constant equal to one would be a multiply the compiler removes
+		// and a number with no requirement behind it.
+		//
+		// THE GATE LIVES IN THE CORE, NOT THE SHELL (D-09 / D-17). With the jack
+		// unpatched the FM term is not merely zero, it is NOT EVALUATED, so the
+		// unpatched instruction sequence is identical to the pre-FM one whatever
+		// in.fmVolts and in.fmAtten happen to hold. The shell forwards raw
+		// values and computes nothing.
+		//
+		// THE CORE OWNS THE SEMITONE-TO-OCTAVE DIVISION (D-05). in.fine is
+		// documented in SEMITONES, so it is scaled by 1/12 here rather than in
+		// the shell. The POD's documented units do not change.
+		//
+		// EVERYTHING STAYS IN FLOAT. The whole summation is upstream of the
+		// (double) casts on the phase increment below, and the MEASURED float
+		// summation error is 0.0011 cents — four orders of magnitude under the
+		// one-cent gate. Promoting it to double would diverge from the
+		// float-typed POD fields for no measurable gain and would put a needless
+		// conversion in the audio path.
+		float pitchVolts = in.pitchCV + in.coarse + in.fine * (1.f / 12.f);
+		if (in.fmConnected) pitchVolts += in.fmVolts * in.fmAtten;
+
+		// D-14: bound the summed volts BEFORE the exponential, because the thing
+		// being protected is the (int32_t) cast and the << 23 shift that the
+		// exponential reaches (see kVcoMaxPitchVolts above for the full
+		// rationale and the measured envelope). The bound MUST sit between the
+		// summation and the call: after the call the undefined behavior has
+		// already happened.
+		//
+		// THE NEGATED COMPARISON COMES FIRST AND IS THE NaN CATCHER, exactly
+		// like the frequency floor and the deltaPhase floor below. A NaN fails
+		// `pitchVolts > -kVcoMaxPitchVolts`, so the negation is TRUE and the NaN
+		// lands on the fallback branch and becomes -64 V; that value then fails
+		// the plain upper comparison and survives unchanged. Every non-finite
+		// and out-of-range input therefore leaves this pair as a real number
+		// inside [-64, +64].
+		//
+		// forge::clamp IS REJECTED HERE BY NAME (deferred item 3 / CR-02). It is
+		// a comparison ladder — `x < lo ? lo : (x > hi ? hi : x)` — and BOTH of
+		// its comparisons are FALSE for a NaN, so a NaN passes straight through
+		// it UNCHANGED. It is inert against precisely the input class this guard
+		// exists to stop. (forge::clamp is still the right tool for morph and
+		// character further down, where the inputs are already finite.)
+		if (!(pitchVolts > -kVcoMaxPitchVolts)) pitchVolts = -kVcoMaxPitchVolts;
+		if (pitchVolts > kVcoMaxPitchVolts) pitchVolts = kVcoMaxPitchVolts;
+
+		float freq = kVcoFreqC4 * exp2_taylor5(pitchVolts);
 
 		// The rate is sanitised BEFORE it is scaled, not after (WR-06). Written
 		// positively rather than negated, because here the NaN case wants the
