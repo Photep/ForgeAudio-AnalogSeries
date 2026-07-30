@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 31
 current_phase_name: Pitch, Tuning & Exponential FM
 status: executing
-stopped_at: Completed 31-07-PLAN.md
-last_updated: "2026-07-30T03:19:01.052Z"
+stopped_at: Completed 31-08-PLAN.md
+last_updated: "2026-07-30T03:39:13.900Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 31 execution started
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 24
-  completed_plans: 22
+  completed_plans: 23
   percent: 25
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 31 (Pitch, Tuning & Exponential FM) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-07-30 — Phase 31 execution started
 
@@ -137,6 +137,11 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 31]: 31-04 — both FM fields forwarded UNCONDITIONALLY from the shell; the shipped LFO's zeroing ternary (src/AnalogLFO.cpp:320) is named in the source as the anti-pattern with three independent reasons (D-09/D-17)
 - [Phase 31]: 31-04 — the shell's canary argument now leads with STRUCTURE (the canary is the TU the guard compiles against a perturbed VcoCore header, and the only VCO TU link-checkable without the Rack SDK) and demotes the field count to corroboration — the margin narrowed to 7-of-8 vs 8-of-8 with drift the sole gap, and Phase 34 closes it
 - [Phase 31]: 31-04 — no requirement marked complete (PITCH-02, PITCH-03, FM-01, FM-02 stay Pending) — FOURTH consecutive plan in phase 31 declining, because 31-06 owns the behavioral assertions that make them non-vacuous
+- [Phase 31]: 31-08 phase gate: TEST-02 discharged as a HARD gate - all six selectors green AND each proven to have matched its exact expected case count (2/1/1/2/1/1) — A negative control on the same binary shows a selector matching ZERO cases also exits 0 and prints Status: SUCCESS!, so exit status cannot distinguish a gate that passed from a gate that never ran
+- [Phase 31]: 31-08: the three-OS matrix and the Windows link leg observed green BY HASH EQUALITY - run 30511183170 on 80fb90a, toolchain-gate success AND step 6 win-x64 leg reproduction OWN conclusion success — The pre-phase commit da266bb had its OWN green run sitting one line above it in gh run list, which is exactly why recency would have been wrong; and a job conclusion alone is insufficient because a step that fail-fasts upstream reports skipped
+- [Phase 31]: 31-08: the matrix case-count gap is ACCOUNTED FOR by measuring BOTH sides - +9 cases and +1,941 assertions on every leg identically (macOS 72->81, Ubuntu/Windows 69->78) — The macOS-vs-others gap is unchanged at exactly 3 cases / 24,582 assertions before AND after, matching the three macOS-gated drift-ON goldens measured locally. A per-leg BEFORE/AFTER delta is evidence that all nine new cases ran everywhere; an absent #if in the new file is only an argument
+- [Phase 31]: 31-08: the std::pow-under-src prohibition is UNSATISFIABLE as written and must be scoped to the VCO seam or to a baseline comparison in future plans — src/dsp/Anim.hpp:40 is a frozen, byte-pinned, shipped-LFO header containing std::pow, absent from the phase diff and unchanged from baseline. Three further criterion artifacts were reported the same way: inline constexpr (3 raw hits, all comment lines forbidding it), static constexpr (14 non-comment hits, mostly the PERMITTED namespace-scope form), and #if defined(__APPLE__) (2 directives gating 3 cases)
+- [Phase 31]: 31-08: D-24 recorded in deferred-items.md item 1 pointed at NO PHASE, marked a guardrail event and unfixed by decision; the clamp-helper item recorded HALF closed — Both shipped call sites read this session: AnalogLFO.cpp:320 -> LfoCore.hpp:183-186 -> RackCompat.hpp:106/:109. Consequence recorded: a permanent repo-wide UBSan gate cannot be adopted while it stands. The clamp helper is half closed - the pitch-volt half honoured the local-to-VcoCore constraint, the morph/character half stays pointed at the phase adding their CV inputs
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -183,13 +188,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 31 P05 | 22min | 3 tasks | 1 files |
 | Phase 31 P06 | 26min | 3 tasks | 1 files |
 | Phase 31 P07 | 19min | 3 tasks | 2 files |
+| Phase 31 P08 | 12min | 3 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-30T03:19:01.044Z
-Stopped at: Completed 31-07-PLAN.md
+Last session: 2026-07-30T03:38:38.508Z
+Stopped at: Completed 31-08-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
