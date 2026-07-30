@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 31
 current_phase_name: Pitch, Tuning & Exponential FM
 status: executing
-stopped_at: Completed 31-02-PLAN.md
-last_updated: "2026-07-30T01:20:32.017Z"
+stopped_at: Completed 31-03-PLAN.md
+last_updated: "2026-07-30T01:39:01.142Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 31 execution started
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 24
-  completed_plans: 17
+  completed_plans: 18
   percent: 25
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 31 (Pitch, Tuning & Exponential FM) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
 Last activity: 2026-07-30 — Phase 31 execution started
 
@@ -128,6 +128,11 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 31]: kVcoNyquistGuardFrac settled at 0.495f (PITCH-04 / D-11) with derived ceilings, crossover volts and D-10's hard-clamp decision in the source — The constant's own comment named Phase 31 as its replacement; leaving it provisional would have kept PITCH-04's policy undecided while three separate comments pointed forward at work already done
 - [Phase 31]: PITCH-04 NOT marked complete at 31-02 — 31-07 owns the pitch-driven Nyquist assertion — 31-02 settles the policy constant but asserts no clamp behavior; 31-RESEARCH grades PITCH-04 coverage partial because the existing freqNyquistBounded pin is driven by hostile timing, not hostile pitch. Marking it here would repeat the PANEL-03 false green
 - [Phase 31]: kVcoMaxDeltaPhase's cross-reference de-tensed alongside the margin arithmetic (Rule 2), value and type untouched per D-12 — The comment instructed a future Phase 31 to leave the constant alone; once Phase 31 had, that instruction was a false forward-reference in the very file plan 30-08 existed to clean
+- [Phase 31]: kVcoMaxPitchVolts = 64.f bounds the summed pitch volts before the single exp2 — power of two (no rounding in the comparisons), 2.2x outside the reachable musical worst case (29.08 V), 2.0x inside the frozen helper's UB boundary, and FINITE at both extremes where 120/126 hand the downstream ceiling an infinity
+- [Phase 31]: the D-14 bound uses the negated-comparison idiom with the negated line FIRST as the NaN catcher; forge::clamp is rejected BY NAME in the source because both of its comparisons are false for a NaN (closes deferred item 3 / CR-02)
+- [Phase 31]: the D-22 RED evidence is a one-shot UBSan probe (RackCompat.hpp:106:24 float-cast-overflow + :109:11 left-shift), NOT a behavioral case — the same probe run reproduced the measurement that every behavioral assertion was already GREEN pre-fix. No permanent sanitizer gate, because the SHIPPED LFO shares the identical latent UB via AnalogLFO.cpp:320 -> LfoCore.hpp:183-184 (D-24)
+- [Phase 31]: no requirement marked complete — third consecutive plan in phase 31 declining a false green. PITCH-01/05 await 31-05; PITCH-02/03 and FM-01/02/03 await 31-04's controls plus 31-06's assertions; PITCH-04 awaits 31-07
+- [Phase 31]: tel.freqHz for hostile pitch moved from 0 to 1.41828e-17 — the guarded value is POSITIVE so the negated frequency floor correctly does not fire (D-13's stated intent). A 'tel.freqHz == 0 for hostile pitch' assertion in 31-07 would now FAIL
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -169,13 +174,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P10 | 7 min | 2 tasks | 1 files |
 | Phase 31 P01 | 7m | 2 tasks | 2 files |
 | Phase 31 P02 | 7min | 2 tasks | 1 files |
+| Phase 31 P03 | 12min | 3 tasks | 1 files |
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/31-pitch-tuning-exponential-fm/31-CONTEXT.md
+**Resume file:** None
 
-Last session: 2026-07-30T01:20:32.010Z
-Stopped at: Completed 31-02-PLAN.md
+Last session: 2026-07-30T01:38:44.901Z
+Stopped at: Completed 31-03-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
