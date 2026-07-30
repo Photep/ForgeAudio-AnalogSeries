@@ -1,8 +1,9 @@
 // src/AnalogVCO.cpp
 //
-// The minimum-viable Rack shell for the Phase-30 VCO skeleton. It owns Rack
-// indices; forge::VcoCore owns arithmetic; the POD between them is the same one
-// the Phase-29 harness drives.
+// The minimum-viable Rack shell for the VCO — Phase 30 built it around the
+// skeleton core, Phase 31 added the tune and FM controls. It owns Rack indices;
+// forge::VcoCore owns arithmetic; the POD between them is the same one the
+// Phase-29 harness drives.
 //
 // THIS FILE DOES NO DSP, AND THAT IS LOAD-BEARING. No pitch maths, no output
 // scaling, no conditioning, no clamping, no smoothing. Every sample Rack hears
@@ -51,7 +52,8 @@
 // FINAL 18 HP geometry and the FINAL filename, so Phase 35 (PANEL-01/PANEL-02)
 // is an art swap rather than a rewiring. The CRT display is Phase 35's
 // DISP-01..03 and is deliberately absent here, as is any patch-state
-// serialization: the VCO persists nothing in Phase 30.
+// serialization: the VCO persisted nothing in Phase 30 and still persists
+// nothing in Phase 31, so no control declared above survives a patch save yet.
 //
 // The oscillator this exposes is CRUDE AND ALIASED ON PURPOSE. Phase 32 owns
 // band-limiting; nothing here should be judged on how it sounds.
