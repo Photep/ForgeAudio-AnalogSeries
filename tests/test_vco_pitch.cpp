@@ -713,3 +713,362 @@ TEST_CASE("vco pitch TEST-02 SECONDARY TIER (the WEAKER tier, reads telemetry): 
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 4. PITCH-02 / D-02: COARSE TUNE, MEASURED ACROSS ITS WHOLE DECLARED RANGE
+//    AND AT NON-INTEGER VALUES.
+//
+//    THE CLAIM. A coarse value of n octaves shifts the MEASURED output pitch by
+//    exactly n octaves, anywhere in the -5..+5 octave range src/AnalogVCO.cpp
+//    declares for the knob, and it COMPOSES with the V/OCT jack rather than
+//    replacing it. Measured on the returned samples against the same libm
+//    reference and the same single tolerance constant invariant 2 uses.
+//
+//    THE TRAP THIS GRID IS WRITTEN AGAINST, and the reason the non-integer
+//    points below are here BY REQUIREMENT rather than out of thoroughness.
+//    PITCH-02 says the sweep is CONTINUOUS and D-02 honours that word
+//    literally: no snap to whole octaves, no snap to semitones, no snap of any
+//    kind. AN INTEGER-ONLY GRID CANNOT TELL A CONTINUOUS SWEEP FROM A SNAPPED
+//    ONE, because every point of an integer grid lands exactly where a
+//    whole-octave snap would put it. So the four non-integer values are the
+//    control for the word "continuously", and the two snap hypotheses they
+//    exclude are different sizes:
+//      - a snap to WHOLE OCTAVES would move -2.37 to -2.0 (444 cents), -0.5 or
+//        +0.5 to zero (600 cents) and 3.75 to 4.0 (300 cents). Any of the four
+//        would fail by four orders of magnitude.
+//      - a snap to SEMITONES is much subtler and only ONE of the four catches
+//        it: -0.5, +0.5 and 3.75 octaves are all whole numbers of semitones
+//        (-6, +6 and +45), so a semitone snap would not move them at all.
+//        -2.37 octaves is -28.44 semitones and a semitone snap moves it 44
+//        cents, which is 880x this file's tolerance. That row is the only
+//        reason the semitone hypothesis is excluded, which is why it is not
+//        interchangeable with the others.
+//    An OPTIONAL octave/semitone snap is a possible future feature and is
+//    recorded as a DEFERRED ITEM, not as something missing: D-02 decided
+//    against it for this milestone, so this case pins the decided behavior and
+//    would correctly go red if a snap were added without revisiting D-02.
+//
+//    WHY THREE COMBINED POINTS WITH OPPOSITE SIGNS. A grid that only ever moves
+//    ONE term at a time is satisfied by an implementation where one term
+//    OVERWRITES the other -- `pitchVolts = in.coarse` instead of
+//    `pitchVolts = in.pitchCV + in.coarse` passes every coarse-only row at zero
+//    V/OCT and every V/OCT row at zero coarse. The combined rows require a
+//    SUMMED expectation, and opposite signs mean neither term's magnitude can
+//    stand in for the sum.
+//
+//    POINTS ABOVE THE BINDING LIMIT ARE SKIPPED, NEVER CLIPPED. The last row
+//    sums to +7.0 V deliberately: that is above the derived binding limit at
+//    44.1 and 48 kHz (invariant 1's ruler, not a pitch claim) and below it at
+//    96 kHz, so it is measured at one rate and skipped at two. The skip count
+//    is asserted non-zero across the case so the skip path is EXERCISED rather
+//    than being a mechanism this grid never reaches -- a coverage claim the grid
+//    could not deliver is the same defect class as a false arithmetic comment.
+//
+//    MEASURED THIS PHASE, worst ABSOLUTE cents on THIS case, per rate, with the
+//    row at which it occurred (harvested from an actual run during plan 31-06
+//    with a temporary print that was removed before the commit):
+//      44100 Hz   0.004658187  cents   at coarse +5.0    (18 rows measured, 1 skipped)
+//      48000 Hz   0.0033790525 cents   at coarse -2.37   (18 rows measured, 1 skipped)
+//      96000 Hz   0.00337679175 cents  at coarse -2.37   (19 rows measured, 0 skipped)
+//    AT THE TWO RANGE ENDPOINTS specifically, at zero V/OCT, signed:
+//      coarse -5.0   ->  +0.0000385655 c (44.1k)  +0.0000493257 c (48k)  +0.0000521421 c (96k)
+//      coarse +5.0   ->  +0.004658187  c (44.1k)  -0.00186869   c (48k)  +0.000283846  c (96k)
+//    Two things in that table are worth reading rather than skimming. First, the
+//    -2.37 row is the WORST row at two of the three rates -- the non-integer
+//    values are not only the snap control, they are also where the polynomial
+//    works hardest, since an integer argument is bit-exact by construction in
+//    the frozen helper's exponent-field path. Second, the low endpoint measures
+//    four orders of magnitude better than the high one, because the estimator
+//    has whole cycles to work with down there; at coarse -5.0 (8.18 Hz) the
+//    44.1 kHz block yields 15 rising crossings, the tightest crossing count
+//    anywhere in this case and still comfortably past the required eight.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco pitch PITCH-02 COARSE tune: a coarse value of n octaves shifts the MEASURED pitch by exactly n octaves over the whole declared -5..+5 range, non-integer values included") {
+	// One grid row: the V/OCT volts, the coarse octaves, and what the row is
+	// FOR. The role string is CAPTUREd, so a red point names the tier it belongs
+	// to instead of leaving a bare pair of numbers to be interpreted by hand.
+	struct Row { float voct; float coarse; const char* role; };
+
+	static const Row GRID[] = {
+		// (a) THE DECLARED RANGE. -5 and +5 are exactly the bounds
+		//     src/AnalogVCO.cpp declares for COARSE_PARAM, so these two rows are
+		//     what proves the whole range is reachable rather than its middle.
+		{ 0.f, -5.f,   "range endpoint, minus five octaves" },
+		{ 0.f, -4.f,   "integer octave" },
+		{ 0.f, -3.f,   "integer octave" },
+		{ 0.f, -2.f,   "integer octave" },
+		{ 0.f, -1.f,   "integer octave" },
+		{ 0.f,  0.f,   "knob at its ctrl-click default" },
+		{ 0.f,  1.f,   "integer octave" },
+		{ 0.f,  2.f,   "integer octave" },
+		{ 0.f,  3.f,   "integer octave" },
+		{ 0.f,  4.f,   "integer octave" },
+		{ 0.f,  5.f,   "range endpoint, plus five octaves" },
+
+		// (b) NON-INTEGER -- the control for the word "continuously" (D-02).
+		{ 0.f, -2.37f, "non-integer: the ONLY row that excludes a semitone snap (44 cents)" },
+		{ 0.f, -0.5f,  "non-integer: half an octave, 600 cents from either whole octave" },
+		{ 0.f,  0.5f,  "non-integer: half an octave, 600 cents from either whole octave" },
+		{ 0.f,  3.75f, "non-integer: 300 cents from the nearest whole octave" },
+
+		// (c) COMBINED, OPPOSITE SIGNS -- a summed expectation is required.
+		{  2.f, -3.5f, "combined, opposite signs, sum -1.5 V" },
+		{ -4.f,  2.25f, "combined, opposite signs, sum -1.75 V" },
+		{  3.5f, -5.f, "combined, opposite signs, sum -1.5 V at the coarse range end" },
+
+		// (d) DELIBERATELY ABOVE THE BINDING LIMIT at the two lower rates, so
+		//     the skip path below is exercised and per-rate coverage differs
+		//     VISIBLY rather than by assumption.
+		{  2.f,  5.f,  "combined, same signs, sum +7.0 V: skipped at 44.1 and 48 kHz, measured at 96 kHz" },
+	};
+	const size_t nRows = sizeof(GRID) / sizeof(GRID[0]);
+
+	int totalMeasured = 0;
+	int totalSkipped  = 0;
+
+	for (double sr : SAMPLE_RATES) {
+		const double top = topTestVolts(sr);
+
+		int    measuredPoints = 0;
+		int    skippedPoints  = 0;
+		double worstAbsCents  = 0.0;
+
+		for (size_t gi = 0; gi < nRows; ++gi) {
+			const float  voctF   = GRID[gi].voct;
+			const float  coarseF = GRID[gi].coarse;
+			const char*  role    = GRID[gi].role;
+
+			// The expectation is the libm reference at the SUMMED volts, and the
+			// sum is taken over the FLOAT values the POD actually carries so the
+			// only residual against the core is float ADDITION rounding rather
+			// than the representation error of each literal as well.
+			const double summed = (double)voctF + (double)coarseF;
+
+			CAPTURE(sr);
+			CAPTURE(voctF);
+			CAPTURE(coarseF);
+			CAPTURE(role);
+			CAPTURE(summed);
+			CAPTURE(top);
+
+			// SKIPPED, NOT CLIPPED. Above the binding limit the apparatus or
+			// D-10's clamp takes over and a cents assertion would fail on
+			// CORRECT behavior. Clipping the row to the limit instead would
+			// quietly test a different input than the grid states.
+			if (summed > top) {
+				++skippedPoints;
+				continue;
+			}
+
+			const double expected = expectedFreqHz(summed);
+			const int    n        = windowSamples(sr, expected);
+
+			// Zero morph and zero character, restated even though pitchBase()
+			// already zeroes them: the base helper is deliberately neutral and
+			// the case deliberately names what it depends on.
+			forge::VcoInputs base = pitchBase();
+			base.pitchCV   = voctF;
+			base.coarse    = coarseF;
+			base.morph     = 0.f;
+			base.character = 0.f;
+
+			forge::VcoBlockDriver d(sr);
+			std::vector<float> out = d.run(n, [=](int) { return base; });
+			REQUIRE(out.size() == (size_t)n);
+
+			int nUp = 0;
+			const double measured = estimateFreqRising(out, sr, &nUp);
+			CAPTURE(n);
+			CAPTURE(nUp);
+			CAPTURE(expected);
+			CAPTURE(measured);
+
+			// The same precondition invariant 2 runs, and for the same reason:
+			// it runs BEFORE the cents value is even computed, so the
+			// estimator's negative sentinel can never reach the comparison.
+			REQUIRE(nUp >= 8);
+
+			const double cents = centsError(measured, expected);
+			CAPTURE(cents);
+			CHECK(std::fabs(cents) < kTrackingToleranceCents);
+
+			if (std::fabs(cents) > worstAbsCents) worstAbsCents = std::fabs(cents);
+			++measuredPoints;
+		}
+
+		CAPTURE(sr);
+		CAPTURE(measuredPoints);
+		CAPTURE(skippedPoints);
+		CAPTURE(worstAbsCents);
+		CHECK(measuredPoints > 0);
+
+		totalMeasured += measuredPoints;
+		totalSkipped  += skippedPoints;
+	}
+
+	// The grid reaches something at every rate, and the skip path is REACHED.
+	// Without the second check the +7.0 V row could silently become measurable
+	// everywhere (or the skip could stop working) and the comment above would
+	// become a claim about coverage that nothing observes.
+	CAPTURE(totalMeasured);
+	CAPTURE(totalSkipped);
+	CHECK(totalMeasured > 0);
+	CHECK(totalSkipped > 0);
+}
+
+// ---------------------------------------------------------------------------
+// 5. PITCH-03 / D-03 / D-00: FINE TUNE, AND THE ASSERTION THAT PINS THE
+//    SEMITONE-TO-OCTAVE DIVISOR.
+//
+//    THE DECLARED RANGE IS ONE SEMITONE, +/-100 cents (D-03, per the D-00
+//    correction that landed in .planning/REQUIREMENTS.md and
+//    .planning/ROADMAP.md BEFORE this phase was planned). src/AnalogVCO.cpp
+//    declares FINE_PARAM as -1..+1 with a x100 display multiplier, so the knob
+//    reads in cents while the POD carries SEMITONES (D-05). Any +/-2 semitone
+//    wording anywhere is stale and predates that correction.
+//
+//    THE LOAD-BEARING ASSERTION IS THE HUNDRED-CENT ONE, and the specific
+//    number is what makes it load-bearing. The core owns the semitone-to-octave
+//    division (D-05): `in.fine * (1.f / 12.f)`. At the range end, fine = 1:
+//      - the CORRECT divisor of twelve gives 100 cents;
+//      - NO conversion at all -- treating the semitone field as octaves --
+//        gives 1200 cents;
+//      - a divisor of one hundred, i.e. reading the field as the knob's
+//        DISPLAYED cents, gives 12 cents.
+//    A hundred-cent shift is therefore the one measurement that separates the
+//    correct implementation from BOTH plausible wrong ones, and neither wrong
+//    answer is anywhere near the tolerance. A tracking check alone would not do
+//    this: it compares against an expectation this test computes with the same
+//    /12 it is trying to pin, so the two would agree on any consistent divisor.
+//    The hundred-cent check is a RELATIVE measurement between two runs of the
+//    core, so it names the number the requirement names.
+//
+//    NON-INTEGER FINE VALUES ARE HERE FOR INVARIANT 4'S REASON. D-03 says
+//    linear in cents with no snap, so quarter- and half-semitone rows are the
+//    control for that: a snap to whole semitones would move +/-0.25 and
+//    +/-0.5 by 25 and 50 cents.
+//
+//    TWO V/OCT VALUES, SO THE TERM IS PROVEN TO COMPOSE. Every row runs at
+//    V/OCT 0.0 and again at V/OCT +2.0. A fine term that only worked at concert
+//    pitch -- or an implementation that overwrote the V/OCT value with the fine
+//    value -- passes a single-pitch grid and fails here.
+//
+//    MEASURED THIS PHASE, worst ABSOLUTE cents on THIS case, per rate, with the
+//    row at which it occurred:
+//      44100 Hz   0.00628057135 cents  at V/OCT +2.0, fine -0.25
+//      48000 Hz   0.006281158   cents  at V/OCT +2.0, fine -0.25
+//      96000 Hz   0.00633285261 cents  at V/OCT +2.0, fine -0.25
+//
+//    AND THE HUNDRED-CENT SHIFTS THEMSELVES, as measured -- the numbers this
+//    case exists for:
+//      44100 Hz   V/OCT  0.0  ->  up +100.003243  down -100.002971
+//      44100 Hz   V/OCT +2.0  ->  up  +99.9940002 down  -99.9938641
+//      48000 Hz   V/OCT  0.0  ->  up +100.003244  down -100.002972
+//      48000 Hz   V/OCT +2.0  ->  up  +99.9941645 down  -99.9937555
+//      96000 Hz   V/OCT  0.0  ->  up +100.003237  down -100.002974
+//      96000 Hz   V/OCT +2.0  ->  up  +99.9940819 down  -99.9937695
+//    Every one of the twelve is inside 0.007 cents of a hundred, i.e. inside a
+//    seven-thousandth of the shift being measured, at BOTH V/OCT values. Part of
+//    that residual is the core rather than the estimator and is accounted for
+//    rather than absorbed: (1.f / 12.f) as a float is 0.08333333582, so the
+//    core's own shift is 100.0000029 cents by construction. The rest is the
+//    estimator, and it changes SIGN with the V/OCT value -- slightly over a
+//    hundred at concert pitch, slightly under two octaves up -- which is the
+//    signature of apparatus error rather than of a wrong divisor. Nothing here
+//    is anywhere near 12 or 1200.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco pitch PITCH-03 FINE tune: +/-1 semitone shifts the MEASURED pitch by exactly +/-100 cents, which pins the core's semitone-to-octave divisor") {
+	// SEMITONES, per the POD's documented units (D-05). The two range ends are
+	// the rows the hundred-cent assertion below reads.
+	static const float FINE_VALUES[] = { -1.f, -0.5f, -0.25f, 0.f, 0.25f, 0.5f, 1.f };
+	static const float VOCT_VALUES[] = { 0.f, 2.f };
+
+	const size_t nFine = sizeof(FINE_VALUES) / sizeof(FINE_VALUES[0]);
+	const size_t nVoct = sizeof(VOCT_VALUES) / sizeof(VOCT_VALUES[0]);
+
+	for (double sr : SAMPLE_RATES) {
+		double worstAbsCents = 0.0;
+
+		for (size_t vi = 0; vi < nVoct; ++vi) {
+			const float voctF = VOCT_VALUES[vi];
+
+			// The three measurements the divisor-pinning check reads. Seeded
+			// NEGATIVE so an unwritten slot cannot be mistaken for a frequency:
+			// the REQUIREs below reject it before any logarithm is taken.
+			double mAtMinusOne = -1.0;
+			double mAtZero     = -1.0;
+			double mAtPlusOne  = -1.0;
+
+			for (size_t fi = 0; fi < nFine; ++fi) {
+				const float fineF = FINE_VALUES[fi];
+
+				// The reference at the V/OCT volts plus the fine value divided
+				// by twelve, computed in DOUBLE here. The core divides in float,
+				// which is a 0.0000029-cent difference at the range end -- named
+				// in the comment above rather than absorbed.
+				const double summed   = (double)voctF + (double)fineF / 12.0;
+				const double expected = expectedFreqHz(summed);
+				const int    n        = windowSamples(sr, expected);
+
+				forge::VcoInputs base = pitchBase();
+				base.pitchCV   = voctF;
+				base.fine      = fineF;
+				base.morph     = 0.f;
+				base.character = 0.f;
+
+				forge::VcoBlockDriver d(sr);
+				std::vector<float> out = d.run(n, [=](int) { return base; });
+				REQUIRE(out.size() == (size_t)n);
+
+				int nUp = 0;
+				const double measured = estimateFreqRising(out, sr, &nUp);
+
+				CAPTURE(sr);
+				CAPTURE(voctF);
+				CAPTURE(fineF);
+				CAPTURE(summed);
+				CAPTURE(expected);
+				CAPTURE(n);
+				CAPTURE(nUp);
+				CAPTURE(measured);
+
+				REQUIRE(nUp >= 8);
+
+				const double cents = centsError(measured, expected);
+				CAPTURE(cents);
+				CHECK(std::fabs(cents) < kTrackingToleranceCents);
+
+				if (std::fabs(cents) > worstAbsCents) worstAbsCents = std::fabs(cents);
+
+				if (fineF == -1.f) mAtMinusOne = measured;
+				if (fineF ==  0.f) mAtZero     = measured;
+				if (fineF ==  1.f) mAtPlusOne  = measured;
+			}
+
+			// THE ASSERTION THAT PINS THE DIVISOR (see the comment above). A
+			// RELATIVE measurement between two runs of the core, so it does not
+			// inherit the /12 the expectation above uses.
+			REQUIRE(mAtZero     > 0.0);
+			REQUIRE(mAtPlusOne  > 0.0);
+			REQUIRE(mAtMinusOne > 0.0);
+
+			const double upCents   = centsError(mAtPlusOne,  mAtZero);
+			const double downCents = centsError(mAtMinusOne, mAtZero);
+
+			CAPTURE(sr);
+			CAPTURE(voctF);
+			CAPTURE(mAtMinusOne);
+			CAPTURE(mAtZero);
+			CAPTURE(mAtPlusOne);
+			CAPTURE(upCents);
+			CAPTURE(downCents);
+
+			// 100, not 1200 (no conversion) and not 12 (a divisor of a hundred).
+			CHECK(std::fabs(upCents - 100.0) < kTrackingToleranceCents);
+			CHECK(std::fabs(downCents + 100.0) < kTrackingToleranceCents);
+		}
+
+		CAPTURE(sr);
+		CAPTURE(worstAbsCents);
+	}
+}
