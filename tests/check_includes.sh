@@ -268,6 +268,24 @@ done
 #     translation unit, it links into no LFO build graph, and it cannot exist
 #     without the include this section would otherwise flag. Adding it changes
 #     the LFO-side scan set by exactly one file, and that file is VCO code.
+#   * tests/test_vco_pitch.cpp — Phase 31's TEST-02 pitch / tuning /
+#     exponential-FM suite (plans 31-05 / 31-06 / 31-07), added here as an
+#     explicit, reviewable edit because 31-CONTEXT.md decision D-23 requires it
+#     to be one. It is the same KIND of file as the two entries above it: a
+#     VCO-side test translation unit whose entire purpose is to drive
+#     forge::VcoCore through tests/VcoBlockDriver.hpp, which is an include this
+#     section flags BY CONSTRUCTION. It is not an LFO translation unit and it
+#     links into no LFO build graph.
+#     The entry is added BEFORE the file exists, deliberately. That is the
+#     Phase-29 precedent: src/AnalogVCO.cpp was pre-registered here while it was
+#     still unwritten, and `make guards` was green on that file's very first run.
+#     The entry immediately above was instead added reactively, after Phase 30's
+#     TU had already landed and turned this section red — a recurring landmine
+#     rather than a surprise, and pre-registration is what disarms it.
+#     Adding it changes the LFO-side scan set by exactly one file, and that file
+#     is VCO code. The match below compares against a QUOTED right-hand side, so
+#     it is exact-path: no glob, no substring, no basename, and no sibling path
+#     is exempted along with it.
 # src/dsp/Vco*.hpp and src/dsp/MorphBlep.hpp are the VCO's own headers — the
 # other side of the boundary, not scan targets.
 #
@@ -282,6 +300,7 @@ VCO_SIDE_ALLOW=(
 	"tests/VcoBlockDriver.hpp"
 	"tests/test_vco_harness.cpp"
 	"tests/test_vco_core.cpp"
+	"tests/test_vco_pitch.cpp"
 )
 LFO_SCAN=()
 while IFS= read -r f; do
