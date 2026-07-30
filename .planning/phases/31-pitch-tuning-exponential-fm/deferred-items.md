@@ -340,6 +340,141 @@ Inherited as a **reviewed todo, not folded**. **Restated unchanged.**
 
 ---
 
+## 14. FM DEPTH's AFFORDANCE — the first real operator feedback on the VCO panel (and the one 31-04 hand-off this register had dropped)
+
+- **Found during:** plan **31-09**, Task 2 — the in-Rack operator session. **This is the first piece
+  of operator feedback the VCO panel has ever received**, which is what makes it evidence for Phase 35
+  rather than a wish.
+- **The observation, VERBATIM:**
+
+  > "Approved - I was not expecting a bipolar knob for FM though"
+
+  An approval **with** one observation. Not an unqualified approval, and not a blocker.
+- **⚠ THIS REGISTER HAD ALREADY LOST THIS ITEM ONCE.** `31-04-SUMMARY.md` § "Deferred / not done"
+  item 6 handed **three** items to 31-08: COARSE octave detents, **the FM depth control's physical
+  form (full knob vs scalloped trimpot)**, and patch persistence for the four new controls. This
+  register carries the first as **item 6** and folded the third into **item 5** — and **omitted the
+  second entirely** (`grep -i 'trimpot\|physical form\|full knob\|widget'` over this file before
+  31-09 returned **zero** hits). So the operator independently rediscovered, by eye and in about a
+  minute, the exact item that fell through the hand-off. Recording that is the point: it is the
+  cheapest possible demonstration that an unregistered deferral gets rediscovered cold.
+
+### The split that matters: the BEHAVIOR is closed, the AFFORDANCE is open
+
+**The bipolarity itself is NOT a defect and NOT discretionary. It is not reopened here.**
+
+- **`REQUIREMENTS.md` FM-02** reads *"A dedicated **bipolar** attenuverter sets FM depth"* — bipolar is
+  the requirement's own word.
+- **D-07** fixes the control at `-1..+1`, linear taper, default `0`, displayed `-100%..+100%`, and
+  **already anticipated this exact confusion**: it exists specifically to record that *"the shipped
+  LFO's controls named 'atten' are unipolar attenuators, not attenuverters"* while FM-02 and roadmap
+  criterion 3 both specify bipolar for the VCO.
+- **D-06** fixes full-clockwise at 1.0 octave per volt — the FM jack as a second V/OCT input.
+- **31-06 invariant 6 proved the bipolarity behaviorally**, not by construction: `fmAtten = -1`
+  inverts `+1` **bit-exactly** against the negated shift, the two signs produce **different** blocks,
+  and `fmAtten = 0` is a **bit-exact no-op**. FM-02 is marked Complete on that evidence.
+- **Therefore: no range, default or sign changes.** Doing so would break a requirement the operator
+  approved, on the strength of a remark about how the control *reads*.
+
+**The AFFORDANCE is a legitimate open concern, and it is Phase 35's.** A plain full-size knob
+communicates nothing about *centre-is-off* or *counter-clockwise-inverts*. The operator turned it,
+found bipolar behavior, and said the widget had not told them to expect it. That is an affordance
+report, and it is correct.
+
+### What the in-house precedent ACTUALLY is — verified this session, because the obvious framing is false
+
+The tempting framing is *"the shipped LFO's own attenuverters are the precedent."* **That framing is
+false and must not be repeated.** Read directly from `src/AnalogLFO.cpp` this session (read-only; that
+file is absent from this phase's diff):
+
+- **The shipped LFO has ZERO bipolar params.** All **10** of its `configParam` calls have a
+  non-negative minimum — nine explicit `0.f` plus `configParam<RateParamQuantity>(RATE_PARAM, 0.01f,
+  ...)`. `grep -n 'configParam([A-Z_]*, *-'` returns **nothing**. So **the VCO's FM DEPTH is the FIRST
+  bipolar control anywhere in this plugin**, and there is **no in-house visual language for bipolar to
+  match**. Phase 35 has to *invent* one, not copy one.
+- **The real in-house convention is about ROLE and SIZE, and the VCO diverges from it.** All five of
+  the LFO's CV-depth controls — `MORPH_ATTEN_PARAM`, `CHARACTER_ATTEN_PARAM`, `DRIFT_ATTEN_PARAM`,
+  `FM_ATTEN_PARAM`, `PHASE_OFFSET_ATTEN_PARAM` — are **`ForgeTrimpot`**, in a labelled "CV trimpots"
+  row at `y = 108.50`. Its four secondary params are `ForgeKnobSecondary` and RATE is `ForgeKnobHero`.
+  **The sharpest form of the observation:** the LFO's **identically-named** `FM_ATTEN_PARAM`
+  (`"FM Depth"`) is a small **trimpot**, while the VCO's `FM_ATTEN_PARAM` is a full-size
+  **`RoundBlackKnob`** — `src/AnalogVCO.cpp:274-275` — *the same widget class as MORPH, CHARACTER,
+  COARSE and FINE*. On the throwaway panel there is **no size or role hierarchy at all**, so a
+  modulation-depth control is presented with exactly the weight of a primary tune control.
+- So the operator's surprise is corroborated by an actual convention — just a convention about
+  **role/size**, not about bipolarity.
+
+### Candidate remedies for Phase 35 (none decided here)
+
+1. **A visually distinct attenuverter widget.** The role/size precedent above points at a trimpot or a
+   dedicated bipolar widget rather than a full-size knob — the shipped module already puts every depth
+   control in a trimpot row, and 31-04's plan text already floated "scalloped trimpot" by name.
+2. **A centre detent or centre indicator** — a notch, a tick at twelve o'clock, or a centre-origin arc
+   fill that grows left-negative / right-positive, so *centre-is-off* is legible without turning it.
+3. **Clearer labelling** — a `-/+` or `−100..0..+100` legend around the control, which the throwaway
+   panel cannot carry because it has no text at all.
+
+Phase 35 owns the panel, the control budget and the whole Forge Noir visual language, and it is the
+first phase that can judge these against each other.
+
+- **Not fixed here, deliberately and on three independent grounds.** (a) This plan's prohibitions
+  forbid modifying any repository file, and its Task 1 criterion requires a clean tree. (b) The
+  remedy is a **widget and art decision**, which is definitionally Phase 35's — 31-04's D-08 note
+  already records that the Forge Noir knob structs are **local to the shipped module's translation
+  unit**, so building a Forge-styled attenuverter here would mean extracting components out of live
+  released source, the one thing this milestone's guardrail position rests on not doing. (c) Changing
+  the range, default or sign instead of the widget would break FM-02.
+- **Nothing in the source needed correcting.** `src/AnalogVCO.cpp:39-42` already reads *"The FM depth
+  control's PHYSICAL form is deliberately NOT settled here. Whether it ends up a full knob or a
+  scalloped trimpot is Phase 35's call..."* — already provisional, already correctly owned, so it was
+  **checked and deliberately left alone** rather than edited. `res/AnalogVCO.svg` contains **no
+  comments at all**. Leaving a true comment alone is as much a part of comment-truth discipline as
+  correcting a false one (31-04's own rule).
+- **Resolve at: Phase 35** (PANEL-01/PANEL-02, which own the real panel and the control budget).
+  **Carry the behavior/affordance split with it:** FM-02's bipolar behavior is locked and verified —
+  Phase 35 changes how the control *reads*, never what it *does*.
+
+---
+
+## 15. A SECOND, older, differently-slugged Forge plugin sits in the same Rack plugins tree — it qualifies how strongly step 9 can be read
+
+- **Found during:** plan **31-09**, Task 2's re-verification of the install. **Executor finding, not an
+  operator observation — the operator did not raise this and nothing here is attributed to them.**
+- **Observation, read off the machine this session:**
+  `~/Library/Application Support/Rack2/plugins-mac-arm64/` contains **two** Forge directories:
+
+  | Directory | Manifest slug | Version | Modules | Dated |
+  |---|---|---|---|---|
+  | `ForgeAudio-AnalogSeries` | `ForgeAudio-AnalogSeries` | `2.0.1` | `ForgeAnalogLFO`, `ForgeAnalogVCO` | Jul 30 (this session's install) |
+  | `ForgeAudio` | `ForgeAudio` | `2.0.0` | `ForgeAudioLFO` | **Feb 14** |
+
+- **It does NOT weaken Task 1's freshness proof, and that is the first thing to say.** Rack keys
+  plugins by manifest **slug**, and the two slugs differ (`ForgeAudio` vs
+  `ForgeAudio-AnalogSeries`), as do the module slugs (`ForgeAudioLFO` vs `ForgeAnalogLFO`). Neither
+  directory can shadow, mask or be re-extracted over the other. The whole-tree `diff -r` byte
+  equality against `dist/` stands unaffected, and there are **zero `.vcvplugin` archives** anywhere in
+  the plugins directory.
+- **What it DOES qualify:** the module browser contains **two** Forge LFO entries — a stale
+  February `ForgeAudio / ForgeAudioLFO` and the current `ForgeAudio-AnalogSeries / ForgeAnalogLFO`.
+  Verification **step 9** asks the operator to confirm *"the Analog LFO looks identical and sounds
+  identical"*. If the entry auditioned were the February one, step 9 would have confirmed an
+  **unrelated build** rather than the guardrail's actual subject. The operator approved and named no
+  difficulty finding the module, and the plan's step 1 explicitly pairs "Analog LFO" with the newly
+  added Analog VCO in the same browser session — so the reading is almost certainly the right one.
+  **But it is a genuine ambiguity in the evidence and it is recorded rather than smoothed over**,
+  because the alternative is a guardrail sign-off whose subject is assumed instead of pinned.
+- **Not acted on here, deliberately.** Deleting or renaming a plugin from the operator's own Rack
+  installation is not this plan's to do — it is the operator's machine, the directory may be
+  deliberate (it is the pre-rename v2.0.0 slug), and this plan's prohibitions confine it to installing
+  this repository's own build output. **No file outside `ForgeAudio-AnalogSeries` was touched.**
+- **Resolve at: the next phase that runs an in-Rack operator session — currently Phase 32.** This is a
+  **verification-protocol** fix, not a code fix, and it is one line: **name the plugin directory as
+  well as the module** when asking the operator to audition something, e.g. *"the Analog LFO under
+  Forge Audio Analog Series"*. Phase 36 (REL-01) may additionally want to note the stale slug when it
+  handles the library update, since `ForgeAudio` is the slug v2.0.0 shipped under.
+
+---
+
 ## Phase 31's own measured figures
 
 Repeated here so a reader of this register alone can see what was measured without opening five
@@ -400,3 +535,6 @@ GREEN — **zero `runtime error:` lines, 0-byte stderr** over an extended 24-con
 
 *Phase: 31-pitch-tuning-exponential-fm*
 *Register written: 2026-07-30 (plan 31-08, the phase gate)*
+*Items 14 and 15 appended 2026-07-30 by plan 31-09, the operator session — item 14 from the operator's
+one observation (and it recovers a 31-04 hand-off this register had dropped), item 15 an executor
+finding about the verification environment. 15 items.*
