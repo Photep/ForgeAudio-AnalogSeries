@@ -11,10 +11,13 @@
 //
 // The crude, aliased timbre is EXPECTED, not a defect. Phase 32 (CORE-02 /
 // AA-01..05) owns band-limiting (morph-aware polyBLEP/polyBLAMP), and no
-// assertion over this body claims anything about spectral cleanliness. Phase 31
-// (PITCH-01..05) owns the REAL pitch chain — coarse, fine and FM summed in the
-// volt domain before a single exp2, plus the non-provisional Nyquist policy;
-// the pitch handling here reads in.pitchCV alone and is knowingly incomplete.
+// assertion over this body claims anything about spectral cleanliness.
+// PITCH-04's Nyquist policy is SETTLED as of this commit: kVcoNyquistGuardFrac
+// is 0.495f (D-11), so the frequency ceiling below is final rather than a
+// placeholder. What Phase 31 still owes is the REST of the pitch chain — coarse,
+// fine and FM summed in the volt domain before a single exp2 (PITCH-01..03/05),
+// landed by the plan that follows this one; until it does, the pitch handling
+// here reads in.pitchCV alone and is knowingly incomplete.
 // Phase 34 (OUT-01..03) owns output conditioning; see the x5 note in step().
 //
 // Source-shape contract (tests/check_canary.sh [2b/5]): the `struct VcoCore`
@@ -81,7 +84,40 @@ namespace forge {
 // banner mandates above. NOT `inline constexpr` (C++17), NOT an in-class
 // `static constexpr` (declaration-only under C++11 → MinGW undefined reference).
 constexpr float kVcoFreqC4 = 261.6256f;         // C4 = 0 V, the standard VCV V/OCT reference (PITCH-01)
-constexpr float kVcoNyquistGuardFrac = 0.49f;   // PROVISIONAL — PITCH-04 (Phase 31) owns the real Nyquist policy; Phase 31 replaces this constant rather than rediscovering the intent
+
+// PITCH-04's Nyquist policy, SETTLED (D-11; .planning/research/STACK.md:122).
+// POLICY: clamp the oscillator frequency to kVcoNyquistGuardFrac * sampleRate,
+// i.e. 0.5 x sampleRate x 0.99 — half the sample rate with a one-percent guard
+// band. The DERIVED ceilings are what make the choice auditable:
+//     44100 Hz -> 21829.5 Hz    48000 Hz -> 23760.0 Hz    96000 Hz -> 47520.0 Hz
+// Every one of those is above human hearing, so the clamp is inaudible in
+// normal use.
+//
+// Off the C4 reference those ceilings are the volts at which 1V/oct tracking
+// INTENTIONALLY stops — log2(kVcoNyquistGuardFrac * sampleRate / kVcoFreqC4) —
+// about +6.3826 V at 44100, +6.5049 V at 48000, +7.5049 V at 96000. Phase 31's
+// TEST-02 gate DERIVES those volts from this constant instead of hardcoding
+// them (D-21), so moving this constant moves the gate with it.
+//
+// D-10: this is a HARD CLAMP. The frequency PINS AT THE CEILING and the
+// oscillator KEEPS SOUNDING — it does not mute, fade or fold. Under deep FM
+// (1.0 oct/V at a full attenuverter means a +/-5 V audio-rate modulator swings
+// +/-5 octaves) the clamp fires on most cycles and the peaks flatten out at the
+// top. That flattening is the CHOSEN SOUND, not a defect. Amplitude fade above
+// the threshold was considered and REJECTED because it adds a gain stage that
+// collides with Phase 34's OUT-01..03; pitch fold-back was REJECTED because it
+// is a deliberate effect, not the guard PITCH-04 asks for.
+//
+// D-13 is the counterpart at the LOW end: NO floor is added. Extreme negative
+// pitch freezes the phase and the output becomes effectively DC — MEASURED at
+// -64 V of pitch: freq = 1.418e-17 Hz, deltaPhase ~ 3.2e-22, an accumulator
+// advancing by a denormal-scale amount. That is honest, and it is the decided
+// behavior: PITCH-04 speaks only to the top end.
+//
+// This constant is a Nyquist POLICY bound on the FREQUENCY. It remains a
+// different KIND of constant from the wrap-correctness bound on the phase
+// INCREMENT declared just below, which D-12 leaves untouched.
+constexpr float kVcoNyquistGuardFrac = 0.495f;  // 0.5 x sampleRate x 0.99 (PITCH-04 / D-11)
 
 // WRAP-CORRECTNESS bound on the phase increment (plan 30-08 / CR-01 / T-30-01).
 // This is a DIFFERENT KIND OF CONSTANT from kVcoNyquistGuardFrac above and must
