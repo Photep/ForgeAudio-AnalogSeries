@@ -11,15 +11,34 @@
 // calculation here and tests/test_vco_core.cpp silently stops describing the
 // module a user plugged a cable into.
 //
-// Four controls, no more (D-07): V/OCT in, MORPH, CHARACTER, OUT. They are the
-// four the Phase-30 DSP consumes, so every control that moves is a control you
-// can hear and an in-Rack check is honest. CHARACTER is here as a consequence of
-// D-11, not as a pull-forward of CHAR-01: every component-spread coefficient in
-// forge::Waveshape is gated behind character >= 0.001f, so at character = 0 the
-// per-instance divergence is invisible in Rack. Later phases add their controls
-// alongside the behavior that reads them; nothing has shipped, so param and
-// input ID churn is free right now and declaring the full Phase-35 enum early
-// would buy stability nobody needs yet.
+// Eight controls, no more (D-07, carried forward by Phase 31's D-16): V/OCT in,
+// FM in, MORPH, CHARACTER, COARSE, FINE, FM DEPTH, OUT. They are the eight the
+// DSP consumes, so every control that moves is a control you can hear and an
+// in-Rack check is honest. The converse binds just as hard, and it is why all
+// four Phase-31 controls are declared in the same phase as the arithmetic they
+// feed: DSP that no control can reach cannot be auditioned, and this phase signs
+// off in an operator-driven Rack session rather than on a headless count.
+// CHARACTER is here as a consequence of D-11, not as a pull-forward of CHAR-01:
+// every component-spread coefficient in forge::Waveshape is gated behind
+// character >= 0.001f, so at character = 0 the per-instance divergence is
+// invisible in Rack. Later phases add their controls alongside the behavior that
+// reads them; nothing has shipped, so param and input ID churn is free right now
+// and declaring the full Phase-35 enum early would buy stability nobody needs
+// yet.
+//
+// The two tune controls read in DIFFERENT units on purpose (D-04): COARSE in
+// octaves, FINE in cents, so they are visibly different tools rather than one
+// control at two zoom levels. Reading both in cents was rejected — ten octaves
+// then display as awkward four-digit numbers. Reading COARSE in Hz was rejected
+// for a harder reason: a displayed frequency becomes a LIE the instant a cable is
+// patched into V/OCT, because a param declaration cannot see an input. The
+// conversion that produces the cents readout lives inside the SDK's quantity
+// object and never in this file — see the FINE declaration below.
+//
+// The FM depth control's PHYSICAL form is deliberately NOT settled here. Whether
+// it ends up a full knob or a scalloped trimpot is Phase 35's call, because that
+// phase owns the real layout and the whole control budget. This phase declares
+// the param, gives it a stock widget and a marker rect, and stops there.
 //
 // Stock SDK widgets by decision (D-08). The Forge Noir knob and jack structs are
 // LOCAL to src/AnalogLFO.cpp, the shipped module's translation unit; reusing
@@ -55,10 +74,14 @@ struct AnalogVCO : Module {
 	enum ParamId {
 		MORPH_PARAM,
 		CHARACTER_PARAM,
+		COARSE_PARAM,
+		FINE_PARAM,
+		FM_ATTEN_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
 		VOCT_INPUT,
+		FM_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
@@ -75,7 +98,43 @@ struct AnalogVCO : Module {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(MORPH_PARAM, 0.f, 1.f, 0.f, "Morph");
 		configParam(CHARACTER_PARAM, 0.f, 1.f, 0.f, "Character");
+
+		// A full COARSE sweep is TEN octaves and it is CONTINUOUS. PITCH-02 says
+		// "continuously" and D-02 honours that literally: nothing here turns on
+		// the SDK's integer-stepping flag, nothing quantises the value, and no
+		// right-click menu offers whole-octave steps. That idea exists and is a
+		// deferred item, not an omission. The default of zero is concert pitch,
+		// which Rack's click-to-default already returns the knob to, so no extra
+		// mechanism is needed for "get me back to A440".
+		configParam(COARSE_PARAM, -5.f, 5.f, 0.f, "Coarse Tune", " oct");
+
+		// FINE's RAW range is SEMITONES and its readout is CENTS. The raw range
+		// is what forge::VcoInputs documents the field as, and D-05 keeps this
+		// shell a pure forwarder, so the trailing 100 is a DISPLAY multiplier:
+		// the semitone-to-cent conversion happens inside the SDK's quantity
+		// object, never here. A full sweep is one semitone, which is what
+		// doubles the raw resolution for the unison-beating job the control
+		// exists for.
+		//
+		// DIVERGENCE FROM D-04's ILLUSTRATION, recorded on purpose. Rack's
+		// default readout carries five significant digits, so these tooltips
+		// read "+2.0000 oct" and "-14.000 cents" rather than the two-decimal
+		// examples the decision draws. D-04 fixes the UNITS, not the digit
+		// count, and the shipped module tightens the digit count nowhere either.
+		// If exactness ever matters it is one line per param on the pointer the
+		// declaration hands back — cosmetic, and nothing structural depends on
+		// it.
+		configParam(FINE_PARAM, -1.f, 1.f, 0.f, "Fine Tune", " cents", 0.f, 100.f);
+
+		// BIPOLAR by FM-02 / D-07, so a negative setting gives inverted FM. The
+		// shipped module's styling is borrowed — linear taper, default off,
+		// percentage readout, and the very same control name — but its RANGE is
+		// NOT: that control is a unipolar attenuator over 0..1, and copying its
+		// range here would silently drop half of what FM-02 asks for.
+		configParam(FM_ATTEN_PARAM, -1.f, 1.f, 0.f, "FM Depth", "%", 0.f, 100.f);
+
 		configInput(VOCT_INPUT, "V/Oct");
+		configInput(FM_INPUT, "FM");
 		configOutput(OUTPUT, "Audio");
 
 		// T-30-02. BOTH calls are required and neither is optional. seed()
