@@ -93,12 +93,18 @@
 // MEASURED WORST-CASE TRACKING ERROR — THIS PHASE'S OWN FIGURES, harvested from
 // an actual run of these cases during plan 31-05. Worst ABSOLUTE cents per rate,
 // with the volt at which it occurred:
-//   PRIMARY tier (invariant 2, on the returned samples):
-//     44100 Hz  0.00967639 c @ +5.5 V   48000 Hz  0.00870829 c @ +6.0 V
+//   PRIMARY tier (invariant 2, measured on the returned samples):
+//     44100 Hz  0.00967639 c @ +5.5 V    48000 Hz  0.00870829 c @ +6.0 V
 //     96000 Hz  0.00239614 c @ +7.0 V
-//   SECONDARY tier (invariant 3, telemetry — the WEAKER tier):
-//     <filled in by task 3 of plan 31-05>
-// The fixed tolerance is 0.05 cents at every point and every rate.
+//   SECONDARY tier (invariant 3, reads telemetry — the WEAKER tier):
+//     44100 Hz  0.0013924  c @ +6.20392 V   48000 Hz  0.00123964 c @ +6.32617 V
+//     96000 Hz  0.00123964 c @ +7.32617 V
+// The fixed tolerance is 0.05 cents at every point, every rate and both tiers:
+// 5.17x above the worst figure above and 20x under the one cent PITCH-01 asks
+// for. THIS PHASE MEASURED ALL SIX FIGURES ITSELF and cites neither of the two
+// prior-milestone research figures, which disagree with each other by two orders
+// of magnitude about the frozen polynomial's error and were both later measured
+// wrong (D-18).
 //
 // This file is registered in tests/check_includes.sh's VCO_SIDE_ALLOW array by
 // plan 31-01, with its own rationale paragraph there. Why it needs an entry:
@@ -199,6 +205,17 @@ constexpr double kPrimaryLowVolts = -5.0;
 // It is the low-end extreme, included to show the pitch law still holds where
 // the window rule below has to stretch by more than thirty times its floor.
 constexpr double kExtremeLowVolts = -7.0;
+
+// The SECONDARY tier's low end: 0.26 Hz, five octaves below anything the primary
+// tier can reach. Resolving that frequency from zero crossings would need a
+// window over a minute long, which is exactly the range this tier exists for.
+constexpr double kSecondaryLowVolts = -10.0;
+
+// Block length for a telemetry read. The telemetry frequency is written on every
+// step(...), so a handful of samples is all this tier needs — and taking only a
+// handful is part of what makes it obvious that this tier is NOT measuring the
+// signal, merely reading back a field.
+constexpr int kTelemetryBlockSamples = 8;
 
 // How much clear air the grid keeps below a policy boundary. Applied to the
 // binding limit in invariant 1 and to the clamp ceiling in invariant 3, because
@@ -565,6 +582,134 @@ TEST_CASE("vco pitch TEST-02 PRIMARY TIER: v/oct tracking measured on the RETURN
 			const double cents = centsError(measured, expected);
 			CAPTURE(cents);
 			CHECK(std::fabs(cents) < kTrackingToleranceCents);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 3. TEST-02, THE SECONDARY TIER — AND IT IS THE WEAKER ONE (D-19).
+//
+//    WHY IT IS WEAKER, STATED PLAINLY AND NOT TO BE SOFTENED. The core's
+//    telemetry frequency is the value step(...) wrote a few lines before it
+//    returned — after the clamp and BEFORE the accumulator. An assertion on it
+//    therefore says nothing whatsoever about whether the accumulator USED that
+//    frequency: this tier would stay green on a core whose phase accumulator
+//    ignored the pitch entirely and emitted silence, or DC, or a fixed tone.
+//    That is the whole reason Phase 30's D-16 chose output measurement over
+//    telemetry, and invariant 2 is where the actual evidence lives.
+//
+//    WHAT IT IS FOR, then, since it is not evidence of the same kind. It covers
+//    the octaves where zero crossings CANNOT resolve a frequency at all:
+//      - the very low end. At kSecondaryLowVolts the tone is about a quarter of
+//        a hertz, where the primary tier's sixteen-period window rule would
+//        demand a block over a minute long at every rate.
+//      - the narrow band above the estimator's resolution ceiling but still
+//        below the clamp's, where the oscillator is correct and TRACKING but the
+//        ruler has run out. MEASURED, that band is only 0.30743 V wide at every
+//        rate — 0.25743 V once kGridHeadroomVolts is taken off the top — and both
+//        figures are NARROWER THAN THE 0.5 V GRID STEP, so no lattice point can
+//        ever land inside it. It is therefore reached by one explicitly DERIVED
+//        point per rate, and the case ASSERTS that the point lands in the band
+//        rather than assuming it: a claim about coverage that the grid could not
+//        actually deliver would be exactly the false-comment class this
+//        repository keeps paying for.
+//
+//    THE OVERLAP WITH THE PRIMARY TIER IS DELIBERATE AND USEFUL. Over the shared
+//    band, an output-derived measurement and a telemetry-derived measurement of
+//    the same thing agreeing is itself a check on the apparatus. IF THE TWO
+//    TIERS EVER DISAGREE, THE PRIMARY TIER IS THE EVIDENCE.
+//
+//    The clamp is never firing anywhere in this tier: every point is strictly
+//    below the clamp-derived ceiling less kGridHeadroomVolts, derived here from
+//    the same helper invariant 1 checks. PITCH-04's clamp-FIRES case is a
+//    separate invariant and belongs to plan 31-07.
+//
+//    MEASURED THIS PHASE, worst ABSOLUTE cents on THIS tier, per rate, with the
+//    volt at which it occurred — labelled as the SECONDARY tier so these figures
+//    are never conflated with invariant 2's:
+//      44100 Hz   0.0013924  cents   at +6.20392 V   (34 points)
+//      48000 Hz   0.00123964 cents   at +6.32617 V   (34 points)
+//      96000 Hz   0.00123964 cents   at +7.32617 V   (36 points)
+//
+//    THE WORST POINT AT EVERY RATE IS THE DERIVED BAND POINT, which is direct
+//    evidence that the band point is doing work rather than decorating the grid:
+//    it is measured at 2.28662 samples per cycle, comfortably inside the region
+//    the primary tier's derived ceiling excludes. Restricted to the 0.5 V lattice
+//    alone the worst figure is 0.000164011 cents at -9.5 V at all three rates —
+//    an order of magnitude smaller, and it would have hidden the band entirely.
+//
+//    These are about an order of magnitude tighter than the primary tier's worst,
+//    and that is the EXPECTED shape rather than a reason to trust this tier more.
+//    It is reading an arithmetic result back out, so of course it agrees closely.
+//    Reading a number back accurately is not the same fact as producing the right
+//    tone, and the tightness of these figures is the clearest possible reminder
+//    of why this tier is the weaker one.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco pitch TEST-02 SECONDARY TIER (the WEAKER tier, reads telemetry): v/oct tracking against the same reference over the octaves zero crossings cannot resolve") {
+	for (double sr : SAMPLE_RATES) {
+		// The bound: strictly below the CLAMP-derived ceiling, less the same
+		// headroom invariant 1 demands, so the clamp cannot fire at any point.
+		// Derived, never typed in (D-21).
+		const double clampBound = clampCeilingVolts(sr) - kGridHeadroomVolts;
+		const int    steps      = gridStepCount(kSecondaryLowVolts, clampBound);
+
+		std::vector<double> voltsGrid;
+		for (int k = 0; k <= steps; ++k)
+			voltsGrid.push_back(kSecondaryLowVolts + kGridStepVolts * (double)k);
+
+		// The one derived point inside the band the lattice cannot reach: the
+		// midpoint between the estimator's ceiling and the clamp bound. Both
+		// ends come from the helpers, so this point moves with the constants.
+		const double bandV = 0.5 * (estimatorCeilingVolts(sr) + clampBound);
+		CAPTURE(sr);
+		CAPTURE(clampBound);
+		CAPTURE(bandV);
+		REQUIRE(bandV > estimatorCeilingVolts(sr));
+		REQUIRE(bandV < clampBound);
+		voltsGrid.push_back(bandV);
+
+		for (size_t gi = 0; gi < voltsGrid.size(); ++gi) {
+			const double volts    = voltsGrid[gi];
+			const double expected = expectedFreqHz(volts);
+
+			// Zero morph and zero character here too, so the only difference
+			// between the two tiers is WHERE the number is read from.
+			forge::VcoInputs base = pitchBase();
+			base.pitchCV   = (float)volts;
+			base.morph     = 0.f;
+			base.character = 0.f;
+
+			forge::VcoBlockDriver d(sr);
+			std::vector<float> out = d.run(kTelemetryBlockSamples, [=](int) { return base; });
+			REQUIRE(out.size() == (size_t)kTelemetryBlockSamples);
+
+			const double telHz = (double)d.core.tel.freqHz;
+
+			CAPTURE(volts);
+			CAPTURE(expected);
+			CAPTURE(telHz);
+
+			// NEGATED, exactly the way the core's own floors are written and the
+			// way tests/test_vco_core.cpp guards its Nyquist pin: EVERY
+			// comparison against a not-a-number is FALSE, so a plainly written
+			// `telHz > 0.0` could not tell a NaN apart from a legitimate small
+			// frequency. Written negated, a non-finite or non-positive telemetry
+			// value lands on the FAILING branch instead of passing silently, and
+			// it does so BEFORE the cents comparison — which would otherwise
+			// take a logarithm of it.
+			bool telemetryUsable = true;
+			if (!(telHz > 0.0)) telemetryUsable = false;
+			CHECK(telemetryUsable);
+
+			// THE SAME SINGLE TOLERANCE CONSTANT THE PRIMARY TIER USES. There is
+			// deliberately no second tolerance in this file: a weaker tier with a
+			// looser number would be two gates pretending to be one. The
+			// comparison is written negated for the same NaN reason as above.
+			const double cents = centsError(telHz, expected);
+			CAPTURE(cents);
+			bool withinTolerance = true;
+			if (!(std::fabs(cents) < kTrackingToleranceCents)) withinTolerance = false;
+			CHECK(withinTolerance);
 		}
 	}
 }
