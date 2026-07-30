@@ -375,6 +375,161 @@ int windowSamples(double sampleRate, double expectedHz) {
 	return (int)std::lround(sampleRate * std::fmax(0.25, 16.0 / expectedHz));
 }
 
+// ===========================================================================
+// FM SUPPORT (plan 31-06). Everything below this line belongs to invariants 6
+// and 7. Nothing above it is redefined, wrapped or shadowed here.
+// ===========================================================================
+
+// A LOOSE magnitude bound on the returned waveform, in volts.
+//
+// PROVENANCE. The core returns its waveform UNCONDITIONED by decision (D-13):
+// no DC blocker, no saturation, no hard five-volt clamp. The analytic ceiling
+// of that unconditioned shape is about 5.55 V, and Phase 30 MEASURED 5.51803 V
+// as the worst excursion at high character at all three rates. This bound sits
+// a little above the analytic figure so it is a real bound rather than a
+// restatement of the measurement.
+//
+// THIS IS DELIBERATELY NOT A PLUS-OR-MINUS-FIVE-VOLT OUTPUT ASSERTION. An
+// excursion above five volts at high character is EXPECTED behavior on this
+// body, well inside Rack's plus-or-minus-twelve-volt norms, and Phase 34's
+// OUT-01..03 is the phase that owns output conditioning. Tightening this to 5.0
+// would turn decided behavior red; loosening it past the analytic ceiling would
+// stop it from catching the unbounded-accumulator failure it exists for (Phase
+// 30 measured -8,655,011 V with every sample still finite, so a finiteness test
+// alone cannot see that class of failure).
+constexpr float kPitchLooseBoundV = 6.0f;
+
+// The four PROVEN NON-DEGENERATE seed literals, copied verbatim from
+// tests/VcoBlockDriver.hpp's constructor defaults so a core seeded through the
+// helper below is seeded IDENTICALLY to one the driver constructed.
+//
+// NEVER a pair of zeros, and never a newly invented pair. forge::Xoroshiro128Plus
+// seeded with a zero pair is a fixed point that emits an all-zero stream, which
+// makes the rejection loop inside std::normal_distribution never terminate --
+// in Rack that is a hang while opening a patch, not a test failure.
+constexpr uint64_t kDriverSeed0  = 0x1234ULL;
+constexpr uint64_t kDriverSeed1  = 0x5678ULL;
+constexpr uint64_t kDriverSpread0 = 0x9E3779B9ULL;
+constexpr uint64_t kDriverSpread1 = 0x7F4A7C15ULL;
+
+// One seeding callable for BOTH core types. Parameterised on the type rather
+// than duplicated per type precisely so the negative control in invariant 7
+// cannot drift into being seeded differently from the real core -- a control
+// that starts from different RNG state is not a control for anything.
+template <typename SeedableT>
+void seedLikeDriver(SeedableT& c) {
+	c.seed(kDriverSeed0, kDriverSeed1);
+	c.setSpreadSeed(kDriverSpread0, kDriverSpread1);
+}
+
+// THE DRIVE HELPER FOR INVARIANTS 6 AND 7.
+//
+// WHY IT IS A TEMPLATE, AND WHY IT MUST STAY ONE. Invariant 7's deliberately
+// multiplicative stand-in has to run through BYTE-IDENTICALLY the same drive
+// loop as the real core, because a control that exercises different code than
+// the check proves nothing about the check. That is the same argument
+// tests/check_includes.sh [6/7]'s banner makes about its own negative controls
+// (every one of them calls the SAME function its section calls) and the same
+// argument tests/test_vco_core.cpp's interleave helper makes. Do not fork this
+// into two near-copies, one per core type.
+//
+// TIMING IS OWNED HERE, exactly as the VCO block driver owns it. sampleTime and
+// sampleRate are ALWAYS overwritten, on EVERY sample, and that overwrite is
+// LOAD-BEARING: it must never become conditional on what the caller's callable
+// happened to put there. Invariant 6's opening REQUIRE pins this loop
+// bit-for-bit against the driver's own run() over the same seeds and inputs
+// precisely so it cannot silently drift -- and that check deliberately feeds
+// NONSENSE timing through the callable, so a helper that stopped overwriting
+// would produce a visibly different block instead of an equal one.
+//
+// THE DRIVER ITSELF IS NOT TEMPLATED, SUBCLASSED, ALIASED OR EDITED. This is a
+// separate function in this test translation unit. The OTHER block driver under
+// tests/ -- the one that feeds the SHIPPED LFO's bit-exact golden replay leg --
+// is not included by this file at all, and its filename is deliberately not
+// spelled here: a boundary-anchored grep for it is one of this suite's standing
+// mechanical checks, and a comment mentioning it would answer that check with a
+// false positive.
+template <typename CoreT>
+std::vector<float> runBlockOn(CoreT& core, double sampleRate, int nSamples,
+                              const std::function<forge::VcoInputs(int)>& inputAt) {
+	std::vector<float> out;
+	out.reserve((size_t)nSamples);
+	const float dt  = (float)(1.0 / sampleRate);
+	const float srf = (float)sampleRate;
+	for (int i = 0; i < nSamples; ++i) {
+		forge::VcoInputs in = inputAt(i);
+		in.sampleTime = dt;
+		in.sampleRate = srf;
+		out.push_back(core.step(in));
+	}
+	return out;
+}
+
+// How two blocks differ, sample for sample.
+//
+// THE COMPARISON IS A DIRECT FLOAT INEQUALITY AND NOTHING ELSE. doctest's
+// approximate comparator is forbidden everywhere in this file and specifically
+// here: even its zero-epsilon form still applies a RELATIVE scaling margin, so
+// it is not a bit-exact comparator. A multiplicative FM implementation is wrong
+// by roughly a part in a million, which such a margin would quietly accept --
+// the identity below would then pass the very implementation invariant 7 exists
+// to exclude. Bit-exactness is the claim or there is no claim.
+//
+// firstBad is carried out so a red point names a sample index instead of only a
+// count, and the counts are what invariant 7 records as its evidence.
+struct BlockDiff {
+	int mismatches = 0;
+	int firstBad   = -1;
+};
+
+BlockDiff diffBlocks(const std::vector<float>& a, const std::vector<float>& b) {
+	BlockDiff d;
+	const size_t n = (a.size() < b.size()) ? a.size() : b.size();
+	for (size_t i = 0; i < n; ++i) {
+		if (a[i] != b[i]) {
+			++d.mismatches;
+			if (d.firstBad < 0) d.firstBad = (int)i;
+		}
+	}
+	return d;
+}
+
+// THE FM-03 IDENTITY GRID, shared UNCHANGED by invariant 6 (where the real core
+// must satisfy it) and invariant 7 (where the multiplicative stand-in must fail
+// it). One table, two consumers, so the control is provably driven over the
+// same inputs the check is.
+//
+// WHY `integerTerms` IS A COLUMN RATHER THAN A DERIVED PREDICATE. It is the
+// whole trap this grid is built around and it is stated by hand so a reader sees
+// it as an assertion by the author rather than as arithmetic to re-derive. See
+// invariant 7's banner for the measurement.
+struct FmIdentityPoint {
+	float voct;        // V/OCT volts the connected block runs at
+	float fmVolts;     // FM jack volts
+	float fmAtten;     // the bipolar attenuverter setting
+	bool  integerTerms;  // BOTH the V/OCT volt and the FM product are whole numbers
+	const char* role;
+};
+
+const FmIdentityPoint FM_IDENTITY_GRID[] = {
+	{ 0.25f,  0.75f,  1.0f,  false, "fractional TERMS, integer sum +1.0 - the row that shows an integer SUM is not enough" },
+	{ 1.f,    2.f,    1.0f,  true,  "PURE-INTEGER TERMS, sum +3.0 - the trap row a multiplicative core also satisfies" },
+	{ -1.5f,  0.5f,   0.5f,  false, "fractional sum -1.25, half attenuverter" },
+	{ 2.f,   -3.f,    1.0f,  true,  "PURE-INTEGER TERMS again, sum -1.0, negative FM volts" },
+	{ 0.5f,   1.3f,   0.37f, false, "attenuverter 0.37 - the product itself is not exactly representable, sum about +0.981" },
+	{ 3.25f, -1.75f,  1.0f,  false, "fractional sum +1.5 reached from a negative FM voltage" },
+	{ -2.f,   0.6f,  -0.5f,  false, "NEGATIVE attenuverter inside the identity grid, sum -2.3" },
+};
+const size_t FM_IDENTITY_GRID_N = sizeof(FM_IDENTITY_GRID) / sizeof(FM_IDENTITY_GRID[0]);
+
+// The FM term and the shifted V/OCT value, computed as FLOAT arithmetic in the
+// SAME ASSOCIATION src/dsp/VcoCore.hpp uses: the product FIRST, then the sum
+// onto the V/OCT value. Written as two named steps rather than one expression
+// because the association is the whole point -- a different grouping would
+// round differently and the identity below is bit-exact or it is nothing.
+float fmProductOf(const FmIdentityPoint& p) { return p.fmVolts * p.fmAtten; }
+float shiftedVoctOf(const FmIdentityPoint& p) { return p.voct + fmProductOf(p); }
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -1070,5 +1225,449 @@ TEST_CASE("vco pitch PITCH-03 FINE tune: +/-1 semitone shifts the MEASURED pitch
 
 		CAPTURE(sr);
 		CAPTURE(worstAbsCents);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 6. FM-01 / FM-02 / FM-03 / D-06 / D-09: EXPONENTIAL FM. THE CENTRAL
+//    REQUIREMENT OF THIS PHASE, AND THE ONE WITH THE SHARPEST TRAP IN IT.
+//
+//    THE CLAIM. The FM contribution is summed into the VOLT domain BEFORE the
+//    single exponential, so a static FM voltage at a given attenuverter setting
+//    produces exactly the same audio as that same voltage added onto V/OCT with
+//    the jack unpatched -- BIT for BIT, not approximately.
+//
+//    THE TRAP, AND IT DECIDES WHETHER THIS REQUIREMENT IS ACTUALLY TESTED. The
+//    natural grid for that identity is whole volts, and A MULTIPLICATIVE
+//    IMPLEMENTATION PASSES A WHOLE-VOLT GRID EXACTLY. The shipped LFO's FM shape
+//    -- resolve a frequency, then multiply it by an exponentiated modulator --
+//    is the explicit counter-example this phase was written against, and at
+//    INTEGER volt terms it agrees with the summing form to the last bit: the
+//    frozen polynomial produces integer octaves by writing the floating-point
+//    exponent field directly, so its value at a whole number is an EXACT power
+//    of two, and multiplying a float by an exact power of two is itself exact.
+//    An integer-only identity grid would therefore have passed the wrong
+//    implementation. That is why FM_IDENTITY_GRID above carries FRACTIONAL volt
+//    pairs, and why invariant 7 exists to demonstrate the failure rather than
+//    argue for it. The measured per-point mismatch table is in invariant 7's
+//    banner, including the integer rows' ZERO -- recorded as the measured trap
+//    it is rather than quietly avoided.
+//
+//    WHY THE COMPARATOR MATTERS AS MUCH AS THE GRID. doctest's approximate
+//    comparator appears NOWHERE in this file. Its zero-epsilon form still
+//    applies a relative margin, and a multiplicative implementation is wrong by
+//    roughly a part in a million -- comfortably inside such a margin. The
+//    comparison is a direct float inequality (see diffBlocks above).
+//
+//    VALIDITY BEFORE ANY FM CLAIM. The case opens by REQUIRING that
+//    runBlockOn() reproduces forge::VcoBlockDriver::run() bit-for-bit over the
+//    same seeds and the same inputs, and it feeds NONSENSE timing through the
+//    callable so that a helper which quietly stopped overwriting sampleTime and
+//    sampleRate would produce a visibly different block. Without that REQUIRE, a
+//    drifted helper would pass everything below it.
+//
+//    NO CLAIM IS MADE ANYWHERE HERE ABOUT THE SPECTRUM OF THE RESULT. The
+//    oscillator is naive and unband-limited by design until Phase 32, and
+//    audio-rate FM on a naive oscillator is loud in exactly the way Phase 32
+//    owns. The audio-rate subcase asserts finiteness, a magnitude bound,
+//    non-constancy and bit-wise difference from the unpatched block -- nothing
+//    else, on purpose.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco pitch FM-01/FM-02/FM-03 exponential FM: the FM voltage sums into the volt domain BEFORE the single exponential, bit-exactly, and the attenuverter and the connected gate both do real work") {
+	// -------------------------------------------------------------------
+	// VALIDITY FIRST. This REQUIRE precedes every FM claim in the case, and
+	// deliberately so: it is the only thing standing between a drifted drive
+	// helper and a green suite.
+	// -------------------------------------------------------------------
+	for (double sr : SAMPLE_RATES) {
+		const int n = 256;
+
+		// NONSENSE TIMING ON PURPOSE. Both loops overwrite sampleTime and
+		// sampleRate unconditionally, so these two values must never reach the
+		// core. If either loop stopped overwriting, the blocks would diverge
+		// immediately and this REQUIRE is what would say so.
+		const std::function<forge::VcoInputs(int)> validityInput = [](int i) {
+			forge::VcoInputs in = pitchBase();
+			in.pitchCV     = -1.f + 2.f * ((float)i / 255.f);
+			in.morph       = 0.5f;
+			in.character   = 0.25f;
+			in.fmVolts     = 0.75f;
+			in.fmAtten     = 0.5f;
+			in.fmConnected = true;
+			in.sampleTime  = 1.f;      // nonsense
+			in.sampleRate  = 1.f;      // nonsense
+			return in;
+		};
+
+		forge::VcoCore helperCore;
+		seedLikeDriver(helperCore);
+		std::vector<float> viaHelper = runBlockOn(helperCore, sr, n, validityInput);
+
+		// The driver's constructor defaults ARE kDriverSeed0/1 and
+		// kDriverSpread0/1, which is why the two cores start from identical RNG
+		// state and why no seed literal was invented for this file.
+		forge::VcoBlockDriver d(sr);
+		std::vector<float> viaDriver = d.run(n, validityInput);
+
+		REQUIRE(viaHelper.size() == (size_t)n);
+		REQUIRE(viaDriver.size() == (size_t)n);
+
+		const BlockDiff vd = diffBlocks(viaHelper, viaDriver);
+		CAPTURE(sr);
+		CAPTURE(n);
+		CAPTURE(vd.mismatches);
+		CAPTURE(vd.firstBad);
+		REQUIRE(vd.mismatches == 0);
+	}
+
+	SUBCASE("FM-03: a static FM voltage is BIT-IDENTICAL to the same volts added onto V/OCT with the jack unpatched") {
+		const int n = 512;
+
+		for (double sr : SAMPLE_RATES) {
+			for (size_t gi = 0; gi < FM_IDENTITY_GRID_N; ++gi) {
+				const FmIdentityPoint& p = FM_IDENTITY_GRID[gi];
+
+				const float  product = fmProductOf(p);
+				const float  shifted = shiftedVoctOf(p);
+				const char*  role    = p.role;
+				const bool   integerTerms = p.integerTerms;
+
+				// The jack PATCHED, at this point's voltage and attenuverter.
+				forge::VcoInputs conn = pitchBase();
+				conn.pitchCV     = p.voct;
+				conn.fmVolts     = p.fmVolts;
+				conn.fmAtten     = p.fmAtten;
+				conn.fmConnected = true;
+				conn.morph       = 0.f;
+				conn.character   = 0.f;
+
+				// The jack UNPATCHED, at the shifted V/OCT value.
+				forge::VcoInputs unp = pitchBase();
+				unp.pitchCV     = shifted;
+				unp.fmConnected = false;
+				unp.morph       = 0.f;
+				unp.character   = 0.f;
+
+				forge::VcoCore connCore;
+				seedLikeDriver(connCore);
+				std::vector<float> connBlock =
+					runBlockOn(connCore, sr, n, [=](int) { return conn; });
+
+				forge::VcoCore unpCore;
+				seedLikeDriver(unpCore);
+				std::vector<float> unpBlock =
+					runBlockOn(unpCore, sr, n, [=](int) { return unp; });
+
+				REQUIRE(connBlock.size() == (size_t)n);
+				REQUIRE(unpBlock.size() == (size_t)n);
+
+				const BlockDiff bd = diffBlocks(connBlock, unpBlock);
+
+				CAPTURE(sr);
+				CAPTURE(role);
+				CAPTURE(integerTerms);
+				CAPTURE(p.voct);
+				CAPTURE(p.fmVolts);
+				CAPTURE(p.fmAtten);
+				CAPTURE(product);
+				CAPTURE(shifted);
+				CAPTURE(bd.mismatches);
+				CAPTURE(bd.firstBad);
+
+				// ONE CHECK per grid point rather than one per sample: 512
+				// comparisons per point would add tens of thousands of
+				// assertions to a 2.6-million assertion suite for no extra
+				// information, and firstBad above already names the sample.
+				CHECK(bd.mismatches == 0);
+			}
+		}
+	}
+
+	SUBCASE("FM-02: a full NEGATIVE attenuverter inverts the shift bit-exactly AND produces a different block from the full positive one") {
+		const int   n     = 512;
+		const float voct  = 0.5f;
+		const float fmV   = 1.5f;
+
+		for (double sr : SAMPLE_RATES) {
+			forge::VcoInputs plus = pitchBase();
+			plus.pitchCV     = voct;
+			plus.fmVolts     = fmV;
+			plus.fmAtten     = 1.f;
+			plus.fmConnected = true;
+
+			forge::VcoInputs minus = pitchBase();
+			minus.pitchCV     = voct;
+			minus.fmVolts     = fmV;
+			minus.fmAtten     = -1.f;
+			minus.fmConnected = true;
+
+			// The NEGATED shift on V/OCT, same float association as the core's.
+			const float negShifted = voct + fmV * (-1.f);
+
+			forge::VcoInputs unp = pitchBase();
+			unp.pitchCV     = negShifted;
+			unp.fmConnected = false;
+
+			forge::VcoCore cPlus;  seedLikeDriver(cPlus);
+			forge::VcoCore cMinus; seedLikeDriver(cMinus);
+			forge::VcoCore cUnp;   seedLikeDriver(cUnp);
+
+			std::vector<float> blockPlus  = runBlockOn(cPlus,  sr, n, [=](int) { return plus; });
+			std::vector<float> blockMinus = runBlockOn(cMinus, sr, n, [=](int) { return minus; });
+			std::vector<float> blockUnp   = runBlockOn(cUnp,   sr, n, [=](int) { return unp; });
+
+			REQUIRE(blockPlus.size()  == (size_t)n);
+			REQUIRE(blockMinus.size() == (size_t)n);
+			REQUIRE(blockUnp.size()   == (size_t)n);
+
+			const BlockDiff inversion = diffBlocks(blockMinus, blockUnp);
+			const BlockDiff signDiff  = diffBlocks(blockMinus, blockPlus);
+
+			CAPTURE(sr);
+			CAPTURE(voct);
+			CAPTURE(fmV);
+			CAPTURE(negShifted);
+			CAPTURE(inversion.mismatches);
+			CAPTURE(inversion.firstBad);
+			CAPTURE(signDiff.mismatches);
+			CAPTURE(signDiff.firstBad);
+
+			// BOTH halves are asserted, and the second one is not decoration.
+			// The inversion claim ALONE is satisfied by an implementation that
+			// ignored the attenuverter's sign entirely -- it would fail the
+			// negated-shift comparison, yes, but only if the shift is where the
+			// evidence sits. Requiring the two SETTINGS to differ pins the sign
+			// as observable in the audio rather than only in the arithmetic.
+			CHECK(inversion.mismatches == 0);
+			CHECK(signDiff.mismatches > 0);
+		}
+	}
+
+	SUBCASE("FM-02: an attenuverter of zero is a BIT-EXACT no-op even with the jack patched and a finite FM voltage present") {
+		const int   n    = 512;
+		const float voct = 0.5f;
+
+		for (double sr : SAMPLE_RATES) {
+			forge::VcoInputs zeroAtten = pitchBase();
+			zeroAtten.pitchCV     = voct;
+			zeroAtten.fmVolts     = 2.75f;
+			zeroAtten.fmAtten     = 0.f;
+			zeroAtten.fmConnected = true;
+
+			forge::VcoInputs unp = pitchBase();
+			unp.pitchCV     = voct;
+			unp.fmConnected = false;
+
+			forge::VcoCore cZero; seedLikeDriver(cZero);
+			forge::VcoCore cUnp;  seedLikeDriver(cUnp);
+
+			std::vector<float> blockZero = runBlockOn(cZero, sr, n, [=](int) { return zeroAtten; });
+			std::vector<float> blockUnp  = runBlockOn(cUnp,  sr, n, [=](int) { return unp; });
+
+			REQUIRE(blockZero.size() == (size_t)n);
+			REQUIRE(blockUnp.size()  == (size_t)n);
+
+			const BlockDiff bd = diffBlocks(blockZero, blockUnp);
+			CAPTURE(sr);
+			CAPTURE(voct);
+			CAPTURE(bd.mismatches);
+			CAPTURE(bd.firstBad);
+			CHECK(bd.mismatches == 0);
+		}
+	}
+
+	SUBCASE("D-09: with the jack UNPATCHED, ANY finite or non-finite FM voltage and attenuverter is a BIT-EXACT no-op") {
+		const int   n    = 256;
+		const float voct = 1.25f;
+
+		const float NAN_F = std::numeric_limits<float>::quiet_NaN();
+		const float INF_F = std::numeric_limits<float>::infinity();
+
+		// Both fields carry hostile values, because Rack does NOT sanitise cable
+		// voltages and the attenuverter is a param rather than a cable but is
+		// forwarded raw all the same (D-17).
+		const float HOSTILE_VOLTS[] = { NAN_F, INF_F, -INF_F, 1e30f, -1e30f, 3.7f, 0.f };
+		const float HOSTILE_ATTEN[] = { NAN_F, INF_F, -1e30f, -1.f, 0.5f };
+		const size_t nV = sizeof(HOSTILE_VOLTS) / sizeof(HOSTILE_VOLTS[0]);
+		const size_t nA = sizeof(HOSTILE_ATTEN) / sizeof(HOSTILE_ATTEN[0]);
+
+		for (double sr : SAMPLE_RATES) {
+			// The reference: both FM fields at zero, jack unpatched.
+			forge::VcoInputs ref = pitchBase();
+			ref.pitchCV     = voct;
+			ref.fmVolts     = 0.f;
+			ref.fmAtten     = 0.f;
+			ref.fmConnected = false;
+
+			forge::VcoCore cRef; seedLikeDriver(cRef);
+			std::vector<float> refBlock = runBlockOn(cRef, sr, n, [=](int) { return ref; });
+			REQUIRE(refBlock.size() == (size_t)n);
+
+			for (size_t vi = 0; vi < nV; ++vi) {
+				for (size_t ai = 0; ai < nA; ++ai) {
+					const float hv = HOSTILE_VOLTS[vi];
+					const float ha = HOSTILE_ATTEN[ai];
+
+					forge::VcoInputs hostile = pitchBase();
+					hostile.pitchCV     = voct;
+					hostile.fmVolts     = hv;
+					hostile.fmAtten     = ha;
+					hostile.fmConnected = false;
+
+					forge::VcoCore cH; seedLikeDriver(cH);
+					std::vector<float> hBlock = runBlockOn(cH, sr, n, [=](int) { return hostile; });
+					REQUIRE(hBlock.size() == (size_t)n);
+
+					const BlockDiff bd = diffBlocks(hBlock, refBlock);
+					CAPTURE(sr);
+					CAPTURE(voct);
+					CAPTURE(hv);
+					CAPTURE(ha);
+					CAPTURE(bd.mismatches);
+					CAPTURE(bd.firstBad);
+
+					// WHY THIS IS THE GATE'S REAL PROOF AND NOT A FORMALITY. If
+					// the `if (in.fmConnected)` guard were removed, a
+					// not-a-number FM voltage would poison the summed volts; the
+					// D-14 bound is written negated, so the poisoned value lands
+					// on the fallback branch and becomes MINUS sixty-four volts;
+					// the frequency collapses to a denormal-scale number and the
+					// block changes COMPLETELY. So this subcase does not merely
+					// restate that zero times anything is zero -- it fails
+					// loudly the moment the gate disappears, which is exactly
+					// what a boundary control has to do.
+					CHECK(bd.mismatches == 0);
+				}
+			}
+		}
+	}
+
+	SUBCASE("FM-01 / D-06: one volt of FM at a full attenuverter MEASURES exactly one octave, and a per-sample-varying FM voltage stays finite, bounded and non-constant") {
+		// --- Part one: the number D-06 promises, measured on the OUTPUT. ---
+		//
+		// D-06 says full clockwise is 1.0 OCTAVE PER VOLT, i.e. the FM jack at
+		// full depth is simply a second V/OCT input. That is a NUMBER, so it is
+		// measured as one here rather than left as a comment beside a bare
+		// product.
+		for (double sr : SAMPLE_RATES) {
+			const double baseHz = expectedFreqHz(0.0);
+			const int    n      = windowSamples(sr, baseHz);
+
+			forge::VcoInputs atZero = pitchBase();
+			atZero.pitchCV     = 0.f;
+			atZero.fmVolts     = 0.f;
+			atZero.fmAtten     = 1.f;
+			atZero.fmConnected = true;
+
+			forge::VcoInputs atOneVolt = pitchBase();
+			atOneVolt.pitchCV     = 0.f;
+			atOneVolt.fmVolts     = 1.f;
+			atOneVolt.fmAtten     = 1.f;
+			atOneVolt.fmConnected = true;
+
+			forge::VcoCore c0; seedLikeDriver(c0);
+			forge::VcoCore c1; seedLikeDriver(c1);
+
+			std::vector<float> block0 = runBlockOn(c0, sr, n, [=](int) { return atZero; });
+			std::vector<float> block1 = runBlockOn(c1, sr, n, [=](int) { return atOneVolt; });
+			REQUIRE(block0.size() == (size_t)n);
+			REQUIRE(block1.size() == (size_t)n);
+
+			int nUp0 = 0, nUp1 = 0;
+			const double measured0 = estimateFreqRising(block0, sr, &nUp0);
+			const double measured1 = estimateFreqRising(block1, sr, &nUp1);
+
+			CAPTURE(sr);
+			CAPTURE(n);
+			CAPTURE(nUp0);
+			CAPTURE(nUp1);
+			CAPTURE(measured0);
+			CAPTURE(measured1);
+
+			// The same precondition every measured case in this file runs, and
+			// it runs on BOTH blocks before either measurement is used.
+			int nUp = (nUp0 < nUp1) ? nUp0 : nUp1;
+			CAPTURE(nUp);
+			REQUIRE(nUp >= 8);
+
+			const double octaveCents = centsError(measured1, measured0);
+			CAPTURE(octaveCents);
+			CHECK(std::fabs(octaveCents - 1200.0) < kTrackingToleranceCents);
+		}
+
+		// --- Part two: audio-rate FM, structurally rather than as a feature. ---
+		//
+		// THE FM PATH IS PER-SAMPLE ARITHMETIC WITH NO RATE LIMIT ANYWHERE IN
+		// THE CHAIN: the modulator is read, scaled and summed inside step(...),
+		// so audio-rate operation is a STRUCTURAL property of the ordering
+		// rather than a mode to switch on. Nothing here needed enabling.
+		//
+		// AND NOTHING HERE CLAIMS ANYTHING ABOUT THE SPECTRUM OF THE RESULT.
+		// The oscillator aliases on purpose until Phase 32 owns band-limiting,
+		// so the only honest assertions at audio rate are that the output is a
+		// real number, that it stays inside the loose magnitude bound, that it
+		// is not a constant, and that the jack being patched CHANGED it.
+		for (double sr : SAMPLE_RATES) {
+			const int n = 2048;
+
+			// A two-valued square modulator at the SAMPLE RATE -- the most
+			// hostile audio-rate case the chain can be handed, and four octaves
+			// of swing per sample.
+			const std::function<forge::VcoInputs(int)> modulated = [](int i) {
+				forge::VcoInputs in = pitchBase();
+				in.pitchCV     = 0.f;
+				in.fmVolts     = ((i & 1) != 0) ? 2.f : -2.f;
+				in.fmAtten     = 1.f;
+				in.fmConnected = true;
+				return in;
+			};
+
+			const std::function<forge::VcoInputs(int)> unpatched = [](int i) {
+				forge::VcoInputs in = pitchBase();
+				in.pitchCV     = 0.f;
+				in.fmVolts     = ((i & 1) != 0) ? 2.f : -2.f;
+				in.fmAtten     = 1.f;
+				in.fmConnected = false;
+				return in;
+			};
+
+			forge::VcoCore cMod; seedLikeDriver(cMod);
+			forge::VcoCore cUnp; seedLikeDriver(cUnp);
+
+			std::vector<float> modBlock = runBlockOn(cMod, sr, n, modulated);
+			std::vector<float> unpBlock = runBlockOn(cUnp, sr, n, unpatched);
+			REQUIRE(modBlock.size() == (size_t)n);
+			REQUIRE(unpBlock.size() == (size_t)n);
+
+			// ACCUMULATED, not asserted per sample: 2048 samples at three rates
+			// would otherwise add six thousand assertions for four facts.
+			bool   allFinite   = true;
+			bool   insideBound = true;
+			bool   notConstant = false;
+			int    firstBad    = -1;
+			double maxAbs      = 0.0;
+
+			for (size_t i = 0; i < modBlock.size(); ++i) {
+				const double v = (double)modBlock[i];
+				if (!std::isfinite(v))                        { allFinite = false;   if (firstBad < 0) firstBad = (int)i; }
+				if (!(std::fabs(v) <= (double)kPitchLooseBoundV)) { insideBound = false; if (firstBad < 0) firstBad = (int)i; }
+				if (std::fabs(v) > maxAbs) maxAbs = std::fabs(v);
+				if (modBlock[i] != modBlock[0]) notConstant = true;
+			}
+
+			const BlockDiff bd = diffBlocks(modBlock, unpBlock);
+
+			CAPTURE(sr);
+			CAPTURE(n);
+			CAPTURE(maxAbs);
+			CAPTURE(firstBad);
+			CAPTURE(bd.mismatches);
+			CAPTURE(bd.firstBad);
+
+			CHECK(allFinite);
+			CHECK(insideBound);
+			CHECK(notConstant);
+			CHECK(bd.mismatches > 0);
+		}
 	}
 }
