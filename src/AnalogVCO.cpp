@@ -47,7 +47,7 @@
 // which is the cleanest position this phase has against the guardrail. A
 // dedicated pre-Phase-35 phase owns the knob redesign and its backport.
 //
-// The panel is throwaway on purpose. res/AnalogVCO.svg is six rectangles at the
+// The panel is throwaway on purpose. res/AnalogVCO.svg is ten rectangles at the
 // FINAL 18 HP geometry and the FINAL filename, so Phase 35 (PANEL-01/PANEL-02)
 // is an art swap rather than a rewiring. The CRT display is Phase 35's
 // DISP-01..03 and is deliberately absent here, as is any patch-state
@@ -252,15 +252,29 @@ struct AnalogVCOWidget : ModuleWidget {
 		// panel. No screws, no display, no context menu, no serialization hooks.
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/AnalogVCO.svg")));
 
-		// These four coordinates are the four marker rects drawn in
-		// res/AnalogVCO.svg. The two files are written together; move one and
-		// the panel starts lying about where its controls are.
+		// These eight coordinates are the eight marker rects drawn in
+		// res/AnalogVCO.svg, each rect sitting at its control centre minus five
+		// in both axes. The two files are written together; move one and the
+		// panel starts lying about where its controls are — which is exactly why
+		// both edits land in a single commit rather than in two.
+		//
+		// Phase 31 added a middle row of three knobs and one jack between the two
+		// already on the bottom row. The four Phase-30 coordinates below are
+		// unmoved.
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.48f, 40.f)),
 		         module, AnalogVCO::MORPH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.96f, 40.f)),
 		         module, AnalogVCO::CHARACTER_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(20.32f, 60.f)),
+		         module, AnalogVCO::COARSE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(45.72f, 60.f)),
+		         module, AnalogVCO::FINE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(71.12f, 60.f)),
+		         module, AnalogVCO::FM_ATTEN_PARAM));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.48f, 100.f)),
 		         module, AnalogVCO::VOCT_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(45.72f, 100.f)),
+		         module, AnalogVCO::FM_INPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.96f, 100.f)),
 		          module, AnalogVCO::OUTPUT));
 	}
