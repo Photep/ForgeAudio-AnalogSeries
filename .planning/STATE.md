@@ -4,17 +4,17 @@ milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 31
 current_phase_name: Pitch, Tuning & Exponential FM
-status: executing
-stopped_at: Completed 31-08-PLAN.md
-last_updated: "2026-07-30T03:39:13.900Z"
+status: verifying
+stopped_at: Completed 31-09-PLAN.md — Phase 31 operator UAT APPROVED with one observation
+last_updated: "2026-07-30T05:00:34.283Z"
 last_activity: 2026-07-30
-last_activity_desc: Phase 31 execution started
+last_activity_desc: Phase 31 complete — operator in-Rack UAT approved with one observation
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 24
-  completed_plans: 23
-  percent: 25
+  completed_plans: 24
+  percent: 38
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 31 (Pitch, Tuning & Exponential FM) — EXECUTING
+Phase: 31 (Pitch, Tuning & Exponential FM) — COMPLETE
 Plan: 9 of 9
-Status: Ready to execute
-Last activity: 2026-07-30 — Phase 31 execution started
+Status: Phase complete — ready for verification
+Last activity: 2026-07-30 — Phase 31 complete; operator in-Rack UAT APPROVED with one observation (FM depth affordance → Phase 35)
 
 ## Performance Metrics
 
@@ -189,17 +189,18 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 31 P06 | 26min | 3 tasks | 1 files |
 | Phase 31 P07 | 19min | 3 tasks | 2 files |
 | Phase 31 P08 | 12min | 3 tasks | 1 files |
+| Phase 31 P09 | 12min | 2 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-30T03:38:38.508Z
-Stopped at: Completed 31-08-PLAN.md
-Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
+Last session: 2026-07-30T05:00:34.276Z
+Stopped at: Completed 31-09-PLAN.md — Phase 31 operator UAT APPROVED with one observation
+Resume: run `/gsd-verify-work 31`, then `/gsd-discuss-phase 32` for morph-aware polyBLEP/polyBLAMP band-limiting.
 
 ## Operator Next Steps
 
-- Review the v2.0 roadmap (`.planning/ROADMAP.md` Phase Details, Phases 29-36).
-- Note the TEST-02 reconciliation (mapped to Phase 31, the pitch phase, per research) and confirm or adjust.
-- Then run `/gsd-plan-phase 29` to begin.
+- **Phase 31 is complete and operator-approved.** Next: `/gsd-verify-work 31`, then `/gsd-discuss-phase 32`.
+- **Optional housekeeping, your call.** `~/Library/Application Support/Rack2/plugins-mac-arm64/ForgeAudio` is a stale separate plugin (slug `ForgeAudio`, v2.0.0, module `ForgeAudioLFO`, Feb 14) under the pre-rename slug. It is harmless — a different slug, so it cannot shadow the current `ForgeAudio-AnalogSeries` install — but it puts a **second Forge LFO** in the module browser, which is why Phase 31's step-9 guardrail sign-off is recorded with a subject that is inferred rather than pinned. Removing it would make every future in-Rack audition unambiguous. Not done for you: deleting a plugin from your Rack installation is not an executor's call. See `deferred-items.md` item 15.
+- **Phase 35 now holds your first piece of VCO panel feedback** — the FM depth knob's affordance, `deferred-items.md` item 14. FM-02's bipolar behavior is locked and verified; only the widget is open.

@@ -101,7 +101,7 @@ See: `.planning/milestones/v1.4-ROADMAP.md` for full details.
 
 - [x] **Phase 29: VCO Test Harness & LFO Non-Regression Guardrail** - Stand up the Rack-free VcoCore harness and wire the LFO golden + strict/MinGW canary before any VCO DSP lands (completed 2026-07-28)
 - [x] **Phase 30: VcoCore Skeleton & Module Registration** - Pitch-accurate (aliased-on-purpose) VcoCore behind the POD boundary, registered as a second module (completed 2026-07-29)
-- [ ] **Phase 31: Pitch, Tuning & Exponential FM** - Accurate 1V/oct + coarse/fine tune + audio-rate expo FM, all summed before one exp2, proven to <1 cent
+- [x] **Phase 31: Pitch, Tuning & Exponential FM** - Accurate 1V/oct + coarse/fine tune + audio-rate expo FM, all summed before one exp2, proven to <1 cent (completed 2026-07-30)
 - [ ] **Phase 32: Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP)** - The linchpin: band-limit the continuous character-deformed morph crossfade in an isolated wrapper header
 - [ ] **Phase 33: Hard Sync** - Click-free hard sync reusing the anti-aliasing machinery at the master's sub-sample fraction
 - [ ] **Phase 34: Audio-Rate Analog Engine, Drift & Output Stage** - Morph/character/drift at audio rate with VCO-appropriate drift authority and a clean bounded output
@@ -202,7 +202,7 @@ Plans:
   3. Exponential FM (input × bipolar attenuverter × depth) sums into the pitch volt domain **before** the single `exp2_taylor5` call — musical exponential FM, not multiplicative.
   4. Frequency is clamped just below Nyquist and phase accumulates in double precision, so extreme pitch/FM never aliases via an out-of-range frequency and high-note sub-sample crossing placement stays accurate for later band-limiting.
 
-**Plans**: 8/9 plans executed
+**Plans**: 9/9 plans complete
 Plans:
 **Wave 1**
 
@@ -232,7 +232,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6)*
 
-- [ ] 31-09-PLAN.md — Full `dist/` flush, install-freshness proof, and the blocking operator in-Rack UAT checkpoint
+- [x] 31-09-PLAN.md — Full `dist/` flush, install-freshness proof, and the blocking operator in-Rack UAT checkpoint
 
 ### Phase 32: Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP)
 
@@ -314,7 +314,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
-| 31. Pitch, Tuning & Exponential FM | 8/9 | In Progress|  |
+| 31. Pitch, Tuning & Exponential FM | 9/9 | Complete   | 2026-07-30 |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |
