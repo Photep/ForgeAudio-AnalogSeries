@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 31
 current_phase_name: Pitch, Tuning & Exponential FM
 status: executing
-stopped_at: Completed 31-01-PLAN.md (guard landmine disarmed, WR-05 resolved); next 31-02
-last_updated: "2026-07-30T01:10:57.346Z"
+stopped_at: Completed 31-02-PLAN.md
+last_updated: "2026-07-30T01:20:32.017Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 31 execution started
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 24
-  completed_plans: 16
+  completed_plans: 17
   percent: 25
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 31 (Pitch, Tuning & Exponential FM) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-07-30 — Phase 31 execution started
 
@@ -125,6 +125,9 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 31]: Phase 30 deferred item 5 (WR-05) folded into plan 31-01 rather than re-deferred — The item's own Resolve-at named 'the next phase that touches tests/check_includes.sh', and D-23 made Phase 31 that phase. Re-owning the deferral would have left it pointed at a condition already satisfied - the same false-comment class plan 30-08 existed to remove.
 - [Phase 31]: The anchored [2/7] exclusion deliberately permits a trailing // or /* comment — src/dsp/VcoCore.hpp:74 carries '// forge::exp2_taylor5, forge::clamp' on its real exempted line, so forbidding trailing comments would have turned [2/7] red on the LIVE VCO header. The anchor forbids only a PRECEDING directive, which is the whole of the WR-05 evasion. It also permits the grep -n line-number prefix because the exclusion runs downstream of grep -nE.
 - [Phase 31]: TEST-02 deliberately NOT marked complete by plan 31-01 despite being in its frontmatter — TEST-02 reads 'V/Oct tracking accuracy is asserted (< 1 cent error) across the pitch range'. Plan 31-01 only pre-registers the test file's allowlist entry; the assertions land in 31-05/31-06/31-07. Marking it now would reproduce exactly the false green Phase 30 deferred item 1 recorded for PANEL-03. The phase gate confirms TEST-02 after 31-07.
+- [Phase 31]: kVcoNyquistGuardFrac settled at 0.495f (PITCH-04 / D-11) with derived ceilings, crossover volts and D-10's hard-clamp decision in the source — The constant's own comment named Phase 31 as its replacement; leaving it provisional would have kept PITCH-04's policy undecided while three separate comments pointed forward at work already done
+- [Phase 31]: PITCH-04 NOT marked complete at 31-02 — 31-07 owns the pitch-driven Nyquist assertion — 31-02 settles the policy constant but asserts no clamp behavior; 31-RESEARCH grades PITCH-04 coverage partial because the existing freqNyquistBounded pin is driven by hostile timing, not hostile pitch. Marking it here would repeat the PANEL-03 false green
+- [Phase 31]: kVcoMaxDeltaPhase's cross-reference de-tensed alongside the margin arithmetic (Rule 2), value and type untouched per D-12 — The comment instructed a future Phase 31 to leave the constant alone; once Phase 31 had, that instruction was a false forward-reference in the very file plan 30-08 existed to clean
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -165,13 +168,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 30 P09 | 14 min | 2 tasks | 2 files |
 | Phase 30 P10 | 7 min | 2 tasks | 1 files |
 | Phase 31 P01 | 7m | 2 tasks | 2 files |
+| Phase 31 P02 | 7min | 2 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** .planning/phases/31-pitch-tuning-exponential-fm/31-CONTEXT.md
 
-Last session: 2026-07-30T01:09:01.586Z
-Stopped at: Completed 31-01-PLAN.md (guard landmine disarmed, WR-05 resolved); next 31-02
+Last session: 2026-07-30T01:20:32.010Z
+Stopped at: Completed 31-02-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
