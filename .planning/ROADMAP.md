@@ -202,7 +202,7 @@ Plans:
   3. Exponential FM (input × bipolar attenuverter × depth) sums into the pitch volt domain **before** the single `exp2_taylor5` call — musical exponential FM, not multiplicative.
   4. Frequency is clamped just below Nyquist and phase accumulates in double precision, so extreme pitch/FM never aliases via an out-of-range frequency and high-note sub-sample crossing placement stays accurate for later band-limiting.
 
-**Plans**: 5/9 plans executed
+**Plans**: 6/9 plans executed
 Plans:
 **Wave 1**
 
@@ -220,7 +220,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 — same test TU)*
 
-- [ ] 31-06-PLAN.md — COARSE/FINE range + continuity cases, the FM summation identity/bipolarity/connected gate/one-octave-per-volt, and the multiplicative negative control that must FAIL
+- [x] 31-06-PLAN.md — COARSE/FINE range + continuity cases, the FM summation identity/bipolarity/connected gate/one-octave-per-volt, and the multiplicative negative control that must FAIL
 
 **Wave 5** *(blocked on Wave 4 — same test TU)*
 
@@ -314,7 +314,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
-| 31. Pitch, Tuning & Exponential FM | 5/9 | In Progress|  |
+| 31. Pitch, Tuning & Exponential FM | 6/9 | In Progress|  |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |
