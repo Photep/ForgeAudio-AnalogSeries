@@ -81,8 +81,8 @@
 // reasonably but WRONGLY promote the secondary tier to equivalent evidence, or
 // read invariant 1 as part of the gate rather than as a check on the ruler.
 //
-// Invariants (numbered; 1 through 8 are LANDED, and 9 stays RESERVED so the
-// remainder of plan 31-07 can append without renumbering anything here):
+// Invariants (numbered; ALL NINE ARE LANDED as of plan 31-07. A later plan that
+// adds one appends as invariant 10 and renumbers nothing here):
 //   1. the DERIVED-BOUNDARY SELF-CHECK: both per-rate ceilings are computed
 //      from the forge:: constants, the lesser one binds, and the 0.5 V grid
 //      keeps real headroom below it (D-20 / D-21)                  [plan 31-05]
@@ -107,7 +107,10 @@
 //      the telemetry frequency pinned EXACTLY at the derived ceiling while the
 //      oscillator keeps sounding, plus a below-ceiling control proving the clamp
 //      does not fire early                                         [plan 31-07]
-//   9. D-14: the standing hostile-pitch case, pinned AT the bound   [plan 31-07]
+//   9. D-14 / D-22: the STANDING hostile-pitch case, pinned at BOTH ends of the
+//      pitch-volt bound and explicitly NOT the red for it; the arithmetic proof
+//      that the bound cannot fire on any reachable patch; and PITCH-05's two
+//      non-regression pins, one of them at COMPILE TIME     [plan 31-07]
 //
 // MEASURED WORST-CASE TRACKING ERROR — THIS PHASE'S OWN FIGURES, harvested from
 // an actual run of these cases during plan 31-05. Worst ABSOLUTE cents per rate,
@@ -144,7 +147,8 @@
 #include <functional>   // std::function — the driver's run() takes its per-sample input functor as one
 #include <cmath>        // std::exp2 / std::log2 / std::fabs / std::fmin / std::isfinite / std::lround
 #include <cstdint>      // the fixed-width seed types the driver's constructor takes
-#include <limits>       // reserved for 31-07's hostile-pitch grid
+#include <limits>       // std::numeric_limits<float>::quiet_NaN() / ::infinity() — invariant 9's hostile grid
+#include <type_traits>  // the standard same-type comparison behind invariant 9's compile-time accumulator pin (PITCH-05)
 
 namespace {
 
@@ -2298,6 +2302,412 @@ TEST_CASE("vco pitch PITCH-04 / D-10: the Nyquist clamp FIRES at its derived cei
 			bool withinTolerance = true;
 			if (!(std::fabs(cents) < kTrackingToleranceCents)) withinTolerance = false;
 			CHECK(withinTolerance);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 9. D-14 / D-22: THE STANDING HOSTILE-PITCH CASE, PINNED AT BOTH ENDS OF THE
+//    PITCH-VOLT BOUND — PLUS THE ARITHMETIC PROOF THAT THE BOUND CANNOT FIRE ON
+//    ANY REACHABLE PATCH, AND PITCH-05'S TWO NON-REGRESSION PINS.
+//
+//    READ THIS FIRST, BECAUSE THE HONEST LABEL MATTERS MORE HERE THAN ANYWHERE
+//    ELSE IN THIS FILE. THIS CASE IS THE PERMANENT REGRESSION CHECK FOR THE
+//    PITCH-VOLT BOUND. IT IS **NOT** THE EVIDENCE THAT THE BOUND WAS NEEDED, AND
+//    IT MUST NEVER BE CITED AS SUCH.
+//
+//    WHY NOT, MEASURED RATHER THAN ARGUED. A behavioral red for this bound was
+//    MEASURED VACUOUS before the bound was written. With the guard absent, the
+//    core ALREADY survived a quiet not-a-number, both infinities, very large
+//    finite magnitudes of both signs and two-hundred-volt inputs with every
+//    sample finite, a telemetry frequency of zero and a peak magnitude inside
+//    five volts. Every assertion a reasonable person would have written as the
+//    red — all samples finite, frequency zero, output in range — was ALREADY
+//    GREEN. The reason is that the existing NEGATED frequency floor catches the
+//    garbage RESULT the undefined behavior produces, so the output never shows
+//    the defect at all. Landing a guard behind a case that never went red is the
+//    vacuous-coverage trap this repository has twice rejected a fix over.
+//
+//    WHERE THE RED ACTUALLY CAME FROM. A ONE-SHOT UNDEFINED-BEHAVIOR SANITIZER
+//    PROBE, run outside the working tree during plan 31-03, which named BOTH
+//    frozen sites by file, line and column: the float-to-int cast at
+//    src/dsp/RackCompat.hpp:106 (a not-a-number outside the representable range
+//    of int) and the left shift at :109 (a shift of 2147483647 by 23 places).
+//    Its verbatim transcript, and the clean re-run against it, live in that
+//    plan's summary. The probe exits 0 in BOTH runs — the sanitizer recovers by
+//    default — so the DIAGNOSTIC TEXT is the evidence and the exit status is
+//    not.
+//
+//    AND WHY THAT PROBE STAYS ONE-SHOT (D-24). A PERMANENT REPOSITORY-WIDE
+//    SANITIZER GATE IS FORBIDDEN. The SHIPPED module reaches the identical
+//    latent problem through its own FM path, so a repo-wide gate would turn the
+//    live, golden-pinned module red. Fixing that is a milestone-guardrail event
+//    requiring operator sign-off and a golden re-verification, and nobody has
+//    signed off. Do not add `-fsanitize=undefined` to the build or to CI on the
+//    strength of this case.
+//
+//    WHAT THE HOSTILE GRID BELOW THEREFORE IS. A standing regression check that
+//    the guarded chain keeps five properties over an input class Rack can
+//    genuinely deliver, because Rack does NOT sanitise cable voltages. Per
+//    configuration, accumulated over a few thousand steps rather than asserted
+//    per sample: every returned sample finite; the peak magnitude inside this
+//    file's loose bound; the phase accumulator inside its half-open zero-to-one
+//    range; the telemetry frequency non-negative; and the telemetry frequency at
+//    or below the Nyquist ceiling recomputed symbolically from the guard
+//    fraction and the same sanitised-rate rule the core applies. The last two
+//    are written NEGATED so a not-a-number reads as a FAILURE rather than
+//    passing silently.
+//
+//    THE TWO PINNED POINTS ARE D-22'S STANDING CHECK: the pitch volts driven to
+//    EXACTLY plus and EXACTLY minus the bound, taken from the forge:: constant
+//    rather than typed in, so moving the constant moves this case with it. The
+//    same two points are also driven through the FM route, because the FM term
+//    is the reason the bound exists.
+//
+//    NO NON-CONSTANT ASSERTION APPEARS ANYWHERE IN THIS CASE, AND THE NEGATIVE
+//    PINNED POINT IS WHY. At minus the bound the frequency is denormal-scale but
+//    POSITIVE (measured 1.418e-17 Hz), so the negated frequency floor correctly
+//    does NOT fire, the phase increment is about 3.2e-22, and the output is
+//    effectively direct current. THAT IS THE STATED LOW-END DECISION RATHER THAN
+//    A DEFECT (D-13): no low-end frequency floor is added anywhere, because a
+//    VCO tuned absurdly low genuinely IS direct current and the user asked for
+//    it. PITCH-04 speaks only to the top end, and invariant 8 is where the
+//    oscillator is required to keep sounding. A DIFFERENT WARNING FROM THE SAME
+//    DECISION: do not write a telemetry-frequency-equals-zero assertion for
+//    hostile pitch. That value USED to be zero, before the bound existed, only
+//    because the undefined behavior produced garbage the floor happened to
+//    sanitise. It is now a small POSITIVE number and such an assertion would
+//    fail on correct behavior.
+//
+//    THE HOSTILE TIMING GRIDS IN THE OTHER VCO CORE TEST FILE ARE NOT EXTENDED
+//    BY THIS CASE, ON PURPOSE (D-15). Infinities, subnormals and very-large
+//    finite values on the sample rate and sample time remain DEFERRED to the
+//    phase whose oversampled inner loop is the first real source of exotic
+//    timing — that loop decouples the rate from the sample time deliberately,
+//    which is what makes exotic timing reachable there rather than merely
+//    imaginable. This case covers a DIFFERENT INPUT CLASS: the pitch and FM
+//    fields. Its own timing is deliberately LEGITIMATE at every point, so a
+//    failure here can only be about the pitch chain.
+//
+//    MEASURED RESULTS, harvested from an actual run during plan 31-07 with a
+//    temporary print that was removed before the commit. All 78 configurations
+//    (26 grid rows at three rates) pass all five accumulated properties with
+//    firstBadStep = -1 — no step of any configuration violated anything.
+//
+//    AND HERE IS THE HONEST SHAPE OF WHAT THE GRID DISTINGUISHES, recorded the
+//    same way invariant 7's blind rows are, because a grid's ZEROES and its
+//    COLLAPSES are as informative as its hits. Because the bound maps every
+//    hostile input onto one of two values, the 26 rows collapse onto exactly
+//    THREE observable outcomes per rate:
+//
+//      outcome            rows                          telemetry Hz      peak V
+//      -----------------  ----------------------------  ---------------  --------
+//      the CONTROL        the zero-volt row              261.6256104     5.000000 (44.1 kHz)
+//                                                                       4.999999523 (48/96 kHz)
+//      POSITIVE plateau   +inf, +1e30, +200, +130,       the rate's      4.998722553 (44.1 kHz)
+//                         +bound, and the same five      ceiling         4.998712063 (48/96 kHz)
+//                         through FM, plus a finite       EXACTLY:
+//                         voltage times a POSITIVELY     21829.5 /
+//                         infinite attenuverter          23760 / 47520
+//      NEGATIVE plateau   a not-a-number, -inf, -1e30,   1.418275276e-17 5.000000
+//                         -200, -130, -bound, the same    at ALL THREE
+//                         through FM, and a finite        rates
+//                         voltage times a NOT-A-NUMBER
+//                         or negatively infinite
+//                         attenuverter
+//
+//    TWO THINGS ARE WORTH READING OUT OF THAT COLLAPSE rather than skimming it.
+//    A NOT-A-NUMBER lands on the NEGATIVE plateau, and that is the negated-first
+//    comparison in the core made visible: a not-a-number fails
+//    `pitchVolts > -bound`, so the negation is true and it becomes minus the
+//    bound. If someone ever "simplified" that pair into the comparison ladder
+//    helper — which is transparent to a not-a-number and passes it straight
+//    through — those rows would stop landing here. And the peak magnitude at the
+//    negative plateau is the LARGEST of the three, not the smallest, precisely
+//    because the output there is a frozen constant at whatever the waveform's
+//    value is: a stalled oscillator is not a quiet one, which is why the loose
+//    magnitude bound is a real check on these rows and a finiteness test alone
+//    would not be.
+//
+//    THE MARGIN SUBCASE MEASURED: terms 12 + 5 + 0.083333333333333329 + 12, a
+//    worst reachable total of 29.083333333333332 V against a bound of 64 V, for
+//    a ratio of 2.2005730659025788. The requirement is a factor of two; the
+//    measured margin clears it by ten percent.
+//
+//    PITCH-05'S RUNTIME HALF MEASURED: over 100000 steps one volt above each
+//    rate's clamp ceiling the accumulator finishes at 0.99909167672740296 (44.1
+//    kHz) and 0.99946984462440014 (48 and 96 kHz), and never once left its
+//    half-open range.
+//
+//    THE MARGIN SUBCASE IS ARITHMETIC ON PURPOSE, AND THERE IS NO BEHAVIORAL
+//    ALTERNATIVE. See its own comment.
+//
+//    PITCH-05'S TWO PINS live here as well, because they are non-regression
+//    obligations of the same phase rather than claims of their own.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco pitch D-14 / D-22 hostile pitch and FM volts: the STANDING regression check pinned at BOTH ends of the pitch-volt bound, the arithmetic proof the bound cannot fire on a reachable patch, and PITCH-05's non-regression pins - this case is explicitly NOT the RED") {
+	// -------------------------------------------------------------------
+	// PITCH-05, HALF ONE: THE ACCUMULATOR'S DECLARED TYPE, PINNED AT COMPILE
+	// TIME rather than by a comment or by review.
+	//
+	// WHAT IT PROTECTS, and it is a future phase's problem rather than this
+	// one's. The band-limiting work that follows this phase places waveform
+	// discontinuities at a SUB-SAMPLE position, and the fraction it needs is
+	// computed from this accumulator. A float accumulator carries about
+	// twenty-four bits of mantissa, so at audio rates it loses the low-order
+	// part of every increment and the loss COMPOUNDS over a long block — the
+	// crossing fraction degrades exactly where the correction has to be most
+	// precise. A one-word type change would do that silently: nothing about the
+	// pitch, the tracking or the guards would move, and no behavioral case in
+	// this suite would notice. So the type is asserted at compile time, which is
+	// the only place this particular regression is visible.
+	// -------------------------------------------------------------------
+	static_assert(std::is_same<decltype(forge::VcoCore::phase), double>::value,
+	              "PITCH-05: forge::VcoCore's phase accumulator must remain a double. "
+	              "A float accumulator loses low-order increments at audio rates over long "
+	              "blocks, which degrades the sub-sample crossing fraction a later phase's "
+	              "band-limiting depends on. Do not narrow this type.");
+
+	// How many steps each hostile configuration is driven for. A few thousand is
+	// enough for a wrapping accumulator to visit its whole range at the positive
+	// plateau, and short enough that 26 rows at three rates stay cheap.
+	const int kHostileSteps = 4000;
+
+	SUBCASE("the hostile grid: pitch-routed and FM-routed, with both bound points PINNED symbolically") {
+		// One row per configuration. Written as a table so the grid is readable
+		// as data rather than reconstructed from nested loops, and so the role
+		// string travels into the failure output with the numbers.
+		struct HostilePitchPoint {
+			float pitchCV;
+			float fmVolts;
+			float fmAtten;
+			bool  fmConnected;
+			const char* role;
+		};
+
+		const float qnan  = std::numeric_limits<float>::quiet_NaN();
+		const float pinf  = std::numeric_limits<float>::infinity();
+		const float ninf  = -std::numeric_limits<float>::infinity();
+		const float huge  = 1e30f;
+		// THE BOUND, READ FROM THE forge:: CONSTANT AND NEVER TYPED IN. The two
+		// rows that use it are D-22's standing pinned points; a literal here
+		// would silently stop pinning the bound the moment the constant moved.
+		const float bound = forge::kVcoMaxPitchVolts;
+
+		const HostilePitchPoint GRID[] = {
+			// --- routed through the V/OCT pitch field, FM jack unpatched ---
+			{  0.f,     0.f,  0.f,  false, "the CONTROL: a legitimate zero-volt pitch, jack unpatched" },
+			{  qnan,    0.f,  0.f,  false, "pitch: a quiet not-a-number" },
+			{  pinf,    0.f,  0.f,  false, "pitch: positive infinity" },
+			{  ninf,    0.f,  0.f,  false, "pitch: negative infinity" },
+			{  huge,    0.f,  0.f,  false, "pitch: a very large POSITIVE finite magnitude" },
+			{ -huge,    0.f,  0.f,  false, "pitch: a very large NEGATIVE finite magnitude" },
+			{  200.f,   0.f,  0.f,  false, "pitch: plus two hundred volts" },
+			{ -200.f,   0.f,  0.f,  false, "pitch: minus two hundred volts" },
+			{  130.f,   0.f,  0.f,  false, "pitch: plus one hundred and thirty volts, just outside the frozen helper's own domain" },
+			{ -130.f,   0.f,  0.f,  false, "pitch: minus one hundred and thirty volts" },
+			{  bound,   0.f,  0.f,  false, "PINNED (D-22): pitch driven to EXACTLY PLUS the bound, from the forge:: constant" },
+			{ -bound,   0.f,  0.f,  false, "PINNED (D-22): pitch driven to EXACTLY MINUS the bound, from the forge:: constant" },
+			// --- routed through the FM field instead, jack CONNECTED, attenuverter FULL ---
+			{  0.f,  qnan,    1.f,  true,  "FM route: a quiet not-a-number on the FM jack at a full attenuverter" },
+			{  0.f,  pinf,    1.f,  true,  "FM route: positive infinity at a full attenuverter" },
+			{  0.f,  ninf,    1.f,  true,  "FM route: negative infinity at a full attenuverter" },
+			{  0.f,  huge,    1.f,  true,  "FM route: a very large POSITIVE finite magnitude at a full attenuverter" },
+			{  0.f, -huge,    1.f,  true,  "FM route: a very large NEGATIVE finite magnitude at a full attenuverter" },
+			{  0.f,  200.f,   1.f,  true,  "FM route: plus two hundred volts at a full attenuverter" },
+			{  0.f, -200.f,   1.f,  true,  "FM route: minus two hundred volts at a full attenuverter" },
+			{  0.f,  130.f,   1.f,  true,  "FM route: plus one hundred and thirty volts at a full attenuverter" },
+			{  0.f, -130.f,   1.f,  true,  "FM route: minus one hundred and thirty volts at a full attenuverter" },
+			{  0.f,  bound,   1.f,  true,  "PINNED through the FM route: EXACTLY PLUS the bound at a full attenuverter" },
+			{  0.f, -bound,   1.f,  true,  "PINNED through the FM route: EXACTLY MINUS the bound at a full attenuverter" },
+			// --- a NON-FINITE ATTENUVERTER with a perfectly finite voltage: the
+			//     hostile value arrives through the KNOB rather than the cable ---
+			{  0.f,  5.f,  qnan,     true,  "FM route: a FINITE five volts through a NOT-A-NUMBER attenuverter" },
+			{  0.f,  5.f,  pinf,     true,  "FM route: a FINITE five volts through a POSITIVELY INFINITE attenuverter" },
+			{  0.f,  5.f,  ninf,     true,  "FM route: a FINITE five volts through a NEGATIVELY INFINITE attenuverter" },
+		};
+		const size_t GRID_N = sizeof(GRID) / sizeof(GRID[0]);
+
+		for (double sr : SAMPLE_RATES) {
+			const float srf = (float)sr;
+			const float dt  = (float)(1.0 / sr);
+
+			// The ceiling the core is SUPPOSED to have applied, recomputed from
+			// the same constant and the same sanitising rule the header uses, so
+			// this case states the contract independently instead of echoing
+			// whatever the header happened to compute.
+			const float expectedMaxFreq = forge::kVcoNyquistGuardFrac * ((srf > 0.f) ? srf : 0.f);
+
+			for (size_t gi = 0; gi < GRID_N; ++gi) {
+				const HostilePitchPoint& p = GRID[gi];
+				const char* role = p.role;
+
+				forge::VcoCore core;
+				seedLikeDriver(core);
+
+				// TIMING IS DELIBERATELY LEGITIMATE at every point (D-15): this
+				// case is about the pitch and FM fields, and hostile timing
+				// belongs to a later phase.
+				forge::VcoInputs in = pitchBase();
+				in.pitchCV     = p.pitchCV;
+				in.fmVolts     = p.fmVolts;
+				in.fmAtten     = p.fmAtten;
+				in.fmConnected = p.fmConnected;
+				in.morph       = 0.5f;
+				in.character   = 1.f;
+				in.sampleTime  = dt;
+				in.sampleRate  = srf;
+
+				// ACCUMULATED, not asserted per sample: 78 configurations at
+				// 4000 steps would otherwise add over a million assertions to
+				// the suite. Same idiom as the other VCO core file's hostile
+				// scenarios, with a first-bad-step index carried out so a red
+				// names a step rather than only a property.
+				bool   allFinite          = true;
+				bool   insideLooseBound   = true;
+				bool   phaseInRange       = true;
+				bool   freqNonNegative    = true;
+				bool   freqNyquistBounded = true;
+				double maxAbs             = 0.0;
+				double maxFreqSeen        = 0.0;
+				int    firstBadStep       = -1;
+
+				for (int i = 0; i < kHostileSteps; ++i) {
+					const float s = core.step(in);
+					const double a = std::fabs((double)s);
+					if (a > maxAbs) maxAbs = a;
+					if ((double)core.tel.freqHz > maxFreqSeen) maxFreqSeen = (double)core.tel.freqHz;
+
+					bool bad = false;
+					if (!std::isfinite(s))                       { allFinite = false;          bad = true; }
+					if (!(a <= (double)kPitchLooseBoundV))        { insideLooseBound = false;   bad = true; }
+					if (!(core.phase >= 0.0))                    { phaseInRange = false;       bad = true; }
+					if (!(core.phase < 1.0))                     { phaseInRange = false;       bad = true; }
+					// Negated so a not-a-number telemetry frequency reads as a
+					// failure, the same way the core's own floors are written.
+					if (!(core.tel.freqHz >= 0.f))               { freqNonNegative = false;    bad = true; }
+					if (!(core.tel.freqHz <= expectedMaxFreq))   { freqNyquistBounded = false; bad = true; }
+					if (bad && firstBadStep < 0) firstBadStep = i;
+				}
+
+				CAPTURE(sr);
+				CAPTURE(role);
+				CAPTURE(p.pitchCV);
+				CAPTURE(p.fmVolts);
+				CAPTURE(p.fmAtten);
+				CAPTURE(p.fmConnected);
+				CAPTURE(maxAbs);
+				CAPTURE(maxFreqSeen);
+				CAPTURE(expectedMaxFreq);
+				CAPTURE(firstBadStep);
+				INFO("standing hostile-pitch regression check with LEGITIMATE timing - the RED for this bound was the one-shot sanitizer probe recorded in plan 31-03's summary, NOT this case");
+
+				CHECK(allFinite);
+				CHECK(insideLooseBound);
+				CHECK(phaseInRange);
+				CHECK(freqNonNegative);
+				CHECK(freqNyquistBounded);
+			}
+		}
+	}
+
+	SUBCASE("D-14 reachable-envelope margin: the worst sum a legitimate patch can produce sits at least a factor of two inside the bound") {
+		// WHY THIS ASSERTION IS ARITHMETIC, AND WHY NO BEHAVIORAL FORM OF IT
+		// EXISTS. The property being guaranteed is that the pitch-volt bound can
+		// never fire on a patch a musician could actually build. That property is
+		// NOT OBSERVABLE THROUGH THE OUTPUT AT ALL: at the volts in question the
+		// Nyquist ceiling dominates the frequency completely, so a block driven
+		// at twenty-nine volts and a block driven at sixty-four volts return the
+		// SAME SAMPLES. Whether the pitch-volt bound fired is invisible. That
+		// invisibility is not a gap in the test — IT IS THE WHOLE REASON THE
+		// BOUND IS INAUDIBLE IN NORMAL USE, and it is precisely why the
+		// guarantee has to be stated as arithmetic rather than measured.
+		//
+		// BUILT FROM THE DECLARED CONTROL RANGES, NOT FROM A TYPED-IN TOTAL, so
+		// it is THIS ASSERTION that fires if a future phase widens a control's
+		// range or lowers the bound — which is the only way this threat becomes
+		// real. A typed-in total would keep passing while the thing it summarised
+		// went stale.
+		//
+		// Computed in double so the sum carries no float rounding of its own.
+
+		// Term one: the conventional maximum cable magnitude on the V/OCT input.
+		// The platform's documented signal-cable norm.
+		const double maxCableVolts = 12.0;
+
+		// Term two: the coarse tune control's declared magnitude, in OCTAVES,
+		// which is already the volt domain at one octave per volt.
+		const double coarseRangeVolts = 5.0;
+
+		// Term three: the fine tune control's declared magnitude, in SEMITONES,
+		// divided by twelve exactly as the core divides it (D-05).
+		const double fineRangeVolts = 1.0 / 12.0;
+
+		// Term four: the same maximum cable magnitude on the FM input, times a
+		// FULL attenuverter, which the declared range makes unity and which D-06
+		// fixes at one octave per volt with no depth constant anywhere.
+		const double fmTermVolts = maxCableVolts * 1.0;
+
+		const double worstReachableVolts =
+			maxCableVolts + coarseRangeVolts + fineRangeVolts + fmTermVolts;
+
+		// THE BOUND ITSELF, SYMBOLIC. Never a literal.
+		const double boundVolts  = (double)forge::kVcoMaxPitchVolts;
+		const double marginRatio = boundVolts / worstReachableVolts;
+
+		CAPTURE(maxCableVolts);
+		CAPTURE(coarseRangeVolts);
+		CAPTURE(fineRangeVolts);
+		CAPTURE(fmTermVolts);
+		CAPTURE(worstReachableVolts);
+		CAPTURE(boundVolts);
+		CAPTURE(marginRatio);
+		INFO("if this goes red, either a control's declared range widened or the pitch-volt bound was lowered - the bound has become reachable from a legitimate patch and that is a REQUIREMENT-LEVEL regression, not a test problem");
+
+		CHECK(worstReachableVolts < boundVolts);
+		CHECK(marginRatio >= 2.0);
+	}
+
+	SUBCASE("PITCH-05 non-regression: the double accumulator stays inside its half-open range over a long block at a high pitch") {
+		// PITCH-05, HALF TWO: the runtime counterpart to the compile-time type
+		// pin at the top of this case. A long block driven ABOVE the clamp
+		// ceiling is the hardest condition for the accumulator — the ceiling
+		// fires on every sample, so the increment sits at its bound and the
+		// single-subtract wrap runs constantly. An accumulator that drifted, or a
+		// wrap that failed to keep up with a maximal increment, shows here.
+		//
+		// (The other half of PITCH-05 is a SOURCE-level property rather than a
+		// behavioral one — the phase increment is computed with BOTH operands
+		// cast to double — and it is verified by this plan's acceptance criteria
+		// against the core header directly, because a cast that was dropped would
+		// still produce a passing block at these tolerances.)
+		const int kLongBlockSteps = 100000;
+
+		for (double sr : SAMPLE_RATES) {
+			forge::VcoCore core;
+			seedLikeDriver(core);
+
+			forge::VcoInputs in = pitchBase();
+			in.pitchCV    = (float)(clampCeilingVolts(sr) + 1.0);
+			in.morph      = 0.f;
+			in.character  = 0.f;
+			in.sampleTime = (float)(1.0 / sr);
+			in.sampleRate = (float)sr;
+
+			bool phaseInRange = true;
+			int  firstBadStep = -1;
+			for (int i = 0; i < kLongBlockSteps; ++i) {
+				core.step(in);
+				if (!(core.phase >= 0.0)) { phaseInRange = false; if (firstBadStep < 0) firstBadStep = i; }
+				if (!(core.phase < 1.0))  { phaseInRange = false; if (firstBadStep < 0) firstBadStep = i; }
+			}
+
+			const double finalPhase = core.phase;
+			CAPTURE(sr);
+			CAPTURE(in.pitchCV);
+			CAPTURE(finalPhase);
+			CAPTURE(firstBadStep);
+			CHECK(phaseInRange);
 		}
 	}
 }
