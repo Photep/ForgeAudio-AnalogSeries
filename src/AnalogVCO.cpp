@@ -183,22 +183,64 @@ struct AnalogVCO : Module {
 		in.character = params[CHARACTER_PARAM].getValue();
 		in.sampleTime = args.sampleTime;
 		in.sampleRate = args.sampleRate;
+
+		// Phase 31's five fields, forwarded RAW and UNCONDITIONALLY. The tune
+		// values go across in the units forge::VcoInputs documents them in —
+		// octaves and semitones — so nothing here divides by twelve, scales,
+		// sums, bounds or smooths. The semitone-to-octave conversion, the
+		// volt-domain summation and the hostile-input bound on the exponent
+		// argument all live in forge::VcoCore::step, which is where D-05 and
+		// D-17 put them.
+		//
+		// BOTH FM fields cross unconditionally, and that is a DECISION
+		// (D-09/D-17) rather than an oversight. The shipped module's shell
+		// zeroes its own FM voltage behind a conditional before handing it to
+		// its core; that placement is the ANTI-pattern here, for three reasons
+		// that each stand alone. Rack already returns zero volts from an
+		// unpatched input, so the conditional buys nothing. The core owns the
+		// gate, and it does something strictly stronger than substituting zero:
+		// it does not evaluate the term at all, whatever the two fields hold.
+		// And a conditional in this function would be the first computation in a
+		// file whose banner promises none — which is the property that lets the
+		// headless suite stand as evidence about what a user hears.
+		in.coarse = params[COARSE_PARAM].getValue();
+		in.fine = params[FINE_PARAM].getValue();
+		in.fmAtten = params[FM_ATTEN_PARAM].getValue();
+		in.fmVolts = inputs[FM_INPUT].getVoltage();
+		in.fmConnected = inputs[FM_INPUT].isConnected();
 		outputs[OUTPUT].setVoltage(core.step(in));
 
-		// The remaining forge::VcoInputs fields stay at their header defaults:
-		// coarse, fine, fmVolts, fmAtten and fmConnected are Phase 31's, drift
-		// is Phase 34's, and each is wired by the phase that lands the DSP
-		// reading it.
+		// Exactly ONE forge::VcoInputs field is still left at its header
+		// default: drift, which belongs to Phase 34. The rule that produced the
+		// longer list this sentence used to carry has not changed — each field
+		// is wired by the phase that lands the DSP reading it — and Phase 31 is
+		// that phase for the five directly above, so they moved out of this
+		// sentence and into the block above.
 		//
-		// Consequence worth stating here, because this file's arrival is the
-		// moment it looks wrong: this shell feeds runtime-derived values into
-		// only THREE of the eight VcoInputs DSP fields, while
-		// src/vco_compile_canary.cpp feeds all EIGHT. That is what keeps
-		// check_canary.sh [2b/5] reporting eight fields runtime-live at -O3.
-		// This file therefore does NOT make the canary redundant — swapping one
-		// for the other would silently cut constant-fold coverage from eight
-		// fields to three, in exactly the fields Phases 31, 33 and 34 are about
-		// to make load-bearing.
+		// Consequence worth stating here, with numbers this phase moved: this
+		// shell now feeds runtime-derived values into SEVEN of the eight
+		// VcoInputs DSP fields, while src/vco_compile_canary.cpp feeds all
+		// EIGHT. The single field the canary feeds and this shell does not is
+		// drift. That is what keeps check_canary.sh [2b/5] reporting eight
+		// fields runtime-live at -O3.
+		//
+		// The field-count margin is therefore down to ONE, so read what follows
+		// as the actual load-bearing argument rather than as arithmetic — it
+		// never was the arithmetic, and saying so now matters because Phase 34
+		// closes the gap entirely. The canary is the translation unit that guard
+		// COMPILES against a deliberately perturbed copy of the VCO header, and
+		// it is the only VCO translation unit that is link-checkable WITHOUT the
+		// Rack SDK. Neither property is one this file can acquire: this shell
+		// cannot be compiled at all without the SDK, and it cannot be perturbed
+		// by a guard whose whole discipline is to leave the real source alone.
+		// So it could not substitute for the canary even if it fed every field
+		// twice over, and retiring the canary once the counts converge would
+		// delete the only local gate that sees the constant-fold class at all —
+		// the class that got v2.0.0 rejected from the library.
+		//
+		// Growth rule, unchanged and still binding: the next phase that adds a
+		// VcoInputs field must give the canary a runtime value for it, or
+		// [2b/5] quietly stops covering that field while still reporting PASS.
 	}
 };
 
