@@ -123,10 +123,12 @@ constexpr float kVcoNyquistGuardFrac = 0.495f;  // 0.5 x sampleRate x 0.99 (PITC
 // This is a DIFFERENT KIND OF CONSTANT from kVcoNyquistGuardFrac above and must
 // not be confused with it. kVcoNyquistGuardFrac is a Nyquist POLICY bound on the
 // FREQUENCY, expressed as a fraction of the sample rate, and Phase 31 (PITCH-04)
-// replaces it. kVcoMaxDeltaPhase is a CORRECTNESS bound on the per-sample phase
-// INCREMENT, and it exists solely so the single-subtract wrap in step(...) below
-// is valid — any value strictly less than 1.0 satisfies the wrap. Phase 31 must
-// leave this one alone when it retires the Nyquist constant.
+// has now settled it. kVcoMaxDeltaPhase is a CORRECTNESS bound on the per-sample
+// phase INCREMENT, and it exists solely so the single-subtract wrap in step(...)
+// below is valid — any value strictly less than 1.0 satisfies the wrap. Phase 31
+// left this one alone when it retired the Nyquist constant, exactly as D-12
+// required; the margin that narrowed as a result is DOCUMENTED at the wrap
+// below rather than absorbed by widening this bound.
 // It is a double because the accumulator it bounds is a double.
 constexpr double kVcoMaxDeltaPhase = 0.5;
 
@@ -253,6 +255,14 @@ struct VcoCore {
 		// and plan 30-08's revert-one-only probe P1 observed that scenario going
 		// red on freqNonNegative ALONE with this order undone.
 		//
+		// (Those four figures were measured under the pre-Phase-31 guard
+		// fraction of 0.49. They are a HISTORICAL OBSERVATION of a reproduction
+		// run, NOT a current expectation, so they are deliberately left at the
+		// digits that were actually observed: do not recompute them against
+		// 0.495 and do not search-and-replace them when the constant moves. No
+		// assertion anywhere reads these numbers — the suite pins this behavior
+		// symbolically, through kVcoNyquistGuardFrac itself.)
+		//
 		// Still true, and still the reason the ceiling exists at all: research
 		// MEASURED that without any ceiling, pitchCV = +10 drives the accumulator
 		// to phase 1,014,986 and the output to -8,655,011 V while EVERY sample
@@ -282,11 +292,24 @@ struct VcoCore {
 		// at a perfectly legitimate sample rate. Phase 32's oversampled inner loop
 		// is the obvious future caller that decouples them on purpose.
 		//
-		// WHY 0.5 AND NOT kVcoNyquistGuardFrac. At a COUPLED rate the guarded
-		// frequency yields an increment of 0.49 plus float rounding, so a 0.49
-		// ceiling could fire on a legitimate input and MOVE SAMPLES. 0.5 clears
-		// that maximum by roughly two percent, leaves every existing measurement
+		// WHY 0.5 AND NOT kVcoNyquistGuardFrac. At a COUPLED rate
+		// (in.sampleTime == 1 / in.sampleRate) the guarded frequency yields an
+		// increment of 0.495 plus float rounding, so a 0.495 ceiling could fire
+		// on a legitimate input and MOVE SAMPLES. 0.5 still clears that maximum
+		// — by roughly one percent — leaves every existing measurement
 		// bit-identical, and still satisfies the wrap (any bound < 1.0 does).
+		//
+		// That margin NARROWED, from about two percent to roughly one percent,
+		// when PITCH-04's policy moved the guard fraction from 0.49 to 0.495.
+		// D-12 FORBIDS widening this bound in response, and nothing is lost by
+		// leaving it: 0.5 still clears the coupled-rate maximum, so the bound
+		// still cannot fire on a legitimate coupled-rate input and still cannot
+		// move a sample — which is why every existing measurement stayed
+		// bit-identical across that constant change. The margin is DOCUMENTED
+		// rather than absorbed. A future phase that raises kVcoNyquistGuardFrac
+		// further must RE-CHECK this specific margin rather than assume it
+		// survived, because at a guard fraction >= 0.5 this bound WOULD start
+		// firing on a legitimate coupled-rate input.
 		//
 		// The floor is negated for the same reason the frequency floor is: a NaN
 		// in.sampleTime makes deltaPhase NaN, which fails `deltaPhase > 0.0` and
