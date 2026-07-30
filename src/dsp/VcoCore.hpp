@@ -5,20 +5,31 @@
 // out, and last-step telemetry is left behind for the shell. The boundary shape
 // is Phase 29's (D-03) and does not churn — Phase 30 filled the seam without
 // touching it. step() is now a NAIVE, DELIBERATELY ALIASED morphed oscillator:
-// one forge::exp2_taylor5 pitch off the C4 reference, a Nyquist-guarded
-// frequency, a double-precision phase accumulator, and one call into the FROZEN
-// forge::Waveshape::morphedWave, scaled x5 and returned unconditioned.
+// a four-term volt-domain pitch sum through ONE forge::exp2_taylor5 off the C4
+// reference, a Nyquist-guarded frequency, a double-precision phase accumulator,
+// and one call into the FROZEN forge::Waveshape::morphedWave, scaled x5 and
+// returned unconditioned.
 //
-// The crude, aliased timbre is EXPECTED, not a defect. Phase 32 (CORE-02 /
-// AA-01..05) owns band-limiting (morph-aware polyBLEP/polyBLAMP), and no
-// assertion over this body claims anything about spectral cleanliness.
-// PITCH-04's Nyquist policy is SETTLED as of this commit: kVcoNyquistGuardFrac
-// is 0.495f (D-11), so the frequency ceiling below is final rather than a
-// placeholder. What Phase 31 still owes is the REST of the pitch chain — coarse,
-// fine and FM summed in the volt domain before a single exp2 (PITCH-01..03/05),
-// landed by the plan that follows this one; until it does, the pitch handling
-// here reads in.pitchCV alone and is knowingly incomplete.
-// Phase 34 (OUT-01..03) owns output conditioning; see the x5 note in step().
+// THE PITCH CHAIN IS DELIVERED as of this commit (Phase 31). The V/OCT input,
+// coarse tune in OCTAVES, fine tune in SEMITONES and a connected-gated FM
+// contribution are summed in the VOLT domain (PITCH-01..03, FM-01..03), the sum
+// is BOUNDED to a finite range so the frozen exponential's integer cast and
+// shift stay defined (D-14), and the bounded volts pass through EXACTLY ONE
+// exponential off the C4 reference. PITCH-04's Nyquist policy is likewise
+// SETTLED: kVcoNyquistGuardFrac is 0.495f (D-11), so the frequency ceiling below
+// is final rather than a placeholder. The double-precision accumulator
+// (PITCH-05) was already in place and is unchanged.
+//
+// The crude, aliased timbre is EXPECTED, not a defect. WHAT REMAINS IS LATER
+// PHASES' WORK, not a debt in this body:
+//   - Phase 32 (CORE-02 / AA-01..05) owns band-limiting (morph-aware
+//     polyBLEP/polyBLAMP) and still owns the alias floor, so NO assertion over
+//     this body may claim anything about spectral cleanliness.
+//   - Phase 33 owns hard sync, which is why the POD still carries no sync
+//     fields (see the sync note below).
+//   - Phase 34 (OUT-01..03) owns output conditioning and the MOVING drift
+//     engine (the OU layers this phase deliberately does not step); see the x5
+//     note in step().
 //
 // Source-shape contract (tests/check_canary.sh [2b/5]): the `struct VcoCore`
 // declaration line and the `float step(...)` signature line must each stay on
@@ -83,7 +94,20 @@ namespace forge {
 // Namespace-scope plain constexpr — the src/dsp/MathConst.hpp idiom this file's
 // banner mandates above. NOT `inline constexpr` (C++17), NOT an in-class
 // `static constexpr` (declaration-only under C++11 → MinGW undefined reference).
-constexpr float kVcoFreqC4 = 261.6256f;         // C4 = 0 V, the standard VCV V/OCT reference (PITCH-01)
+// PITCH-01's reference, DELIVERED by Phase 31 rather than anticipated by it:
+// the whole pitch chain in step(...) below is built off this one number.
+//
+// THE MEASURED FIXED OFFSET THIS REFERENCE CARRIES. As a float, 261.6256f is
+// exactly 261.6256103515625 — a constant +0.0000685-cent offset from the
+// decimal it is written as. That offset is FIXED and NON-CUMULATIVE (it shifts
+// every note by the same amount, so intervals are exact) and it is four orders
+// of magnitude under the one-cent tracking gate. It is worth stating because
+// PITCH-04/TEST-02's tracking gate DELIBERATELY computes its ground truth from
+// the DECIMAL value rather than from this float, which is part of what makes
+// that gate an INDEPENDENT reference instead of a restatement of the code it
+// checks. A future editor who "corrects" the gate to read this constant would
+// silently remove that independence — and would recover only 0.0000685 cents.
+constexpr float kVcoFreqC4 = 261.6256f;         // C4 = 0 V, the standard VCV V/OCT reference (PITCH-01, delivered Phase 31)
 
 // PITCH-04's Nyquist policy, SETTLED (D-11; .planning/research/STACK.md:122).
 // POLICY: clamp the oscillator frequency to kVcoNyquistGuardFrac * sampleRate,
@@ -116,7 +140,9 @@ constexpr float kVcoFreqC4 = 261.6256f;         // C4 = 0 V, the standard VCV V/
 //
 // This constant is a Nyquist POLICY bound on the FREQUENCY. It remains a
 // different KIND of constant from the wrap-correctness bound on the phase
-// INCREMENT declared just below, which D-12 leaves untouched.
+// INCREMENT, which D-12 leaves untouched — and from the undefined-behavior
+// bound on the PITCH VOLTS, which Phase 31 added between the two. All three
+// are declared in this block and none of them substitutes for another.
 constexpr float kVcoNyquistGuardFrac = 0.495f;  // 0.5 x sampleRate x 0.99 (PITCH-04 / D-11)
 
 // HOSTILE-INPUT bound on the SUMMED PITCH VOLTS, applied BEFORE the exponential
@@ -127,7 +153,8 @@ constexpr float kVcoNyquistGuardFrac = 0.495f;  // 0.5 x sampleRate x 0.99 (PITC
 //
 // WHAT IT GUARDS. forge::exp2Floor (src/dsp/RackCompat.hpp:104-111, reached
 // through forge::exp2_taylor5) adds 127 to its argument, casts the result to
-// int32_t, and then shifts that integer LEFT BY 23 into a float union:
+// int32_t at :106, and then shifts that integer LEFT BY 23 into a float union
+// at :109:
 //     x += 127.f;  int32_t xi = (int32_t)x;  ...  yii = xi << 23;
 // Casting a NaN, an infinity or an out-of-int32_t float to int32_t is undefined
 // behavior, and left-shifting a negative or over-large int32_t is undefined
