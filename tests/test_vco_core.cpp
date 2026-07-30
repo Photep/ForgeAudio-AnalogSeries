@@ -312,6 +312,39 @@ InterleaveResult runInterleaveCheck(
 // 0.006 to 0.012, so neither guard can fire — and invariant 5's captured
 // mismatch figures (512, 512, total 1024) are unchanged by it, proven by plan
 // 30-08 Task 3's before/after diff rather than asserted by eye.
+//
+// BROUGHT IN STEP AGAIN BY PLAN 31-07, IN OBEDIENCE TO THE RULE THE PARAGRAPH
+// ABOVE STATES. Phase 31 replaced the real core's single-term pitch expression
+// with a four-term VOLT-DOMAIN summation through one exponential, plus an
+// fmConnected-gated FM contribution, plus a hostile-input bound on the summed
+// volts ahead of the exponential, plus a sanitised sample rate ahead of the
+// Nyquist ceiling. All of it is mirrored below. Had it not been, this type would
+// again differ from the real core in more than the one field its banner
+// promises, and — worse than merely being wrong — it would have gone on PASSING,
+// because its own inputs never reach the new arithmetic. A stand-in drifting
+// from what it claims to mirror is invisible precisely when the drift is inert.
+//
+// THE ADDITION IS BEHAVIORALLY INERT AT THIS CONTROL'S OWN INPUTS, and that is
+// why the figures below did not move. Invariant 5 drives this type through
+// coreBase(), which leaves coarse and fine at zero and leaves all three FM
+// fields at their header defaults with the jack UNPATCHED, over pitchCV in
+// [-1, +1] and 0.5. So the summation reduces to the pitch volt exactly, the
+// gated FM term is NOT EVALUATED AT ALL, the pitch-volt bound cannot fire two
+// orders of magnitude inside its own range, and the sanitising ternary returns a
+// legitimate positive rate unchanged. Not one sample can move.
+//
+// RE-OBSERVED AFTER THE UPDATE, AND UNCHANGED: 512 / 512 / total 1024 at every
+// one of the three rates — identical to the pre-edit capture, and identical to
+// the figures plan 30-08 recorded. The whole-suite case and assertion counts are
+// unchanged too. THE FIGURES ARE COMPARED AS NUMBERS, NEVER BY DIFFING THE RAW
+// success output: every successful-assertion line carries its own source line
+// number, so a raw diff of a before and after capture is guaranteed to differ
+// for reasons that mean nothing.
+//
+// IF ANY OF THOSE FIGURES EVER MOVES WHEN THIS MIRROR IS UPDATED, STOP AND
+// REPORT IT RATHER THAN UPDATING THE NUMBER. A moved figure means the addition
+// was NOT inert — it means the change altered behavior this control was pinning,
+// which is a finding about the real core and not a bookkeeping update here.
 // ---------------------------------------------------------------------------
 struct DeliberatelyBrokenSharedStateCore {
 	// Per-instance, exactly as the real core holds them. Only `sharedPhase`
@@ -343,12 +376,31 @@ struct DeliberatelyBrokenSharedStateCore {
 		// about.
 		static double sharedPhase = 0.0;
 
-		float freq = forge::kVcoFreqC4 * forge::exp2_taylor5(in.pitchCV);
-		const float maxFreq = forge::kVcoNyquistGuardFrac * in.sampleRate;
+		// PITCH BLOCK MIRRORED FROM src/dsp/VcoCore.hpp (Phase 31 / plan 31-07).
+		// The volt-domain summation of V/OCT, coarse and the divided fine value,
+		// with the semitone-to-octave division owned by the core (D-05), then the
+		// fmConnected-GATED FM contribution added into those same volts — not
+		// multiplied onto a resolved frequency (D-01/FM-03).
+		float pitchVolts = in.pitchCV + in.coarse + in.fine * (1.f / 12.f);
+		if (in.fmConnected) pitchVolts += in.fmVolts * in.fmAtten;
+
+		// Mirrored: the D-14 undefined-behavior bound on the summed volts, with
+		// the NEGATED comparison FIRST as the NaN catcher, against the same
+		// forge:: constant. Never the comparison-ladder helper — it is
+		// transparent to a not-a-number.
+		if (!(pitchVolts > -forge::kVcoMaxPitchVolts)) pitchVolts = -forge::kVcoMaxPitchVolts;
+		if (pitchVolts > forge::kVcoMaxPitchVolts) pitchVolts = forge::kVcoMaxPitchVolts;
+
+		// Mirrored: EXACTLY ONE exponential, off the C4 reference.
+		float freq = forge::kVcoFreqC4 * forge::exp2_taylor5(pitchVolts);
+
+		// Mirrored: the rate is sanitised BEFORE it is scaled (WR-06).
+		const float safeRate = (in.sampleRate > 0.f) ? in.sampleRate : 0.f;
+		const float maxFreq = forge::kVcoNyquistGuardFrac * safeRate;
 		// GUARD SEQUENCE MIRRORED FROM src/dsp/VcoCore.hpp — ceiling first, then
 		// the NaN-safe floor as the last writer, then the direct bound on the
-		// increment. Kept in step with the real core deliberately (plan 30-08);
-		// see the banner above.
+		// increment. Kept in step with the real core deliberately (plans 30-08
+		// and 31-07); see the banner above.
 		if (freq > maxFreq) freq = maxFreq;
 		if (!(freq > 0.f)) freq = 0.f;
 
