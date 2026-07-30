@@ -314,7 +314,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
-| 31. Pitch, Tuning & Exponential FM | 9/9 | Complete   | 2026-07-30 |
+| 31. Pitch, Tuning & Exponential FM | 9/9 | Complete    | 2026-07-30 |
 | 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
 | 33. Hard Sync | 0/? | Not started | - |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |

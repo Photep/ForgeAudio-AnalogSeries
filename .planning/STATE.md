@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Forge Analog VCO
-current_phase: 31
-current_phase_name: Pitch, Tuning & Exponential FM
+current_phase: 32
+current_phase_name: polyBLEP/polyBLAMP
 status: verifying
 stopped_at: Completed 31-09-PLAN.md — Phase 31 operator UAT APPROVED with one observation
-last_updated: "2026-07-30T05:00:34.283Z"
+last_updated: "2026-07-30T05:09:09.010Z"
 last_activity: 2026-07-30
-last_activity_desc: Phase 31 complete — operator in-Rack UAT approved with one observation
+last_activity_desc: Phase 31 complete, transitioned to Phase 32
 progress:
   total_phases: 8
   completed_phases: 3
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 31 (Pitch, Tuning & Exponential FM) — COMPLETE
-Plan: 9 of 9
+Phase: 32 — Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP)
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-07-30 — Phase 31 complete; operator in-Rack UAT APPROVED with one observation (FM depth affordance → Phase 35)
+Last activity: 2026-07-30 — Phase 31 complete, transitioned to Phase 32
 
 ## Performance Metrics
 
