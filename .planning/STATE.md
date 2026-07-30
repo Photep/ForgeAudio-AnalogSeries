@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 31
 current_phase_name: Pitch, Tuning & Exponential FM
 status: executing
-stopped_at: Completed 31-03-PLAN.md
-last_updated: "2026-07-30T01:39:01.142Z"
+stopped_at: Completed 31-04-PLAN.md
+last_updated: "2026-07-30T01:55:44.279Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 31 execution started
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 24
-  completed_plans: 18
+  completed_plans: 19
   percent: 25
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 31 (Pitch, Tuning & Exponential FM) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-07-30 — Phase 31 execution started
 
@@ -133,6 +133,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 31]: the D-22 RED evidence is a one-shot UBSan probe (RackCompat.hpp:106:24 float-cast-overflow + :109:11 left-shift), NOT a behavioral case — the same probe run reproduced the measurement that every behavioral assertion was already GREEN pre-fix. No permanent sanitizer gate, because the SHIPPED LFO shares the identical latent UB via AnalogLFO.cpp:320 -> LfoCore.hpp:183-184 (D-24)
 - [Phase 31]: no requirement marked complete — third consecutive plan in phase 31 declining a false green. PITCH-01/05 await 31-05; PITCH-02/03 and FM-01/02/03 await 31-04's controls plus 31-06's assertions; PITCH-04 awaits 31-07
 - [Phase 31]: tel.freqHz for hostile pitch moved from 0 to 1.41828e-17 — the guarded value is POSITIVE so the negated frequency floor correctly does not fire (D-13's stated intent). A 'tel.freqHz == 0 for hostile pitch' assertion in 31-07 would now FAIL
+- [Phase 31]: 31-04 — Rack's default display precision left alone; the divergence from D-04's illustrative digit count (5 significant digits, +2.0000 oct) is recorded in src/AnalogVCO.cpp beside the FINE declaration rather than silently absorbed
+- [Phase 31]: 31-04 — both FM fields forwarded UNCONDITIONALLY from the shell; the shipped LFO's zeroing ternary (src/AnalogLFO.cpp:320) is named in the source as the anti-pattern with three independent reasons (D-09/D-17)
+- [Phase 31]: 31-04 — the shell's canary argument now leads with STRUCTURE (the canary is the TU the guard compiles against a perturbed VcoCore header, and the only VCO TU link-checkable without the Rack SDK) and demotes the field count to corroboration — the margin narrowed to 7-of-8 vs 8-of-8 with drift the sole gap, and Phase 34 closes it
+- [Phase 31]: 31-04 — no requirement marked complete (PITCH-02, PITCH-03, FM-01, FM-02 stay Pending) — FOURTH consecutive plan in phase 31 declining, because 31-06 owns the behavioral assertions that make them non-vacuous
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -175,13 +179,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 31 P01 | 7m | 2 tasks | 2 files |
 | Phase 31 P02 | 7min | 2 tasks | 1 files |
 | Phase 31 P03 | 12min | 3 tasks | 1 files |
+| Phase 31 P04 | 7min | 3 tasks | 2 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-30T01:38:44.901Z
-Stopped at: Completed 31-03-PLAN.md
+Last session: 2026-07-30T01:55:30.842Z
+Stopped at: Completed 31-04-PLAN.md
 Resume: run `/gsd-verify-work 29`, then `/gsd-discuss-phase 30` for VcoCore skeleton + module registration.
 
 ## Operator Next Steps
