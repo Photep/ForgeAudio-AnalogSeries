@@ -15,8 +15,8 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 - [x] **PITCH-01**: V/Oct input tracks 1V/octave across the audio range (C4 = 0V reference), reusing `forge::exp2_taylor5` for the exponential pitch law (no new exponential; shared-core bit-identity preserved)
 - [x] **PITCH-02**: COARSE tune knob sweeps ±5 octaves continuously
 - [x] **PITCH-03**: FINE tune knob trims ±1 semitone (±100 cents) for detuning/beating
-- [ ] **PITCH-04**: Frequency is clamped just below Nyquist so extreme pitch/FM/sync never aliases via out-of-range frequency
-- [ ] **PITCH-05**: Phase accumulation uses double precision so high-frequency phase-crossing placement stays accurate for band-limiting
+- [x] **PITCH-04**: Frequency is clamped just below Nyquist so extreme pitch/FM/sync never aliases via out-of-range frequency
+- [x] **PITCH-05**: Phase accumulation uses double precision so high-frequency phase-crossing placement stays accurate for band-limiting
 
 ### FM
 
@@ -119,8 +119,8 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | PITCH-01 | Phase 31 | Complete |
 | PITCH-02 | Phase 31 | Complete |
 | PITCH-03 | Phase 31 | Complete |
-| PITCH-04 | Phase 31 | Pending |
-| PITCH-05 | Phase 31 | Pending |
+| PITCH-04 | Phase 31 | Complete |
+| PITCH-05 | Phase 31 | Complete |
 | FM-01 | Phase 31 | Complete |
 | FM-02 | Phase 31 | Complete |
 | FM-03 | Phase 31 | Complete |
