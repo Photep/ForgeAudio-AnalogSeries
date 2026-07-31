@@ -250,17 +250,44 @@ Plans:
 **Plans**: 11 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 32-01-PLAN.md — Guard pre-registration, the exact-integer-cycle spectral apparatus with its own leakage self-check, and the test-only naive mirror (D-08 / D-10)
 - [ ] 32-02-PLAN.md — MORPH CV jack, bipolar attenuverter, NaN-safe shell mix and the paired panel rects (MORPH-02 / D-16 / D-17)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 32-03-PLAN.md — The 90-cell naive alias baseline, then the gate observed RED and landed as a tombstone (D-08 / D-09 / D-11)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 32-04-PLAN.md — `src/dsp/MorphBlep.hpp`: kernels, compact-support character factor, nine-site union, split-source crossing test, plus the canary include (CORE-02 / AA-01..05)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 32-05-PLAN.md — Unit suite: characterized jumps probed against the frozen `Waveshape`, the D-03 limits, overlapping edges, the sync seam, hostile `dt`, and the P-3 resonant-tiling regression (AA-02/03/04)
 - [ ] 32-06-PLAN.md — Wire `MorphBlep` into `VcoCore.hpp:484`, harden morph/character, correct two falsified premises, invert the baseline tombstone (CORE-02 / MORPH-01)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 32-07-PLAN.md — Close the measure→pin loop: pin D-09 thresholds, invert the tombstone into the live TEST-03 gate, add the no-regression and cross-rate invariants
 - [ ] 32-08-PLAN.md — Bring the oracle in step, re-derive the output bound into two measured tiers, exercise the hostile tier (AA-01 / AA-03)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 32-09-PLAN.md — Extend the hostile-timing grid on the corrected D-15 rationale, and add the audio-rate MORPH invariant (MORPH-01/02)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 32-10-PLAN.md — Phase gate: full local suite, CI link leg observed by SHA, requirement traceability, deferred register
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
 - [ ] 32-11-PLAN.md — Operator in-Rack UAT of the audio-rate MORPH sweep and the shipped-LFO guardrail (blocking checkpoint)
+
+**Cross-cutting constraints:**
+
+- D-09: thresholds are per (morph region, note, character) and each carries its measured justification in the test; a single global threshold and a global-floor-with-pulse-carve-out are both rejected.
 
 **Research flag**: RESOLVED at plan time. `32-RESEARCH.md` measured the D-03 factor (`k = max(0, 1 − w/(2·dt))²`, compact support load-bearing) and the achievable per-shape floors against the real frozen header; the MEDIUM-confidence item that remains is the exact threshold numbers, which D-08's measure→pin loop closes in plans 32-03 and 32-07. This is the risk concentrator — budget iteration here.
 
