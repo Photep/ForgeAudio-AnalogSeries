@@ -27,7 +27,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 ### Morph Engine & Anti-Aliasing (the linchpin)
 
 - [ ] **MORPH-01**: The morph engine (`Waveshape`) runs at audio rate, reused verbatim from the frozen shared core
-- [ ] **MORPH-02**: MORPH knob + CV + attenuverter sweep the continuous 5-shape crossfade (sine→triangle→saw→square→narrow-pulse) at audio rate
+- [x] **MORPH-02**: MORPH knob + CV + attenuverter sweep the continuous 5-shape crossfade (sine→triangle→saw→square→narrow-pulse) at audio rate
 - [ ] **AA-01**: Morph-aware polyBLEP band-limits the value-step discontinuities (saw wrap, square edge, variable-width pulse edges) of the continuous crossfade, scaled by the morph and bleed weights
 - [ ] **AA-02**: polyBLAMP band-limits the triangle slope-corner discontinuities
 - [ ] **AA-03**: Anti-aliasing correctly handles multiple/overlapping discontinuities within one sample at narrow pulse widths
@@ -125,7 +125,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | FM-02 | Phase 31 | Complete |
 | FM-03 | Phase 31 | Complete |
 | MORPH-01 | Phase 32 | Pending |
-| MORPH-02 | Phase 32 | Pending |
+| MORPH-02 | Phase 32 | Complete |
 | AA-01 | Phase 32 | Pending |
 | AA-02 | Phase 32 | Pending |
 | AA-03 | Phase 32 | Pending |

@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
-stopped_at: Phase 32 context gathered
-last_updated: "2026-07-31T22:30:17.186Z"
+stopped_at: Completed 32-02-PLAN.md
+last_updated: "2026-07-31T22:38:05.346Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 32 execution started
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 35
-  completed_plans: 25
+  completed_plans: 26
   percent: 38
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 2 of 11
+Plan: 3 of 11
 Status: Ready to execute
 Last activity: 2026-07-31 — Phase 32 execution started
 
@@ -142,6 +142,9 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 31]: 31-08: the matrix case-count gap is ACCOUNTED FOR by measuring BOTH sides - +9 cases and +1,941 assertions on every leg identically (macOS 72->81, Ubuntu/Windows 69->78) — The macOS-vs-others gap is unchanged at exactly 3 cases / 24,582 assertions before AND after, matching the three macOS-gated drift-ON goldens measured locally. A per-leg BEFORE/AFTER delta is evidence that all nine new cases ran everywhere; an absent #if in the new file is only an argument
 - [Phase 31]: 31-08: the std::pow-under-src prohibition is UNSATISFIABLE as written and must be scoped to the VCO seam or to a baseline comparison in future plans — src/dsp/Anim.hpp:40 is a frozen, byte-pinned, shipped-LFO header containing std::pow, absent from the phase diff and unchanged from baseline. Three further criterion artifacts were reported the same way: inline constexpr (3 raw hits, all comment lines forbidding it), static constexpr (14 non-comment hits, mostly the PERMITTED namespace-scope form), and #if defined(__APPLE__) (2 directives gating 3 cases)
 - [Phase 31]: 31-08: D-24 recorded in deferred-items.md item 1 pointed at NO PHASE, marked a guardrail event and unfixed by decision; the clamp-helper item recorded HALF closed — Both shipped call sites read this session: AnalogLFO.cpp:320 -> LfoCore.hpp:183-186 -> RackCompat.hpp:106/:109. Consequence recorded: a permanent repo-wide UBSan gate cannot be adopted while it stands. The clamp helper is half closed - the pitch-volt half honoured the local-to-VcoCore constraint, the morph/character half stays pointed at the phase adding their CV inputs
+- [Phase 32]: D-16 honoured: MORPH CV jack + attenuverter declared in Phase 32, correcting Phase 31's CONTEXT lumping; CHARACTER's CV stays in Phase 34 (CHAR-01)
+- [Phase 32]: D-17 honoured: forge::VcoInputs gains ZERO fields; the shell conditions knob + CV x attenuverter into the POD's documented [0,1], protecting the compile canary's one-field margin
+- [Phase 32]: forge::clamp rejected by name at the MORPH CV boundary: both of a ladder's comparisons are false for a NaN, so the negated-comparison pair is used instead (T-32-01)
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -191,13 +194,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 31 P08 | 12min | 3 tasks | 1 files |
 | Phase 31 P09 | 12min | 2 tasks | 1 files |
 | Phase 32 P01 | 20 min | 3 tasks | 2 files |
+| Phase 32 P02 | 21min | 3 tasks | 2 files |
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/32-morph-aware-anti-aliasing-polyblep-polyblamp/32-CONTEXT.md
+**Resume file:** None
 
-Last session: 2026-07-31T22:30:09.170Z
-Stopped at: Phase 32 context gathered
+Last session: 2026-07-31T22:38:05.337Z
+Stopped at: Completed 32-02-PLAN.md
 Resume: run `/gsd-verify-work 31`, then `/gsd-discuss-phase 32` for morph-aware polyBLEP/polyBLAMP band-limiting.
 
 ## Operator Next Steps
