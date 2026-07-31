@@ -5,8 +5,8 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: polyBLEP/polyBLAMP
 status: verifying
-stopped_at: Completed 31-09-PLAN.md — Phase 31 operator UAT APPROVED with one observation
-last_updated: "2026-07-30T05:09:09.010Z"
+stopped_at: Phase 32 context gathered
+last_updated: "2026-07-31T10:29:04.152Z"
 last_activity: 2026-07-30
 last_activity_desc: Phase 31 complete, transitioned to Phase 32
 progress:
@@ -193,10 +193,10 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 
 ## Session Continuity
 
-**Resume file:** None
+**Resume file:** .planning/phases/32-morph-aware-anti-aliasing-polyblep-polyblamp/32-CONTEXT.md
 
-Last session: 2026-07-30T05:00:34.276Z
-Stopped at: Completed 31-09-PLAN.md — Phase 31 operator UAT APPROVED with one observation
+Last session: 2026-07-31T10:29:04.143Z
+Stopped at: Phase 32 context gathered
 Resume: run `/gsd-verify-work 31`, then `/gsd-discuss-phase 32` for morph-aware polyBLEP/polyBLAMP band-limiting.
 
 ## Operator Next Steps
