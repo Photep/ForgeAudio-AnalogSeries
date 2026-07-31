@@ -22,9 +22,14 @@
 //
 // GROWTH RULE (D-08). EVERY new VCO header must be added to the include list
 // below by the phase that creates it. Phase 32's morph-BLEP header
-// (dsp/MorphBlep.hpp) is the next one due. This is not left as a convention:
-// tests/check_canary.sh section [5/5] fails if any src/dsp/Vco*.hpp (or
-// dsp/MorphBlep.hpp once it exists) is missing from the live includes here.
+// (dsp/MorphBlep.hpp) is CARRIED as of this commit — it landed with plan 32-04
+// and its include below was activated in the SAME commit that created it,
+// because tests/check_canary.sh [5/5] strips comment lines before it looks, so
+// a commented placeholder stops satisfying the check the instant the header
+// exists. The rule itself stands UNCHANGED for the phase that adds the next
+// header. This is not left as a convention: tests/check_canary.sh section [5/5]
+// fails if any src/dsp/Vco*.hpp or dsp/MorphBlep.hpp is missing from the live
+// includes here.
 //
 // NOT DEAD CODE — DO NOT DELETE, DO NOT MAKE static, DO NOT REDUCE TO A BARE
 // #include. This translation unit deliberately contains no DSP and
@@ -52,8 +57,16 @@
 // the C++11 gate this file exists to exercise).
 
 #include "dsp/VcoCore.hpp"
-// D-08 growth point — Phase 32 adds the morph-BLEP header here:
-// #include "dsp/MorphBlep.hpp"
+// D-08 growth point — TAKEN by Phase 32 (plan 32-04). The next phase to add a
+// VCO header appends its include below this line.
+//
+// The runtime-derived field block below needs NO addition for Phase 32, and
+// that is a FINDING rather than an omission: D-17 keeps all MORPH CV summing in
+// the shell, so Phase 32 adds no forge::VcoInputs field for the block to derive
+// from `i`. forge::MorphBlep is reached through forge::VcoCore::step (plan
+// 32-06), whose inputs are already runtime-derived here, so this header is
+// odr-used with non-constant arguments exactly as [2b/5] requires.
+#include "dsp/MorphBlep.hpp"
 
 namespace forge {
 
