@@ -242,7 +242,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. A new additive `MorphBlep.hpp` *calls* (never edits) the frozen `Waveshape.hpp`, applying polyBLEP at value-step discontinuities (saw wrap, square edge, variable-width pulse edges) and polyBLAMP at triangle slope corners — the frozen shared header takes zero edits.
-  2. The MORPH control (knob + CV + attenuverter) sweeps the continuous 5-shape crossfade (sine→triangle→saw→square→narrow-pulse) at audio rate with band-limited output; BLEP/BLAMP magnitude is driven by the *measured characterized* jump so CHARACTER edge-softening auto-scales the correction.
+  2. The MORPH control (knob + CV + attenuverter) sweeps the continuous 5-shape crossfade (sine→triangle→saw→square→narrow-pulse) at audio rate with band-limited output; BLEP/BLAMP magnitude is driven by the *characterized* jump so CHARACTER edge-softening auto-scales the correction.
   3. Multiple / overlapping discontinuities within a single sample (narrow-pulse duty edges) are each placed at their own sub-sample position and summed, not overwritten — narrow pulse keeps its body at high notes.
   4. A spectral alias-floor invariant (a small DFT/Goertzel helper) asserts high-note aliasing stays below the defined threshold (target ≈ −60 dB rel. fundamental, pinned empirically) at the top two octaves — TEST-03.
   5. All anti-aliasing is table-free and Rack-free (closed-form arithmetic), preserving C++11-strict compilation and golden bit-stability — no minBLEP, no oversampling in v2.0.
