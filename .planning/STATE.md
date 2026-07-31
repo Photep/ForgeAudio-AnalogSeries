@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
-stopped_at: Completed 32-02-PLAN.md
-last_updated: "2026-07-31T22:38:05.346Z"
+stopped_at: Completed 32-03-PLAN.md
+last_updated: "2026-07-31T23:02:25.120Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 32 execution started
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 35
-  completed_plans: 26
+  completed_plans: 27
   percent: 38
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 3 of 11
+Plan: 4 of 11
 Status: Ready to execute
 Last activity: 2026-07-31 — Phase 32 execution started
 
@@ -145,6 +145,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 32]: D-16 honoured: MORPH CV jack + attenuverter declared in Phase 32, correcting Phase 31's CONTEXT lumping; CHARACTER's CV stays in Phase 34 (CHAR-01)
 - [Phase 32]: D-17 honoured: forge::VcoInputs gains ZERO fields; the shell conditions knob + CV x attenuverter into the POD's documented [0,1], protecting the compile canary's one-field margin
 - [Phase 32]: forge::clamp rejected by name at the MORPH CV boundary: both of a ladder's comparisons are false for a NaN, so the negated-comparison pair is used instead (T-32-01)
+- [Phase ?]: 32-03: kThresholdFloorDb = -75 dB pins the tightest threshold the spectral apparatus can honestly assert, derived from plan 32-01's worst measured leakage row (-91.95 dB at 44.1 kHz C9); it is a static constant so the D-10 self-check can still fail
+- [Phase ?]: 32-03: measureCellDb escalates the bin-centre solver per cell (method one unless that cell's own D-10 bar demands method two); 76 of 90 cells use method one, 14 escalate
+- [Phase ?]: 32-03: the alias-floor gate was observed RED on 32 of 45 gated cells against the live naive forge::VcoCore and pinned as a tombstone; kNaiveFailuresFloor = 27 is the observed 32 minus 5 and must not be tightened to the observed count
+- [Phase ?]: 32-03: the 13 gated cells that already pass naive are the P-6 population (sine, and high-character cells where the D-03 factor correctly returns zero) and must not be 'fixed' by tightening their thresholds
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -195,13 +199,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 31 P09 | 12min | 2 tasks | 1 files |
 | Phase 32 P01 | 20 min | 3 tasks | 2 files |
 | Phase 32 P02 | 21min | 3 tasks | 2 files |
+| Phase 32 P03 | 40 min | 2 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-31T22:38:05.337Z
-Stopped at: Completed 32-02-PLAN.md
+Last session: 2026-07-31T23:02:25.112Z
+Stopped at: Completed 32-03-PLAN.md
 Resume: run `/gsd-verify-work 31`, then `/gsd-discuss-phase 32` for morph-aware polyBLEP/polyBLAMP band-limiting.
 
 ## Operator Next Steps
