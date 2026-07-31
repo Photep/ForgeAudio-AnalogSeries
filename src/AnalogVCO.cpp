@@ -230,7 +230,63 @@ struct AnalogVCO : Module {
 		// banner's C++11 note.
 		forge::VcoInputs in;
 		in.pitchCV = inputs[VOCT_INPUT].getVoltage();
-		in.morph = params[MORPH_PARAM].getValue();
+
+		// THE ONE AUTHORISED DIVERGENCE FROM THE BANNER'S "THIS FILE DOES NO
+		// DSP" RULE, and D-17 authorises it BY NAME rather than by silence. What
+		// follows is knob + CV x attenuverter, conditioned into the range
+		// forge::VcoInputs::morph has documented since Phase 29 — post-CV,
+		// post-clamp [0,1]. That is PARAM PLUMBING: it makes the POD's own
+		// declaration true at the seam it is declared for, and it computes
+		// nothing the DSP would otherwise compute. FM was a genuinely different
+		// case and the contrast is the point — FM had to enter the volt-domain
+		// summation INSIDE the core, ahead of the single exponential, so Phase
+		// 31's D-17 put it there and left this shell forwarding raw values and
+		// calculating nothing at all. The 0.1f is Rack's plus-or-minus 10 V
+		// bipolar CV convention mapped onto the POD's full plus-or-minus 1.0
+		// range, the same factor the shipped LFO's shell uses.
+		//
+		// NO POD FIELD IS ADDED, AND THAT IS DELIBERATE TWICE OVER. morph was
+		// designed post-CV/post-clamp in Phase 29 and has been stable ever
+		// since; Phase 31's D-05 forbids churning field semantics mid-milestone,
+		// so re-documenting it as raw and moving this mix into the core would
+		// pay a documentation cost to buy nothing. The second reason is
+		// structural: morphCV/morphAtten fields would land under
+		// tests/check_canary.sh [2b/5]'s "every field stays runtime-live"
+		// obligation while the canary's unique-field margin is EXACTLY ONE FIELD
+		// (Phase 31 deferred item 9). Two new fields would overdraw a margin of
+		// one.
+		//
+		// THE CONDITIONING IS WRITTEN NEGATED, AND forge::clamp IS REJECTED HERE
+		// BY NAME. Rack does not sanitise cable voltages, so this jack is the
+		// FIRST route by which a non-finite voltage can reach
+		// forge::Waveshape::morphedWave — a FROZEN function that computes
+		// morph * 4.f and casts the result to int. A float-to-int cast of a NaN
+		// is undefined behavior, and the frozen header cannot be edited to
+		// defend itself: that is a guardrail event, not a VCO fix. forge::clamp
+		// is a comparison LADDER — x < lo ? lo : (x > hi ? hi : x) — and BOTH of
+		// its comparisons are FALSE for a NaN, so a NaN passes straight through
+		// it unchanged and the guard is inert against precisely the input class
+		// it exists to stop. The negated form below puts the NaN on the fallback
+		// branch: a NaN fails `morph > 0.f`, the negation is TRUE, and it becomes
+		// 0.f, which then fails the plain upper comparison and survives. Same
+		// guard SHAPE and same reasoning as the kVcoMaxPitchVolts bound
+		// forge::VcoCore puts ahead of the frozen exponential.
+		//
+		// THE CORE GUARDS THIS FIELD TOO, AND NEITHER GUARD IS REDUNDANT. Plan
+		// 32-06 hardens the same field inside forge::VcoCore::step, because the
+		// core must not rely on its caller — the headless harness builds
+		// forge::VcoInputs directly with no shell in the way, so a core that
+		// trusted this line would be undefended in every test that exists. This
+		// guard exists for the mirror-image reason: so the POD actually arriving
+		// at the seam honours the range its own declaration promises.
+		float morph = params[MORPH_PARAM].getValue();
+		if (inputs[MORPH_CV_INPUT].isConnected())
+			morph += inputs[MORPH_CV_INPUT].getVoltage()
+			         * 0.1f * params[MORPH_ATTEN_PARAM].getValue();
+		if (!(morph > 0.f)) morph = 0.f;
+		if (morph > 1.f) morph = 1.f;
+		in.morph = morph;
+
 		in.character = params[CHARACTER_PARAM].getValue();
 		in.sampleTime = args.sampleTime;
 		in.sampleRate = args.sampleRate;
@@ -292,6 +348,17 @@ struct AnalogVCO : Module {
 		// Growth rule, unchanged and still binding: the next phase that adds a
 		// VcoInputs field must give the canary a runtime value for it, or
 		// [2b/5] quietly stops covering that field while still reporting PASS.
+		//
+		// PHASE 32 RE-READ THAT RULE AND FOUND NOTHING TO DO. Recorded as a
+		// finding rather than skipped in silence, so a later reader does not
+		// have to re-derive it from the diff: D-17 adds NO forge::VcoInputs
+		// field. The mix above feeds a field that already existed and was
+		// already runtime-live. So every number in this block is unmoved — this
+		// shell still feeds SEVEN of the eight DSP fields, the canary still
+		// feeds all EIGHT, drift is still the single field the canary feeds and
+		// this shell does not, the margin is still ONE, and
+		// tests/check_canary.sh [2b/5] still reports eight fields runtime-live
+		// at -O3. Phase 34 is still the phase that closes the gap.
 	}
 };
 
