@@ -370,7 +370,7 @@ struct AnalogVCOWidget : ModuleWidget {
 		// panel. No screws, no display, no context menu, no serialization hooks.
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/AnalogVCO.svg")));
 
-		// These eight coordinates are the eight marker rects drawn in
+		// These ten coordinates are the ten marker rects drawn in
 		// res/AnalogVCO.svg, each rect sitting at its control centre minus five
 		// in both axes. The two files are written together; move one and the
 		// panel starts lying about where its controls are — which is exactly why
@@ -379,6 +379,13 @@ struct AnalogVCOWidget : ModuleWidget {
 		// Phase 31 added a middle row of three knobs and one jack between the two
 		// already on the bottom row. The four Phase-30 coordinates below are
 		// unmoved.
+		//
+		// Phase 32 added ONE ROW OF TWO below Phase 31's middle row: MORPH DEPTH
+		// and the MORPH CV jack, both at y = 80. Their two x positions are
+		// EXACTLY the y = 40 row's, so the new row is symmetric about the
+		// 91.44 mm panel's 45.72 mm centre line and sits vertically aligned under
+		// the MORPH and CHARACTER knobs — the depth control directly beneath the
+		// knob it attenuates. All EIGHT earlier coordinates are unmoved.
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.48f, 40.f)),
 		         module, AnalogVCO::MORPH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.96f, 40.f)),
@@ -389,10 +396,14 @@ struct AnalogVCOWidget : ModuleWidget {
 		         module, AnalogVCO::FINE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(71.12f, 60.f)),
 		         module, AnalogVCO::FM_ATTEN_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.48f, 80.f)),
+		         module, AnalogVCO::MORPH_ATTEN_PARAM));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.48f, 100.f)),
 		         module, AnalogVCO::VOCT_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(45.72f, 100.f)),
 		         module, AnalogVCO::FM_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(60.96f, 80.f)),
+		         module, AnalogVCO::MORPH_CV_INPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.96f, 100.f)),
 		          module, AnalogVCO::OUTPUT));
 	}
