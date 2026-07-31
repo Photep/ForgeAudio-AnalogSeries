@@ -878,28 +878,35 @@ Everything this phase needs is already installed and already wired into `make`. 
 | A4 | `test_vco_spectrum.cpp` is an acceptable new test filename | Wave 0 gaps | Nil — naming is planner discretion; only the `VCO_SIDE_ALLOW` entry matters. |
 | A5 | Rack's `±10 V` bipolar CV convention (`×0.1` in the shell mix) is the right MORPH CV scaling | Code Examples | Low — matches the existing LFO shell and Phase 31's FM attenuverter precedent, but the exact scaling is a Phase 35 panel-behaviour question the operator may want to sign off. |
 
-## Open Questions
+## Open Questions — ALL RESOLVED (2026-08-01, at plan time)
+
+**Status: 5 of 5 RESOLVED.** No open question remains for Phase 32. Each entry below keeps its original *What we know* and *Recommendation* text verbatim — no measured figure has been edited — and carries a **RESOLUTION** line naming the decision and the artifact that holds it.
 
 1. **Does "top two octaves" mean C7–C8 or C8–C9?**
    - What we know: MEASURED floors at both; C8 is the top of a piano and the frequency DAFx-16 itself uses as "the limits of the proposed method".
    - What's unclear: whether the operator's mental model of "high notes" includes 8.4 kHz fundamentals.
    - Recommendation: gate C7 and C8 tightly, **record** C9 in the same test with a loose threshold and a comment. Costs one extra row and removes the ambiguity permanently.
+   - **RESOLVED — the gate asserts on C7, C8 AND C9, and C6 is retained as a diagnostic row.** Operator decision of 2026-08-01, which supersedes the undefined phrase "top two octaves" outright rather than picking one of its two readings. Assumption A2 is therefore CLOSED and its "worth confirming during planning" note is discharged. Lives in: `.planning/ROADMAP.md` §"Phase 32" Success Criterion 4 (already committed, 7fc7634); `32-VALIDATION.md` §"Spectral Construction (D-10)"; and the `SPECTRUM_GRID` tier column built in plan 32-03 and gated in plan 32-07.
 
 2. **Threshold form: `(region, note, character)` matrix, or matrix + a no-regression invariant?**
    - What we know: a `(region, note)` table alone cannot be non-vacuous at high character (P-6).
    - Recommendation: both (see §D-08 baseline). The no-regression invariant is the one that directly asserts what D-03's factor is for, and it is one comparison.
+   - **RESOLVED — both, as recommended.** The `(region, note, character)` matrix covers the 45 gated cells, and a separate no-regression invariant covers ALL 90 cells at a 2.0 dB tolerance, including the diagnostic and cross-rate rows. A third, independent assertion was added on top for anti-circularity, because a threshold pinned from the implementation's own output proves nothing alone: at five named large-margin cells the corrected floor must beat the naive floor by at least 8 dB. Lives in: plan 32-07 Tasks 2 and 3.
 
 3. **Which `deltaPhase` placement method for the gate?**
    - What we know: `pitchCV` alone gives a −56 dB leakage floor; nudging `sampleTime` gives −100 dB at ≤ 5 ppm deviation but cannot use `VcoBlockDriver::run`.
    - Recommendation: `pitchCV` + a mandatory self-check assertion; escalate per-case only if a threshold demands it.
+   - **RESOLVED — `pitchCV` bisection plus a unit-in-last-place scan, keeping `forge::VcoBlockDriver` unchanged, with the self-check made MANDATORY and PER CELL.** `impliedLeakageDb(binError)` is `REQUIRE`d at least 10 dB below that cell's own threshold before the alias value is read, so the escalation is decided by measurement per case rather than by a global judgement. The driver's unconditional `sampleTime` overwrite therefore stays unconditional. Lives in: plan 32-01 Task 2 (`binCentredPitchCV`, `impliedLeakageDb`, the leakage self-check case) and the per-cell `REQUIRE` in plans 32-03 and 32-07.
 
 4. **Should the optional pulse-reach factor ship in v2.0?**
    - What we know: MEASURED +1.3 dB at the single worst grid point, ~+0.1 dB mean; it adds the only division by an edge width in the whole header.
    - Recommendation: **no** for the first iteration. Keep it documented in `MorphBlep.hpp`'s banner as the first refinement to try if the pulse threshold at C8 is missed, so the iteration budget has somewhere cheap to go.
+   - **RESOLVED — NOT SHIPPED, and banked as the first step of a written escalation ladder.** Its absence is load-bearing twice over: it keeps `dt` the only divisor in the header, which is exactly what P-14 and D-15's corrected rationale rest on. Lives in: plan 32-04 Task 1 (the banner paragraph naming it as the first refinement to try); plan 32-07 Task 2 (the anti-softening rule, where it is step one of the escalation ahead of an operator decision on kernel order); and plan 32-10 Task 3 (the deferred register entry with its owner).
 
 5. **Loose output bound: raise to ~10.0 V, or keep 6.0 V with a Nyquist-ceiling carve-out?**
    - What we know: MEASURED 1.1047 (±5.52 V) at every musical rate; 1.8395 (±9.20 V) only at `dt ≈ 0.495` with `morph = 1`, `character ≈ 0`.
    - Recommendation: raise to a single number with this table as provenance. D-09's own reasoning — an exception invites a second exception — applies here too.
+   - **RESOLVED — raised to a single outer number, ~10.0 V, with NO exceptions anywhere in the suite.** Operator decision of 2026-08-01. One refinement was forced by P-13 and is worth recording here because it is not visible from this table alone: an audio-rate MORPH sweep reaches about 1.317 pre-scale (≈6.59 V), which is a MUSICAL case that exceeds the ±5.55 V figure, because the pending accumulator deliberately delivers the second half of a correction computed with the previous sample's weight vector (D-13). The two bounds are therefore **nested, not partitioned**: `kHostileBoundV` is the single outer bound with no exceptions, and `kMusicalBoundV` is a stricter assertion layered on top wherever the measurement entitles a scenario to it — the static-input musical scenarios. Lives in: plan 32-08 Task 2 (both constants, their provenance, and scenario five which exercises the outer tier) and plan 32-09 Task 2 (the audio-rate MORPH case, which asserts and explains the excess rather than hiding it).
 
 ## Sources
 

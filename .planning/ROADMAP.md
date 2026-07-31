@@ -254,7 +254,7 @@ Plans:
 - [ ] 32-02-PLAN.md — MORPH CV jack, bipolar attenuverter, NaN-safe shell mix and the paired panel rects (MORPH-02 / D-16 / D-17)
 - [ ] 32-03-PLAN.md — The 90-cell naive alias baseline, then the gate observed RED and landed as a tombstone (D-08 / D-09 / D-11)
 - [ ] 32-04-PLAN.md — `src/dsp/MorphBlep.hpp`: kernels, compact-support character factor, nine-site union, split-source crossing test, plus the canary include (CORE-02 / AA-01..05)
-- [ ] 32-05-PLAN.md — Unit suite: characterized jumps probed against the frozen `Waveshape`, the D-03 limits, overlapping edges, the sync seam and hostile `dt` (AA-02/03/04)
+- [ ] 32-05-PLAN.md — Unit suite: characterized jumps probed against the frozen `Waveshape`, the D-03 limits, overlapping edges, the sync seam, hostile `dt`, and the P-3 resonant-tiling regression (AA-02/03/04)
 - [ ] 32-06-PLAN.md — Wire `MorphBlep` into `VcoCore.hpp:484`, harden morph/character, correct two falsified premises, invert the baseline tombstone (CORE-02 / MORPH-01)
 - [ ] 32-07-PLAN.md — Close the measure→pin loop: pin D-09 thresholds, invert the tombstone into the live TEST-03 gate, add the no-regression and cross-rate invariants
 - [ ] 32-08-PLAN.md — Bring the oracle in step, re-derive the output bound into two measured tiers, exercise the hostile tier (AA-01 / AA-03)
