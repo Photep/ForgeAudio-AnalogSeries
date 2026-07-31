@@ -70,6 +70,7 @@
 #include <complex>    // std::complex<double> — the FFT's working element type
 #include <cmath>      // std::log10 — the dB conversion every metric here ends in
 #include <cstddef>    // std::size_t — the FFT's index and length type
+#include <cstdint>    // uint64_t — NaiveVcoCoreMirror's seeding entry points
 
 namespace {
 
@@ -405,6 +406,135 @@ double impliedLeakageDb(double binError) {
 	return 20.0 * std::log10(binError);
 }
 
+// ---------------------------------------------------------------------------
+// NaiveVcoCoreMirror — the PERMANENT D-08 naive baseline. Read this banner
+// before touching anything below it.
+//
+// THIS TYPE IS A TEST FIXTURE. IT IS NOT PRODUCTION CODE, IT IS NOT A WORK IN
+// PROGRESS, AND IT MUST NEVER BE MOVED UNDER src/ — least of all into
+// src/dsp/VcoCore.hpp, which is the file it is a copy of. It exists so that
+// Phase 32 has something to measure AGAINST: D-08 requires the naive path to
+// stay callable for the whole phase, and this is how it stays callable WITHOUT
+// a flag in the core, without a second entry point beside step(), and without
+// one line of production code that exists only for a test. That is the whole
+// design: the naive path is preserved by COPYING it into the test TU at the
+// moment it is still the live behavior, not by leaving a switch in the shipped
+// oscillator.
+//
+// >>> THE DELIBERATE DIVERGENCE, AND THE ONLY ONE. <<<
+// This mirror applies NO BAND-LIMITING CORRECTION. Everything else is
+// src/dsp/VcoCore.hpp field for field and line for line. Right now that is not
+// a divergence at all, because the live core applies no correction either —
+// which is exactly why this file lands in plan 32-01 and not later. Plan 32-06
+// lands forge::MorphBlep at the VcoCore.hpp:484 call site, and from that commit
+// onward this type is the ONLY remaining naive path in the repository. It must
+// stay naive FOREVER. Plan 32-07's no-regression invariant compares the
+// corrected core against it cell by cell, and a mirror that quietly acquired
+// the correction would make that invariant compare the corrected core against
+// itself — a comparison that cannot fail, asserting nothing, in the exact place
+// the phase's central claim is supposed to be proven.
+//
+// CONTAINMENT IS BY PLACEMENT, AND IT IS ASSERTED RATHER THAN ASSUMED. This
+// type lives in this TU's anonymous namespace. It has internal linkage, it
+// appears in no header, and it appears in no shipped build graph, so
+// check_includes.sh, check_canary.sh and the strict C++11 gate never see it —
+// all three scan src/ only. Plan 32-01's acceptance criteria require
+// `grep -rc 'NaiveVcoCoreMirror' src/` to find nothing, on every run.
+//
+// THE MIRROR-MAINTENANCE RULE, inherited verbatim in spirit from
+// tests/test_vco_core.cpp's DeliberatelyBrokenSharedStateCore. Every future
+// change to forge::VcoCore::step()'s pitch / guard / accumulate sequence MUST
+// be mirrored here — the volt-domain summation, the D-14 bound with the negated
+// comparison first, the single exponential, the sanitised rate, the
+// ceiling-then-negated-floor order, the deltaPhase bound, the single-subtract
+// wrap. If they are not, this type differs from the real core in MORE than the
+// one thing its banner promises, and — worse than merely being wrong — it can
+// go on passing, because a divergence outside the inputs the grid drives is
+// invisible precisely when it is inert.
+//
+// AND IF MIRRORING ONE EVER MOVES A FIGURE THIS FILE RECORDS, STOP AND REPORT
+// IT RATHER THAN UPDATING THE NUMBER. A moved figure means the change was NOT
+// inert — it means it altered behavior this fixture was pinning, which is a
+// finding about the real core and not a bookkeeping update here.
+// ---------------------------------------------------------------------------
+struct NaiveVcoCoreMirror {
+	// Per-instance, exactly as forge::VcoCore holds them (CORE-03 / D-14).
+	// `phase` is double for the same reason the real one is: a float
+	// accumulator loses low-order increments at audio rates over long blocks.
+	forge::DriftEngine drift;
+	forge::Waveshape wave;
+	double phase = 0.0;
+
+	void seed(uint64_t s0, uint64_t s1 = 0) { drift.seed(s0, s1); }
+
+	// The D-11 five-coefficient copy, mirroring forge::VcoCore::setSpreadSeed
+	// field for field. characterSpread is deliberately NOT copied, for the same
+	// reason the real core does not copy it: folding it in would silently change
+	// what character = 1.0 means.
+	void setSpreadSeed(uint64_t s0, uint64_t s1 = 0) {
+		drift.setSpreadSeed(s0, s1);
+		wave.triAsymmetrySpread = drift.triAsymmetrySpread;
+		wave.sawCurvatureSpread = drift.sawCurvatureSpread;
+		wave.squareDutySpread   = drift.squareDutySpread;
+		wave.pulseEdgeSpread    = drift.pulseEdgeSpread;
+		wave.bleedSpread        = drift.bleedSpread;
+	}
+
+	// Signature matches forge::VcoCore::step(...) so the same forge::VcoInputs
+	// can be handed to both with no adaptation anywhere.
+	//
+	// Telemetry is the ONE thing deliberately absent, and it is not a behavioral
+	// divergence: tel is documented in src/dsp/VcoCore.hpp:251-252 as display
+	// state that is NOT part of the audio path, nothing here reads it, and
+	// omitting it cannot move a returned sample.
+	float step(const forge::VcoInputs& in) {
+		// Mirrored: the volt-domain summation of V/OCT, coarse and the divided
+		// fine value, with the semitone-to-octave division owned by the core
+		// (D-05), then the fmConnected-GATED FM contribution added into those
+		// same volts — never multiplied onto a resolved frequency (D-01/FM-03).
+		float pitchVolts = in.pitchCV + in.coarse + in.fine * (1.f / 12.f);
+		if (in.fmConnected) pitchVolts += in.fmVolts * in.fmAtten;
+
+		// Mirrored: the D-14 bound on the summed volts, with the NEGATED
+		// comparison FIRST as the NaN catcher. Never forge::clamp — both of its
+		// comparisons are false for a not-a-number, so a NaN passes through it
+		// unchanged, and a NaN is precisely the input class this pair stops.
+		if (!(pitchVolts > -forge::kVcoMaxPitchVolts)) pitchVolts = -forge::kVcoMaxPitchVolts;
+		if (pitchVolts > forge::kVcoMaxPitchVolts) pitchVolts = forge::kVcoMaxPitchVolts;
+
+		// Mirrored: EXACTLY ONE exponential, off the C4 reference, using the
+		// frozen polynomial approximation and never libm.
+		float freq = forge::kVcoFreqC4 * forge::exp2_taylor5(pitchVolts);
+
+		// Mirrored: the rate is sanitised BEFORE it is scaled (WR-06), then the
+		// ceiling, then the negated floor LAST so the floor is always the final
+		// writer (CR-01). Do not swap those two lines.
+		const float safeRate = (in.sampleRate > 0.f) ? in.sampleRate : 0.f;
+		const float maxFreq = forge::kVcoNyquistGuardFrac * safeRate;
+		if (freq > maxFreq) freq = maxFreq;
+		if (!(freq > 0.f)) freq = 0.f;
+
+		// Mirrored: the direct bound on the increment (which is NOT inferred
+		// from the frequency guard — nothing in forge::VcoInputs couples
+		// sampleTime to sampleRate), then the single-subtract wrap.
+		double deltaPhase = (double)freq * (double)in.sampleTime;
+		if (!(deltaPhase > 0.0)) deltaPhase = 0.0;
+		if (deltaPhase > forge::kVcoMaxDeltaPhase) deltaPhase = forge::kVcoMaxDeltaPhase;
+		phase += deltaPhase;
+		if (phase >= 1.0) phase -= 1.0;
+
+		const float p = (float)phase;
+		const float morph = forge::clamp(in.morph, 0.f, 1.f);
+		const float character = forge::clamp(in.character, 0.f, 1.f);
+
+		// Mirrored: ONE call into the frozen Waveshape — a call, never an edit —
+		// with bleedLfo = 0.f, and the unconditioned x5. THIS IS THE LINE THAT
+		// DIVERGES IN PLAN 32-06: the real core gains the forge::MorphBlep
+		// correction here, and this line must NOT.
+		return 5.f * wave.morphedWave(p, morph, character, 0.f);
+	}
+};
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -655,6 +785,133 @@ TEST_CASE("vco spectrum: the DFT apparatus is validated by DETECTING a planted s
 			// nudge would mean method two is compensating for a broken chain
 			// rather than for float granularity.
 			CHECK(std::fabs(dtDeviationPpm) <= 5.0);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The D-08 baseline is only a baseline if it is a FAITHFUL copy of the core.
+// This case is what makes it one — and it is a TOMBSTONE.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: NaiveVcoCoreMirror is bit-identical to the live forge::VcoCore (D-08 baseline validity) - THIS CASE INVERTS IN PLAN 32-06") {
+
+	// The bin-centred C8 row at each rate, from the pinned grid. Driving the
+	// mirror at a bin centre is not required for a bit-identity check — any
+	// pitch would do — but it means this case exercises the SAME frequencies
+	// plans 32-03 and 32-07 measure at, so a divergence that only shows up at
+	// the grid's own operating point cannot hide from it.
+	struct RateRow { double sr; int K; };
+	static const RateRow RATES[] = {
+		{ 44100.0, 389 },   // C8
+		{ 48000.0, 357 },   // C8, D-11 cross-rate
+		{ 96000.0, 179 },   // C8, D-11 cross-rate
+	};
+
+	static const float MORPHS[]     = {0.00f, 0.25f, 0.50f, 0.75f, 1.00f};
+	static const float CHARACTERS[] = {0.0f, 0.5f, 1.0f};
+
+	const int n = kSpectrumN;
+
+	for (std::size_t ri = 0; ri < sizeof(RATES) / sizeof(RATES[0]); ++ri) {
+		const double sr = RATES[ri].sr;
+		const int K = RATES[ri].K;
+		CAPTURE(sr);
+		CAPTURE(K);
+
+		double binErr = 0.0;
+		const float pitchCV = binCentredPitchCV(sr, K, &binErr);
+		CAPTURE(pitchCV);
+
+		for (std::size_t mi = 0; mi < sizeof(MORPHS) / sizeof(MORPHS[0]); ++mi) {
+			for (std::size_t ci = 0; ci < sizeof(CHARACTERS) / sizeof(CHARACTERS[0]); ++ci) {
+				const float morph = MORPHS[mi];
+				const float character = CHARACTERS[ci];
+				CAPTURE(morph);
+				CAPTURE(character);
+
+				forge::VcoInputs base;
+				base.pitchCV   = pitchCV;
+				base.coarse    = 0.f;
+				base.fine      = 0.f;
+				base.morph     = morph;
+				base.character = character;
+				base.drift     = 0.f;
+
+				// --- The live core, through the shared harness. ------------------
+				forge::VcoBlockDriver d(sr);
+				std::vector<float> coreOut = d.run(n, [=](int) { return base; });
+				REQUIRE(coreOut.size() == (std::size_t)n);
+
+				// --- The mirror, through a local loop that injects sampleTime and
+				//     sampleRate IDENTICALLY. ------------------------------------
+				// THE FOUR SEED LITERALS ARE COPIED VERBATIM from
+				// tests/VcoBlockDriver.hpp:42-43 — the driver's own defaults — and
+				// must never be invented. They are documented and proven
+				// non-degenerate there for a reason that is not stylistic: a
+				// forge::Xoroshiro128Plus seeded (0, 0) is a fixed point emitting
+				// an all-zero stream, which makes std::normal_distribution's
+				// rejection loop never terminate. In a test that is a hung suite;
+				// in Rack it is a HANG ON PATCH LOAD.
+				NaiveVcoCoreMirror mirror;
+				mirror.seed(0x1234ULL, 0x5678ULL);
+				mirror.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
+
+				const float dt = (float)(1.0 / sr);
+				std::vector<float> mirrorOut;
+				mirrorOut.reserve(n);
+				for (int i = 0; i < n; ++i) {
+					forge::VcoInputs in = base;
+					in.sampleTime = dt;
+					in.sampleRate = (float)sr;
+					mirrorOut.push_back(mirror.step(in));
+				}
+				REQUIRE(mirrorOut.size() == coreOut.size());
+
+				// --- NON-VACUITY FIRST. ----------------------------------------
+				// "Identical" is trivially satisfied by two blocks of silence, and
+				// it is nearly as trivially satisfied by two DC blocks. Both are
+				// asserted away BEFORE the identity claim is made, the same habit
+				// as tests/test_vco_core.cpp:1040-1057: assert the fixture tests
+				// what it claims before asserting the result.
+				int nonZero = 0;
+				bool constantBlock = true;
+				for (int i = 0; i < n; ++i) {
+					if (coreOut[i] != 0.f) ++nonZero;
+					if (coreOut[i] != coreOut[0]) constantBlock = false;
+				}
+				CAPTURE(nonZero);
+				REQUIRE(nonZero >= (n * 9) / 10);
+				REQUIRE(constantBlock == false);
+
+				// --- THE IDENTITY CLAIM. ---------------------------------------
+				// Counted with a DIRECT float !=, never doctest's approximate
+				// comparator. That comparator applies a relative-scaling margin
+				// even at epsilon(0), so it is not a bit-exact comparator and
+				// would quietly accept the very small corrections plan 32-06 is
+				// about to introduce — the one class of difference this case
+				// exists to see.
+				int differing = 0;
+				for (int i = 0; i < n; ++i)
+					if (coreOut[i] != mirrorOut[i]) ++differing;
+
+				// >>> THIS ASSERTION IS A TOMBSTONE. <<<
+				//
+				// It is true only for exactly as long as forge::VcoCore::step()
+				// applies no band-limiting correction. PLAN 32-06 MUST INVERT IT
+				// IN PLACE — same slot, same 45-point grid, same three rates, same
+				// four seed literals — into an assertion that the two now DIVERGE,
+				// and that they diverge by exactly the correction
+				// forge::MorphBlep::step returns.
+				//
+				// DELETING THIS CASE INSTEAD OF INVERTING IT silently removes the
+				// only proof that NaiveVcoCoreMirror is a faithful copy of the
+				// core, and therefore the only reason plan 32-07's no-regression
+				// invariant means anything. This is the shape Phase 29's silence
+				// tombstone used and Phase 30 honoured (D-15/D-19: inverted in
+				// place, same slot, and OBSERVED red against a silenced core).
+				CAPTURE(differing);
+				CHECK(differing == 0);
+			}
 		}
 	}
 }
