@@ -247,12 +247,12 @@ Plans:
   4. A spectral alias-floor invariant (a small DFT/Goertzel helper) asserts high-note aliasing stays below **per-shape thresholds pinned from measurement** (D-09 evidence-set thresholds, each carrying its measured justification) at **C7, C8 and C9** — TEST-03. The earlier "≈ −60 dB" figure was a target, not a reachable floor: 2-sample polyBLEP attenuates by `sinc²`, which is only ≈ −8 dB at Nyquist, so the achievable floor sits well above −60 dB (measured best at C8/44.1 kHz: saw −25.8, square −31.9, narrow pulse −11.6 dB) — corroborated by DAFx-16. Per-shape measured thresholds are the honest gate.
   5. All anti-aliasing is table-free and Rack-free (closed-form arithmetic), preserving C++11-strict compilation and golden bit-stability — no minBLEP, no oversampling in v2.0.
 
-**Plans**: 11 plans
+**Plans**: 1/11 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 32-01-PLAN.md — Guard pre-registration, the exact-integer-cycle spectral apparatus with its own leakage self-check, and the test-only naive mirror (D-08 / D-10)
+- [x] 32-01-PLAN.md — Guard pre-registration, the exact-integer-cycle spectral apparatus with its own leakage self-check, and the test-only naive mirror (D-08 / D-10)
 - [ ] 32-02-PLAN.md — MORPH CV jack, bipolar attenuverter, NaN-safe shell mix and the paired panel rects (MORPH-02 / D-16 / D-17)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -356,7 +356,7 @@ Plans:
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
 | 31. Pitch, Tuning & Exponential FM | 9/9 | Complete    | 2026-07-30 |
-| 32. Morph-Aware Anti-Aliasing | 0/? | Not started | - |
+| 32. Morph-Aware Anti-Aliasing | 1/11 | In Progress|  |
 | 33. Hard Sync | 0/? | Not started | - |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |
 | 35. Shell, Panel & Display | 0/? | Not started | - |
