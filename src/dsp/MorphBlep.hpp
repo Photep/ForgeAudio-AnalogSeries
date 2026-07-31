@@ -133,21 +133,54 @@ namespace forge {
 // and CHARACTER modulation that is a per-sample STEP in the correction gain —
 // i.e. a new discontinuity manufactured by the thing whose job is to remove them.
 //
-// THE GUARD. The comparison is written NEGATED so a not-a-number `dt` lands on
-// the zero branch: `u > 0.f` is false for a NaN, so `!(u > 0.f)` is true and the
-// function returns 0. A comparison-ladder helper (forge::clamp) is REJECTED here
-// for the same reason forge::VcoCore rejects it by name at VcoCore.hpp:357-362 —
-// BOTH of its comparisons are false for a not-a-number, so it is inert against
-// exactly the input class this guard exists to stop.
+// THE GUARD. Both comparisons are written NEGATED so a not-a-number `dt` lands
+// on the zero branch: `dt > 0.f` and `dt <= 1.f` are BOTH false for a NaN, so
+// either negation fires and the function returns 0. A comparison-ladder helper
+// (forge::clamp) is REJECTED here for the same reason forge::VcoCore rejects it
+// by name at VcoCore.hpp:357-362 — BOTH of its comparisons are false for a
+// not-a-number, so it is inert against exactly the input class this guard exists
+// to stop.
+//
+// THE UPPER BOUND IS NOT DECORATION, AND IT WAS ADDED IN RESPONSE TO A MEASURED
+// FAILURE (plan 32-05, D-15 / T-32-02). A POSITIVE INFINITY `dt` PASSES
+// `dt > 0.f`. The original guard, written with the lower bound alone, therefore
+// let it through, and the division below then evaluated (2*inf - w) / (2*inf) =
+// inf/inf = NOT-A-NUMBER. MEASURED against this header as plan 32-04 landed it:
+// morphBlepCharFactor(0.f, +inf) and morphBlepCharFactor(0.01f, +inf) BOTH
+// returned nan, and inside step() that nan multiplied straight into `pending`,
+// which carries it forward FOREVER — a single hostile sample killed the instance
+// permanently rather than glitching one sample. tests/test_morph_blep.cpp's
+// hostile-input rows are what caught it and what keep it caught.
+//
+// WHY THE BOUND IS 1 AND NOT kVcoMaxDeltaPhase. `dt` is a phase increment, so
+// `dt > 1` means MORE THAN A FULL CYCLE PER SAMPLE — at which point the single-
+// subtract wrap in every caller is already meaningless and there is no edge
+// worth band-limiting. forge::VcoCore clamps its increment at
+// kVcoMaxDeltaPhase = 0.5, so a bound of 1 has a full factor of two of margin
+// and PROVABLY CANNOT FIRE on a legitimate input — the same style of reasoning
+// VcoCore.hpp:448-466 uses to choose 0.5 over kVcoNyquistGuardFrac. The bound is
+// written as a literal rather than as a shared constant on purpose: this header
+// deliberately does not depend on dsp/VcoCore.hpp, and MorphBlep REFUSES TO RELY
+// ON ITS CALLER (see step()'s own guard below).
+//
+// WHAT THE GUARD DELIBERATELY DOES NOT REJECT. A SUBNORMAL positive `dt` with
+// `w = 0` returns EXACTLY 1, and that is D-03's first limit rather than a hole:
+// a true hard step keeps full authority at every positive dt, however small, and
+// subnormal/subnormal is exactly 1 in IEEE arithmetic. Inside step() that input
+// class never reaches here at all, because `dt` is a DOUBLE there and the
+// smallest positive subnormal double casts to 0.0f.
 //
 // THE DIVISOR NOTE (D-15 / P-14). morphBlepCharFactor divides by `dt` ONLY.
 // There is no division by an edge width anywhere in this header, which is why
 // hostile timing reaches exactly two guarded divisors in the whole file — this
 // one and the sub-sample position in step() — and no others.
 inline float morphBlepCharFactor(float w, float dt) {
+	// Negated, and bounded on BOTH sides: zero, negative, NaN and +/-infinity
+	// all land here. See the measurement above for why the upper bound exists.
+	if (!(dt > 0.f) || !(dt <= 1.f)) return 0.f;
 	const float twoDt = dt + dt;
 	const float u = twoDt - w;
-	if (!(u > 0.f)) return 0.f;      // negated: a NaN dt lands here too
+	if (!(u > 0.f)) return 0.f;      // negated: a NaN w lands here too
 	const float t = u / twoDt;       // == 1 - w/(2*dt)
 	return t * t;
 }
@@ -255,8 +288,22 @@ inline float MorphBlep::step(const Waveshape& wv, double phase, float p, double 
 	// comparison-ladder helper (forge::clamp), which is inert against a NaN.
 	// Draining the accumulator BEFORE this guard is deliberate: an already-owed
 	// residual is still owed even on a sample the caller mistimed.
+	//
+	// THE UPPER BOUND CLOSES A MEASURED HOLE (plan 32-05, T-32-02). A POSITIVE
+	// INFINITY `dt` PASSES `fdt > 0.f`. With the lower bound alone, `d / dt`
+	// below evaluated to 0, so EVERY live site fired at sub-sample position 0,
+	// and morphBlepCharFactor(w, +inf) then returned a NOT-A-NUMBER that
+	// multiplied into `pending`. MEASURED against this header as plan 32-04
+	// landed it: step() with dt = +infinity returned nan AND left pending = nan,
+	// so the instance was poisoned FOREVER — every later sample returned nan even
+	// after timing recovered. The other five hostile classes (zero, negative,
+	// subnormal, -infinity, not-a-number) were already correct; +infinity was the
+	// one hole, and tests/test_morph_blep.cpp case five part C is what found it.
+	// The bound is 1 for the reason given at morphBlepCharFactor above: dt > 1 is
+	// more than a full cycle per sample, forge::VcoCore clamps at 0.5, so this
+	// can never fire on a legitimate input.
 	const float fdt = (float)dt;
-	if (!(fdt > 0.f)) return now;
+	if (!(fdt > 0.f) || !(fdt <= 1.f)) return now;
 
 	// --- SECTION A — WEIGHT ALGEBRA, REPLICATED, NOT APPROXIMATED -------------
 	// (AA-01 / D-05 / P-12.) Every expression here mirrors
