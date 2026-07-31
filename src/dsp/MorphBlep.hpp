@@ -238,6 +238,7 @@ struct MorphBlep {
 // Defined out of line as an `inline` member so the struct above reads as a
 // declaration of shape rather than a wall of arithmetic.
 inline float MorphBlep::step(const Waveshape& wv, double phase, float p, double dt, float morph, float character) {
+	// --- PREAMBLE -------------------------------------------------------------
 	// Drain the accumulator: `inject` is this sample's externally supplied half
 	// (D-14), `pending` is the second half of an edge placed on the PREVIOUS
 	// sample (D-13). Both are consumed exactly once.
@@ -245,13 +246,252 @@ inline float MorphBlep::step(const Waveshape& wv, double phase, float p, double 
 	inject = 0.f;
 	pending = 0.f;
 
-	// --- TASK 2 GROWTH POINT ---------------------------------------------------
-	// Plan 32-04 Task 2 fills in the weight algebra, the live geometry, the fixed
-	// nine-site union and the split-source crossing test HERE. Returning only the
-	// drained accumulator is a DELIBERATE intermediate state, not finished work:
-	// with no sites placed, `pending` is only ever written by addStep(), so this
-	// body is already correct for the D-14 sync seam alone.
-	(void)wv; (void)phase; (void)p; (void)dt; (void)morph; (void)character;
+	// D-15 / P-14: MorphBlep REFUSES TO RELY ON ITS CALLER. forge::VcoCore
+	// already guards its own deltaPhase, but this header carries its own guard so
+	// that any caller — the headless harness, a future polyphonic shell, Phase 33
+	// — cannot reach the divisor below with hostile timing. Written NEGATED so a
+	// not-a-number `dt` lands here too: `fdt > 0.f` is false for a NaN, zero,
+	// a negative and a subnormal that flushed to zero alike. NEVER a
+	// comparison-ladder helper (forge::clamp), which is inert against a NaN.
+	// Draining the accumulator BEFORE this guard is deliberate: an already-owed
+	// residual is still owed even on a sample the caller mistimed.
+	const float fdt = (float)dt;
+	if (!(fdt > 0.f)) return now;
+
+	// --- SECTION A — WEIGHT ALGEBRA, REPLICATED, NOT APPROXIMATED -------------
+	// (AA-01 / D-05 / P-12.) Every expression here mirrors
+	// forge::Waveshape::morphedWave's own, INCLUDING its early-return threshold.
+	//
+	// P-12, EXPLICITLY: the `< 0.001f` threshold below and the `>= 0.001f` gate
+	// on the bleed block must be the FROZEN CODE'S EXACT COMPARISONS
+	// (Waveshape.hpp:44, :188). A tolerance "cleaned up" to `> 0.f` or to a
+	// different epsilon makes this weight vector disagree with the naive path in
+	// a narrow character band that the spectral grid sweeps straight through.
+	const float c = (character < 0.001f) ? 0.f : character * character;
+	const float scaled = morph * 4.f;
+	int segment = (int)scaled;
+	if (segment > 3) segment = 3;                    // mirrors the frozen minimum-of-3 (:166)
+	const float frac = scaled - (float)segment;
+	const float pulseFrac = (scaled > 3.f) ? (scaled - 3.f) : 0.f;                 // :170
+	const float pulseDuty = 0.50f - 0.45f * ((pulseFrac < 1.f) ? pulseFrac : 1.f); // :171
+
+	float W[5] = { 0.f, 0.f, 0.f, 0.f, 0.f };
+	if (segment == 3) {
+		// The frozen direct-duty special case (:179-182): the square-to-pulse
+		// region does NOT crossfade two rectangles, it interpolates the duty, so
+		// all of the weight sits on the pulse.
+		W[4] = 1.f;
+	} else {
+		W[segment]     += 1.f - frac;
+		W[segment + 1] += frac;
+	}
+
+	// THE BLEED RING (:188-212), gated on the SAME comparison the frozen block
+	// uses.
+	//
+	// D-05, AND WHY FOLDING THE NORMALIZATION IN HERE IS EXACT RATHER THAN AN
+	// APPROXIMATION. The frozen path divides its whole result by (1 + bleedIntensity).
+	// That normalization is LINEAR, so scaling the weight vector by 1/(1+bi) ONCE
+	// is algebraically identical to scaling every correction by it individually —
+	// and it is one multiply instead of nine divides. Applying corrections at
+	// full magnitude after the naive path has been normalized would over-correct
+	// by exactly (1 + bleedIntensity), and precisely when character > 0, which is
+	// precisely when the bleed sites exist at all.
+	//
+	// THE BLEED-RING FINDING, WITH ITS NUMBERS, because nothing in AA-01's
+	// wording points at it. At morph = 0 and character = 1 the segment is 0 and
+	// frac is 0, so the left weight is 1 and the ring's LEFT index is 4 — THE
+	// NARROW PULSE BLEEDS IN AT FULL INTENSITY inside what the user hears as a
+	// pure sine. That is a step of about 0.077 in a +/-1 wave, roughly -22 dB,
+	// and it is MEASURED as a genuine -23 dB alias floor at C9 / character 1. AN
+	// IMPLEMENTATION THAT BAND-LIMITS ONLY "THE SHAPES BEING CROSSFADED" IS
+	// SILENTLY WRONG AT EVERY MORPH POSITION.
+	//   The verification of the whole algebra: at morph = 0, character = 0.5 the
+	//   jump predicted here at phase 0 is bi*2*(1-c)/(1+bi) = 0.014851, and the
+	//   frozen path MEASURES 0.014853.
+	if (character >= 0.001f) {
+		float eb = 0.04f + wv.bleedSpread;           // :192, clamped non-negative
+		if (eb < 0.f) eb = 0.f;
+		float bi = c * eb;                           // :193-198 with bleedLfo = 0
+		if (bi < 0.f) bi = 0.f;
+		W[(segment - 1 + 5) % 5] += bi * (1.f - frac);   // :201, :205, :208
+		W[(segment + 2) % 5]     += bi * frac;           // :202, :206, :208
+		const float norm = 1.f / (1.f + bi);             // :212 — D-05, exact
+		for (int i = 0; i < 5; ++i) W[i] *= norm;
+	}
+
+	// --- SECTION B — GEOMETRY, RECOMPUTED EVERY SAMPLE (D-04) -----------------
+	// Read from the LIVE `wv` fields, never cached.
+	//
+	// THE WIDTH DERIVATIONS, since these are what the D-03 factor consumes:
+	//   - A hyperbolic-tangent edge of half-width `edgeWidth` has unit slope at
+	//     its centre and swings 2, so its EQUIVALENT RAMP WIDTH is 2*edgeWidth.
+	//     [VERIFIED against the frozen square at duty + 0.05, measuring -0.5546.]
+	//   - The triangle's two rounding half-widths sum to roundAmount/2 across the
+	//     cycle, so its equivalent width is 0.5 * roundAmount.
+	//
+	// "RECOMPUTE, NEVER CACHE" AND ITS FORWARD CONSEQUENCE: dutySq, valley and
+	// wPl all move with `character` NOW, and will move again PER SAMPLE once
+	// Phase 34's drift engine starts writing the spread fields. A cached site
+	// table would desynchronise SILENTLY then — no error, no gate, just a
+	// correction placed where the edge used to be.
+	//
+	// The two minima use ternaries rather than library helpers, so this file
+	// stays free of standard-library calls (AA-05: table-free, closed form).
+	const float dutySq = 0.5f + c * (0.04f + wv.squareDutySpread);              // :108
+	const float wSq    = 2.f * (c * 0.08f);                                     // :110
+	const float lo     = (pulseDuty < 1.f - pulseDuty) ? pulseDuty : 1.f - pulseDuty;  // :134
+	const float capPl  = (0.08f < lo * 0.8f) ? 0.08f : lo * 0.8f;               // :135
+	const float wPl    = 2.f * (c * capPl / (1.f + wv.pulseEdgeSpread));        // :135-139
+	const float valley = 0.5f + c * (0.10f + wv.triAsymmetrySpread) * 0.5f;     // :60-61
+	const float wTri   = 0.5f * (c * 0.35f);                                    // :71
+	const float triBrk = 2.f / valley + 2.f / (1.f - valley);                   // :65, :68 slopes
+	const float hardSq = W[3] * 2.f * (1.f - c);
+	const float hardPl = W[4] * 2.f * (1.f - c);
+
+	// --- SECTION C — THE FIXED NINE-SITE UNION (D-04 / AA-01 / AA-02) ---------
+	// FUNCTION-LOCAL const arrays. This form is MANDATORY, not stylistic: an
+	// in-class `static constexpr` table is a DECLARATION ONLY under C++11, so
+	// indexing it at runtime odr-uses it and the MinGW linker fails with an
+	// undefined reference. That exact class of bug got v2.0.0 rejected from the
+	// VCV Library (.planning/research/PITFALLS.md:190).
+	//
+	// ENTRIES 4 AND 5 — P-2 IN FULL, because the spectral gate CANNOT SEE this
+	// bug and a later agent will otherwise "simplify" it back into one entry.
+	// The frozen square derives its hard rectangle from `phase < 0.5f` (:104) but
+	// centres its hyperbolic tangent on duty/2 with half-width duty/2 (:114-120),
+	// so the SOFT edge sits at `duty` — A DIFFERENT PLACE. D-04's prose says "the
+	// square duty edge", singular; the code has two. If the hard-step correction
+	// is placed at `duty`, then for every sample landing between 0.5 and duty the
+	// naive path HAS ALREADY FLIPPED while the correction still thinks the edge
+	// is ahead, and it injects about half the jump. MEASURED: the output
+	// magnitude envelope rises from 1.1047 to 1.96 — from +/-5.52 V to +/-9.78 V
+	// — at EVERY sample rate, while the spectral metric shows 0.0 dB difference
+	// across the whole grid. The damage window is c*(0.04 + spread) wide and the
+	// spike is (1-c)-weighted, so it PEAKS near character 0.71, mid-knob.
+	// The PULSE does NOT split: the frozen pulse derives both its branch (:128)
+	// and its soft edge (:142-148) from the same duty, so they coincide.
+	//
+	// ENTRY 1 — P-4, A FALSIFIED PREMISE CORRECTED IN PLACE. D-03's corollary
+	// states that as character rises the saw wrap's effective step shrinks and
+	// its correction shrinks with it. IT DOES NOT. The curved saw evaluates to 1
+	// at phase 0 BEFORE the reset is applied, and the reset blends FROM a reset
+	// value of 1 TOWARD the curved saw (:92-97), so at phase 0 both are 1. The
+	// wrap jump is +2.000000 at character 0, 0.25, 0.5, 0.75 and 1.0, MEASURED to
+	// six decimals. The saw site therefore has width 0 and factor exactly 1 at
+	// EVERY character — which is why the saw is the only shape whose correction
+	// is character-independent, improving about 9 dB at every character.
+	//   What the soft reset ACTUALLY does is force the slope to zero just after
+	//   phase 0: a first-derivative break sitting on top of a value step. Its
+	//   slope-break magnitude is about 4*dt*dt/6 against the value step's roughly
+	//   1 — about three and a half orders of magnitude smaller at dt = 0.02.
+	//   IGNORE IT. D-03's CONCLUSION survives untouched; only its stated premise
+	//   was wrong, and the corrected premise is recorded here so that no later
+	//   phase inherits the falsified one.
+	//
+	// Entry 1 is the COINCIDENT WRAP: the saw's 1 - 2*phase reset (:84), the
+	// square's rectangle flip (:104) and the pulse's rectangle flip (:128) all
+	// land on phase 0 together, so they SUM into one magnitude.
+	const float pos[9] = {
+		0.f,            // 1  coincident wrap
+		0.f,            // 2  square soft edge at 0
+		0.f,            // 3  pulse soft edge at 0
+		0.5f,           // 4  THE SQUARE'S HARD STEP — at 0.5f, NOT at dutySq
+		dutySq,         // 5  the square's soft edge at its duty
+		pulseDuty,      // 6  pulse hard step
+		pulseDuty,      // 7  pulse soft edge, coincident with 6
+		0.f,            // 8  triangle peak (slope break)
+		valley          // 9  triangle valley (slope break)
+	};
+	const float mag[9] = {
+		W[2] * 2.f + hardSq + hardPl,
+		W[3] * 2.f * c,
+		W[4] * 2.f * c,
+		-hardSq,
+		W[3] * (-2.f) * c,
+		-hardPl,
+		W[4] * (-2.f) * c,
+		W[1] * (-triBrk),
+		W[1] * (triBrk)
+	};
+	const float wid[9] = { 0.f, wSq, wPl, 0.f, wSq, 0.f, wPl, wTri, wTri };
+	// kind: 0 = value step (polyBLEP), 1 = slope break (polyBLAMP).
+	const int kind[9] = { 0, 0, 0, 0, 0, 0, 0, 1, 1 };
+
+	// --- SECTION D — PLACEMENT (D-07 / D-13 / P-3) ----------------------------
+	for (int i = 0; i < 9; ++i) {
+		// D-04's "magnitudes fall to zero when a shape carries no weight" — and
+		// this skip is what makes a FIXED site union cost nothing at the morph
+		// positions where a shape is absent.
+		if (mag[i] == 0.f) continue;
+
+		// THE CROSSING TEST, AND IT MUST BE WRITTEN EXACTLY THIS WAY.
+		//
+		// DISTANCE COMES FROM THE DOUBLE. The `phase` accumulator advances by
+		// exactly the phase increment each sample, so this distance decreases by
+		// exactly dt and each site fires EXACTLY ONCE PER CYCLE. Deriving the
+		// distance from the float makes the per-sample interval tiling ragged at
+		// the unit-in-last-place level, and a ragged tiling either MISSES an edge
+		// or DOUBLE-FIRES it — both half-jump errors.
+		//
+		// SIDE COMES FROM THE FLOAT, using the SAME float handed to
+		// Waveshape::morphedWave this sample. The frozen branches compare against
+		// that float with a strict comparison (:104, :128), and if the
+		// correction's side decision disagrees with the frozen branch — which it
+		// will whenever the site and the phase differ by less than about 6e-8 —
+		// the correction is applied on the WRONG SIDE and the error is the FULL
+		// jump, not half of it.
+		//
+		// THE MEASUREMENT THAT SETTLES IT: a pure-double side test produced a
+		// systematic full-amplitude spike, the envelope rising from 1.957 to
+		// 2.145, whenever the phase grid RESONATED with a site position —
+		// reproduced at dt = 0.0005 with a pulse duty of 0.374, exactly 748
+		// samples per edge.
+		//
+		// THE THREE REJECTED SHORTCUTS:
+		//   (1) Recomputing the second half at the next sample from the
+		//       then-current phase. Valid for a fixed-frequency saw; WRONG here,
+		//       because under audio-rate MORPH and FM the jump magnitude, the
+		//       site position and dt have all moved by then. The accumulator uses
+		//       ONE consistent set of values for both halves.
+		//   (2) A one-sample output delay buffer — rejected by D-13 above.
+		//   (3) Widening the fire gate above 1 to "catch misses". It creates
+		//       double-fires on the following sample instead; the double-sourced
+		//       distance already tiles exactly.
+		double d = (double)pos[i] - phase;
+		if (!(pos[i] > p)) d += 1.0;
+		const float s = (float)(d / dt);
+		if (!(s <= 1.f)) continue;      // negated: a NaN s is skipped, never fired
+
+		const float k = morphBlepCharFactor(wid[i], fdt);
+		if (k == 0.f) continue;         // D-03's exact zero: the edge is already band-limited
+
+		const float u = 1.f - s;
+
+		// BOTH BRANCHES USE `+=`, NEVER ASSIGNMENT (D-07 / AA-03). At C8 a
+		// 5-percent-duty pulse is about 0.57 samples wide and at C9 about 0.26
+		// samples wide, so BOTH of its edges land inside one sample. Each gets
+		// its own sub-sample position and the two opposite-sign corrections SUM.
+		// When the duty is narrower than dt they partially CANCEL, and that
+		// cancellation is the PHYSICALLY CORRECT band-limited answer — a pulse
+		// narrower than a sample genuinely carries less energy.
+		//   Flooring the effective duty at dt was REJECTED: it introduces a
+		//   sample-rate-dependent timbre change the frozen Waveshape knows
+		//   nothing about, so the naive and band-limited paths would stop being
+		//   the same waveform — which would also invalidate D-08's before-and-
+		//   after comparison, the entire basis of this phase's alias thresholds.
+		if (kind[i] == 0) {
+			const float h = mag[i] * k;                  // value step: r(-s), r(1-s)
+			now     += h * ( 0.5f) * u * u;
+			pending += h * (-0.5f) * s * s;
+		} else {
+			// fdt converts a slope expressed PER UNIT PHASE into a slope PER
+			// SAMPLE, which is the unit the BLAMP residual is defined in.
+			const float g = mag[i] * fdt * k;            // slope break: R(-s), R(1-s)
+			now     += g * (u * u * u) * (1.f / 6.f);
+			pending += g * (s * s * s) * (1.f / 6.f);
+		}
+	}
 
 	return now;
 }
