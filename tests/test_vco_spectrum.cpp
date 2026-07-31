@@ -71,6 +71,7 @@
 #include <cmath>      // std::log10 — the dB conversion every metric here ends in
 #include <cstddef>    // std::size_t — the FFT's index and length type
 #include <cstdint>    // uint64_t — NaiveVcoCoreMirror's seeding entry points
+#include <string>     // std::string — readable CAPTURE of the grid's label columns
 
 namespace {
 
@@ -535,6 +536,436 @@ struct NaiveVcoCoreMirror {
 	}
 };
 
+// ---------------------------------------------------------------------------
+// SpectrumCell — one measurement point of the D-09 threshold matrix.
+//
+// `morph` names the shape centre and `region` is its human name; `character` is
+// the THIRD index, and the reason it exists is P-6 below. `tier` is what the
+// cell is FOR: "gated" cells are asserted, "diagnostic" cells are CAPTUREd and
+// never CHECKed, "regression" cells are the D-11 cross-rate pair. `provenance`
+// is where the number came from, in words, in the test — because a threshold
+// without a written source is a number someone can quietly edit.
+// ---------------------------------------------------------------------------
+struct SpectrumCell {
+	double sr;
+	int K;
+	const char* note;
+	float morph;
+	const char* region;
+	float character;
+	float thresholdDb;
+	const char* tier;
+	const char* provenance;
+};
+
+// ---------------------------------------------------------------------------
+// THE THRESHOLD FLOOR, and why the grid is not free to be tighter than it.
+//
+// D-10 requires the gate's own leakage floor to sit at least 10 dB BELOW
+// whatever threshold it asserts. Plan 32-01 measured this apparatus's best
+// achievable leakage over the six grid rows: -116.19 / -125.51 / -101.55 /
+// -91.95 / -97.71 / -102.87 dB (method two, the sampleTime nudge; see
+// binCentredSampleTime's banner). The WORST of those is -91.95 dB at 44.1 kHz
+// C9, so the tightest threshold this apparatus can honestly assert anywhere on
+// the grid is -81.95 dB. -75.0 is used, leaving that worst row 16.95 dB of
+// margin and every other row 22 to 50 dB.
+//
+// THIS IS NOT A SOFTENING OF THE EVIDENCE, IT IS A STATEMENT ABOUT THE
+// INSTRUMENT. Six cells' prototype figures are tighter than -75 dB: every sine
+// cell at character 0.00 (-150.7 dB, where a pure sine has no discontinuity to
+// alias at all), plus sine C7 and sine C6 at character 1.00. Asserting -147 dB
+// on those cells would not be a stronger claim about band-limiting — it would
+// be a claim the measurement cannot support, and D-10 exists to stop exactly
+// that. The floored cells say so in their own provenance string.
+//
+// The floor is a STATIC constant, deliberately. It is NOT computed from the
+// binError the self-check reads, because a threshold derived from the
+// measurement it is checked against is a self-check that can never fail.
+// ---------------------------------------------------------------------------
+constexpr float kThresholdFloorDb = -75.0f;
+
+// The provenance strings. Every cell carries one; there is no cell in the grid
+// whose threshold has no written source.
+const char* const kProvDirect =
+	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB, rounded outward; "
+	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+const char* const kProvFloored =
+	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB, then FLOORED at "
+	"kThresholdFloorDb because the prototype figure is tighter than this apparatus can assert (D-10); "
+	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+const char* const kProvSameNote =
+	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB at the 44.1 kHz row for the "
+	"SAME NOTE - the prototype matrix has no 48 or 96 kHz rows, and D-11 lands these cells on C8 precisely "
+	"so the 44.1 kHz C8 threshold transfers rather than being invented; "
+	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+const char* const kProvSameNoteFloored =
+	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB at the 44.1 kHz row for the "
+	"SAME NOTE, then FLOORED at kThresholdFloorDb because the prototype figure is tighter than this "
+	"apparatus can assert (D-10); "
+	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+const char* const kProvDiagnostic =
+	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB - the C6 rows exist in "
+	"32-RESEARCH section 'D-08 baseline and D-09 threshold evidence' but NOT in 32-VALIDATION's "
+	"Threshold Policy matrix, which starts at C7; diagnostic tier, CAPTUREd and never CHECKed; "
+	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+const char* const kProvDiagnosticFloored =
+	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB (a C6 row present in "
+	"32-RESEARCH but absent from 32-VALIDATION's matrix), then FLOORED at kThresholdFloorDb because the "
+	"prototype figure is tighter than this apparatus can assert (D-10); diagnostic tier, never CHECKed; "
+	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+
+// ---------------------------------------------------------------------------
+// SPECTRUM_GRID — the 90 cells of the D-09 threshold matrix. READ THESE TWO
+// PARAGRAPHS BEFORE CHANGING ANY NUMBER BELOW.
+//
+// >>> P-5: THE ROADMAP'S FORMER "APPROXIMATELY -60 dB" IS UNREACHABLE, AND
+//     THAT IS A PROPERTY OF THE TECHNIQUE, NOT OF THIS IMPLEMENTATION. <<<
+// A 2-sample polyBLEP multiplies the spectrum by a squared sinc, which is only
+// about -8 dB at Nyquist and about -10.5 dB at the first alias of a C8 saw. The
+// first alias of a saw at C8 is its 6th harmonic at one sixth of the
+// fundamental, i.e. -15.6 dB; ten decibels of attenuation lands it at -25.8 dB,
+// and no amount of implementation care moves it to -60. DAFx-16 (paper 33,
+// Table 2) independently reports the same ceiling for a FOUR-point polyBLAMP:
+// 46 dB SNR for a triangle at C8, versus 45 dB for 4x oversampling. Four-point
+// would roughly double the dB attenuation and still land near -36 dB for the
+// saw. The roadmap's figure is a TARGET, which the roadmap itself qualifies
+// with "pinned empirically". The thresholds below are the empirical pinning.
+// A LATER AGENT MUST NOT "RESTORE" -60 dB HERE.
+//
+// >>> P-6: THIS IS WHY THERE IS A THIRD INDEX. <<<
+// A threshold indexed by (morph region, note) ALONE cannot be both red against
+// the naive core and green against the corrected one. The triangle at C8
+// improves by 15.0 dB at character 0.00 (-33.8 -> -48.8) and by EXACTLY 0.0 dB
+// at character 1.00 (-33.5 -> -33.5) — because at character 1 the corner is
+// already 7.7 samples wide and the D-03 character factor correctly returns
+// zero. Any single number for "triangle at C8" is therefore either vacuously
+// passed by the naive path or wrongly failed by a correct implementation. That
+// is the entire reason `character` is a column in this table, and collapsing it
+// would silently delete the phase's evidence.
+//
+// The threshold column is the prototype's CORRECTED figure plus a 3 dB margin,
+// rounded outward, floored at kThresholdFloorDb. It is PROVISIONAL: plan 32-07
+// re-pins it from this repository's own measurement of the real
+// forge::MorphBlep, and the trailing comment on every row records the
+// prototype's naive and corrected pair so the re-pinning has something to move
+// against. THE ANTI-SOFTENING CLAUSE APPLIES: a threshold that turns out to be
+// unreachable is escalated per plan 32-07's documented procedure, never quietly
+// loosened, and the corrected column is never edited to match whatever the
+// implementation happened to produce.
+// ---------------------------------------------------------------------------
+static const SpectrumCell SPECTRUM_GRID[] = {
+
+	// =======================================================================
+	// (a) THE GATED GRID — 45 cells. 44.1 kHz at K = 195 (C7), K = 389 (C8)
+	//     and K = 777 (C9), each crossed with the five shape centres and with
+	//     character 0.00 / 0.50 / 1.00.
+	//
+	//     WHAT THIS GROUP PROVES: that the alias floor is bounded at the three
+	//     notes where a morphing oscillator actually aliases, for every shape
+	//     and at every character. These are the cells plan 32-07's gate
+	//     asserts on.
+	//
+	//     THE OPERATOR SETTLED THE NOTE SET ON 2026-08-01: the gate asserts on
+	//     C7, C8 AND C9. That decision SUPERSEDES the roadmap's former
+	//     undefined phrase "top two octaves" outright rather than picking one
+	//     of its two readings, and ROADMAP SC-4 has already been edited to say
+	//     so. C6 is retained below as a diagnostic row.
+	// =======================================================================
+
+	// --- C7, 44.1 kHz, K = 195, ~2099.5 Hz, 10 harmonics below Nyquist. -----
+	{ 44100.0, 195, "C7", 0.00f, "sine",     0.00f,  -75.0f, "gated",        kProvFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
+	{ 44100.0, 195, "C7", 0.00f, "sine",     0.50f,  -65.0f, "gated",        kProvDirect },   // prototype naive   -60.0 -> corrected   -68.4 dB
+	{ 44100.0, 195, "C7", 0.00f, "sine",     1.00f,  -75.0f, "gated",        kProvFloored },   // prototype naive  -102.4 -> corrected  -102.4 dB
+	{ 44100.0, 195, "C7", 0.25f, "triangle", 0.00f,  -47.0f, "gated",        kProvDirect },   // prototype naive   -41.7 -> corrected   -50.3 dB
+	{ 44100.0, 195, "C7", 0.25f, "triangle", 0.50f,  -39.0f, "gated",        kProvDirect },   // prototype naive   -40.7 -> corrected   -42.1 dB
+	{ 44100.0, 195, "C7", 0.25f, "triangle", 1.00f,  -44.0f, "gated",        kProvDirect },   // prototype naive   -47.4 -> corrected   -47.4 dB
+	{ 44100.0, 195, "C7", 0.50f, "saw",      0.00f,  -26.0f, "gated",        kProvDirect },   // prototype naive   -20.8 -> corrected   -29.5 dB
+	{ 44100.0, 195, "C7", 0.50f, "saw",      0.50f,  -26.0f, "gated",        kProvDirect },   // prototype naive   -20.6 -> corrected   -29.2 dB
+	{ 44100.0, 195, "C7", 0.50f, "saw",      1.00f,  -25.0f, "gated",        kProvDirect },   // prototype naive   -20.0 -> corrected   -28.0 dB
+	{ 44100.0, 195, "C7", 0.75f, "square",   0.00f,  -26.0f, "gated",        kProvDirect },   // prototype naive   -20.8 -> corrected   -29.5 dB
+	{ 44100.0, 195, "C7", 0.75f, "square",   0.50f,  -27.0f, "gated",        kProvDirect },   // prototype naive   -22.0 -> corrected   -30.3 dB
+	{ 44100.0, 195, "C7", 0.75f, "square",   1.00f,  -57.0f, "gated",        kProvDirect },   // prototype naive   -53.0 -> corrected   -60.1 dB
+	{ 44100.0, 195, "C7", 1.00f, "pulse 5%", 0.00f,  -10.0f, "gated",        kProvDirect },   // prototype naive    -4.8 -> corrected   -13.5 dB
+	{ 44100.0, 195, "C7", 1.00f, "pulse 5%", 0.50f,  -10.0f, "gated",        kProvDirect },   // prototype naive    -5.3 -> corrected   -13.1 dB
+	{ 44100.0, 195, "C7", 1.00f, "pulse 5%", 1.00f,  -17.0f, "gated",        kProvDirect },   // prototype naive   -19.7 -> corrected   -20.3 dB
+
+	// --- C8, 44.1 kHz, K = 389, ~4188.2 Hz, 5 harmonics below Nyquist. ------
+	{ 44100.0, 389, "C8", 0.00f, "sine",     0.00f,  -75.0f, "gated",        kProvFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
+	{ 44100.0, 389, "C8", 0.00f, "sine",     0.50f,  -68.0f, "gated",        kProvDirect },   // prototype naive   -55.5 -> corrected   -71.5 dB
+	{ 44100.0, 389, "C8", 0.00f, "sine",     1.00f,  -73.0f, "gated",        kProvDirect },   // prototype naive   -70.6 -> corrected   -76.4 dB
+	{ 44100.0, 389, "C8", 0.25f, "triangle", 0.00f,  -45.0f, "gated",        kProvDirect },   // prototype naive   -33.8 -> corrected   -48.8 dB
+	{ 44100.0, 389, "C8", 0.25f, "triangle", 0.50f,  -35.0f, "gated",        kProvDirect },   // prototype naive   -33.2 -> corrected   -38.1 dB
+	{ 44100.0, 389, "C8", 0.25f, "triangle", 1.00f,  -30.0f, "gated",        kProvDirect },   // prototype naive   -33.5 -> corrected   -33.5 dB
+	{ 44100.0, 389, "C8", 0.50f, "saw",      0.00f,  -22.0f, "gated",        kProvDirect },   // prototype naive   -15.6 -> corrected   -25.8 dB
+	{ 44100.0, 389, "C8", 0.50f, "saw",      0.50f,  -22.0f, "gated",        kProvDirect },   // prototype naive   -15.4 -> corrected   -25.7 dB
+	{ 44100.0, 389, "C8", 0.50f, "saw",      1.00f,  -20.0f, "gated",        kProvDirect },   // prototype naive   -14.7 -> corrected   -23.9 dB
+	{ 44100.0, 389, "C8", 0.75f, "square",   0.00f,  -28.0f, "gated",        kProvDirect },   // prototype naive   -16.9 -> corrected   -31.9 dB
+	{ 44100.0, 389, "C8", 0.75f, "square",   0.50f,  -30.0f, "gated",        kProvDirect },   // prototype naive   -17.5 -> corrected   -33.2 dB
+	{ 44100.0, 389, "C8", 0.75f, "square",   1.00f,  -44.0f, "gated",        kProvDirect },   // prototype naive   -40.1 -> corrected   -47.7 dB
+	{ 44100.0, 389, "C8", 1.00f, "pulse 5%", 0.00f,   -8.0f, "gated",        kProvDirect },   // prototype naive    -1.3 -> corrected   -11.6 dB
+	{ 44100.0, 389, "C8", 1.00f, "pulse 5%", 0.50f,   -8.0f, "gated",        kProvDirect },   // prototype naive    -1.5 -> corrected   -11.1 dB
+	{ 44100.0, 389, "C8", 1.00f, "pulse 5%", 1.00f,   -7.0f, "gated",        kProvDirect },   // prototype naive    -7.6 -> corrected   -10.8 dB
+
+	// --- C9, 44.1 kHz, K = 777, ~8366.9 Hz, 2 harmonics below Nyquist. ------
+	//     The hardest row for every shape: only two harmonics survive, so
+	//     almost the whole waveform is alias.
+	{ 44100.0, 777, "C9", 0.00f, "sine",     0.00f,  -75.0f, "gated",        kProvFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
+	{ 44100.0, 777, "C9", 0.00f, "sine",     0.50f,  -31.0f, "gated",        kProvDirect },   // prototype naive   -36.1 -> corrected   -34.6 dB
+	{ 44100.0, 777, "C9", 0.00f, "sine",     1.00f,  -19.0f, "gated",        kProvDirect },   // prototype naive   -23.2 -> corrected   -22.7 dB
+	{ 44100.0, 777, "C9", 0.25f, "triangle", 0.00f,  -25.0f, "gated",        kProvDirect },   // prototype naive   -19.1 -> corrected   -28.5 dB
+	{ 44100.0, 777, "C9", 0.25f, "triangle", 0.50f,  -21.0f, "gated",        kProvDirect },   // prototype naive   -19.0 -> corrected   -24.9 dB
+	{ 44100.0, 777, "C9", 0.25f, "triangle", 1.00f,  -16.0f, "gated",        kProvDirect },   // prototype naive   -18.5 -> corrected   -19.8 dB
+	{ 44100.0, 777, "C9", 0.50f, "saw",      0.00f,  -16.0f, "gated",        kProvDirect },   // prototype naive    -9.5 -> corrected   -19.0 dB
+	{ 44100.0, 777, "C9", 0.50f, "saw",      0.50f,  -15.0f, "gated",        kProvDirect },   // prototype naive    -9.4 -> corrected   -18.9 dB
+	{ 44100.0, 777, "C9", 0.50f, "saw",      1.00f,  -14.0f, "gated",        kProvDirect },   // prototype naive    -8.9 -> corrected   -17.5 dB
+	{ 44100.0, 777, "C9", 0.75f, "square",   0.00f,  -16.0f, "gated",        kProvDirect },   // prototype naive    -9.5 -> corrected   -19.0 dB
+	{ 44100.0, 777, "C9", 0.75f, "square",   0.50f,  -16.0f, "gated",        kProvDirect },   // prototype naive    -9.6 -> corrected   -19.6 dB
+	{ 44100.0, 777, "C9", 0.75f, "square",   1.00f,  -18.0f, "gated",        kProvDirect },   // prototype naive   -15.5 -> corrected   -21.7 dB
+	{ 44100.0, 777, "C9", 1.00f, "pulse 5%", 0.00f,   -6.0f, "gated",        kProvDirect },   // prototype naive    -0.3 -> corrected    -9.8 dB
+	{ 44100.0, 777, "C9", 1.00f, "pulse 5%", 0.50f,   -6.0f, "gated",        kProvDirect },   // prototype naive    -0.4 -> corrected    -9.5 dB
+	{ 44100.0, 777, "C9", 1.00f, "pulse 5%", 1.00f,   -2.0f, "gated",        kProvDirect },   // prototype naive    -2.3 -> corrected    -5.6 dB
+
+	// =======================================================================
+	// (b) THE DIAGNOSTIC ROW — 15 cells. 44.1 kHz at K = 97 (C6), same fifteen
+	//     morph-by-character cells. These are CAPTUREd and NEVER CHECKed.
+	//
+	//     WHY C6 EARNS ITS RUNTIME. It is the row where the naive path is
+	//     ALREADY CLEAN at high character — the square measures -60.1 dB naive
+	//     at character 1.00, cleaner than most corrected cells anywhere else
+	//     on the grid. That makes C6 the row that would expose an
+	//     over-correcting character factor as a REGRESSION rather than as a
+	//     miss: P-1's failure mode is a factor that returns a small non-zero
+	//     value where the real edge is already several samples wide, and the
+	//     residual step-shaped correction it injects is broadband energy ADDED
+	//     to an already-clean spectrum. A grid that only looked at C7 and above
+	//     would score that as "no improvement" instead of "damage".
+	// =======================================================================
+	{ 44100.0,  97, "C6", 0.00f, "sine",     0.00f,  -75.0f, "diagnostic",   kProvDiagnosticFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
+	{ 44100.0,  97, "C6", 0.00f, "sine",     0.50f,  -73.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -67.5 -> corrected   -76.6 dB
+	{ 44100.0,  97, "C6", 0.00f, "sine",     1.00f,  -75.0f, "diagnostic",   kProvDiagnosticFloored },   // prototype naive  -117.3 -> corrected  -117.3 dB
+	{ 44100.0,  97, "C6", 0.25f, "triangle", 0.00f,  -61.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -54.5 -> corrected   -64.0 dB
+	{ 44100.0,  97, "C6", 0.25f, "triangle", 0.50f,  -52.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -55.1 -> corrected   -55.1 dB
+	{ 44100.0,  97, "C6", 0.25f, "triangle", 1.00f,  -57.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -60.5 -> corrected   -60.5 dB
+	{ 44100.0,  97, "C6", 0.50f, "saw",      0.00f,  -32.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -26.8 -> corrected   -35.4 dB
+	{ 44100.0,  97, "C6", 0.50f, "saw",      0.50f,  -32.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -26.6 -> corrected   -35.1 dB
+	{ 44100.0,  97, "C6", 0.50f, "saw",      1.00f,  -32.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -26.4 -> corrected   -35.0 dB
+	{ 44100.0,  97, "C6", 0.75f, "square",   0.00f,  -33.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -27.2 -> corrected   -36.7 dB
+	{ 44100.0,  97, "C6", 0.75f, "square",   0.50f,  -35.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -29.4 -> corrected   -38.6 dB
+	{ 44100.0,  97, "C6", 0.75f, "square",   1.00f,  -65.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -60.1 -> corrected   -68.7 dB
+	{ 44100.0,  97, "C6", 1.00f, "pulse 5%", 0.00f,  -23.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -13.2 -> corrected   -26.4 dB
+	{ 44100.0,  97, "C6", 1.00f, "pulse 5%", 0.50f,  -24.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -14.9 -> corrected   -27.2 dB
+	{ 44100.0,  97, "C6", 1.00f, "pulse 5%", 1.00f,  -33.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -36.8 -> corrected   -36.8 dB
+
+	// =======================================================================
+	// (c) THE D-11 CROSS-RATE REGRESSION — 30 cells. 48000 Hz at K = 357 and
+	//     96000 Hz at K = 179, same fifteen cells each.
+	//
+	//     WHY D-11 EXISTS, IN FULL. A band-limiting correction scaled wrongly
+	//     by `dt` fails RATE-DEPENDENTLY: the residual kernel is a function of
+	//     the crossing distance measured in SAMPLES, so a factor that is off by
+	//     a power of `dt` produces a correction that is right at one rate and
+	//     wrong at every other one. That failure is COMPLETELY INVISIBLE to a
+	//     grid measured at a single sample rate, and it is the most likely way
+	//     this implementation goes subtly wrong — the arithmetic still looks
+	//     plausible, the spectrum still looks like a spectrum, and only the
+	//     comparison across rates can see it.
+	//
+	//     THE TWO EXTRA RATES DELIBERATELY LAND ON THE SAME NOTE as the
+	//     44.1 kHz C8 row above (4183.6 Hz and 4195.3 Hz against 4188.2 Hz),
+	//     so the cross-rate comparison is LIKE WITH LIKE. Measuring 48 kHz at a
+	//     different note would confound a rate-scaling bug with a
+	//     harmonics-below-Nyquist difference, and the whole point of the
+	//     comparison would be lost. A LATER AGENT MUST NOT "SPREAD THESE OUT"
+	//     ACROSS DIFFERENT NOTES.
+	// =======================================================================
+
+	// --- 48 kHz, K = 357, ~4183.6 Hz, 5 harmonics — same note as 44.1k C8. --
+	{ 48000.0, 357, "C8", 0.00f, "sine",     0.00f,  -75.0f, "regression",   kProvSameNoteFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
+	{ 48000.0, 357, "C8", 0.00f, "sine",     0.50f,  -68.0f, "regression",   kProvSameNote },   // prototype naive   -55.5 -> corrected   -71.5 dB
+	{ 48000.0, 357, "C8", 0.00f, "sine",     1.00f,  -73.0f, "regression",   kProvSameNote },   // prototype naive   -70.6 -> corrected   -76.4 dB
+	{ 48000.0, 357, "C8", 0.25f, "triangle", 0.00f,  -45.0f, "regression",   kProvSameNote },   // prototype naive   -33.8 -> corrected   -48.8 dB
+	{ 48000.0, 357, "C8", 0.25f, "triangle", 0.50f,  -35.0f, "regression",   kProvSameNote },   // prototype naive   -33.2 -> corrected   -38.1 dB
+	{ 48000.0, 357, "C8", 0.25f, "triangle", 1.00f,  -30.0f, "regression",   kProvSameNote },   // prototype naive   -33.5 -> corrected   -33.5 dB
+	{ 48000.0, 357, "C8", 0.50f, "saw",      0.00f,  -22.0f, "regression",   kProvSameNote },   // prototype naive   -15.6 -> corrected   -25.8 dB
+	{ 48000.0, 357, "C8", 0.50f, "saw",      0.50f,  -22.0f, "regression",   kProvSameNote },   // prototype naive   -15.4 -> corrected   -25.7 dB
+	{ 48000.0, 357, "C8", 0.50f, "saw",      1.00f,  -20.0f, "regression",   kProvSameNote },   // prototype naive   -14.7 -> corrected   -23.9 dB
+	{ 48000.0, 357, "C8", 0.75f, "square",   0.00f,  -28.0f, "regression",   kProvSameNote },   // prototype naive   -16.9 -> corrected   -31.9 dB
+	{ 48000.0, 357, "C8", 0.75f, "square",   0.50f,  -30.0f, "regression",   kProvSameNote },   // prototype naive   -17.5 -> corrected   -33.2 dB
+	{ 48000.0, 357, "C8", 0.75f, "square",   1.00f,  -44.0f, "regression",   kProvSameNote },   // prototype naive   -40.1 -> corrected   -47.7 dB
+	{ 48000.0, 357, "C8", 1.00f, "pulse 5%", 0.00f,   -8.0f, "regression",   kProvSameNote },   // prototype naive    -1.3 -> corrected   -11.6 dB
+	{ 48000.0, 357, "C8", 1.00f, "pulse 5%", 0.50f,   -8.0f, "regression",   kProvSameNote },   // prototype naive    -1.5 -> corrected   -11.1 dB
+	{ 48000.0, 357, "C8", 1.00f, "pulse 5%", 1.00f,   -7.0f, "regression",   kProvSameNote },   // prototype naive    -7.6 -> corrected   -10.8 dB
+
+	// --- 96 kHz, K = 179, ~4195.3 Hz, 11 harmonics — same note as 44.1k C8. -
+	{ 96000.0, 179, "C8", 0.00f, "sine",     0.00f,  -75.0f, "regression",   kProvSameNoteFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
+	{ 96000.0, 179, "C8", 0.00f, "sine",     0.50f,  -68.0f, "regression",   kProvSameNote },   // prototype naive   -55.5 -> corrected   -71.5 dB
+	{ 96000.0, 179, "C8", 0.00f, "sine",     1.00f,  -73.0f, "regression",   kProvSameNote },   // prototype naive   -70.6 -> corrected   -76.4 dB
+	{ 96000.0, 179, "C8", 0.25f, "triangle", 0.00f,  -45.0f, "regression",   kProvSameNote },   // prototype naive   -33.8 -> corrected   -48.8 dB
+	{ 96000.0, 179, "C8", 0.25f, "triangle", 0.50f,  -35.0f, "regression",   kProvSameNote },   // prototype naive   -33.2 -> corrected   -38.1 dB
+	{ 96000.0, 179, "C8", 0.25f, "triangle", 1.00f,  -30.0f, "regression",   kProvSameNote },   // prototype naive   -33.5 -> corrected   -33.5 dB
+	{ 96000.0, 179, "C8", 0.50f, "saw",      0.00f,  -22.0f, "regression",   kProvSameNote },   // prototype naive   -15.6 -> corrected   -25.8 dB
+	{ 96000.0, 179, "C8", 0.50f, "saw",      0.50f,  -22.0f, "regression",   kProvSameNote },   // prototype naive   -15.4 -> corrected   -25.7 dB
+	{ 96000.0, 179, "C8", 0.50f, "saw",      1.00f,  -20.0f, "regression",   kProvSameNote },   // prototype naive   -14.7 -> corrected   -23.9 dB
+	{ 96000.0, 179, "C8", 0.75f, "square",   0.00f,  -28.0f, "regression",   kProvSameNote },   // prototype naive   -16.9 -> corrected   -31.9 dB
+	{ 96000.0, 179, "C8", 0.75f, "square",   0.50f,  -30.0f, "regression",   kProvSameNote },   // prototype naive   -17.5 -> corrected   -33.2 dB
+	{ 96000.0, 179, "C8", 0.75f, "square",   1.00f,  -44.0f, "regression",   kProvSameNote },   // prototype naive   -40.1 -> corrected   -47.7 dB
+	{ 96000.0, 179, "C8", 1.00f, "pulse 5%", 0.00f,   -8.0f, "regression",   kProvSameNote },   // prototype naive    -1.3 -> corrected   -11.6 dB
+	{ 96000.0, 179, "C8", 1.00f, "pulse 5%", 0.50f,   -8.0f, "regression",   kProvSameNote },   // prototype naive    -1.5 -> corrected   -11.1 dB
+	{ 96000.0, 179, "C8", 1.00f, "pulse 5%", 1.00f,   -7.0f, "regression",   kProvSameNote },   // prototype naive    -7.6 -> corrected   -10.8 dB
+};
+
+// Which bin-centre solver a cell was measured with. Reported through
+// measureCellDb's methodOut and CAPTUREd, so a red cell names the instrument it
+// was measured with rather than leaving it to be guessed.
+enum SpectrumMethod {
+	kMethodPitchCV    = 1,   // METHOD ONE: bisect pitchCV, forge::VcoBlockDriver unchanged
+	kMethodSampleTime = 2    // METHOD TWO: nudge the injected sampleTime, local sample loop
+};
+
+// ---------------------------------------------------------------------------
+// driveSecondBlock — the ONE sample loop, shared by the mirror and the live
+// core, and the reason it is a template.
+//
+// A comparator whose two sides run different loops proves nothing about the
+// difference between them. That is the argument already written into
+// tests/check_includes.sh [6/7] — every negative control there calls the SAME
+// function its section calls — and into runInterleaveCheck in
+// tests/test_vco_core.cpp:170-180, which is a template for exactly this reason:
+// invariant 5's deliberately broken stand-in has to run through byte-identically
+// the same drive loop as the real core. It applies here unchanged. DO NOT FORK
+// THIS INTO TWO NEAR-COPIES, one for NaiveVcoCoreMirror and one for
+// forge::VcoCore.
+//
+// It drives 2 * kSpectrumN samples and returns only the SECOND block. The first
+// is the warm-up discard 32-VALIDATION.md pins: the phase accumulator — and,
+// from plan 32-06 onward, forge::MorphBlep's `pending` accumulator — must reach
+// steady state before the block is analysed, and with deltaPhase sitting on the
+// bin centre the second block is exactly periodic while the first is not.
+//
+// sampleTime and sampleRate are injected per sample, exactly as
+// forge::VcoBlockDriver does (tests/VcoBlockDriver.hpp:56-60), because nothing
+// in forge::VcoInputs couples the two and the harness owns timing.
+// ---------------------------------------------------------------------------
+template <typename CoreT>
+void driveSecondBlock(CoreT& core, const forge::VcoInputs& base, float dt, double sr,
+                      std::vector<float>& out) {
+	out.clear();
+	out.reserve((std::size_t)kSpectrumN);
+	for (int i = 0; i < 2 * kSpectrumN; ++i) {
+		forge::VcoInputs in = base;
+		in.sampleTime = dt;
+		in.sampleRate = (float)sr;
+		const float s = core.step(in);
+		if (i >= kSpectrumN) out.push_back(s);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// measureCellDb — the alias peak of ONE grid cell, from either the naive mirror
+// or the live core.
+//
+// >>> BOTH BRANCHES EXIST FROM THE START, AND THAT IS THE POINT. <<<
+// This plan drives NaiveVcoCoreMirror through it; plan 32-07 drives the
+// corrected forge::VcoCore through it, and the naive-versus-corrected delta is
+// therefore a LIKE-FOR-LIKE comparison: same solver, same warm-up, same block
+// length, same seeds, same classifier, same arithmetic. A comparator whose two
+// sides run different code proves nothing about the difference between them —
+// the check_includes.sh [6/7] argument and the runInterleaveCheck template
+// argument in tests/test_vco_core.cpp:170-180. If a later agent adds a second
+// measurement function for the corrected path, the phase's central claim stops
+// being a measurement and becomes a coincidence.
+//
+// THE FOUR SEED LITERALS ARE COPIED VERBATIM from tests/VcoBlockDriver.hpp:42-43
+// and must never be invented. A forge::Xoroshiro128Plus seeded (0, 0) is a
+// fixed point emitting an all-zero stream, which makes std::normal_distribution's
+// rejection loop never terminate — a hung suite here, and a HANG ON PATCH LOAD
+// in Rack (T-32-09).
+//
+// WHICH SOLVER IS USED, AND WHY THE CHOICE IS NOT A WEAKENING. The cell is
+// measured with METHOD ONE — bisect pitchCV, forge::VcoBlockDriver completely
+// unchanged — whenever method one's implied leakage already sits at least 10 dB
+// below that cell's threshold, which is the D-10 bar. Where it does not (the
+// sine cells, and a handful of C6 and cross-rate cells whose thresholds are
+// tighter than about -60 dB), the cell ESCALATES to METHOD TWO, the sampleTime
+// nudge, exactly as 32-RESEARCH's switching rule prescribes: "If any threshold
+// ends up tighter than about -50 dB (only the sine rows do), switch that case to
+// the second method."
+//
+// The escalation cannot hide a failure, because the THRESHOLD COLUMN IS STATIC.
+// The caller still asserts the D-10 self-check against whatever leakage the
+// chosen method actually achieved, so if method two ALSO cannot meet the bar for
+// some cell, that REQUIRE fires — and that is a finding about the apparatus,
+// which is precisely what the self-check is for. What the escalation removes is
+// only the alternative: silently loosening the threshold to whatever method one
+// happens to achieve, which is the self-check deleting itself.
+//
+// METHOD ONE DRIVES THE LIVE CORE THROUGH forge::VcoBlockDriver; method two
+// cannot, and must not try. The driver's per-sample overwrite of sampleTime is
+// unconditional and documented as load-bearing (tests/VcoBlockDriver.hpp:50-52),
+// so a nudged dt is unreachable through it and MAKING THAT OVERWRITE
+// CONDITIONAL IS FORBIDDEN — it would re-open the R-2 / P-4 argument that keeps
+// the VCO and LFO drivers independent forever. Method two therefore drives the
+// live core through driveSecondBlock, the same loop the mirror uses. That the
+// two paths agree is not assumed: the case at the bottom of this file REQUIREs
+// forge::VcoBlockDriver's output to be bit-identical to a local loop's over a
+// 45-point grid at these very frequencies.
+// ---------------------------------------------------------------------------
+double measureCellDb(const SpectrumCell& cell, bool useMirror,
+                     double* aliasRmsDbOut, double* binErrorOut,
+                     int* methodOut = 0) {
+	// The bin-centred pitch, method one. Computed for every cell, because
+	// method two starts from it: the nudge leaves pitchCV — and therefore the
+	// frequency and every guard the core applies to it — exactly where method
+	// one put it.
+	double binErrorPitch = 0.0;
+	const float pitchCV = binCentredPitchCV(cell.sr, cell.K, &binErrorPitch);
+
+	const double d10BarDb = (double)cell.thresholdDb - 10.0;
+	int method = kMethodPitchCV;
+	float dt = (float)(1.0 / cell.sr);
+	double binError = binErrorPitch;
+	if (!(impliedLeakageDb(binErrorPitch) <= d10BarDb)) {
+		double binErrorDt = 0.0;
+		const float nudged = binCentredSampleTime(cell.sr, pitchCV, cell.K, &binErrorDt);
+		method  = kMethodSampleTime;
+		dt      = nudged;
+		binError = binErrorDt;
+	}
+	if (binErrorOut) *binErrorOut = binError;
+	if (methodOut)   *methodOut   = method;
+
+	// The constant input the whole block is driven at. Copy-and-assign, never a
+	// brace value-list: forge::VcoInputs has NSDMIs, so under C++11 it is not an
+	// aggregate and a value-list init is a hard error.
+	forge::VcoInputs base;
+	base.pitchCV   = pitchCV;
+	base.coarse    = 0.f;
+	base.fine      = 0.f;
+	base.morph     = cell.morph;
+	base.character = cell.character;
+	base.drift     = 0.f;
+
+	std::vector<float> block;
+	if (useMirror) {
+		NaiveVcoCoreMirror mirror;
+		mirror.seed(0x1234ULL, 0x5678ULL);
+		mirror.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
+		driveSecondBlock(mirror, base, dt, cell.sr, block);
+	} else if (method == kMethodPitchCV) {
+		forge::VcoBlockDriver d(cell.sr);
+		const std::vector<float> full = d.run(2 * kSpectrumN, [=](int) { return base; });
+		block.assign(full.begin() + kSpectrumN, full.end());
+	} else {
+		forge::VcoCore core;
+		core.seed(0x1234ULL, 0x5678ULL);
+		core.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
+		driveSecondBlock(core, base, dt, cell.sr, block);
+	}
+
+	int aliasBin = -1;
+	return aliasPeakDb(block, cell.K, &aliasBin, aliasRmsDbOut);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -914,4 +1345,190 @@ TEST_CASE("vco spectrum: NaiveVcoCoreMirror is bit-identical to the live forge::
 			}
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// THE D-08 BASELINE. This case's job is to RECORD, not to judge.
+//
+// D-08 requires the alias floor of today's deliberately-aliased oscillator to be
+// measured per shape, per note and per character BEFORE any band-limiting
+// exists, so that the thresholds this phase pins are set FROM MEASUREMENT rather
+// than inherited from prose. Three payoffs, in the phase's own words: the
+// threshold is measured rather than inherited; the phase gets an objective
+// iteration metric instead of ear-guessing, which is what its deliberate
+// iteration budget is for; and the RED that follows is genuine, because the gate
+// provably fails before forge::MorphBlep lands rather than being written against
+// already-passing code.
+//
+// SO IT ASSERTS ALMOST NOTHING, DELIBERATELY. Only two structural sanity
+// properties are CHECKed, both with wide measured margins so they are robust
+// across toolchains, and both there to prove the apparatus is looking at a real
+// signal rather than at silence. Everything else is CAPTUREd. The recorded
+// figures are what plan 32-07 pins against; adding assertions here would pin the
+// naive floor as a REQUIREMENT, and the naive floor is the thing this phase
+// exists to move.
+//
+// THE PER-CELL D-10 SELF-CHECK IS THE ONE HARD REQUIRE (T-32-11). Before any
+// cell's alias value is read, the leakage implied by that cell's ACHIEVED bin
+// error must sit at least 10 dB below that cell's own threshold. Without it the
+// gate can pass by measuring forge::exp2_taylor5's output granularity rather
+// than the DSP — D-10's stated failure mode — and every threshold below it
+// becomes decoration.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: the NAIVE alias floor, recorded per shape, note and character (D-08 baseline)") {
+
+	const std::size_t nCells = sizeof(SPECTRUM_GRID) / sizeof(SPECTRUM_GRID[0]);
+	CAPTURE(nCells);
+
+	// 45 gated + 15 diagnostic + 30 cross-rate regression. Asserted rather than
+	// trusted: a table that silently lost a section would still walk cleanly and
+	// would still report a floor, and nothing else here could tell.
+	REQUIRE(nCells == (std::size_t)90);
+
+	int gatedCells = 0, diagnosticCells = 0, regressionCells = 0;
+	int sineChar0Cells = 0, pulseC9Char0Cells = 0;
+	int methodOneCells = 0, methodTwoCells = 0;
+
+	for (std::size_t i = 0; i < nCells; ++i) {
+		const SpectrumCell& cell = SPECTRUM_GRID[i];
+
+		const double sr        = cell.sr;
+		const int    K         = cell.K;
+		const float  morph     = cell.morph;
+		const float  character = cell.character;
+		const float  threshold = cell.thresholdDb;
+
+		// The three label columns are copied into std::string before being
+		// CAPTUREd. doctest stringifies a bare `const char*` as a POINTER unless
+		// DOCTEST_CONFIG_TREAT_CHAR_STAR_AS_STRING is defined project-wide, and
+		// a -s dump full of `note := 0x100453f6b` would make the recorded
+		// baseline unreadable — which for a case whose entire job is to RECORD
+		// would defeat the case. That macro is deliberately NOT defined here:
+		// it is a global doctest configuration switch and would change how every
+		// other TU in the suite renders, including the shipped LFO's cases.
+		const std::string note(cell.note);
+		const std::string region(cell.region);
+		const std::string tier(cell.tier);
+
+		CAPTURE(i);
+		CAPTURE(sr);
+		CAPTURE(K);
+		CAPTURE(note);
+		CAPTURE(morph);
+		CAPTURE(region);
+		CAPTURE(character);
+		CAPTURE(threshold);
+		CAPTURE(tier);
+
+		// The coprimality assertion, in its mechanical form: gcd(K, 4096) = 1
+		// for every odd K, and that is what makes "non-harmonic bin" mean
+		// "alias". See the file banner.
+		REQUIRE((K % 2) == 1);
+
+		// Every cell carries a written source for its threshold.
+		REQUIRE(cell.provenance != 0);
+		REQUIRE(cell.thresholdDb >= kThresholdFloorDb);
+
+		if (tier == "gated") ++gatedCells;
+		else if (tier == "diagnostic") ++diagnosticCells;
+		else if (tier == "regression") ++regressionCells;
+
+		// ---- THE MEASUREMENT. useMirror = true: this is the NAIVE baseline. --
+		double aliasRmsDb = 0.0;
+		double binError   = 0.0;
+		int    method     = 0;
+		const double naiveDb = measureCellDb(cell, /*useMirror=*/true, &aliasRmsDb, &binError, &method);
+		const double impliedLeakage = impliedLeakageDb(binError);
+
+		CAPTURE(method);
+		CAPTURE(binError);
+		CAPTURE(impliedLeakage);
+		CAPTURE(naiveDb);
+		CAPTURE(aliasRmsDb);
+
+		if (method == kMethodPitchCV) ++methodOneCells; else ++methodTwoCells;
+
+		// ---- THE D-10 SELF-CHECK, PER CELL, BEFORE THE VALUE IS READ. -------
+		// The gate's own noise floor sits at least 10 dB below the threshold
+		// this cell will be judged against, so no figure recorded below can be
+		// an artefact of where the drive frequency landed relative to its bin
+		// centre. This is a REQUIRE, not a CHECK: a cell whose instrument is
+		// out of specification has no business reporting a number at all.
+		REQUIRE(impliedLeakage <= (double)threshold - 10.0);
+
+		// Non-vacuity: -999.0 is aliasPeakDb's silence sentinel, and it is far
+		// BELOW every threshold here — the wrong direction for a sentinel to
+		// fail. Catch it explicitly rather than letting silence look clean.
+		REQUIRE(naiveDb > -900.0);
+
+		// ---- STRUCTURAL SANITY 1: a sine at character 0 has nothing to alias.
+		//
+		// It has no discontinuity of its own and no bleed ring, so it emits NO
+		// alias energy at all and everything the classifier reports for it is
+		// the INSTRUMENT'S OWN FLOOR — the rectangular-window leakage of a drive
+		// frequency that could not be placed exactly on the bin centre.
+		//
+		// MEASURED, and this is the whole point: at all six sine cells the
+		// reported alias peak sits within 0.078 dB of that cell's own implied
+		// leakage. 44.1k C7 -125.435 against a floor of -125.513 (+0.078);
+		// 44.1k C8 -101.541 against -101.550 (+0.009); 44.1k C9 -91.9421
+		// against -91.9452 (+0.003); 44.1k C6 -116.141 against -116.186
+		// (+0.045); 48k C8 -97.7016 against -97.7123 (+0.011); 96k C8 -102.852
+		// against -102.875 (+0.023). The sine is not merely quiet — it is
+		// EXACTLY the floor, at every rate and every note.
+		//
+		// >>> WHY THIS IS NOT THE "BELOW -140 dB" BOUND THE PLAN NAMED. <<<
+		// The 32-RESEARCH prototype measured -150.7 dB for this cell. THAT
+		// FIGURE IS UNREACHABLE THROUGH THIS APPARATUS, and not because the
+		// oscillator is worse: it is because -150.7 dB is 25 to 59 dB BELOW this
+		// gate's own leakage floor on every row of the grid (-91.95 to -125.51
+		// dB, plan 32-01's measured method-two column). An instrument cannot
+		// report a number quieter than its own noise, so a -140 dB CHECK here
+		// would not be a stronger claim about the DSP — it would be a claim the
+		// measurement cannot carry, which is exactly what the D-10 self-check
+		// three lines above exists to forbid. Asserting AGAINST THE FLOOR is the
+		// stronger statement anyway: it says the sine contributes nothing
+		// measurable, at whatever floor the instrument happens to have that day,
+		// rather than fixing a number that only holds on one apparatus.
+		//
+		// The 1.0 dB margin is a 12x cushion on the worst measured excess
+		// (0.078 dB). The absolute bound is the second half: it pins the floor
+		// far below every threshold on the grid, so a future apparatus
+		// regression that lifted BOTH the floor and this cell together — keeping
+		// the delta small while the whole measurement went soft — still fails
+		// here. Worst measured is -91.94 dB, so -85.0 leaves 6.9 dB.
+		if (morph == 0.00f && character == 0.00f) {
+			++sineChar0Cells;
+			CHECK(naiveDb <= impliedLeakage + 1.0);
+			CHECK(naiveDb < -85.0);
+		}
+
+		// ---- STRUCTURAL SANITY 2: the naive worst case is genuinely aliased.
+		// The 5 % pulse at C9 carries two harmonics below Nyquist and folds
+		// essentially everything else back. RESEARCH measured -0.3 dB — the
+		// alias is as loud as the fundamental. This is the proof the apparatus
+		// is looking at a real, badly aliased signal rather than at silence, and
+		// -5.0 dB is the bound.
+		if (morph == 1.00f && K == 777 && character == 0.00f) {
+			++pulseC9Char0Cells;
+			CHECK(naiveDb > -5.0);
+		}
+	}
+
+	// The tier census, and the non-vacuity of both structural properties. A
+	// grid that lost its pulse C9 cell, or whose sine column moved, would make
+	// the two CHECKs above silently unreachable — an assertion that never runs
+	// is indistinguishable from one that cannot fail.
+	CAPTURE(gatedCells);
+	CAPTURE(diagnosticCells);
+	CAPTURE(regressionCells);
+	CAPTURE(sineChar0Cells);
+	CAPTURE(pulseC9Char0Cells);
+	CAPTURE(methodOneCells);
+	CAPTURE(methodTwoCells);
+	CHECK(gatedCells == 45);
+	CHECK(diagnosticCells == 15);
+	CHECK(regressionCells == 30);
+	CHECK(sineChar0Cells == 6);
+	CHECK(pulseC9Char0Cells == 1);
 }
