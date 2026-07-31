@@ -314,6 +314,36 @@ done
 #     is VCO code. The match below compares against a QUOTED right-hand side, so
 #     it is exact-path: no glob, no substring, no basename, and no sibling path
 #     is exempted along with it.
+#   * tests/test_vco_spectrum.cpp, tests/test_morph_blep.cpp — Phase 32's two
+#     VCO-side test translation units. Both exist to drive forge::VcoCore and
+#     forge::MorphBlep, so both reach dsp/VcoCore.hpp and dsp/MorphBlep.hpp
+#     through tests/VcoBlockDriver.hpp and through a direct include — includes
+#     this section flags BY CONSTRUCTION, exactly as it does for the three
+#     entries above. tests/test_vco_spectrum.cpp is the TEST-03 alias-floor
+#     suite (the exact-integer-cycle DFT, the alias-bin classifier, the D-10
+#     leakage self-check and the D-08 naive baseline); tests/test_morph_blep.cpp
+#     is the AA-02 / AA-03 / AA-04 unit suite for the polyBLEP / polyBLAMP
+#     kernel itself. Neither is an LFO translation unit, and neither links into
+#     any LFO build graph — they are compiled only into the doctest binary that
+#     `make test` builds.
+#     Both entries are added BEFORE either file exists, deliberately. That is
+#     the Phase-29 precedent recorded in the paragraph above: src/AnalogVCO.cpp
+#     was pre-registered here while it was still unwritten and `make guards` was
+#     green on its very first run, whereas the entry two paragraphs above
+#     (tests/test_vco_core.cpp) was instead added REACTIVELY, after Phase 30's
+#     TU had already landed and turned this section red. Pre-registration is
+#     what disarms that recurring landmine, so Phase 32 pays the cost up front.
+#     Adding them changes the LFO-side scan set by exactly two files, and both
+#     files are VCO code. The match below compares against a QUOTED right-hand
+#     side, so it is exact-path: no glob, no substring, no basename, and no
+#     sibling path is exempted along with either of them.
+#     src/dsp/MorphBlep.hpp itself needs NO edit in this file, and a future
+#     editor should not "complete" the wiring by adding one: the header is
+#     already pre-wired here at lines 90, 261 and 337, and in
+#     tests/check_canary.sh at lines 414, 452-453 and 466. The only other
+#     guard-side edit Phase 32 makes is activating the canary's include of that
+#     header, which belongs to plan 32-04 and lands in the same commit as the
+#     header itself (P-9).
 # src/dsp/Vco*.hpp and src/dsp/MorphBlep.hpp are the VCO's own headers — the
 # other side of the boundary, not scan targets.
 #
@@ -329,6 +359,8 @@ VCO_SIDE_ALLOW=(
 	"tests/test_vco_harness.cpp"
 	"tests/test_vco_core.cpp"
 	"tests/test_vco_pitch.cpp"
+	"tests/test_vco_spectrum.cpp"
+	"tests/test_morph_blep.cpp"
 )
 LFO_SCAN=()
 while IFS= read -r f; do
