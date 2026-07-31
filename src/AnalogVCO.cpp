@@ -12,13 +12,22 @@
 // calculation here and tests/test_vco_core.cpp silently stops describing the
 // module a user plugged a cable into.
 //
-// Eight controls, no more (D-07, carried forward by Phase 31's D-16): V/OCT in,
-// FM in, MORPH, CHARACTER, COARSE, FINE, FM DEPTH, OUT. They are the eight the
-// DSP consumes, so every control that moves is a control you can hear and an
-// in-Rack check is honest. The converse binds just as hard, and it is why all
-// four Phase-31 controls are declared in the same phase as the arithmetic they
-// feed: DSP that no control can reach cannot be auditioned, and this phase signs
-// off in an operator-driven Rack session rather than on a headless count.
+// Ten controls, no more (D-07, carried forward by Phase 31's D-16 and again by
+// Phase 32's D-16): V/OCT in, FM in, MORPH CV in, MORPH, CHARACTER, COARSE,
+// FINE, FM DEPTH, MORPH DEPTH, OUT. They are the ten the DSP consumes, so every
+// control that moves is a control you can hear and an in-Rack check is honest.
+// The converse binds just as hard, and it is why all four Phase-31 controls are
+// declared in the same phase as the arithmetic they feed: DSP that no control
+// can reach cannot be auditioned, and this phase signs off in an
+// operator-driven Rack session rather than on a headless count.
+//
+// PHASE 32'S TWO ARE THAT SAME RULE APPLIED TO ITSELF, which is the whole
+// argument for declaring them here rather than in Phase 34. The audio-rate MORPH
+// sweep that MORPH CV and MORPH DEPTH enable — the crossfade crossing segment
+// boundaries at modulator rates — is the HARDEST case this phase's alias floor
+// has to survive, and it is exactly what the operator drives in plan 32-10's
+// in-Rack UAT session. A band-limiter with no cable to sweep it could only ever
+// be signed off headless.
 // CHARACTER is here as a consequence of D-11, not as a pull-forward of CHAR-01:
 // every component-spread coefficient in forge::Waveshape is gated behind
 // character >= 0.001f, so at character = 0 the per-instance divergence is
@@ -48,15 +57,23 @@
 // which is the cleanest position this phase has against the guardrail. A
 // dedicated pre-Phase-35 phase owns the knob redesign and its backport.
 //
-// The panel is throwaway on purpose. res/AnalogVCO.svg is ten rectangles at the
-// FINAL 18 HP geometry and the FINAL filename, so Phase 35 (PANEL-01/PANEL-02)
+// The panel is throwaway on purpose. res/AnalogVCO.svg is twelve rectangles at
+// the FINAL 18 HP geometry and the FINAL filename, so Phase 35 (PANEL-01/PANEL-02)
 // is an art swap rather than a rewiring. The CRT display is Phase 35's
 // DISP-01..03 and is deliberately absent here, as is any patch-state
 // serialization: the VCO persisted nothing in Phase 30 and still persists
 // nothing in Phase 31, so no control declared above survives a patch save yet.
 //
-// The oscillator this exposes is CRUDE AND ALIASED ON PURPOSE. Phase 32 owns
-// band-limiting; nothing here should be judged on how it sounds.
+// Band-limiting is Phase 32's, and it lands in the SAME phase as the two MORPH
+// CV controls above — but it lands ENTIRELY BEHIND THIS FILE. The correction
+// lives in src/dsp/MorphBlep.hpp and is called from forge::VcoCore::step, and
+// nothing in this shell changes as a consequence of it. That is not a
+// coincidence, it is the property being protected: a whole anti-aliasing
+// subsystem arrived without one sample of it passing through this translation
+// unit, which is precisely what keeps the headless suite evidence about what
+// Rack produces. The oscillator this shell exposed BEFORE that landed was crude
+// and aliased on purpose, and the phases that said so were describing
+// forge::VcoCore, never this file.
 //
 // Toolchain contract: this file joins SOURCES += $(wildcard src/*.cpp), the
 // `make strict` glob and the CI toolchain-gate MinGW compile-and-link loop
@@ -79,11 +96,13 @@ struct AnalogVCO : Module {
 		COARSE_PARAM,
 		FINE_PARAM,
 		FM_ATTEN_PARAM,
+		MORPH_ATTEN_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
 		VOCT_INPUT,
 		FM_INPUT,
+		MORPH_CV_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
@@ -135,8 +154,38 @@ struct AnalogVCO : Module {
 		// range here would silently drop half of what FM-02 asks for.
 		configParam(FM_ATTEN_PARAM, -1.f, 1.f, 0.f, "FM Depth", "%", 0.f, 100.f);
 
+		// BIPOLAR by D-17, which inherits Phase 31's D-07 attenuverter styling
+		// WHOLESALE rather than re-deciding it: linear taper, default off, and a
+		// percentage readout, exactly like the FM depth control declared
+		// immediately above. RANGE included this time — both controls are
+		// genuine attenuVERTERS over -1..+1, not the shipped LFO's unipolar
+		// attenuator over 0..1.
+		//
+		// WHY BIPOLAR RATHER THAN UNIPOLAR, since MORPH's own range is 0..1 and
+		// a one-directional control would look like the obvious match for it. A
+		// negative setting INVERTS the CV, so a rising modulator sweeps the
+		// crossfade BACKWARDS — pulse toward sine — while the same patch cable
+		// at a positive setting sweeps it forwards, sine toward pulse. Halving
+		// that to one direction would make the modulator's own polarity the only
+		// way to reach the other, which is a patching chore the panel can just
+		// remove.
+		//
+		// THE PHASE BOUNDARY, STATED HERE BECAUSE THIS IS THE EXACT LINE A LATER
+		// READER WILL GET WRONG. MORPH's CV jack and attenuverter are declared
+		// HERE, in Phase 32, by D-16 — REQUIREMENTS.md maps MORPH-02 to this
+		// phase and roadmap SC-2 spells out "knob + CV + attenuverter". Phase
+		// 31's CONTEXT lumped MORPH's and CHARACTER's CV together into Phase 34;
+		// that lumping is CORRECTED here, not followed. CHARACTER's CV and
+		// attenuverter remain Phase 34's (CHAR-01) and are deliberately NOT
+		// added alongside these two, however symmetric the panel would look with
+		// them: CHARACTER has no behavior in this phase that a cable would let
+		// an operator audition, and D-07 above forbids declaring a control ahead
+		// of the reason to move it.
+		configParam(MORPH_ATTEN_PARAM, -1.f, 1.f, 0.f, "Morph CV Depth", "%", 0.f, 100.f);
+
 		configInput(VOCT_INPUT, "V/Oct");
 		configInput(FM_INPUT, "FM");
+		configInput(MORPH_CV_INPUT, "Morph CV");
 		configOutput(OUTPUT, "Audio");
 
 		// T-30-02. BOTH calls are required and neither is optional. seed()
