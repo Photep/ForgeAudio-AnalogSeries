@@ -247,8 +247,22 @@ Plans:
   4. A spectral alias-floor invariant (a small DFT/Goertzel helper) asserts high-note aliasing stays below **per-shape thresholds pinned from measurement** (D-09 evidence-set thresholds, each carrying its measured justification) at **C7, C8 and C9** — TEST-03. The earlier "≈ −60 dB" figure was a target, not a reachable floor: 2-sample polyBLEP attenuates by `sinc²`, which is only ≈ −8 dB at Nyquist, so the achievable floor sits well above −60 dB (measured best at C8/44.1 kHz: saw −25.8, square −31.9, narrow pulse −11.6 dB) — corroborated by DAFx-16. Per-shape measured thresholds are the honest gate.
   5. All anti-aliasing is table-free and Rack-free (closed-form arithmetic), preserving C++11-strict compilation and golden bit-stability — no minBLEP, no oversampling in v2.0.
 
-**Plans**: TBD
-**Research flag**: MEDIUM-confidence on exact character↔BLEP tuning and the alias-floor threshold; likely worth `--research-phase` if the first spectral iteration is ambiguous. This is the risk concentrator — budget iteration here.
+**Plans**: 11 plans
+
+Plans:
+- [ ] 32-01-PLAN.md — Guard pre-registration, the exact-integer-cycle spectral apparatus with its own leakage self-check, and the test-only naive mirror (D-08 / D-10)
+- [ ] 32-02-PLAN.md — MORPH CV jack, bipolar attenuverter, NaN-safe shell mix and the paired panel rects (MORPH-02 / D-16 / D-17)
+- [ ] 32-03-PLAN.md — The 90-cell naive alias baseline, then the gate observed RED and landed as a tombstone (D-08 / D-09 / D-11)
+- [ ] 32-04-PLAN.md — `src/dsp/MorphBlep.hpp`: kernels, compact-support character factor, nine-site union, split-source crossing test, plus the canary include (CORE-02 / AA-01..05)
+- [ ] 32-05-PLAN.md — Unit suite: characterized jumps probed against the frozen `Waveshape`, the D-03 limits, overlapping edges, the sync seam and hostile `dt` (AA-02/03/04)
+- [ ] 32-06-PLAN.md — Wire `MorphBlep` into `VcoCore.hpp:484`, harden morph/character, correct two falsified premises, invert the baseline tombstone (CORE-02 / MORPH-01)
+- [ ] 32-07-PLAN.md — Close the measure→pin loop: pin D-09 thresholds, invert the tombstone into the live TEST-03 gate, add the no-regression and cross-rate invariants
+- [ ] 32-08-PLAN.md — Bring the oracle in step, re-derive the output bound into two measured tiers, exercise the hostile tier (AA-01 / AA-03)
+- [ ] 32-09-PLAN.md — Extend the hostile-timing grid on the corrected D-15 rationale, and add the audio-rate MORPH invariant (MORPH-01/02)
+- [ ] 32-10-PLAN.md — Phase gate: full local suite, CI link leg observed by SHA, requirement traceability, deferred register
+- [ ] 32-11-PLAN.md — Operator in-Rack UAT of the audio-rate MORPH sweep and the shipped-LFO guardrail (blocking checkpoint)
+
+**Research flag**: RESOLVED at plan time. `32-RESEARCH.md` measured the D-03 factor (`k = max(0, 1 − w/(2·dt))²`, compact support load-bearing) and the achievable per-shape floors against the real frozen header; the MEDIUM-confidence item that remains is the exact threshold numbers, which D-08's measure→pin loop closes in plans 32-03 and 32-07. This is the risk concentrator — budget iteration here.
 
 ### Phase 33: Hard Sync
 
