@@ -1532,3 +1532,190 @@ TEST_CASE("vco spectrum: the NAIVE alias floor, recorded per shape, note and cha
 	CHECK(sineChar0Cells == 6);
 	CHECK(pulseC9Char0Cells == 1);
 }
+
+// ---------------------------------------------------------------------------
+// >>> THIS CASE IS A TOMBSTONE. <<<
+//
+// WHY THIS CASE EXISTS. D-08 requires the Phase 32 alias-floor gate to be
+// OBSERVED FAILING against the naive core before forge::MorphBlep lands. A gate
+// written against already-passing code proves nothing — it is indistinguishable
+// from a gate that cannot fail — and this phase's whole iteration budget is
+// spent against an objective metric rather than against ear-guessing, so the
+// metric has to be shown to bite first. The gate below was written in its FINAL
+// form, run against the naive forge::VcoCore, and observed RED. This case is
+// that failure, pinned.
+//
+// >>> WHAT PLAN 32-07 MUST DO. <<<
+// INVERT THIS CASE IN PLACE — same slot in this file, same SPECTRUM_GRID, same
+// 45 gated cells, same measureCellDb call with useMirror = false — into
+// CHECK(failing == 0) against the real forge::MorphBlep, and flip the five named
+// subset assertions from "misses its threshold by more than 5 dB" to
+// CHECK(correctedDb <= cell.thresholdDb). DELETING THIS CASE INSTEAD OF
+// INVERTING IT silently removes the phase's only recorded RED, and with it the
+// only evidence that the gate was ever able to fail. This is the shape Phase
+// 29's silence tombstone used and Phase 30 honoured (D-15 / D-19: inverted in
+// place, same slot, and observed red against a silenced core).
+//
+// >>> THE STANDING WARNING. <<<
+// IF THIS CASE EVER GOES GREEN WHILE forge::VcoCore::step IS STILL NAIVE, the
+// gate has stopped being able to see aliasing at all, and every threshold in
+// SPECTRUM_GRID above is decoration. A green result here does not mean the
+// oscillator improved — the oscillator is supposed to be aliasing. It means the
+// measurement stopped working, which is precisely the condition that would let
+// plan 32-07 land a broken forge::MorphBlep unnoticed.
+//
+// >>> THE ANTI-SOFTENING CLAUSE. <<<
+// A threshold that turns out to be unreachable is ESCALATED per plan 32-07's
+// documented procedure. It is NEVER quietly loosened, and the corrected column
+// in SPECTRUM_GRID is NEVER edited to match whatever the implementation happened
+// to produce. That edit would convert a measurement into a transcription of the
+// result, which is the one failure mode a threshold cannot survive (T-32-15).
+//
+// ---------------------------------------------------------------------------
+// THE OBSERVED FIGURES, recorded 2026-08-01 against the naive forge::VcoCore at
+// commit 13ea1c7. IF ANY OF THESE EVER MOVES WHEN THIS CASE IS TOUCHED, STOP AND
+// REPORT IT RATHER THAN UPDATING THE NUMBER — the same standing instruction as
+// tests/test_vco_core.cpp:344-347. A moved figure means the change was not
+// inert; it is a finding about forge::VcoCore, not bookkeeping here.
+//
+//   failing cells: 32 of the 45 gated cells
+//
+//   the five named large-margin subset cells, measured over-threshold margins:
+//     44100 / K=389 / morph 0.25 triangle / character 0.00   -33.8085 vs -45  -> +11.191 dB
+//     44100 / K=389 / morph 0.50 saw      / character 0.00   -15.5630 vs -22  ->  +6.437 dB
+//     44100 / K=389 / morph 0.75 square   / character 0.00   -16.9030 vs -28  -> +11.097 dB
+//     44100 / K=389 / morph 1.00 pulse    / character 0.00    -1.2931 vs  -8  ->  +6.707 dB
+//     44100 / K=777 / morph 0.50 saw      / character 0.00    -9.5424 vs -16  ->  +6.458 dB
+//
+// The 13 gated cells that ALREADY PASS against the naive core are not a defect
+// in the grid and must not be "fixed" by tightening their thresholds. Ten of
+// them are the sine and high-character cells P-6 predicts: the sine at character
+// 0 has no discontinuity to alias, and the triangle at C8 / character 1 improves
+// by exactly 0.0 dB because the corner is already 7.7 samples wide and the D-03
+// factor correctly returns zero. A grid where every cell were red would mean the
+// thresholds had been set to fail rather than to measure.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: TOMBSTONE - the NAIVE core FAILS the Phase 32 alias-floor gate (D-08 RED evidence) - INVERTS IN PLAN 32-07") {
+
+	// THE OBSERVED COUNT WAS 32. This constant is 32 minus 5, and the gap is
+	// deliberate: a cell sitting within a decibel or two of its threshold can
+	// flip across it on a different toolchain — cell i = 19 (triangle C8,
+	// character 0.5) misses by only 1.768 dB and cell i = 34 (triangle C9,
+	// character 0.5) by 2.026 dB — and a floor pinned at the observed count
+	// would turn that into a red build for a reason that has nothing to do with
+	// the DSP.
+	//
+	// THE OBSERVED NUMBER IS A MEASUREMENT; THIS CONSTANT IS A FLOOR DERIVED
+	// FROM IT. Do not later "tighten" the floor to the observed count. The floor
+	// is not trying to be precise about how naive the naive core is — it is
+	// asserting that the gate can see a large, unambiguous population of
+	// failures, which is what makes plan 32-07's inversion to zero meaningful.
+	const int kNaiveFailuresFloor = 27;
+
+	// The five cells named in the plan, where 32-RESEARCH shows at least 8 dB of
+	// expected improvement from band-limiting and the naive value therefore
+	// misses its threshold by a wide margin. These are what make the tombstone
+	// SPECIFIC rather than merely statistical: a counter alone could be
+	// satisfied by 27 cells each missing by 0.1 dB, which would be a much weaker
+	// claim about how far the naive core actually is from the gate.
+	//
+	// The 5 dB cushion is what makes them robust: the tightest measured margin
+	// in the set is +6.437 dB, so every one of them has at least 1.4 dB of room
+	// before the assertion is in danger.
+	struct SubsetCell { double sr; int K; float morph; float character; };
+	static const SubsetCell SUBSET[] = {
+		{ 44100.0, 389, 0.25f, 0.00f },   // triangle, measured +11.191 dB over threshold
+		{ 44100.0, 389, 0.50f, 0.00f },   // saw,      measured  +6.437 dB over threshold
+		{ 44100.0, 389, 0.75f, 0.00f },   // square,   measured +11.097 dB over threshold
+		{ 44100.0, 389, 1.00f, 0.00f },   // pulse,    measured  +6.707 dB over threshold
+		{ 44100.0, 777, 0.50f, 0.00f },   // saw at C9, measured +6.458 dB over threshold
+	};
+	const std::size_t nSubset = sizeof(SUBSET) / sizeof(SUBSET[0]);
+
+	const std::size_t nCells = sizeof(SPECTRUM_GRID) / sizeof(SPECTRUM_GRID[0]);
+	REQUIRE(nCells == (std::size_t)90);
+
+	int gatedWalked = 0;
+	int failing = 0;
+	int subsetChecked = 0;
+
+	for (std::size_t i = 0; i < nCells; ++i) {
+		const SpectrumCell& cell = SPECTRUM_GRID[i];
+
+		// Only the gated tier. The C6 diagnostic row and the D-11 cross-rate
+		// rows are recorded by the baseline case above and are NOT asserted
+		// here — the gate's note set is C7, C8 and C9 (operator decision,
+		// 2026-08-01).
+		if (std::string(cell.tier) != "gated") continue;
+		++gatedWalked;
+
+		const double sr        = cell.sr;
+		const int    K         = cell.K;
+		const float  morph     = cell.morph;
+		const float  character = cell.character;
+		const float  threshold = cell.thresholdDb;
+		const std::string note(cell.note);
+		const std::string region(cell.region);
+
+		CAPTURE(i);
+		CAPTURE(sr);
+		CAPTURE(K);
+		CAPTURE(note);
+		CAPTURE(morph);
+		CAPTURE(region);
+		CAPTURE(character);
+		CAPTURE(threshold);
+
+		// >>> useMirror = false. THIS IS THE LIVE forge::VcoCore, NOT THE
+		//     MIRROR. <<< The whole point of the RED is that the gate fails
+		//     against the SHIPPED code path. Measuring the mirror here would
+		//     make this case a statement about a test fixture, and plan 32-07's
+		//     inversion would then be comparing the corrected core against
+		//     nothing at all.
+		double aliasRmsDb = 0.0;
+		double binError   = 0.0;
+		int    method     = 0;
+		const double naiveDb = measureCellDb(cell, /*useMirror=*/false, &aliasRmsDb, &binError, &method);
+		const double impliedLeakage = impliedLeakageDb(binError);
+
+		CAPTURE(method);
+		CAPTURE(binError);
+		CAPTURE(impliedLeakage);
+		CAPTURE(naiveDb);
+		CAPTURE(aliasRmsDb);
+
+		// The D-10 self-check, per cell, before the value is read — identical to
+		// the baseline case above and for the identical reason (T-32-11). A red
+		// cell measured by an out-of-specification instrument is not evidence of
+		// anything.
+		REQUIRE(impliedLeakage <= (double)threshold - 10.0);
+		REQUIRE(naiveDb > -900.0);
+
+		if (naiveDb > (double)threshold) ++failing;
+
+		// ---- The named large-margin subset. --------------------------------
+		for (std::size_t s = 0; s < nSubset; ++s) {
+			if (SUBSET[s].sr != sr || SUBSET[s].K != K) continue;
+			if (SUBSET[s].morph != morph || SUBSET[s].character != character) continue;
+			++subsetChecked;
+			const double marginDb = naiveDb - (double)threshold;
+			CAPTURE(marginDb);
+
+			// >>> PLAN 32-07 FLIPS THIS LINE to CHECK(naiveDb <= (double)threshold). <<<
+			CHECK(naiveDb > (double)threshold + 5.0);
+		}
+	}
+
+	// Non-vacuity of the whole case. A grid edit that dropped the gated tier, or
+	// that moved one of the five subset cells, would make every assertion above
+	// silently unreachable — and an assertion that never runs is
+	// indistinguishable from one that cannot fail.
+	CAPTURE(gatedWalked);
+	CAPTURE(subsetChecked);
+	CAPTURE(failing);
+	REQUIRE(gatedWalked == 45);
+	REQUIRE(subsetChecked == (int)nSubset);
+
+	// >>> PLAN 32-07 FLIPS THIS LINE to CHECK(failing == 0). <<<
+	CHECK(failing >= kNaiveFailuresFloor);
+}
