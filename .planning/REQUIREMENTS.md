@@ -71,7 +71,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 - [x] **CORE-03**: `VcoCore` is a self-contained per-voice unit with no static/global mutable voice state — **polyphony-ready** so a future v2.1 polyphony is an additive shell change, not a rewrite
 - [x] **TEST-01**: A Rack-free test harness drives `VcoCore` over sample blocks (mirrors `BlockDriver`), runnable via `make test` with no libRack
 - [x] **TEST-02**: V/Oct tracking accuracy is asserted (< 1 cent error) across the pitch range
-- [ ] **TEST-03**: An alias-floor / spectral invariant asserts high-note aliasing stays below a defined threshold
+- [x] **TEST-03**: An alias-floor / spectral invariant asserts high-note aliasing stays below a defined threshold
 - [x] **TEST-04**: The shipped LFO's `.f32` goldens are replayed byte-identical in the same `make test` run as a standing non-regression canary
 - [ ] **TEST-05**: New VCO goldens — drift-off fixtures are cross-platform portable; drift-on fixtures are macOS-gated (matching the LFO policy)
 - [x] **TEST-06**: The strict C++11 gate (`make strict`) and the CI MinGW link leg cover the new `AnalogVCO.cpp` translation unit (ODR / C++17-ism protection)
@@ -151,7 +151,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | CORE-03 | Phase 30 | Complete |
 | TEST-01 | Phase 29 | Complete |
 | TEST-02 | Phase 31 | Complete |
-| TEST-03 | Phase 32 | Pending |
+| TEST-03 | Phase 32 | Complete |
 | TEST-04 | Phase 29 | Complete |
 | TEST-05 | Phase 36 | Pending |
 | TEST-06 | Phase 29 | Complete |

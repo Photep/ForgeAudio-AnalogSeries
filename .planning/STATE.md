@@ -6,14 +6,14 @@ current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
 stopped_at: Completed 32-06-PLAN.md
-last_updated: "2026-08-01T00:34:24.554Z"
+last_updated: "2026-08-01T00:58:17.354Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 32 execution started
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 35
-  completed_plans: 30
+  completed_plans: 31
   percent: 38
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 7 of 11
+Plan: 8 of 11
 Status: Ready to execute
 Last activity: 2026-07-31 — Phase 32 execution started
 
@@ -208,12 +208,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P04 | 35 min | 2 tasks | 2 files |
 | Phase 32 P05 | 78 min | 3 tasks | 2 files |
 | Phase 32 P06 | 27 min | 2 tasks | 2 files |
+| Phase 32 P07 | 41 min | 3 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-01T00:34:50.000Z
+Last session: 2026-08-01T00:58:17.346Z
 Stopped at: Completed 32-06-PLAN.md
 Resume: run plan 32-07 — it owns the green alias-floor gate. `make test` is RED between 32-06 and 32-07 BY DESIGN: the alias-floor tombstone's `CHECK(failing >= 27)` now sees 2, and its five named subset cells all sit 3.0 to 3.9 dB BELOW threshold. Only 2 of 45 gated cells still exceed, both sine-centre at character 0.50 (C7 by 0.39 dB, C8 by 1.89 dB).
 
