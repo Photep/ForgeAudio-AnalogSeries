@@ -292,10 +292,12 @@ InterleaveResult runInterleaveCheck(
 // 'DeliberatelyBrokenSharedStateCore' src/` to find nothing.
 //
 // THE DEFECT IS ISOLATED TO ONE FIELD, on purpose. Everything else mirrors
-// src/dsp/VcoCore.hpp: a PER-INSTANCE forge::Waveshape, a per-instance seeding
-// entry point performing the same D-11 five-coefficient copy, the same
-// exp2_taylor5 pitch off kVcoFreqC4, the same NaN-safe zero test and Nyquist
-// clamp, the same single-subtract wrap, the same x5 unconditioned output. That
+// src/dsp/VcoCore.hpp: a PER-INSTANCE forge::Waveshape and a PER-INSTANCE
+// forge::MorphBlep, a per-instance seeding entry point performing the same D-11
+// five-coefficient copy, the same exp2_taylor5 pitch off kVcoFreqC4, the same
+// NaN-safe zero test and Nyquist clamp, the same single-subtract wrap, the same
+// NaN-catching morph/character pair, the same one frozen morphedWave call plus
+// an additive band-limiting correction, the same x5 unconditioned output. That
 // isolation is what makes the control SPECIFIC: it demonstrates the helper
 // catches SHARED STATE, not merely that two different classes produce two
 // different streams of numbers.
@@ -333,13 +335,64 @@ InterleaveResult runInterleaveCheck(
 // orders of magnitude inside its own range, and the sanitising ternary returns a
 // legitimate positive rate unchanged. Not one sample can move.
 //
-// RE-OBSERVED AFTER THE UPDATE, AND UNCHANGED: 512 / 512 / total 1024 at every
-// one of the three rates — identical to the pre-edit capture, and identical to
-// the figures plan 30-08 recorded. The whole-suite case and assertion counts are
-// unchanged too. THE FIGURES ARE COMPARED AS NUMBERS, NEVER BY DIFFING THE RAW
-// success output: every successful-assertion line carries its own source line
-// number, so a raw diff of a before and after capture is guaranteed to differ
-// for reasons that mean nothing.
+// RE-OBSERVED AFTER THE PLAN-31-07 UPDATE, AND UNCHANGED: 512 / 512 / total
+// 1024 at every one of the three rates — identical to the pre-edit capture, and
+// identical to the figures plan 30-08 recorded. The whole-suite case and
+// assertion counts are unchanged too. THE FIGURES ARE COMPARED AS NUMBERS,
+// NEVER BY DIFFING THE RAW success output: every successful-assertion line
+// carries its own source line number, so a raw diff of a before and after
+// capture is guaranteed to differ for reasons that mean nothing.
+//
+// BROUGHT IN STEP A THIRD TIME BY PLAN 32-08, FOR THE SAME REASON. Phase 32
+// band-limited the real core (plan 32-06): forge::VcoCore gained a
+// forge::MorphBlep member held by value, its single frozen call became a named
+// `naive` local plus a SEPARATE ADDITIVE correction term, and its morph and
+// character conditioning moved off the comparison-ladder forge::clamp onto the
+// NaN-catching negated pair. All three are mirrored below. The `blep` member is
+// PER-INSTANCE here as well as there, and the paragraph beside its declaration
+// says why a deliberately-broken control must not be given a second shared
+// thing.
+//
+// RE-OBSERVED AFTER THE PLAN-32-08 UPDATE, AND ALSO UNCHANGED: 512 / 512 /
+// total 1024 at all three rates, unmoved from every figure above. BUT THE
+// REASON IS NOT THE ONE THE TWO PARAGRAPHS ABOVE GIVE, AND WRITING "unchanged,
+// therefore inert" HERE WOULD BE FALSE. Measured out-of-tree, on this control's
+// own two drives, by running its step body with and against the correction term
+// and comparing bit-exactly:
+//
+//     drive A (morph 0.25, pitchCV swept -1..+1, character 1.0)
+//         44.1 kHz:   0 of 512 samples changed, max |delta| 0.000000 V
+//         48   kHz:   0 of 512 samples changed, max |delta| 0.000000 V
+//         96   kHz:   0 of 512 samples changed, max |delta| 0.000000 V
+//     drive B (pitchCV 0.5 fixed, morph swept 0..1, character 1.0)
+//         44.1 kHz:   8 of 512 samples changed, max |delta| 2.224924 V
+//         48   kHz:   8 of 512 samples changed, max |delta| 2.078773 V
+//         96   kHz:   4 of 512 samples changed, max |delta| 2.344383 V
+//
+// So the addition is INERT ON DRIVE A AND LIVE ON DRIVE B. Drive A is inert for
+// a real and checkable reason — the D-03 compact-support factor. At character
+// 1.0 the triangle's rounded corner is about 0.175 wide in phase units, while
+// pitchCV in [-1, +1] puts the phase increment at roughly 0.003 to 0.012, so
+// 2*dt is one to two orders of magnitude NARROWER than the softened edge and
+// the factor returns EXACTLY zero. Drive B sweeps morph across the saw, square
+// and pulse hard steps at a fixed 369.99 Hz, and there the correction fires:
+// 512 samples is 4.30 / 3.95 / 1.97 cycles at the three rates, giving 4 / 4 / 2
+// wrap edges at 2 samples per edge (D-13 places the second half of every
+// correction on the FOLLOWING sample) — 8 / 8 / 4, which is exactly the
+// measured count. That arithmetic agreeing independently is a second reading
+// that the placement is right and the counts are not an accident.
+//
+// WHY THE MISMATCH FIGURES DID NOT MOVE ANYWAY, AND WHAT THAT COSTS. They are
+// SATURATED. mismatchA and mismatchB count, out of n = 512, the interleaved
+// samples that differ from the solo baseline, and they are already at 512 —
+// every single sample. A count pinned at the ceiling of its own metric cannot
+// rise when a second divergence route is added, so "unchanged" here is
+// INSENSITIVITY rather than evidence of inertness. That is a real limitation of
+// this fixture and it is recorded rather than glossed: these three figures can
+// only ever detect a change that pushes the count DOWN. They are not a fine
+// pin. What invariant 5 actually asserts — totalMismatch > 0, the helper can
+// see shared state at all — is unaffected and holds with 1024 of a possible
+// 1024.
 //
 // IF ANY OF THOSE FIGURES EVER MOVES WHEN THIS MIRROR IS UPDATED, STOP AND
 // REPORT IT RATHER THAN UPDATING THE NUMBER. A moved figure means the addition
@@ -351,6 +404,16 @@ struct DeliberatelyBrokenSharedStateCore {
 	// inside step(...) below is broken.
 	forge::DriftEngine drift;
 	forge::Waveshape wave;
+	// PER-INSTANCE ON PURPOSE, EVEN IN A DELIBERATELY-BROKEN CONTROL (plan
+	// 32-08). The real core holds forge::MorphBlep by value beside its
+	// Waveshape (src/dsp/VcoCore.hpp:278), and this mirror does the same. It is
+	// tempting to reason "this type is the broken one, so share this too" —
+	// that reasoning is wrong. The defect this control demonstrates is A SHARED
+	// PHASE ACCUMULATOR, singular. Giving it a SECOND shared thing would blur
+	// what invariant 5 proves: a failure would no longer isolate to the
+	// accumulator, and the control would stop being the specific fixture its
+	// banner claims. One defect, named and marked, and nothing else.
+	forge::MorphBlep blep;
 
 	void seed(uint64_t s0, uint64_t s1 = 0) { drift.seed(s0, s1); }
 
@@ -411,9 +474,29 @@ struct DeliberatelyBrokenSharedStateCore {
 		if (sharedPhase >= 1.0) sharedPhase -= 1.0;
 
 		const float p = (float)sharedPhase;
-		const float morph = forge::clamp(in.morph, 0.f, 1.f);
-		const float character = forge::clamp(in.character, 0.f, 1.f);
-		return 5.f * wave.morphedWave(p, morph, character, 0.f);
+
+		// MIRRORED FROM src/dsp/VcoCore.hpp:597-602 (plan 32-06, T-32-01). The
+		// comparison-ladder forge::clamp that used to sit here is transparent to
+		// a not-a-number, and the frozen forge::Waveshape::morphedWave casts
+		// `morph * 4.f` to int. The real core replaced the ladder with this
+		// NEGATED-comparison pair — negation FIRST as the NaN catcher — so this
+		// mirror does too.
+		float morph = in.morph;
+		if (!(morph > 0.f)) morph = 0.f;
+		if (morph > 1.f) morph = 1.f;
+		float character = in.character;
+		if (!(character > 0.f)) character = 0.f;
+		if (character > 1.f) character = 1.f;
+
+		// MIRRORED FROM src/dsp/VcoCore.hpp:608-645 (plan 32-06). The single
+		// frozen call is now a NAMED local plus a SEPARATE ADDITIVE correction —
+		// the frozen waveshaper is still called exactly once and is neither
+		// edited nor bypassed. The band-limiter is handed the SAME float `p` the
+		// frozen call gets, with the double accumulator travelling alongside it
+		// as its own argument (P-3), which is exactly the shape the real core
+		// uses.
+		const float naive = wave.morphedWave(p, morph, character, 0.f);
+		return 5.f * (naive + blep.step(wave, sharedPhase, p, deltaPhase, morph, character));
 	}
 };
 
