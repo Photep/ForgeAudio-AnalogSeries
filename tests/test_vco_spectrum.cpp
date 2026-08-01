@@ -1564,9 +1564,9 @@ TEST_CASE("vco spectrum: the core now DIVERGES from NaiveVcoCoreMirror by EXACTL
 }
 
 // ---------------------------------------------------------------------------
-// THE D-08 BASELINE. This case's job is to RECORD, not to judge.
+// THE D-08 MEASURE PASS. This case's job is to RECORD, not to judge.
 //
-// D-08 requires the alias floor of today's deliberately-aliased oscillator to be
+// D-08 requires the alias floor of the deliberately-aliased oscillator to be
 // measured per shape, per note and per character BEFORE any band-limiting
 // exists, so that the thresholds this phase pins are set FROM MEASUREMENT rather
 // than inherited from prose. Three payoffs, in the phase's own words: the
@@ -1576,12 +1576,22 @@ TEST_CASE("vco spectrum: the core now DIVERGES from NaiveVcoCoreMirror by EXACTL
 // provably fails before forge::MorphBlep lands rather than being written against
 // already-passing code.
 //
-// SO IT ASSERTS ALMOST NOTHING, DELIBERATELY. Only two structural sanity
-// properties are CHECKed, both with wide measured margins so they are robust
-// across toolchains, and both there to prove the apparatus is looking at a real
-// signal rather than at silence. Everything else is CAPTUREd. The recorded
-// figures are what plan 32-07 pins against; adding assertions here would pin the
-// naive floor as a REQUIREMENT, and the naive floor is the thing this phase
+// AS OF PLAN 32-07 IT RECORDS BOTH FLOORS IN ONE PASS. Every one of the 90 cells
+// is measured TWICE — once through NaiveVcoCoreMirror (useMirror = true) and once
+// through the corrected forge::VcoCore (useMirror = false) — inside the SAME
+// loop, through the SAME measureCellDb, with the same solver, the same warm-up,
+// the same block length, the same seeds and the same classifier. That is what
+// makes the delta a like-for-like comparison rather than two measurements that
+// merely happen to sit next to each other. A second case measuring the corrected
+// path would have been a second apparatus, and the difference between two
+// apparatuses is not a property of the DSP.
+//
+// SO IT STILL ASSERTS ALMOST NOTHING, DELIBERATELY. Three structural sanity
+// properties are CHECKed, all three independent of any pinned threshold, and all
+// three there to prove the apparatus is looking at a real signal rather than at
+// silence. Everything else is CAPTUREd. The recorded figures are what the
+// threshold column is pinned against; adding threshold assertions here would pin
+// the naive floor as a REQUIREMENT, and the naive floor is the thing this phase
 // exists to move.
 //
 // THE PER-CELL D-10 SELF-CHECK IS THE ONE HARD REQUIRE (T-32-11). Before any
@@ -1590,8 +1600,55 @@ TEST_CASE("vco spectrum: the core now DIVERGES from NaiveVcoCoreMirror by EXACTL
 // gate can pass by measuring forge::exp2_taylor5's output granularity rather
 // than the DSP — D-10's stated failure mode — and every threshold below it
 // becomes decoration.
+//
+// ===========================================================================
+// THE MEASURE-TO-PIN PROTOCOL. This is the artefact this phase's deliberate
+// iteration budget is spent through, and it is written HERE rather than in a
+// plan so that a later phase can re-run it without re-deriving anything.
+//
+//  1. Run
+//       ./build-test/test -tc="vco spectrum: the naive and corrected alias floors*" -s
+//     and read the per-cell captures. Every cell reports `naiveDb`,
+//     `correctedDb` and `improvementDb` (= naiveDb - correctedDb, positive when
+//     the correction helped), together with the solver `method` and the
+//     `impliedLeakage` the measurement was taken at.
+//
+//  2. For each GATED cell, the pinned threshold is the measured CORRECTED value
+//     plus a 3 dB margin, rounded OUTWARD (toward the less negative value):
+//     thresholdDb = ceil(correctedDb + 3.0). The margin is 3 dB because that is
+//     roughly twice the largest cross-toolchain and cross-block-length variation
+//     this suite has ever seen, and because a tighter margin turns a legitimate
+//     float-ordering difference into a red build. The outward rounding is what
+//     keeps the pinned number a round decibel a human can read and edit
+//     deliberately rather than a transcription of a float.
+//
+//  3. Compare each measured corrected value against the prototype figure
+//     recorded in 32-VALIDATION.md and in this table's trailing row comments. A
+//     difference beyond about 1 dB is a FINDING about the implementation, not a
+//     bookkeeping update: record it, name WHICH SIDE MOVED and why, and do not
+//     silently adopt the new number.
+//
+//  4. NEVER adjust a threshold to accommodate a measured shortfall. A shortfall
+//     escalates — see the anti-softening rule in the TEST-03 gate's banner
+//     below, which names the two steps and ends at the operator.
+//
+//  5. Re-run steps 1 to 4 after ANY change to src/dsp/MorphBlep.hpp or to
+//     forge::VcoCore::step's call site.
+//
+//  6. AND RE-RUN THEM AFTER CHANGING THE THRESHOLD COLUMN ITSELF, because the
+//     column FEEDS BACK into the measurement: measureCellDb picks method one or
+//     method two by comparing method one's implied leakage against
+//     `thresholdDb - 10.0` (the D-10 bar), so a tightened threshold can escalate
+//     a cell to the sampleTime nudge and move the very number it was pinned
+//     from. The loop must therefore be iterated to a FIXED POINT — pin, re-run,
+//     confirm no gated cell's method or corrected value moved — and the fixed
+//     point is what the committed column records. This step was added in plan
+//     32-07 after the feedback path was found by measurement; steps 1 to 5 as
+//     the plan wrote them do not mention it and would have left a column pinned
+//     against a superseded measurement.
+// ===========================================================================
 // ---------------------------------------------------------------------------
-TEST_CASE("vco spectrum: the NAIVE alias floor, recorded per shape, note and character (D-08 baseline)") {
+TEST_CASE("vco spectrum: the naive and corrected alias floors, recorded per shape, note and character (D-08 measure->pin loop)") {
 
 	const std::size_t nCells = sizeof(SPECTRUM_GRID) / sizeof(SPECTRUM_GRID[0]);
 	CAPTURE(nCells);
@@ -1604,6 +1661,7 @@ TEST_CASE("vco spectrum: the NAIVE alias floor, recorded per shape, note and cha
 	int gatedCells = 0, diagnosticCells = 0, regressionCells = 0;
 	int sineChar0Cells = 0, pulseC9Char0Cells = 0;
 	int methodOneCells = 0, methodTwoCells = 0;
+	int correctedSaneCells = 0;
 
 	for (std::size_t i = 0; i < nCells; ++i) {
 		const SpectrumCell& cell = SPECTRUM_GRID[i];
@@ -1649,18 +1707,43 @@ TEST_CASE("vco spectrum: the NAIVE alias floor, recorded per shape, note and cha
 		else if (tier == "diagnostic") ++diagnosticCells;
 		else if (tier == "regression") ++regressionCells;
 
-		// ---- THE MEASUREMENT. useMirror = true: this is the NAIVE baseline. --
+		// ---- THE MEASUREMENT, BOTH SIDES, SAME PASS. -------------------------
+		// useMirror = true is the NAIVE baseline through NaiveVcoCoreMirror;
+		// useMirror = false is the CORRECTED forge::VcoCore. Same function, same
+		// solver, same warm-up, same seeds, same classifier — the delta below is
+		// therefore a property of the correction and of nothing else.
 		double aliasRmsDb = 0.0;
 		double binError   = 0.0;
 		int    method     = 0;
 		const double naiveDb = measureCellDb(cell, /*useMirror=*/true, &aliasRmsDb, &binError, &method);
 		const double impliedLeakage = impliedLeakageDb(binError);
 
+		double correctedRmsDb = 0.0;
+		double correctedBinError = 0.0;
+		int    correctedMethod  = 0;
+		const double correctedDb = measureCellDb(cell, /*useMirror=*/false, &correctedRmsDb,
+		                                         &correctedBinError, &correctedMethod);
+
+		// Positive means the correction HELPED by that many dB.
+		const double improvementDb = naiveDb - correctedDb;
+
 		CAPTURE(method);
 		CAPTURE(binError);
 		CAPTURE(impliedLeakage);
 		CAPTURE(naiveDb);
 		CAPTURE(aliasRmsDb);
+		CAPTURE(correctedDb);
+		CAPTURE(correctedRmsDb);
+		CAPTURE(improvementDb);
+
+		// Both sides must have been measured with the SAME instrument. The method
+		// is chosen from cell.thresholdDb alone, so this can only differ if
+		// measureCellDb ever grows a path that consults the core it is driving —
+		// at which point the delta above would stop being like-for-like and would
+		// silently become a comparison of two apparatuses.
+		CAPTURE(correctedMethod);
+		REQUIRE(correctedMethod == method);
+		REQUIRE(correctedBinError == binError);
 
 		if (method == kMethodPitchCV) ++methodOneCells; else ++methodTwoCells;
 
@@ -1676,6 +1759,28 @@ TEST_CASE("vco spectrum: the NAIVE alias floor, recorded per shape, note and cha
 		// BELOW every threshold here — the wrong direction for a sentinel to
 		// fail. Catch it explicitly rather than letting silence look clean.
 		REQUIRE(naiveDb > -900.0);
+		REQUIRE(correctedDb > -900.0);
+
+		// ---- STRUCTURAL SANITY 0: THE CORRECTION REMOVES ENERGY, IT DOES NOT
+		//      INJECT IT — and this is checkable WITHOUT any pinned number.
+		//
+		// Every cell's corrected alias peak must be FINITE and strictly below
+		// 0.0 dB. An alias louder than the fundamental would mean the correction
+		// is putting energy INTO the spectrum rather than taking it out, which is
+		// P-1's named failure mode in its loudest possible form (T-32-22), and a
+		// non-finite value would mean a divisor guard in forge::MorphBlep has
+		// been reached with something the negated pair did not catch (P-14).
+		// Neither of those needs a threshold table to detect, so this assertion
+		// survives ANY future re-pinning of the column — it is the one line in
+		// this case that a circular threshold cannot make vacuous.
+		//
+		// It applies to ALL 90 cells, gated and diagnostic and cross-rate alike,
+		// with no exclusions: the naive pulse at C9 already sits at -0.3 dB, so
+		// there is nowhere on this grid where an injecting correction would have
+		// room to hide under a looser bound.
+		++correctedSaneCells;
+		CHECK(std::isfinite(correctedDb));
+		CHECK(correctedDb < 0.0);
 
 		// ---- STRUCTURAL SANITY 1: a sine at character 0 has nothing to alias.
 		//
@@ -1742,11 +1847,18 @@ TEST_CASE("vco spectrum: the NAIVE alias floor, recorded per shape, note and cha
 	CAPTURE(pulseC9Char0Cells);
 	CAPTURE(methodOneCells);
 	CAPTURE(methodTwoCells);
+	CAPTURE(correctedSaneCells);
 	CHECK(gatedCells == 45);
 	CHECK(diagnosticCells == 15);
 	CHECK(regressionCells == 30);
 	CHECK(sineChar0Cells == 6);
 	CHECK(pulseC9Char0Cells == 1);
+
+	// Structural sanity 0 ran on EVERY cell. A loop that skipped cells — or a
+	// future `continue` added above it — would make the finite-and-below-zero
+	// assertion silently partial, and a partial invariant over an injecting
+	// correction is worth very little.
+	CHECK(correctedSaneCells == 90);
 }
 
 // ---------------------------------------------------------------------------
