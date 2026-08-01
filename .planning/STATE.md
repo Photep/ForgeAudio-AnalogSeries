@@ -5,8 +5,8 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
-stopped_at: Completed 32-08-PLAN.md
-last_updated: "2026-08-01T01:19:29.053Z"
+stopped_at: Completed 32-09-PLAN.md
+last_updated: "2026-08-01T01:35:39.046Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 32 execution started
 progress:
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 9 of 11
+Plan: 10 of 11
 Status: Ready to execute
 Last activity: 2026-07-31 — Phase 32 execution started
 
@@ -158,6 +158,8 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 32]: 32-08: the output bound is two NESTED tiers — kHostileBoundV 10.0 V binds every scenario with no exceptions, kMusicalBoundV 5.55 V is layered on top where measurement entitles it; scenario five's 5.65 V exercise floor sits ABOVE the musical tier so the two tiers are provably a real distinction
 - [Phase 32]: 32-08: the oracle's 512/512/1024 control figures are a SATURATED metric, not a sensitive pin — future mirror updates must measure the change's effect on output directly rather than inferring inertness from figures that cannot move upward
 - [Phase 32]: 32-08: band-limiting made invariant 1's narrow-pulse tracking WORSE (-24.53% to -34.7383% at pitchCV +3.5, and to NO crossings at all at +4.0) — the failure is in the rising-zero-crossing estimator's sampling, not the DSP, so it was never Phase 32's to fix
+- [Phase 32]: Invariant 6 asserts the OUTER tier (kHostileBoundV) only; kMusicalBoundV is withheld and the withholding is itself asserted via CHECK(gridWorstV > kMusicalBoundV) — Measured: the grid-wide worst under audio-rate MORPH is 6.289864 V against a static-morph worst of 5.518032 V at the same note and rate, so the tighter tier is genuinely exceeded by 0.771832 V; a per-rate form would be RED at 96 kHz where the excess vanishes
+- [Phase 32]: kHostileBoundV and kMusicalBoundV hoisted from invariant 2 to the anonymous namespace so invariant 6 reads one definition — A bound documented as binding on every scenario any later plan adds must not be a function-local that later plans re-declare by hand; this suite already keeps one hand-maintained mirror and has watched it drift
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -214,13 +216,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P06 | 27 min | 2 tasks | 2 files |
 | Phase 32 P07 | 41 min | 3 tasks | 1 files |
 | Phase 32 P08 | 34 min | 3 tasks | 1 files |
+| Phase 32 P09 | 22 min | 2 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-01T01:19:29.045Z
-Stopped at: Completed 32-08-PLAN.md
+Last session: 2026-08-01T01:35:18.037Z
+Stopped at: Completed 32-09-PLAN.md
 Resume: run plan 32-07 — it owns the green alias-floor gate. `make test` is RED between 32-06 and 32-07 BY DESIGN: the alias-floor tombstone's `CHECK(failing >= 27)` now sees 2, and its five named subset cells all sit 3.0 to 3.9 dB BELOW threshold. Only 2 of 45 gated cells still exceed, both sine-centre at character 0.50 (C7 by 0.39 dB, C8 by 1.89 dB).
 
 ## Operator Next Steps
