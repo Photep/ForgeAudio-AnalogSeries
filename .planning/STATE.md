@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
-stopped_at: Completed 32-05-PLAN.md
-last_updated: "2026-08-01T00:14:54.240Z"
+stopped_at: Completed 32-06-PLAN.md
+last_updated: "2026-08-01T00:34:24.554Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 32 execution started
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 35
-  completed_plans: 28
+  completed_plans: 30
   percent: 38
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 6 of 11
+Plan: 7 of 11
 Status: Ready to execute
 Last activity: 2026-07-31 — Phase 32 execution started
 
@@ -150,6 +150,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase ?]: 32-03: the alias-floor gate was observed RED on 32 of 45 gated cells against the live naive forge::VcoCore and pinned as a tombstone; kNaiveFailuresFloor = 27 is the observed 32 minus 5 and must not be tightened to the observed count
 - [Phase ?]: 32-03: the 13 gated cells that already pass naive are the P-6 population (sine, and high-character cells where the D-03 factor correctly returns zero) and must not be 'fixed' by tightening their thresholds
 - [Phase 32]: MorphBlep's dt guard gained an upper bound: a +infinity dt passed the lower-bound-only guard, reached the divisor, and left pending = NaN permanently — Measured RED against the 32-04 header; the other five hostile dt classes were already correct. Bound is 1.0, not kVcoMaxDeltaPhase, so it provably cannot fire on a legitimate input.
+- [Phase ?]: 32-06: forge::VcoCore band-limits through a per-instance forge::MorphBlep held by value; morph and character are conditioned with the negated-comparison pair, not forge::clamp (T-32-01), because plan 32-02's MORPH CV jack made 'already finite' false
+- [Phase ?]: 32-06: the negated pair differs from forge::clamp for negative zero as well as for a not-a-number - MEASURED as moving 0 of 4096 samples for either field, and recorded in the source rather than glossed
+- [Phase ?]: 32-06: the D-08 baseline tombstone was inverted in place into a bit-exact reconstruction proof - reconstruction mismatches 0 across 184,320 samples at three rates, with the sine-centre zero-correction control at exactly 0
+- [Phase ?]: 32-06: the plan-32-07 alias-floor tombstone is left RED (failing gated cells fell from 32 to 2, both sine-centre character 0.5); flipping it here would have re-pinned thresholds against this implementation's own output
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -203,14 +207,15 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P03 | 40 min | 2 tasks | 1 files |
 | Phase 32 P04 | 35 min | 2 tasks | 2 files |
 | Phase 32 P05 | 78 min | 3 tasks | 2 files |
+| Phase 32 P06 | 27 min | 2 tasks | 2 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-01T00:14:54.165Z
-Stopped at: Completed 32-05-PLAN.md
-Resume: run `/gsd-verify-work 31`, then `/gsd-discuss-phase 32` for morph-aware polyBLEP/polyBLAMP band-limiting.
+Last session: 2026-08-01T00:34:50.000Z
+Stopped at: Completed 32-06-PLAN.md
+Resume: run plan 32-07 — it owns the green alias-floor gate. `make test` is RED between 32-06 and 32-07 BY DESIGN: the alias-floor tombstone's `CHECK(failing >= 27)` now sees 2, and its five named subset cells all sit 3.0 to 3.9 dB BELOW threshold. Only 2 of 45 gated cells still exceed, both sine-centre at character 0.50 (C7 by 0.39 dB, C8 by 1.89 dB).
 
 ## Operator Next Steps
 

@@ -26,9 +26,9 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 
 ### Morph Engine & Anti-Aliasing (the linchpin)
 
-- [ ] **MORPH-01**: The morph engine (`Waveshape`) runs at audio rate, reused verbatim from the frozen shared core
+- [x] **MORPH-01**: The morph engine (`Waveshape`) runs at audio rate, reused verbatim from the frozen shared core
 - [x] **MORPH-02**: MORPH knob + CV + attenuverter sweep the continuous 5-shape crossfade (sine→triangle→saw→square→narrow-pulse) at audio rate
-- [ ] **AA-01**: Morph-aware polyBLEP band-limits the value-step discontinuities (saw wrap, square edge, variable-width pulse edges) of the continuous crossfade, scaled by the morph and bleed weights
+- [x] **AA-01**: Morph-aware polyBLEP band-limits the value-step discontinuities (saw wrap, square edge, variable-width pulse edges) of the continuous crossfade, scaled by the morph and bleed weights
 - [x] **AA-02**: polyBLAMP band-limits the triangle slope-corner discontinuities
 - [x] **AA-03**: Anti-aliasing correctly handles multiple/overlapping discontinuities within one sample at narrow pulse widths
 - [x] **AA-04**: BLEP/BLAMP magnitude is driven by the characterized (actual) jump so CHARACTER edge-softening auto-scales the correction
@@ -67,7 +67,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 ### Core & Test (boundary + guardrails)
 
 - [x] **CORE-01**: A new Rack-free `forge::VcoCore` (`src/dsp/VcoCore.hpp`) mirrors the `LfoCore` POD-`Inputs` → `step()` → output+telemetry boundary
-- [ ] **CORE-02**: Anti-aliasing lives in a new additive header (`MorphBlep.hpp`) that *calls* the frozen `Waveshape.hpp` — zero edits to shared headers
+- [x] **CORE-02**: Anti-aliasing lives in a new additive header (`MorphBlep.hpp`) that *calls* the frozen `Waveshape.hpp` — zero edits to shared headers
 - [x] **CORE-03**: `VcoCore` is a self-contained per-voice unit with no static/global mutable voice state — **polyphony-ready** so a future v2.1 polyphony is an additive shell change, not a rewrite
 - [x] **TEST-01**: A Rack-free test harness drives `VcoCore` over sample blocks (mirrors `BlockDriver`), runnable via `make test` with no libRack
 - [x] **TEST-02**: V/Oct tracking accuracy is asserted (< 1 cent error) across the pitch range
@@ -124,9 +124,9 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | FM-01 | Phase 31 | Complete |
 | FM-02 | Phase 31 | Complete |
 | FM-03 | Phase 31 | Complete |
-| MORPH-01 | Phase 32 | Pending |
+| MORPH-01 | Phase 32 | Complete |
 | MORPH-02 | Phase 32 | Complete |
-| AA-01 | Phase 32 | Pending |
+| AA-01 | Phase 32 | Complete |
 | AA-02 | Phase 32 | Complete |
 | AA-03 | Phase 32 | Complete |
 | AA-04 | Phase 32 | Complete |
@@ -147,7 +147,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | PANEL-02 | Phase 35 | Pending |
 | PANEL-03 | Phase 30 | Complete |
 | CORE-01 | Phase 30 | Complete |
-| CORE-02 | Phase 32 | Pending |
+| CORE-02 | Phase 32 | Complete |
 | CORE-03 | Phase 30 | Complete |
 | TEST-01 | Phase 29 | Complete |
 | TEST-02 | Phase 31 | Complete |
