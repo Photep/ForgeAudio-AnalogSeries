@@ -1016,30 +1016,124 @@ TEST_CASE("vco core: output magnitude stays inside two measured tiers (D-18b)") 
 	//     for a display; an arbitrary non-Nyquist-relative number reaching it is
 	//     the user-visible failure this pins.
 	//
+	// THE GRID WAS EXTENDED BY PLAN 32-09, FROM 48 CONFIGURATIONS TO 176.
+	// 4 rates x 6 times x 2 pitches became 8 x 11 x 2. The five named assertions
+	// below, the accumulate-don't-assert idiom and the DIRECT core.step(in) call
+	// are all UNCHANGED; only the two input arrays grew. The assertion budget is
+	// what the accumulation buys: 176 configurations x 20000 steps is 3.5 million
+	// per-sample observations, and the case contributes SIX assertions per
+	// configuration — 1056 in total, up from 288 — to a suite already carrying
+	// more than 2.6 million. Asserting per sample instead would add roughly
+	// twenty-one million.
+	//
+	// EVERY GUARD THIS GRID REACHES IS THE NEGATED-COMPARISON FORM, and it is
+	// stated here rather than left to be re-derived at each site. In
+	// src/dsp/VcoCore.hpp: the pitch-volt bound (`!(pitchVolts > -kVcoMaxPitchVolts)`),
+	// the frequency floor (`!(freq > 0.f)`), the deltaPhase floor
+	// (`!(deltaPhase > 0.0)`) and the morph/character pair. In
+	// src/dsp/MorphBlep.hpp: `!(dt > 0.f) || !(dt <= 1.f)` at the top of step(),
+	// the same pair inside morphBlepCharFactor, `!(u > 0.f)` on its numerator and
+	// `!(s <= 1.f)` on the crossing gate. NOT ONE of them is a comparison-ladder
+	// helper. forge::clamp is rejected BY NAME at src/dsp/VcoCore.hpp and again
+	// at src/dsp/MorphBlep.hpp because BOTH of its comparisons are false for a
+	// not-a-number, which makes it inert against precisely the input class half
+	// this grid is made of.
+	//
 	// The seeds are the proven non-degenerate literals used everywhere else in
 	// this suite. NEVER a pair of zeros (T-30-02): a degenerate Xoroshiro seed
 	// is a fixed point emitting an all-zero stream, which makes
 	// std::normal_distribution's rejection loop never terminate — in Rack that
 	// is a hang on patch load, not a failing test.
 	{
-		// -44100 is the reproduced CR-01 case; 0 is the other non-positive rate;
-		// 44100 is the legitimate CONTROL rate; NaN is what a mis-wired host or
-		// an uninitialised ProcessArgs would deliver.
+		// Each entry carries its own reason. The first four are plan 30-08's and
+		// are unchanged; the last four are plan 32-09's extension.
 		static const float HOSTILE_RATES[] = {
-			-44100.f, 0.f, 44100.f, std::numeric_limits<float>::quiet_NaN()
+			-44100.f,                                          // the reproduced CR-01 case
+			0.f,                                               // the other non-positive rate
+			44100.f,                                           // the legitimate CONTROL rate
+			std::numeric_limits<float>::quiet_NaN(),           // a mis-wired host or an uninitialised ProcessArgs
+			std::numeric_limits<float>::infinity(),            // the same, in its other non-finite direction
+			-std::numeric_limits<float>::infinity(),           // ditto, signed the way a negated uninitialised field lands
+			std::numeric_limits<float>::denorm_min(),          // what an arithmetic underflow upstream produces
+			1e30f                                              // neither infinite nor small: passes a naive std::isfinite check while making the Nyquist ceiling meaningless
 		};
-		// 1/44100 paired with 44100 is the one legitimate control point. 1/1000
-		// and 999 are DECOUPLED from every rate above — the shape Phase 32's
-		// oversampled inner loop will produce naturally.
+		// THE FALSIFIED PREMISE THAT POINTED THIS WORK HERE, CORRECTED IN PLACE
+		// (plan 32-09, D-15). The sentence that used to sit here said 1/1000 and
+		// 999 are "DECOUPLED from every rate above — the shape Phase 32's
+		// OVERSAMPLED INNER LOOP will produce naturally". THAT PREMISE IS FALSE.
+		// AA-05 forbids oversampling in v2.0 BY NAME — its own wording is "no
+		// minBLEP, no oversampling in v2.0" — so no such loop exists in this
+		// phase and none will be added to it. src/dsp/VcoCore.hpp corrected the
+		// identical sentence in its own deltaPhase-bound paragraph for the same
+		// reason; this is the copy of it that lives in the test.
+		//
+		// THE CONCLUSION IS KEPT AND THE ENTRIES ALL STAY. The corrected premise
+		// is stronger than the one it replaces:
+		//   (a) sampleTime and sampleRate are INDEPENDENT POD fields that any
+		//       caller may set independently, and this scenario is the caller
+		//       that does — no oversampled loop is needed to produce a decoupled
+		//       pair, only a caller, and the harness IS one; and
+		//   (b) Phase 32 put a DIVISION BY dt behind sampleTime for the first
+		//       time — in forge::morphBlepCharFactor and again at the sub-sample
+		//       crossing position inside forge::MorphBlep::step — so these values
+		//       now reach arithmetic that did not exist when this grid was
+		//       written. THAT is why D-15 kept the item in Phase 32.
+		//
+		// THE MEASURED SCOPE LIMIT, alongside it (P-14). The SHIPPED formulation
+		// divides by `dt` ONLY. There is no division by an edge width anywhere in
+		// src/dsp/MorphBlep.hpp, and the optional narrow-pulse "reach" refinement
+		// that would add one is deliberately deferred by that header. So hostile
+		// timing reaches exactly two divisors in the whole band-limiter, both
+		// behind the same negated guard, and no others.
+		//
+		// WHICH CLASSES ACTUALLY REACH THAT GUARD — MEASURED, and it is NOT what
+		// this plan assumed. Of the 176 configurations below, the MorphBlep dt
+		// guard fires on 140 and is passed by 36, and the three interesting
+		// classes behave as follows:
+		//   - a NEGATIVE subnormal, -infinity, zero, negative or NaN sampleTime
+		//     reaches the guard: forge::VcoCore's own `!(deltaPhase > 0.0)` floor
+		//     has already driven dt to 0.0, and MorphBlep::step returns the
+		//     drained accumulator without dividing. 140 of 176.
+		//   - a POSITIVE INFINITE sampleTime DOES NOT reach it when the rate is
+		//     legitimate. deltaPhase = freq * inf is +infinity, which the core's
+		//     OWN kVcoMaxDeltaPhase ceiling clamps to 0.5 — an entirely ordinary
+		//     value from the band-limiter's point of view, correcting on 4096 of
+		//     4096 samples in a direct probe. It reaches the guard only when the
+		//     rate has already forced freq to 0, where 0 * inf is a NaN.
+		//   - a POSITIVE SUBNORMAL sampleTime DOES NOT reach it either. At
+		//     sampleRate 44100 it yields dt = 3.66616e-43 (pitchCV 0) and
+		//     3.05896e-41 (pitchCV +10), both of which clear `dt > 0.f` and
+		//     `dt <= 1.f`. What stops it is the NEXT guard down: `d / dt`
+		//     overflows the float to +infinity, `!(s <= 1.f)` fires, and MEASURED
+		//     0 of 4096 samples receive any correction at all.
+		//   - the guard's UPPER bound `!(dt <= 1.f)` fires 0 times in 176
+		//     configurations, and PROVABLY cannot fire from this call site:
+		//     forge::VcoCore clamps at kVcoMaxDeltaPhase = 0.5, a full factor of
+		//     two below it. src/dsp/MorphBlep.hpp says so itself, and plan 32-05
+		//     reached that bound through the header's OWN unit tests rather than
+		//     through the core. This grid tests what its call site can actually
+		//     reach and says so, rather than claiming a guard it cannot touch.
 		static const float HOSTILE_TIMES[] = {
-			-1.f / 44100.f, 0.f, 1.f / 44100.f, 1.f / 1000.f, 999.f,
-			std::numeric_limits<float>::quiet_NaN()
+			-1.f / 44100.f,                                    // the negative of the one legitimate value
+			0.f,                                               // the increment-zeroing case
+			1.f / 44100.f,                                     // paired with 44100: the one legitimate CONTROL point
+			1.f / 1000.f,                                      // DECOUPLED from every rate above (see the corrected premise)
+			999.f,                                             // decoupled and absurdly large, but finite
+			std::numeric_limits<float>::quiet_NaN(),           // a mis-wired host or an uninitialised ProcessArgs
+			std::numeric_limits<float>::infinity(),            // the same, non-finite
+			-std::numeric_limits<float>::infinity(),           // ditto, signed
+			std::numeric_limits<float>::denorm_min(),          // THE NEW ONE relative to sampleRate: an upstream underflow, the class that reaches the new divisor
+			-std::numeric_limits<float>::denorm_min(),         // its sign partner, which the deltaPhase floor catches instead
+			1e30f                                              // finite, enormous: passes a naive std::isfinite check
 		};
 		// Named _T4 on purpose: HOSTILE_PITCH is already taken by scenario three
-		// inside this same TEST_CASE.
+		// inside this same TEST_CASE. DELIBERATELY NOT WIDENED by plan 32-09:
+		// pitch is not what this scenario is about, and scenario three already
+		// owns hostile V/OCT.
 		static const float HOSTILE_PITCH_T4[] = {0.f, 10.f};
 
 		// The step count both the code reviewer and the verifier reproduced at.
+		// Unchanged by the extension.
 		const int nHostile = 20000;
 
 		for (float rate : HOSTILE_RATES) {
@@ -1056,9 +1150,12 @@ TEST_CASE("vco core: output magnitude stays inside two measured tiers (D-18b)") 
 					in.sampleTime = dt;
 					in.sampleRate = rate;
 
-					// ACCUMULATED, not asserted per sample: 48 configs at 20000
-					// steps would otherwise add nearly four million assertions to
-					// a 2.6 million assertion suite. Same idiom as scenario three.
+					// ACCUMULATED, not asserted per sample: 176 configs at
+					// 20000 steps would otherwise add roughly twenty-one million
+					// assertions to a suite already past 2.6 million. Same idiom
+					// as scenario three, and it is what makes the extension from
+					// 48 configurations to 176 cost 768 added assertions rather
+					// than seventeen million more.
 					bool  allFinite       = true;
 					bool  phaseInRange    = true;
 					bool  freqNonNegative = true;
@@ -1105,14 +1202,33 @@ TEST_CASE("vco core: output magnitude stays inside two measured tiers (D-18b)") 
 					INFO("scenario: hostile timing driven straight into the core - no driver, nothing overwrites sampleTime/sampleRate");
 
 					CHECK(allFinite);
-					// OUTER tier, then the tighter one. MEASURED across all 48
-					// configurations at 5.000000 V exactly — the frozen-phase DC
-					// value the guards produce when a hostile rate or time
-					// zeroes the increment — so this grid is entitled to the
-					// musical tier with 0.55 V to spare. The four named
-					// assertions beside these are UNTOUCHED and none is merged:
-					// the banner above explains why no one of them is redundant
-					// with its neighbours.
+					// OUTER tier, then the tighter one. RE-MEASURED BY PLAN
+					// 32-09 OVER ALL 176 CONFIGURATIONS: the grid maximum is
+					// still 5.000000 V exactly, so this grid keeps the musical
+					// tier with 0.55 V to spare, and the extension did not
+					// raise the envelope by so much as a bit.
+					//
+					// A STALE FIGURE CORRECTED IN PLACE WHILE RE-MEASURING. The
+					// sentence here used to read "MEASURED across all 48
+					// configurations at 5.000000 V exactly — the frozen-phase
+					// DC value the guards produce when a hostile rate or time
+					// zeroes the increment". The GRID MAXIMUM was right; the
+					// per-configuration claim was not. MEASURED, 42 of the
+					// original 48 sit exactly at 5.000000 V, and the other SIX
+					// are strictly BELOW it because the oscillator genuinely
+					// RUNS there — all six at sampleRate 44100, at increments
+					// 0.005933 / 0.495 / 0.261626 / 0.5 / 0.5 / 0.5 measuring
+					// 4.997915 / 2.390221 / 3.389438 / 1.770179 / 1.770179 /
+					// 1.770179 V. Over the extended 176 the split is 146 at
+					// exactly 5.000000 V and 30 below, the lowest of them at
+					// 1.770179 V, and only FOUR distinct values appear beneath
+					// the maximum. So the frozen-phase explanation describes
+					// the maximum and the majority of the grid; it does not
+					// describe every cell, and the sentence used to say it did.
+					//
+					// The four named assertions beside these are UNTOUCHED and
+					// none is merged: the banner above explains why no one of
+					// them is redundant with its neighbours.
 					CHECK(maxAbs <= kHostileBoundV);
 					CHECK(maxAbs <= kMusicalBoundV);
 					CHECK(phaseInRange);
