@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
-stopped_at: Completed 32-06-PLAN.md
-last_updated: "2026-08-01T00:58:17.354Z"
+stopped_at: Completed 32-08-PLAN.md
+last_updated: "2026-08-01T01:19:29.053Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 32 execution started
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 35
-  completed_plans: 31
+  completed_plans: 32
   percent: 38
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 8 of 11
+Plan: 9 of 11
 Status: Ready to execute
 Last activity: 2026-07-31 — Phase 32 execution started
 
@@ -154,6 +154,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase ?]: 32-06: the negated pair differs from forge::clamp for negative zero as well as for a not-a-number - MEASURED as moving 0 of 4096 samples for either field, and recorded in the source rather than glossed
 - [Phase ?]: 32-06: the D-08 baseline tombstone was inverted in place into a bit-exact reconstruction proof - reconstruction mismatches 0 across 184,320 samples at three rates, with the sine-centre zero-correction control at exactly 0
 - [Phase ?]: 32-06: the plan-32-07 alias-floor tombstone is left RED (failing gated cells fell from 32 to 2, both sine-centre character 0.5); flipping it here would have re-pinned thresholds against this implementation's own output
+- [Phase 32]: 32-08: P-10's stated worst point is falsified in both coordinates — the envelope peak is at character 1.00 (7.150197 V), not near character 0.00 (exactly 5.000000 V), and sits 2.05 V below the research table's 9.198 V
+- [Phase 32]: 32-08: the output bound is two NESTED tiers — kHostileBoundV 10.0 V binds every scenario with no exceptions, kMusicalBoundV 5.55 V is layered on top where measurement entitles it; scenario five's 5.65 V exercise floor sits ABOVE the musical tier so the two tiers are provably a real distinction
+- [Phase 32]: 32-08: the oracle's 512/512/1024 control figures are a SATURATED metric, not a sensitive pin — future mirror updates must measure the change's effect on output directly rather than inferring inertness from figures that cannot move upward
+- [Phase 32]: 32-08: band-limiting made invariant 1's narrow-pulse tracking WORSE (-24.53% to -34.7383% at pitchCV +3.5, and to NO crossings at all at +4.0) — the failure is in the rising-zero-crossing estimator's sampling, not the DSP, so it was never Phase 32's to fix
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -209,13 +213,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P05 | 78 min | 3 tasks | 2 files |
 | Phase 32 P06 | 27 min | 2 tasks | 2 files |
 | Phase 32 P07 | 41 min | 3 tasks | 1 files |
+| Phase 32 P08 | 34 min | 3 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-01T00:58:17.346Z
-Stopped at: Completed 32-06-PLAN.md
+Last session: 2026-08-01T01:19:29.045Z
+Stopped at: Completed 32-08-PLAN.md
 Resume: run plan 32-07 — it owns the green alias-floor gate. `make test` is RED between 32-06 and 32-07 BY DESIGN: the alias-floor tombstone's `CHECK(failing >= 27)` now sees 2, and its five named subset cells all sit 3.0 to 3.9 dB BELOW threshold. Only 2 of 45 gated cells still exceed, both sine-centre at character 0.50 (C7 by 0.39 dB, C8 by 1.89 dB).
 
 ## Operator Next Steps
