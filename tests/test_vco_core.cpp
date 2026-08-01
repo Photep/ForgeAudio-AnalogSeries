@@ -51,13 +51,24 @@
 // but WRONGLY conclude Phase 31's gate is already met. Do not soften the label
 // because the numbers look good.
 //
-// THE PHASE-30 OSCILLATOR ALIASES BY DESIGN. step() is a naive, deliberately
-// unband-limited morphed oscillator (D-12). The crude timbre is the expected
-// Phase-30 result, not a defect. Phase 32 (CORE-02 / AA-01..05) owns
-// band-limiting via morph-aware polyBLEP/polyBLAMP and owns the alias floor.
-// NO assertion in this file may be written about alias content, harmonic
-// structure or spectral cleanliness — not now, and not when the numbers here
-// start looking respectable.
+// THE OSCILLATOR IS BAND-LIMITED AS OF PLAN 32-06 — A THIRD SENTENCE CORRECTED
+// IN PLACE (plan 32-08). This paragraph used to open "THE PHASE-30 OSCILLATOR
+// ALIASES BY DESIGN. step() is a naive, deliberately unband-limited morphed
+// oscillator (D-12)", and said Phase 32 "OWNS" band-limiting as future work.
+// Both became FALSE the moment plan 32-06's call-site change landed:
+// forge::VcoCore::step now returns 5 * (naive + correction) with a
+// forge::MorphBlep held by value. Phase 32 has DELIVERED band-limiting. The
+// same correction was made to src/dsp/VcoCore.hpp's own banner by that plan,
+// for the same reason — a file whose self-description contradicts its body is
+// the exact failure the house rule about falsified premises exists to prevent.
+//
+// WHAT SURVIVES UNCHANGED, and it is the operative half: NO assertion in this
+// file may be written about alias content, harmonic structure or spectral
+// cleanliness — not now, and not when the numbers here start looking
+// respectable. That is not because the oscillator aliases; it is because this
+// file is the wrong INSTRUMENT for the question. Spectral claims belong to
+// tests/test_vco_spectrum.cpp, which gates the alias floor at C7, C8 and C9
+// against per-shape thresholds measured from this repository's own output.
 //
 // Deliberately NOT here: harness plumbing (tests/test_vco_harness.cpp), the
 // < 1-cent V/Oct tracking gate (Phase 31, TEST-02), the alias floor (Phase 32),
@@ -526,8 +537,60 @@ TEST_CASE("vco core: naive pitch tracks the C4 reference on the OUTPUT within 1 
 	// the pulse duty is 0.05, and once the +1 region falls under ~2 samples the
 	// sampler steps over it and the estimate collapses toward half the true
 	// frequency (measured -24.53 % at pitchCV = +3.5 and -46.89 % at +4.0, both
-	// at 44.1 kHz). That is sampling loss in a deliberately unband-limited
-	// oscillator, not a pitch defect — Phase 32 owns it.
+	// at 44.1 kHz).
+	//
+	// A FALSIFIED PREMISE, CORRECTED HERE BY MEASUREMENT (plan 32-08). The
+	// sentence above used to END by calling that "sampling loss in a
+	// deliberately unband-limited oscillator, not a pitch defect — PHASE 32 OWNS
+	// IT." Phase 32 has now arrived, the core IS band-limited as of plan 32-06,
+	// and the forward reference was resolved by RE-RUNNING the two recorded
+	// points rather than by assuming either outcome. THE PREMISE IS FALSE. The
+	// CONCLUSION is untouched and is the part worth keeping: the grid still
+	// stops at +2.
+	//
+	// RE-MEASURED against the band-limited core, morph 1.00 / character 0.0 /
+	// 44.1 kHz, over this same 250 ms window, through the same
+	// forge::VcoBlockDriver and the same estimateFreqRising:
+	//
+	//     pitchCV   5 % region    pre-Phase-32      NOW (band-limited)
+	//      +2.00    2.11 samples       —            +0.0010 %
+	//      +3.00    1.05 samples       —            +0.0031 %
+	//      +3.50    0.74 samples    -24.53 %        -34.7383 %
+	//      +4.00    0.53 samples    -46.89 %        NO CROSSINGS AT ALL
+	//
+	// Band-limiting did not fix it. It made the MEASUREMENT WORSE, which is the
+	// clearest possible evidence for the corrected premise: at +4.0 the output
+	// now never reaches zero at all — MEASURED max -0.426132 V, with 0 of 11025
+	// samples at or above zero — so estimateFreqRising counts nUp = 0 and
+	// returns its negative sentinel. The REQUIRE(nUp >= 8) above would fire
+	// before the tolerance is ever consulted. At +3.5 the counter resolves only
+	// 482 of the 740 true cycles, which is the whole of the -34.74 % figure.
+	//
+	// THE CORRECTED PREMISE. estimateFreqRising counts RISING ZERO CROSSINGS.
+	// At morph 1.00 the 5 %-duty pulse's positive region falls under about two
+	// samples above pitchCV +2, and the sampler steps over it. Band-limiting
+	// reduces the ALIAS ENERGY that narrow region radiates; it does not and
+	// CANNOT restore a zero-crossing counter's ability to resolve a
+	// sub-two-sample feature, because that is a property of the ESTIMATOR'S
+	// SAMPLING, not of the waveform's spectrum. Softening the pulse's edges in
+	// fact lowers its peak further inside that window, which is exactly why the
+	// figures moved the wrong way. So this was never Phase 32's to fix, and the
+	// sentence claiming it was is corrected here.
+	//
+	// WHERE HIGH-NOTE BEHAVIOUR IS ACTUALLY ASSERTED NOW: tests/test_vco_spectrum.cpp
+	// gates the alias floor at C7, C8 and C9 — 2099, 4188 and 8367 Hz, ABOVE the
+	// pitch range this grid stops at — and it does so SPECTRALLY, against
+	// per-shape thresholds measured from this repository's own output, rather
+	// than by counting crossings. That suite is the right instrument for the
+	// question; this one is not, and that is a statement about instruments and
+	// not about the DSP.
+	//
+	// THE STANDING INSTRUCTION THIS FILE'S OTHER HISTORICAL FIGURES CARRY
+	// APPLIES TO ALL SIX NUMBERS ABOVE: they are OBSERVATIONS OF A REPRODUCTION
+	// RUN, not a current expectation to recompute when a constant moves. If a
+	// later phase changes the pulse duty, the guard fraction or the estimator,
+	// re-run the reproduction and record what it says — do not adjust these to
+	// match a prediction.
 	static const float PITCHES[]    = {-2.f, -1.f, 0.f, 1.f, 2.f};
 	static const float MORPHS[]     = {0.00f, 0.25f, 0.50f, 0.75f, 1.00f};
 	static const float CHARACTERS[] = {0.0f, 0.5f, 1.0f};
