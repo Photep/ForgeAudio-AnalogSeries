@@ -247,7 +247,7 @@ Plans:
   4. A spectral alias-floor invariant (a small DFT/Goertzel helper) asserts high-note aliasing stays below **per-shape thresholds pinned from measurement** (D-09 evidence-set thresholds, each carrying its measured justification) at **C7, C8 and C9** — TEST-03. The earlier "≈ −60 dB" figure was a target, not a reachable floor: 2-sample polyBLEP attenuates by `sinc²`, which is only ≈ −8 dB at Nyquist, so the achievable floor sits well above −60 dB (measured best at C8/44.1 kHz: saw −25.8, square −31.9, narrow pulse −11.6 dB) — corroborated by DAFx-16. Per-shape measured thresholds are the honest gate.
   5. All anti-aliasing is table-free and Rack-free (closed-form arithmetic), preserving C++11-strict compilation and golden bit-stability — no minBLEP, no oversampling in v2.0.
 
-**Plans**: 8/11 plans executed
+**Plans**: 10/11 plans executed
 
 Plans:
 **Wave 1**
@@ -275,11 +275,11 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 32-09-PLAN.md — Extend the hostile-timing grid on the corrected D-15 rationale, and add the audio-rate MORPH invariant (MORPH-01/02)
+- [x] 32-09-PLAN.md — Extend the hostile-timing grid on the corrected D-15 rationale, and add the audio-rate MORPH invariant (MORPH-01/02)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 32-10-PLAN.md — Phase gate: full local suite, CI link leg observed by SHA, requirement traceability, deferred register
+- [x] 32-10-PLAN.md — Phase gate: full local suite, CI link leg observed by SHA, requirement traceability, deferred register
 
 **Wave 8** *(blocked on Wave 7 completion)*
 

@@ -176,4 +176,15 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 
 ---
 *Requirements defined: 2026-07-20*
-*Last updated: 2026-07-20 — traceability populated by roadmapper (Phases 29-36); coverage corrected from 37 to 40 enumerated IDs*
+*Last updated: 2026-08-01 — Phase 32 gate (plan 32-10) RE-VERIFIED all nine Phase 32 IDs against a named
+doctest case or a named guard-script section, per T-32-27. No ID was ticked by this plan; each was already
+ticked by the plan that landed its assertion (32-02, 32-05, 32-06, 32-07, 32-09) and each was confirmed by
+re-running its selector and checking the matched case count is non-zero — a selector matching ZERO cases
+also exits 0 and prints `Status: SUCCESS!`, so exit status alone cannot distinguish a discharged
+requirement from an unrun one (Phase 31's 31-08 finding). The per-ID discharge table is in
+`.planning/phases/32-morph-aware-anti-aliasing-polyblep-polyblamp/32-10-SUMMARY.md`. MORPH-02 carries a
+recorded qualification: its audio-rate crossfade half is discharged headlessly by a named case, but the
+shell-side `knob + CV x attenuverter` mix in `src/AnalogVCO.cpp` is asserted by NO test case (D-17 added
+zero POD fields, so no headless driver can reach the attenuverter) and is covered only by the compile
+gates until plan 32-11's operator UAT. See `deferred-items.md` item 7.*
+*Prior update: 2026-07-20 — traceability populated by roadmapper (Phases 29-36); coverage corrected from 37 to 40 enumerated IDs*
