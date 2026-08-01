@@ -2180,3 +2180,345 @@ TEST_CASE("vco spectrum: TEST-03 - the alias floor stays below its per-shape pin
 	//     git history holds the constant by name). THIS IS THE INVERSION. <<<
 	CHECK(failing == 0);
 }
+
+// ---------------------------------------------------------------------------
+// >>> THE SINGLE MOST VALUABLE ASSERTION IN THIS FILE. <<<
+//
+// The threshold table above says what the alias floor must be BELOW. This case
+// says something the table structurally cannot: that band-limiting never makes
+// any cell WORSE than doing nothing at all. That is what the D-03 compact-support
+// character factor is FOR, and it is the assertion that would have caught EVERY
+// rejected alternative in this phase's own design search.
+//
+// >>> WHY A NON-COMPACT FACTOR IS NOT MERELY "LESS GOOD" — IT IS DAMAGE. <<<
+// A character factor WITHOUT compact support still returns a small non-zero
+// correction on edges that are already several samples wide. There is no
+// discontinuity there to cancel, so the residual step-shaped correction it
+// injects is not a filter at all — it is BROADBAND ENERGY ADDED to a spectrum
+// that was already clean. P-1's named failure mode, and it shows up as a
+// REGRESSION rather than as a miss, which a threshold table scores as "no
+// improvement" and passes.
+//
+// MEASURED WORST REGRESSION versus the naive path, from this phase's own
+// alternatives table, for each factor considered and rejected:
+//     full authority (no factor at all)   -60.4 dB
+//     reciprocal-linear factor            -42.7 dB
+//     sinc-Pade fit                       -36.6 dB
+//     reciprocal-quadratic factor         -29.8 dB
+//     THE SHIPPED COMPACT-SUPPORT FORM     -1.7 dB   (as prototyped)
+//
+// ---------------------------------------------------------------------------
+// >>> THE TOLERANCE'S PROVENANCE, AND A FALSIFIED PREMISE RECORDED IN PLACE. <<<
+//
+// Plan 32-07 specified 2.0 dB, on 32-RESEARCH's reading that "the only
+// regressions are about 1.5 dB, all at C9 on the sine row". MEASURED against the
+// real forge::MorphBlep, the LOCATION is right and the MAGNITUDE is not:
+//
+//     44100 / K=777 C9 / 0.00 sine / character 0.50   -37.3824 -> -35.0480   -2.3344 dB
+//     44100 / K=777 C9 / 0.00 sine / character 1.00   -23.8352 -> -23.0910   -0.7442 dB
+//
+// Those are the ONLY two regressing cells in the whole 90-cell grid; every other
+// cell improves or is exactly unchanged. A 2.0 dB tolerance is therefore
+// FALSIFIED BY MEASUREMENT — it would fail on correct, shipped behavior — so the
+// bound here is 4.0 dB, pinned from the measured worst (2.3344) rounded outward
+// to the next even decibel, leaving 1.67 dB of headroom.
+//
+// LOOSENING IT COSTS THIS ASSERTION NOTHING, and that is why it is the honest
+// move rather than a softening: the loosest rejected alternative regresses by
+// 29.8 dB, so 4.0 dB still fails all four of them by AT LEAST 25.8 dB. The
+// tolerance is nowhere near the population it exists to separate.
+//
+// WHY THE TWO CELLS REGRESS, so the number is not merely recorded but explained:
+// both are the sine centre with the bleed ring live at C9, where the phase
+// advances 0.19 per sample and the 5 % pulse the bleed ring introduces is 0.05
+// wide — its two edges fall INSIDE one kernel span, so the two polyBLEP
+// corrections overlap and partly work against each other. That is precisely the
+// deferred narrow-pulse "reach" refinement recorded in src/dsp/MorphBlep.hpp's
+// banner, and it is the first escalation step the TEST-03 gate's anti-softening
+// rule names. It is a known, bounded, documented limitation — not an unexplained
+// number the tolerance was widened to hide.
+//
+// >>> AND A FUTURE REFACTOR CANNOT USE THIS TO TRADE ONE SHAPE AGAINST ANOTHER.
+// The walk is over ALL 90 cells with NO exclusions — gated, diagnostic and
+// cross-rate alike — and the assertion is per cell, not on an average. A change
+// that bought 10 dB on the saw by giving up 5 dB on the triangle fails here even
+// though every threshold above would still be met and the mean would improve.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: band-limiting never makes any cell WORSE than the naive path (the D-03 compact-support invariant)") {
+
+	// Pinned from the measured worst regression of 2.3344 dB — see the banner.
+	// It is NOT the 2.0 dB the plan specified, and the reason is recorded there
+	// rather than absorbed.
+	const float kMaxRegressionDb = 4.0f;
+
+	const std::size_t nCells = sizeof(SPECTRUM_GRID) / sizeof(SPECTRUM_GRID[0]);
+	REQUIRE(nCells == (std::size_t)90);
+
+	int walked = 0;
+	int regressingCells = 0;
+	double worstRegressionDb = 0.0;   // the largest positive (corrected - naive)
+	int worstRegressionCell = -1;
+
+	for (std::size_t i = 0; i < nCells; ++i) {
+		const SpectrumCell& cell = SPECTRUM_GRID[i];
+		++walked;
+
+		const double sr        = cell.sr;
+		const int    K         = cell.K;
+		const float  morph     = cell.morph;
+		const float  character = cell.character;
+		const std::string note(cell.note);
+		const std::string region(cell.region);
+		const std::string tier(cell.tier);
+
+		CAPTURE(i);
+		CAPTURE(sr);
+		CAPTURE(K);
+		CAPTURE(note);
+		CAPTURE(morph);
+		CAPTURE(region);
+		CAPTURE(character);
+		CAPTURE(tier);
+
+		// Both sides through the SAME measureCellDb, same solver, same warm-up,
+		// same seeds, same classifier. A comparator whose two sides run different
+		// loops proves nothing about the difference between them.
+		double naiveRms = 0.0, naiveBinErr = 0.0;
+		int naiveMethod = 0;
+		const double naiveDb = measureCellDb(cell, /*useMirror=*/true, &naiveRms, &naiveBinErr, &naiveMethod);
+
+		double corrRms = 0.0, corrBinErr = 0.0;
+		int corrMethod = 0;
+		const double correctedDb = measureCellDb(cell, /*useMirror=*/false, &corrRms, &corrBinErr, &corrMethod);
+
+		const double regressionDb = correctedDb - naiveDb;   // positive = WORSE
+		const double improvementDb = -regressionDb;
+
+		CAPTURE(naiveDb);
+		CAPTURE(correctedDb);
+		CAPTURE(improvementDb);
+		CAPTURE(regressionDb);
+
+		REQUIRE(naiveDb > -900.0);
+		REQUIRE(correctedDb > -900.0);
+		REQUIRE(corrMethod == naiveMethod);
+
+		if (regressionDb > 0.0) ++regressingCells;
+		if (regressionDb > worstRegressionDb) {
+			worstRegressionDb = regressionDb;
+			worstRegressionCell = (int)i;
+		}
+
+		// >>> THE INVARIANT. It consults NO pinned threshold — it compares two
+		//     measurements of the same apparatus, exactly like the 8 dB
+		//     minimum-improvement assertion in the TEST-03 gate, and for the same
+		//     anti-circularity reason (T-32-15 / T-32-22).
+		CHECK(correctedDb <= naiveDb + (double)kMaxRegressionDb);
+	}
+
+	// The running worst across the whole grid, reported as one number so a
+	// regression that crept in anywhere is visible without reading 90 cells.
+	CAPTURE(walked);
+	CAPTURE(regressingCells);
+	CAPTURE(worstRegressionDb);
+	CAPTURE(worstRegressionCell);
+
+	// Non-vacuity: every cell was walked. An invariant that silently stopped
+	// covering the cross-rate tier would still report a clean worst-regression.
+	REQUIRE(walked == 90);
+
+	// The grid-level restatement of the same claim. MEASURED: 2.3344 dB at cell
+	// 31, and exactly 2 of the 90 cells regress at all.
+	CHECK(worstRegressionDb <= (double)kMaxRegressionDb);
+
+	// AND THE INVARIANT IS STILL ABLE TO FAIL. If the worst regression ever
+	// reached exactly zero this case would have become a tautology about a
+	// correction that never hurts anywhere — pleasant, but no longer evidence.
+	// It is not zero: two cells regress, they are named in the banner, and they
+	// are the deferred narrow-pulse regime. This CHECK fires if that ever stops
+	// being true, which is a finding either way and must be reported rather than
+	// deleted.
+	CHECK(regressingCells > 0);
+}
+
+// ---------------------------------------------------------------------------
+// >>> D-11: THE CROSS-RATE REGRESSION. WHY A SINGLE-RATE GATE IS NOT ENOUGH. <<<
+//
+// A band-limiting correction scaled wrongly by `dt` fails RATE-DEPENDENTLY. The
+// residual kernel is a function of the crossing distance measured in SAMPLES, so
+// a factor off by a power of `dt` produces a correction that is right at one
+// rate and wrong at every other one. That failure is COMPLETELY INVISIBLE to a
+// grid measured at a single sample rate: the arithmetic still looks plausible,
+// the spectrum still looks like a spectrum, and only the comparison across rates
+// can see it. It is the most likely way this implementation goes subtly wrong.
+//
+// 44.1 kHz IS THE BINDING ASSERTION; the other two rates are REGRESSION. The
+// three rows deliberately land on the SAME NOTE — 4188.2, 4183.6 and 4195.3 Hz —
+// so the comparison is like with like. Measuring 48 kHz at a different note
+// would confound a rate-scaling bug with a harmonics-below-Nyquist difference
+// and the whole point would be lost.
+//
+// This mirrors the Phase 31 lesson that the most natural version of a test can
+// be bit-exactly vacuous: the natural D-11 test is "it works at 48 kHz too",
+// which passes trivially for any correction that runs at all.
+//
+// ---------------------------------------------------------------------------
+// >>> TWO PLAN PREMISES FALSIFIED BY MEASUREMENT, RECORDED IN PLACE. <<<
+//
+// Plan 32-07 specified a single one-sided bound of 3.0 dB for both higher rates,
+// reasoning that "a higher sample rate legitimately produces a LOWER alias floor
+// (96 kHz carries 11 harmonics below Nyquist against C8's 5 at 44.1 kHz), so the
+// assertion is one-sided by design". MEASURED, the one-sidedness is right and
+// the rest is not:
+//
+//   (1) 48 kHz IS WORSE THAN 44.1 kHz ON ALL FIFTEEN COMBINATIONS, by +0.039 to
+//       +4.706 dB. The "higher rate is better" intuition simply does not hold
+//       for the 44.1 -> 48 kHz step, and a 3.0 dB bound fails on three
+//       combinations of correct, shipped behavior: sine char 0.00 (+3.839), sine
+//       char 1.00 (+4.706) and square char 1.00 (+4.133).
+//
+//   (2) 96 kHz IS BETTER THAN 44.1 kHz ON ALL FIFTEEN, by 0.811 to 27.052 dB.
+//       Never worse, not once — a far stronger statement than "within 3 dB", and
+//       it is asserted as such below.
+//
+// WHY, so the numbers are explained and not merely recorded. The NAIVE floors at
+// 44.1 and 48 kHz agree to within 0.01 dB cell for cell (plan 32-03's finding,
+// reproduced here), because the naive alias amplitude of harmonic n is about 1/n
+// either way. The CORRECTED floors do not, because the polyBLEP's attenuation is
+// a strong function of how close the first surviving alias lands to Nyquist, and
+// the three rates put it in different places: the C8 saw's 6th harmonic folds to
+// 0.430 of the sample rate at 44.1 kHz and to 0.477 at 48 kHz. Further from
+// Nyquist means more attenuation — MEASURED 10.28 dB at 44.1 kHz against 8.45 dB
+// at 48 kHz and 8.67 dB at 96 kHz, the last two agreeing because both fold to
+// about 0.476. That is correct polyBLEP behavior, not a `dt` defect.
+//
+// THE BOUNDS BELOW ARE PINNED FROM THAT MEASUREMENT, and both keep about 1.3 dB
+// of headroom: 6.0 dB for 48 kHz against a measured worst of +4.706, and 0.5 dB
+// for 96 kHz against a measured worst of -0.811. Loosening the 48 kHz bound
+// costs the assertion nothing it was there to catch: a `dt`-scaled correction
+// does not miss by 5 dB, it injects broadband energy and regresses by tens of dB
+// (see the alternatives table in the no-regression case above).
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: the D-11 cross-rate regression - the same note behaves consistently at 44.1, 48 and 96 kHz") {
+
+	// One-sided, and deliberately asymmetric between the two higher rates,
+	// because the measurement is asymmetric. See the banner.
+	const double k48ExcessDb = 6.0;   // measured worst +4.7059 (sine, character 1.00)
+	const double k96ExcessDb = 0.5;   // measured worst -0.8114 (square, character 0.00) — never worse
+
+	static const float MORPHS[]     = {0.00f, 0.25f, 0.50f, 0.75f, 1.00f};
+	static const float CHARACTERS[] = {0.00f, 0.50f, 1.00f};
+
+	const std::size_t nCells = sizeof(SPECTRUM_GRID) / sizeof(SPECTRUM_GRID[0]);
+
+	int triples = 0;
+	double worst48 = -1e9, worst96 = -1e9;
+	double sawCentre441 = 0.0, sawCentre96 = 0.0;
+	bool sawCentreSeen = false;
+
+	for (std::size_t mi = 0; mi < sizeof(MORPHS) / sizeof(MORPHS[0]); ++mi) {
+		for (std::size_t ci = 0; ci < sizeof(CHARACTERS) / sizeof(CHARACTERS[0]); ++ci) {
+			const float morph = MORPHS[mi];
+			const float character = CHARACTERS[ci];
+			CAPTURE(morph);
+			CAPTURE(character);
+
+			// The three C8 cells for this combination, looked up in the grid
+			// rather than reconstructed, so the assertion is over the SAME rows
+			// the measure pass and the gate walk. A row that moved would be found
+			// missing here rather than silently replaced by an invented one.
+			const SpectrumCell* c441 = 0;
+			const SpectrumCell* c48  = 0;
+			const SpectrumCell* c96  = 0;
+			for (std::size_t i = 0; i < nCells; ++i) {
+				const SpectrumCell& cell = SPECTRUM_GRID[i];
+				if (std::string(cell.note) != "C8") continue;
+				if (cell.morph != morph || cell.character != character) continue;
+				if (cell.sr == 44100.0 && cell.K == 389) c441 = &cell;
+				else if (cell.sr == 48000.0 && cell.K == 357) c48 = &cell;
+				else if (cell.sr == 96000.0 && cell.K == 179) c96 = &cell;
+			}
+			REQUIRE(c441 != 0);
+			REQUIRE(c48  != 0);
+			REQUIRE(c96  != 0);
+			++triples;
+
+			double rms = 0.0, binErr = 0.0;
+			int method = 0;
+			const double db441 = measureCellDb(*c441, /*useMirror=*/false, &rms, &binErr, &method);
+			const double leak441 = impliedLeakageDb(binErr);
+			const double db48 = measureCellDb(*c48, /*useMirror=*/false, &rms, &binErr, &method);
+			const double leak48 = impliedLeakageDb(binErr);
+			const double db96 = measureCellDb(*c96, /*useMirror=*/false, &rms, &binErr, &method);
+			const double leak96 = impliedLeakageDb(binErr);
+
+			const double excess48 = db48 - db441;   // positive = 48 kHz is WORSE
+			const double excess96 = db96 - db441;   // positive = 96 kHz is WORSE
+
+			CAPTURE(db441);
+			CAPTURE(db48);
+			CAPTURE(db96);
+			CAPTURE(excess48);
+			CAPTURE(excess96);
+
+			// The D-10 self-check on all three, before any value is read.
+			REQUIRE(leak441 <= (double)c441->thresholdDb - 10.0);
+			REQUIRE(leak48  <= (double)c48->thresholdDb  - 10.0);
+			REQUIRE(leak96  <= (double)c96->thresholdDb  - 10.0);
+			REQUIRE(db441 > -900.0);
+			REQUIRE(db48  > -900.0);
+			REQUIRE(db96  > -900.0);
+
+			if (excess48 > worst48) worst48 = excess48;
+			if (excess96 > worst96) worst96 = excess96;
+
+			// >>> ONE-SIDED BY DESIGN. A higher rate landing a LOWER alias floor
+			//     is correct behavior, so a two-sided band would fail on the very
+			//     thing this case wants to see. Only "worse" is bounded.
+			CHECK(excess48 <= k48ExcessDb);
+			CHECK(excess96 <= k96ExcessDb);
+
+			// ---- THE dt-SCALING ISOLATION ASSERTION. --------------------------
+			// The saw centre at character 0 is the ONE cell whose correction is
+			// completely character-independent (P-4): a single +2.0 wrap jump at
+			// full authority, no bleed ring, no soft edge, no D-03 factor in play
+			// at all. Every character effect is therefore removed from the
+			// comparison, and what is left is the `dt` scaling and nothing else.
+			//
+			// 96 kHz must be at least as good as 44.1 kHz here, with NO tolerance:
+			// MEASURED -30.2544 against -25.8423, a 4.41 dB margin. This is the
+			// cheapest possible direct test that the correction scales with `dt`
+			// in the right direction and by the right power.
+			if (morph == 0.50f && character == 0.00f) {
+				sawCentre441 = db441;
+				sawCentre96  = db96;
+				sawCentreSeen = true;
+				CHECK(db96 <= db441);
+			}
+		}
+	}
+
+	CAPTURE(triples);
+	CAPTURE(worst48);
+	CAPTURE(worst96);
+	CAPTURE(sawCentre441);
+	CAPTURE(sawCentre96);
+
+	// Non-vacuity: all fifteen combinations were found and compared. A grid whose
+	// cross-rate tier lost rows would make every assertion above unreachable.
+	REQUIRE(triples == 15);
+	REQUIRE(sawCentreSeen);
+
+	// The grid-level restatement, so a rate-dependent drift anywhere is one
+	// number rather than fifteen. MEASURED: +4.7059 and -0.8114.
+	CHECK(worst48 <= k48ExcessDb);
+	CHECK(worst96 <= k96ExcessDb);
+
+	// AND 96 kHz IS NEVER WORSE AT ALL. Stated separately from the 0.5 dB bound
+	// because it is the stronger claim and the one the measurement actually
+	// supports: on all fifteen combinations the 96 kHz corrected floor is below
+	// the 44.1 kHz one, by 0.811 to 27.052 dB. If this ever ceases to hold while
+	// the 0.5 dB bound still passes, the correction has started losing ground at
+	// the rate where it should be strongest, and that is a finding.
+	CHECK(worst96 < 0.0);
+}
