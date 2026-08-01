@@ -5,10 +5,10 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
-stopped_at: Completed 32-10-PLAN.md
-last_updated: "2026-08-01T03:21:48.187Z"
+stopped_at: 32-11-PLAN.md Task 1 complete — BLOCKED awaiting operator audition verdict (Task 2)
+last_updated: "2026-08-01T13:45:00.000Z"
 last_activity: 2026-08-01
-last_activity_desc: Phase 32 gate (32-10) complete
+last_activity_desc: Phase 32 execution complete except the 32-11 operator in-Rack audition
 progress:
   total_phases: 8
   completed_phases: 3
@@ -30,10 +30,13 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 11 of 11
-Status: Ready to execute — 32-11 is the operator in-Rack UAT, the only remaining plan
-Last activity: 2026-08-01 — Phase 32 gate (32-10) complete
+Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — BLOCKED ON OPERATOR
+Plan: 11 of 11 — Task 1 of 2 complete
+Status: 32-11 Task 1 (build + whole-directory flush + install identity pinned) is committed as `9fac167`. Task 2, the operator in-Rack audition, HAS NOT RUN and no verdict exists. See `.planning/phases/32-morph-aware-anti-aliasing-polyblep-polyblamp/.continue-here.md` — it carries two `blocking` anti-patterns.
+
+⚠ `32-11-SUMMARY.md` EXISTS ON DISK but is `status: checkpoint-pending`. `gsd-tools query phase-plan-index 32` tests file existence only, so it reports `incomplete: []` and a resumed `/gsd-execute-phase 32` will skip 32-11 and fall through to phase verification. Do not let it. The phase is NOT execution-complete.
+
+Last activity: 2026-08-01 — all automated plans done; awaiting the perceptual verdict
 
 ## Performance Metrics
 
@@ -235,6 +238,9 @@ Resume: run plan 32-11 — the operator in-Rack UAT, the last plan in Phase 32 a
 
 ## Operator Next Steps
 
-- **Phase 31 is complete and operator-approved.** Next: `/gsd-verify-work 31`, then `/gsd-discuss-phase 32`.
+- **▶ START HERE — Phase 32 needs your ears, and nothing else.** All eleven plans' automated work is done and green (`make test` 94/94/0, `make strict`, `make guards`, CI green on all four jobs including the win-x64 link leg). The plugin is built and freshly installed, with the install identity pinned five ways. What remains is the 32-11 in-Rack audition: the audio-rate MORPH sweep through the shape boundaries, and confirming the shipped Analog LFO is unchanged. Resume with `/gsd-execute-phase 32` — the `.continue-here.md` in the phase directory will stop it from skipping the audition — or run the script directly from `32-11-SUMMARY.md`.
+  - **In the module browser you will see THREE Forge Audio entries.** Judge **"Analog LFO"** (the guardrail subject) and **"Analog VCO"** (this phase's work). **Ignore plain "LFO"** — that is the stale `ForgeAudio` v2.0.0 from Feb 14.
+  - ⚠ **Start monitors low.** Peak output under audio-rate MORPH reaches ~6.3 V, hotter than a typical ±5 V module.
+- **Phase 31 remains complete and operator-approved.** Its outstanding follow-up is `/gsd-verify-work 31` if you want the UAT recorded formally.
 - **Optional housekeeping, your call.** `~/Library/Application Support/Rack2/plugins-mac-arm64/ForgeAudio` is a stale separate plugin (slug `ForgeAudio`, v2.0.0, module `ForgeAudioLFO`, Feb 14) under the pre-rename slug. It is harmless — a different slug, so it cannot shadow the current `ForgeAudio-AnalogSeries` install — but it puts a **second Forge LFO** in the module browser, which is why Phase 31's step-9 guardrail sign-off is recorded with a subject that is inferred rather than pinned. Removing it would make every future in-Rack audition unambiguous. Not done for you: deleting a plugin from your Rack installation is not an executor's call. See `deferred-items.md` item 15.
 - **Phase 35 now holds your first piece of VCO panel feedback** — the FM depth knob's affordance, `deferred-items.md` item 14. FM-02's bipolar behavior is locked and verified; only the widget is open.
