@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
-stopped_at: Completed 32-09-PLAN.md
-last_updated: "2026-08-01T01:35:39.046Z"
-last_activity: 2026-07-31
-last_activity_desc: Phase 32 execution started
+stopped_at: Completed 32-10-PLAN.md
+last_updated: "2026-08-01T03:21:48.187Z"
+last_activity: 2026-08-01
+last_activity_desc: Phase 32 gate (32-10) complete
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 35
-  completed_plans: 32
+  completed_plans: 34
   percent: 38
 ---
 
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 10 of 11
-Status: Ready to execute
-Last activity: 2026-07-31 — Phase 32 execution started
+Plan: 11 of 11
+Status: Ready to execute — 32-11 is the operator in-Rack UAT, the only remaining plan
+Last activity: 2026-08-01 — Phase 32 gate (32-10) complete
 
 ## Performance Metrics
 
@@ -160,6 +160,12 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 32]: 32-08: band-limiting made invariant 1's narrow-pulse tracking WORSE (-24.53% to -34.7383% at pitchCV +3.5, and to NO crossings at all at +4.0) — the failure is in the rising-zero-crossing estimator's sampling, not the DSP, so it was never Phase 32's to fix
 - [Phase 32]: Invariant 6 asserts the OUTER tier (kHostileBoundV) only; kMusicalBoundV is withheld and the withholding is itself asserted via CHECK(gridWorstV > kMusicalBoundV) — Measured: the grid-wide worst under audio-rate MORPH is 6.289864 V against a static-morph worst of 5.518032 V at the same note and rate, so the tighter tier is genuinely exceeded by 0.771832 V; a per-rate form would be RED at 96 kHz where the excess vanishes
 - [Phase 32]: kHostileBoundV and kMusicalBoundV hoisted from invariant 2 to the anonymous namespace so invariant 6 reads one definition — A bound documented as binding on every scenario any later plan adds must not be a function-local that later plans re-declare by hand; this suite already keeps one hand-maintained mirror and has watched it drift
+- [Phase 32]: 32-10: CI toolchain-gate observed green BY SHA — run 30681442134 on commit 262e5c5, toolchain-gate job success AND its 'win-x64 leg reproduction' STEP's OWN conclusion success ('win-x64 link gate: PASS'). Reached via branch gsd/phase-32-ci by OPERATOR DECISION (public repo; main must not move) — origin/main unmoved at 80fb90a. Only the STEP conclusion is the gate: a step that fail-fasts upstream reports 'skipped'. All 12 toolchain-gate steps individually success, none skipped.
+- [Phase 32]: 32-10: the FIRST CI run (30680251253 on a110a9a) was RED on Ubuntu and Windows and GREEN on macOS — this phase's SPECTRAL INSTRUMENT IS TOOLCHAIN-DEPENDENT by up to 3.02596 dB (cell i=86). aliasPeakDb is a max over 2043 bins and a libm ULP difference reorders near-tied bins. NO src/ behaviour differs: make strict, the MinGW link leg, the TEST-03 gate, the no-regression and cross-rate invariants and the six LFO goldens are green on every leg. CONSEQUENCE FOR PHASE 36: every absolute decibel this phase recorded is an Apple-clang figure — do not capture a spectral golden from one toolchain.
+- [Phase 32]: 32-10: the measuredDb reproduction bound was SPLIT on a physical criterion, not widened. Step-dominated cells (saw and pulse at every character, square below full character — a true value step, 6 dB/octave, arg-max stable) keep 1.0 dB; plateau cells (sine, triangle, square at character 1.00 where 32-05 measured the jump collapse to -0.001661 — no value step, near-flat spectrum, arg-max a near-tie) get 4.0 dB pinned from the measured worst 3.02596 rounded outward. Populations 48/42 both asserted exactly; a +2.0 dB probe fails EXACTLY 48 and +5.0 EXACTLY 90. Operator chose this over a global widen or a re-pin.
+- [Phase 32]: 32-10: T-32-15 survives the split at least as well defended — 0 grid rows edited, the standing STOP-AND-REPORT instruction preserved and EXTENDED with an anti-reclassification clause ('if the cell that fires is step-dominated that is a finding about the criterion, not a cell to reclassify'), and the threshold-derivation assertion untouched and independent
+- [Phase 32]: 32-10: no requirement was ticked by this plan — all nine Phase 32 IDs were RE-VERIFIED against a named case with a NON-ZERO matched count, because a selector matching zero cases also exits 0 and prints SUCCESS. MORPH-02 stays Complete but QUALIFIED: its shell-side knob + CV x attenuverter mix is asserted by NO test case (D-17 added zero POD fields, so no headless driver can reach the attenuverter) and is compile-gated only until 32-11
+- [Phase 32]: 32-10: the three-OS matrix delta is +13 cases and +4,266 assertions IDENTICALLY on all three legs, which is what proves every new case ran everywhere; the macOS-vs-others gap is unchanged at exactly 3 cases / 24,582 assertions (the three Apple-gated drift-ON goldens)
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -217,14 +223,15 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P07 | 41 min | 3 tasks | 1 files |
 | Phase 32 P08 | 34 min | 3 tasks | 1 files |
 | Phase 32 P09 | 22 min | 2 tasks | 1 files |
+| Phase 32 P10 | 98 min | 3 tasks | 4 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-01T01:35:18.037Z
-Stopped at: Completed 32-09-PLAN.md
-Resume: run plan 32-07 — it owns the green alias-floor gate. `make test` is RED between 32-06 and 32-07 BY DESIGN: the alias-floor tombstone's `CHECK(failing >= 27)` now sees 2, and its five named subset cells all sit 3.0 to 3.9 dB BELOW threshold. Only 2 of 45 gated cells still exceed, both sine-centre at character 0.50 (C7 by 0.39 dB, C8 by 1.89 dB).
+Last session: 2026-08-01T03:20:24.404Z
+Stopped at: Completed 32-10-PLAN.md
+Resume: run plan 32-11 — the operator in-Rack UAT, the last plan in Phase 32 and the only thing no headless gate can do. The suite is GREEN on all three CI legs (macOS 94/94/0 at 2,622,319 assertions; Ubuntu and Windows 91/91/0 at 2,597,737 — the gap is exactly the 3 Apple-gated drift-ON goldens / 24,582 assertions). Two things 32-11 owns: (1) the verification-protocol fix — name the PLUGIN DIRECTORY as well as the module when asking for an audition ("the Analog LFO under Forge Audio Analog Series"), because a stale, differently-slugged `ForgeAudio` plugin puts a second Forge LFO in the module browser and would otherwise leave the guardrail sign-off's subject inferred rather than pinned (deferred item 25); (2) MORPH-02's shell-side knob + CV x attenuverter mix, which is asserted by NO test case and is compile-gated only (deferred item 24). Headless counterpart figures for the audio-rate MORPH sweep: 5.508759 to 6.289864 V across 27 configurations.
 
 ## Operator Next Steps
 
