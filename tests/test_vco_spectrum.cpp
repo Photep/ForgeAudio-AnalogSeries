@@ -589,9 +589,24 @@ struct NaiveVcoCoreMirror {
 // `morph` names the shape centre and `region` is its human name; `character` is
 // the THIRD index, and the reason it exists is P-6 below. `tier` is what the
 // cell is FOR: "gated" cells are asserted, "diagnostic" cells are CAPTUREd and
-// never CHECKed, "regression" cells are the D-11 cross-rate pair. `provenance`
+// never CHECKed, "regression" cells are the D-11 cross-rate rows. `provenance`
 // is where the number came from, in words, in the test — because a threshold
 // without a written source is a number someone can quietly edit.
+//
+// >>> measuredDb IS THE PROVENANCE, IN NUMBERS (plan 32-07 / T-32-15). <<<
+// It is the CORRECTED alias peak this repository measured for this exact cell,
+// and `thresholdDb` is derived from it by a rule the gate below asserts
+// MECHANICALLY: thresholdDb == max(ceil(measuredDb + 3.0), kThresholdFloorDb).
+//
+// A prose provenance string can say a threshold came from a measurement; it
+// cannot stop the next agent from nudging the threshold by a decibel and
+// leaving the sentence in place. This field can, and it does it twice over.
+// Loosening a threshold without touching measuredDb breaks the derivation
+// assertion; loosening BOTH together breaks the reproduction CHECK in the
+// measure pass, which compares measuredDb against what the core produces on
+// this run. That pair is what makes "pinned from measurement" a claim the file
+// can defend rather than a claim it merely makes — which is the whole content
+// of T-32-15, the highest-severity threat assigned to this plan.
 // ---------------------------------------------------------------------------
 struct SpectrumCell {
 	double sr;
@@ -600,6 +615,7 @@ struct SpectrumCell {
 	float morph;
 	const char* region;
 	float character;
+	float measuredDb;
 	float thresholdDb;
 	const char* tier;
 	const char* provenance;
@@ -632,34 +648,44 @@ struct SpectrumCell {
 constexpr float kThresholdFloorDb = -75.0f;
 
 // The provenance strings. Every cell carries one; there is no cell in the grid
-// whose threshold has no written source.
-const char* const kProvDirect =
-	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB, rounded outward; "
-	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+// whose threshold has no written source. The NUMBER each one refers to is the
+// `measuredDb` field on the same row — see the SpectrumCell banner for why the
+// provenance is a field and not only a sentence.
+//
+// ALL SIX WERE REWRITTEN IN PLAN 32-07. Until that plan every one of them opened
+// by calling itself provisional and derived its number from the 32-RESEARCH
+// prototype's corrected column plus 3 dB. The prototype is
+// now the thing this column is COMPARED AGAINST rather than the thing it is
+// derived from, and the per-row trailing comment records both figures plus their
+// difference so the comparison stays visible.
+const char* const kProvMeasured =
+	"MEASURED by plan 32-07 in this repository, driving the real forge::VcoCore through measureCellDb "
+	"with useMirror=false at this row's own sample rate and note; thresholdDb = ceil(measuredDb + 3.0), "
+	"the 3 dB margin being roughly twice the largest cross-toolchain variation this suite has seen";
 const char* const kProvFloored =
-	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB, then FLOORED at "
-	"kThresholdFloorDb because the prototype figure is tighter than this apparatus can assert (D-10); "
-	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
-const char* const kProvSameNote =
-	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB at the 44.1 kHz row for the "
-	"SAME NOTE - the prototype matrix has no 48 or 96 kHz rows, and D-11 lands these cells on C8 precisely "
-	"so the 44.1 kHz C8 threshold transfers rather than being invented; "
-	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
-const char* const kProvSameNoteFloored =
-	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB at the 44.1 kHz row for the "
-	"SAME NOTE, then FLOORED at kThresholdFloorDb because the prototype figure is tighter than this "
-	"apparatus can assert (D-10); "
-	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+	"MEASURED by plan 32-07 in this repository at this row's own sample rate and note, then FLOORED at "
+	"kThresholdFloorDb: ceil(measuredDb + 3.0) lands tighter than -75 dB, and D-10 forbids asserting a "
+	"threshold this apparatus's own leakage floor cannot support. These are the sine cells whose measured "
+	"value IS the instrument floor - the DSP contributes nothing measurable there";
+const char* const kProvCrossRate =
+	"MEASURED by plan 32-07 AT THIS ROW'S OWN RATE, 48 or 96 kHz, not transferred from the 44.1 kHz C8 row. "
+	"The transfer these rows used to rely on is FALSIFIED: the same note's corrected floor is materially "
+	"rate-dependent (up to 14.1 dB on the 96 kHz triangle), because each rate folds its first surviving "
+	"alias to a different distance from Nyquist and the polyBLEP's attenuation is a strong function of "
+	"exactly that. D-11 still lands these rows on C8 so the cross-rate case compares like with like";
+const char* const kProvCrossRateFloored =
+	"MEASURED by plan 32-07 AT THIS ROW'S OWN RATE (the 44.1 kHz transfer is falsified - see kProvCrossRate), "
+	"then FLOORED at kThresholdFloorDb because ceil(measuredDb + 3.0) lands tighter than this apparatus's "
+	"own leakage floor can support (D-10)";
 const char* const kProvDiagnostic =
-	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB - the C6 rows exist in "
-	"32-RESEARCH section 'D-08 baseline and D-09 threshold evidence' but NOT in 32-VALIDATION's "
-	"Threshold Policy matrix, which starts at C7; diagnostic tier, CAPTUREd and never CHECKed; "
-	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+	"MEASURED by plan 32-07 in this repository at 44.1 kHz C6 - a row present in 32-RESEARCH section "
+	"'D-08 baseline and D-09 threshold evidence' but NOT in 32-VALIDATION's Threshold Policy matrix, which "
+	"starts at C7; diagnostic tier, CAPTUREd and never CHECKed, so this threshold is a recorded expectation "
+	"rather than a gate";
 const char* const kProvDiagnosticFloored =
-	"PROVISIONAL, from the 32-RESEARCH prototype's corrected column plus 3 dB (a C6 row present in "
-	"32-RESEARCH but absent from 32-VALIDATION's matrix), then FLOORED at kThresholdFloorDb because the "
-	"prototype figure is tighter than this apparatus can assert (D-10); diagnostic tier, never CHECKed; "
-	"re-pinned in plan 32-07 from this repository's own measurement of the real forge::MorphBlep";
+	"MEASURED by plan 32-07 at 44.1 kHz C6 (a row present in 32-RESEARCH but absent from 32-VALIDATION's "
+	"matrix), then FLOORED at kThresholdFloorDb because ceil(measuredDb + 3.0) lands tighter than this "
+	"apparatus can assert (D-10); diagnostic tier, never CHECKed";
 
 // ---------------------------------------------------------------------------
 // SPECTRUM_GRID — the 90 cells of the D-09 threshold matrix. READ THESE TWO
@@ -690,15 +716,30 @@ const char* const kProvDiagnosticFloored =
 // is the entire reason `character` is a column in this table, and collapsing it
 // would silently delete the phase's evidence.
 //
-// The threshold column is the prototype's CORRECTED figure plus a 3 dB margin,
-// rounded outward, floored at kThresholdFloorDb. It is PROVISIONAL: plan 32-07
-// re-pins it from this repository's own measurement of the real
-// forge::MorphBlep, and the trailing comment on every row records the
-// prototype's naive and corrected pair so the re-pinning has something to move
-// against. THE ANTI-SOFTENING CLAUSE APPLIES: a threshold that turns out to be
-// unreachable is escalated per plan 32-07's documented procedure, never quietly
-// loosened, and the corrected column is never edited to match whatever the
-// implementation happened to produce.
+// >>> THE COLUMN IS PINNED FROM THIS REPOSITORY'S OWN MEASUREMENT (plan 32-07).
+// It is no longer provisional and it is no longer the prototype's.
+// Every row now carries TWO numbers: `measuredDb`, the corrected alias peak this
+// repository measured for that cell, and `thresholdDb` = max(ceil(measuredDb +
+// 3.0), kThresholdFloorDb). The trailing comment keeps the prototype figure
+// beside the measured one, with their difference, so the comparison the
+// MEASURE-TO-PIN PROTOCOL step 3 asks for stays readable off the table.
+//
+// >>> AND THE CIRCULARITY THIS CREATES IS BOUNDED, NOT IGNORED (T-32-15). <<<
+// A threshold pinned from the implementation's own output cannot, on its own,
+// fail: every gated cell passes by construction with at least 3 dB of room. That
+// is why this table is NOT the phase's evidence. The evidence is the two
+// assertions that consult NO pinned number at all — the 8 dB minimum-improvement
+// CHECK on the five named cells in the gate below, and the no-regression
+// invariant over all 90 cells in its own case further down. Both compare two
+// measurements of the same apparatus. Delete the table and they still bite;
+// delete them and the table asserts nothing.
+//
+// THE ANTI-SOFTENING CLAUSE STILL APPLIES, and it now has teeth: a threshold
+// that turns out to be unreachable is ESCALATED per the rule written into the
+// TEST-03 gate's banner, never quietly loosened. Loosening a threshold by hand
+// breaks the derivation assertion in that gate; loosening measuredDb with it
+// breaks the reproduction CHECK in the measure pass. Both would have to be
+// edited together, and both are named here, so the edit cannot be a quiet one.
 // ---------------------------------------------------------------------------
 static const SpectrumCell SPECTRUM_GRID[] = {
 
@@ -720,57 +761,57 @@ static const SpectrumCell SPECTRUM_GRID[] = {
 	// =======================================================================
 
 	// --- C7, 44.1 kHz, K = 195, ~2099.5 Hz, 10 harmonics below Nyquist. -----
-	{ 44100.0, 195, "C7", 0.00f, "sine",     0.00f,  -75.0f, "gated",        kProvFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
-	{ 44100.0, 195, "C7", 0.00f, "sine",     0.50f,  -65.0f, "gated",        kProvDirect },   // prototype naive   -60.0 -> corrected   -68.4 dB
-	{ 44100.0, 195, "C7", 0.00f, "sine",     1.00f,  -75.0f, "gated",        kProvFloored },   // prototype naive  -102.4 -> corrected  -102.4 dB
-	{ 44100.0, 195, "C7", 0.25f, "triangle", 0.00f,  -47.0f, "gated",        kProvDirect },   // prototype naive   -41.7 -> corrected   -50.3 dB
-	{ 44100.0, 195, "C7", 0.25f, "triangle", 0.50f,  -39.0f, "gated",        kProvDirect },   // prototype naive   -40.7 -> corrected   -42.1 dB
-	{ 44100.0, 195, "C7", 0.25f, "triangle", 1.00f,  -44.0f, "gated",        kProvDirect },   // prototype naive   -47.4 -> corrected   -47.4 dB
-	{ 44100.0, 195, "C7", 0.50f, "saw",      0.00f,  -26.0f, "gated",        kProvDirect },   // prototype naive   -20.8 -> corrected   -29.5 dB
-	{ 44100.0, 195, "C7", 0.50f, "saw",      0.50f,  -26.0f, "gated",        kProvDirect },   // prototype naive   -20.6 -> corrected   -29.2 dB
-	{ 44100.0, 195, "C7", 0.50f, "saw",      1.00f,  -25.0f, "gated",        kProvDirect },   // prototype naive   -20.0 -> corrected   -28.0 dB
-	{ 44100.0, 195, "C7", 0.75f, "square",   0.00f,  -26.0f, "gated",        kProvDirect },   // prototype naive   -20.8 -> corrected   -29.5 dB
-	{ 44100.0, 195, "C7", 0.75f, "square",   0.50f,  -27.0f, "gated",        kProvDirect },   // prototype naive   -22.0 -> corrected   -30.3 dB
-	{ 44100.0, 195, "C7", 0.75f, "square",   1.00f,  -57.0f, "gated",        kProvDirect },   // prototype naive   -53.0 -> corrected   -60.1 dB
-	{ 44100.0, 195, "C7", 1.00f, "pulse 5%", 0.00f,  -10.0f, "gated",        kProvDirect },   // prototype naive    -4.8 -> corrected   -13.5 dB
-	{ 44100.0, 195, "C7", 1.00f, "pulse 5%", 0.50f,  -10.0f, "gated",        kProvDirect },   // prototype naive    -5.3 -> corrected   -13.1 dB
-	{ 44100.0, 195, "C7", 1.00f, "pulse 5%", 1.00f,  -17.0f, "gated",        kProvDirect },   // prototype naive   -19.7 -> corrected   -20.3 dB
+	{  44100.0, 195, "C7", 0.00f, "sine",     0.00f,   -125.4350f,   -75.0f, "gated",       kProvFloored             },   // prototype corrected   -150.7 -> MEASURED  -125.4350  (APPARATUS FLOOR (-125.51 dB), not the DSP)
+	{  44100.0, 195, "C7", 0.00f, "sine",     0.50f,    -64.6079f,   -61.0f, "gated",       kProvMeasured            },   // prototype corrected    -68.4 -> MEASURED   -64.6079  (IMPL WORSE by 3.79)
+	{  44100.0, 195, "C7", 0.00f, "sine",     1.00f,    -98.8753f,   -75.0f, "gated",       kProvFloored             },   // prototype corrected   -102.4 -> MEASURED   -98.8753  (IMPL WORSE by 3.52)
+	{  44100.0, 195, "C7", 0.25f, "triangle", 0.00f,    -50.2842f,   -47.0f, "gated",       kProvMeasured            },   // prototype corrected    -50.3 -> MEASURED   -50.2842  (+0.02)
+	{  44100.0, 195, "C7", 0.25f, "triangle", 0.50f,    -42.0859f,   -39.0f, "gated",       kProvMeasured            },   // prototype corrected    -42.1 -> MEASURED   -42.0859  (+0.01)
+	{  44100.0, 195, "C7", 0.25f, "triangle", 1.00f,    -47.5920f,   -44.0f, "gated",       kProvMeasured            },   // prototype corrected    -47.4 -> MEASURED   -47.5920  (-0.19)
+	{  44100.0, 195, "C7", 0.50f, "saw",      0.00f,    -29.5463f,   -26.0f, "gated",       kProvMeasured            },   // prototype corrected    -29.5 -> MEASURED   -29.5463  (-0.05)
+	{  44100.0, 195, "C7", 0.50f, "saw",      0.50f,    -29.2725f,   -26.0f, "gated",       kProvMeasured            },   // prototype corrected    -29.2 -> MEASURED   -29.2725  (-0.07)
+	{  44100.0, 195, "C7", 0.50f, "saw",      1.00f,    -28.1772f,   -25.0f, "gated",       kProvMeasured            },   // prototype corrected    -28.0 -> MEASURED   -28.1772  (-0.18)
+	{  44100.0, 195, "C7", 0.75f, "square",   0.00f,    -29.4639f,   -26.0f, "gated",       kProvMeasured            },   // prototype corrected    -29.5 -> MEASURED   -29.4639  (+0.04)
+	{  44100.0, 195, "C7", 0.75f, "square",   0.50f,    -29.9283f,   -26.0f, "gated",       kProvMeasured            },   // prototype corrected    -30.3 -> MEASURED   -29.9283  (+0.37)
+	{  44100.0, 195, "C7", 0.75f, "square",   1.00f,    -57.1816f,   -54.0f, "gated",       kProvMeasured            },   // prototype corrected    -60.1 -> MEASURED   -57.1816  (IMPL WORSE by 2.92)
+	{  44100.0, 195, "C7", 1.00f, "pulse 5%", 0.00f,    -13.5375f,   -10.0f, "gated",       kProvMeasured            },   // prototype corrected    -13.5 -> MEASURED   -13.5375  (-0.04)
+	{  44100.0, 195, "C7", 1.00f, "pulse 5%", 0.50f,    -13.2981f,   -10.0f, "gated",       kProvMeasured            },   // prototype corrected    -13.1 -> MEASURED   -13.2981  (-0.20)
+	{  44100.0, 195, "C7", 1.00f, "pulse 5%", 1.00f,    -20.7280f,   -17.0f, "gated",       kProvMeasured            },   // prototype corrected    -20.3 -> MEASURED   -20.7280  (-0.43)
 
 	// --- C8, 44.1 kHz, K = 389, ~4188.2 Hz, 5 harmonics below Nyquist. ------
-	{ 44100.0, 389, "C8", 0.00f, "sine",     0.00f,  -75.0f, "gated",        kProvFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
-	{ 44100.0, 389, "C8", 0.00f, "sine",     0.50f,  -68.0f, "gated",        kProvDirect },   // prototype naive   -55.5 -> corrected   -71.5 dB
-	{ 44100.0, 389, "C8", 0.00f, "sine",     1.00f,  -73.0f, "gated",        kProvDirect },   // prototype naive   -70.6 -> corrected   -76.4 dB
-	{ 44100.0, 389, "C8", 0.25f, "triangle", 0.00f,  -45.0f, "gated",        kProvDirect },   // prototype naive   -33.8 -> corrected   -48.8 dB
-	{ 44100.0, 389, "C8", 0.25f, "triangle", 0.50f,  -35.0f, "gated",        kProvDirect },   // prototype naive   -33.2 -> corrected   -38.1 dB
-	{ 44100.0, 389, "C8", 0.25f, "triangle", 1.00f,  -30.0f, "gated",        kProvDirect },   // prototype naive   -33.5 -> corrected   -33.5 dB
-	{ 44100.0, 389, "C8", 0.50f, "saw",      0.00f,  -22.0f, "gated",        kProvDirect },   // prototype naive   -15.6 -> corrected   -25.8 dB
-	{ 44100.0, 389, "C8", 0.50f, "saw",      0.50f,  -22.0f, "gated",        kProvDirect },   // prototype naive   -15.4 -> corrected   -25.7 dB
-	{ 44100.0, 389, "C8", 0.50f, "saw",      1.00f,  -20.0f, "gated",        kProvDirect },   // prototype naive   -14.7 -> corrected   -23.9 dB
-	{ 44100.0, 389, "C8", 0.75f, "square",   0.00f,  -28.0f, "gated",        kProvDirect },   // prototype naive   -16.9 -> corrected   -31.9 dB
-	{ 44100.0, 389, "C8", 0.75f, "square",   0.50f,  -30.0f, "gated",        kProvDirect },   // prototype naive   -17.5 -> corrected   -33.2 dB
-	{ 44100.0, 389, "C8", 0.75f, "square",   1.00f,  -44.0f, "gated",        kProvDirect },   // prototype naive   -40.1 -> corrected   -47.7 dB
-	{ 44100.0, 389, "C8", 1.00f, "pulse 5%", 0.00f,   -8.0f, "gated",        kProvDirect },   // prototype naive    -1.3 -> corrected   -11.6 dB
-	{ 44100.0, 389, "C8", 1.00f, "pulse 5%", 0.50f,   -8.0f, "gated",        kProvDirect },   // prototype naive    -1.5 -> corrected   -11.1 dB
-	{ 44100.0, 389, "C8", 1.00f, "pulse 5%", 1.00f,   -7.0f, "gated",        kProvDirect },   // prototype naive    -7.6 -> corrected   -10.8 dB
+	{  44100.0, 389, "C8", 0.00f, "sine",     0.00f,   -101.5410f,   -75.0f, "gated",       kProvFloored             },   // prototype corrected   -150.7 -> MEASURED  -101.5410  (APPARATUS FLOOR (-101.55 dB), not the DSP)
+	{  44100.0, 389, "C8", 0.00f, "sine",     0.50f,    -66.1069f,   -63.0f, "gated",       kProvMeasured            },   // prototype corrected    -71.5 -> MEASURED   -66.1069  (IMPL WORSE by 5.39)
+	{  44100.0, 389, "C8", 0.00f, "sine",     1.00f,    -73.1369f,   -70.0f, "gated",       kProvMeasured            },   // prototype corrected    -76.4 -> MEASURED   -73.1369  (IMPL WORSE by 3.26)
+	{  44100.0, 389, "C8", 0.25f, "triangle", 0.00f,    -48.7878f,   -45.0f, "gated",       kProvMeasured            },   // prototype corrected    -48.8 -> MEASURED   -48.7878  (+0.01)
+	{  44100.0, 389, "C8", 0.25f, "triangle", 0.50f,    -38.1311f,   -35.0f, "gated",       kProvMeasured            },   // prototype corrected    -38.1 -> MEASURED   -38.1311  (-0.03)
+	{  44100.0, 389, "C8", 0.25f, "triangle", 1.00f,    -33.6972f,   -30.0f, "gated",       kProvMeasured            },   // prototype corrected    -33.5 -> MEASURED   -33.6972  (-0.20)
+	{  44100.0, 389, "C8", 0.50f, "saw",      0.00f,    -25.8423f,   -22.0f, "gated",       kProvMeasured            },   // prototype corrected    -25.8 -> MEASURED   -25.8423  (-0.04)
+	{  44100.0, 389, "C8", 0.50f, "saw",      0.50f,    -25.6496f,   -22.0f, "gated",       kProvMeasured            },   // prototype corrected    -25.7 -> MEASURED   -25.6496  (+0.05)
+	{  44100.0, 389, "C8", 0.50f, "saw",      1.00f,    -23.9943f,   -20.0f, "gated",       kProvMeasured            },   // prototype corrected    -23.9 -> MEASURED   -23.9943  (-0.09)
+	{  44100.0, 389, "C8", 0.75f, "square",   0.00f,    -31.8772f,   -28.0f, "gated",       kProvMeasured            },   // prototype corrected    -31.9 -> MEASURED   -31.8772  (+0.02)
+	{  44100.0, 389, "C8", 0.75f, "square",   0.50f,    -31.2534f,   -28.0f, "gated",       kProvMeasured            },   // prototype corrected    -33.2 -> MEASURED   -31.2534  (IMPL WORSE by 1.95)
+	{  44100.0, 389, "C8", 0.75f, "square",   1.00f,    -47.0596f,   -44.0f, "gated",       kProvMeasured            },   // prototype corrected    -47.7 -> MEASURED   -47.0596  (+0.64)
+	{  44100.0, 389, "C8", 1.00f, "pulse 5%", 0.00f,    -11.5704f,    -8.0f, "gated",       kProvMeasured            },   // prototype corrected    -11.6 -> MEASURED   -11.5704  (+0.03)
+	{  44100.0, 389, "C8", 1.00f, "pulse 5%", 0.50f,    -11.1090f,    -8.0f, "gated",       kProvMeasured            },   // prototype corrected    -11.1 -> MEASURED   -11.1090  (-0.01)
+	{  44100.0, 389, "C8", 1.00f, "pulse 5%", 1.00f,    -12.2084f,    -9.0f, "gated",       kProvMeasured            },   // prototype corrected    -10.8 -> MEASURED   -12.2084  (IMPL BETTER by 1.41)
 
 	// --- C9, 44.1 kHz, K = 777, ~8366.9 Hz, 2 harmonics below Nyquist. ------
 	//     The hardest row for every shape: only two harmonics survive, so
 	//     almost the whole waveform is alias.
-	{ 44100.0, 777, "C9", 0.00f, "sine",     0.00f,  -75.0f, "gated",        kProvFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
-	{ 44100.0, 777, "C9", 0.00f, "sine",     0.50f,  -31.0f, "gated",        kProvDirect },   // prototype naive   -36.1 -> corrected   -34.6 dB
-	{ 44100.0, 777, "C9", 0.00f, "sine",     1.00f,  -19.0f, "gated",        kProvDirect },   // prototype naive   -23.2 -> corrected   -22.7 dB
-	{ 44100.0, 777, "C9", 0.25f, "triangle", 0.00f,  -25.0f, "gated",        kProvDirect },   // prototype naive   -19.1 -> corrected   -28.5 dB
-	{ 44100.0, 777, "C9", 0.25f, "triangle", 0.50f,  -21.0f, "gated",        kProvDirect },   // prototype naive   -19.0 -> corrected   -24.9 dB
-	{ 44100.0, 777, "C9", 0.25f, "triangle", 1.00f,  -16.0f, "gated",        kProvDirect },   // prototype naive   -18.5 -> corrected   -19.8 dB
-	{ 44100.0, 777, "C9", 0.50f, "saw",      0.00f,  -16.0f, "gated",        kProvDirect },   // prototype naive    -9.5 -> corrected   -19.0 dB
-	{ 44100.0, 777, "C9", 0.50f, "saw",      0.50f,  -15.0f, "gated",        kProvDirect },   // prototype naive    -9.4 -> corrected   -18.9 dB
-	{ 44100.0, 777, "C9", 0.50f, "saw",      1.00f,  -14.0f, "gated",        kProvDirect },   // prototype naive    -8.9 -> corrected   -17.5 dB
-	{ 44100.0, 777, "C9", 0.75f, "square",   0.00f,  -16.0f, "gated",        kProvDirect },   // prototype naive    -9.5 -> corrected   -19.0 dB
-	{ 44100.0, 777, "C9", 0.75f, "square",   0.50f,  -16.0f, "gated",        kProvDirect },   // prototype naive    -9.6 -> corrected   -19.6 dB
-	{ 44100.0, 777, "C9", 0.75f, "square",   1.00f,  -18.0f, "gated",        kProvDirect },   // prototype naive   -15.5 -> corrected   -21.7 dB
-	{ 44100.0, 777, "C9", 1.00f, "pulse 5%", 0.00f,   -6.0f, "gated",        kProvDirect },   // prototype naive    -0.3 -> corrected    -9.8 dB
-	{ 44100.0, 777, "C9", 1.00f, "pulse 5%", 0.50f,   -6.0f, "gated",        kProvDirect },   // prototype naive    -0.4 -> corrected    -9.5 dB
-	{ 44100.0, 777, "C9", 1.00f, "pulse 5%", 1.00f,   -2.0f, "gated",        kProvDirect },   // prototype naive    -2.3 -> corrected    -5.6 dB
+	{  44100.0, 777, "C9", 0.00f, "sine",     0.00f,    -91.9421f,   -75.0f, "gated",       kProvFloored             },   // prototype corrected   -150.7 -> MEASURED   -91.9421  (APPARATUS FLOOR (-91.95 dB), not the DSP)
+	{  44100.0, 777, "C9", 0.00f, "sine",     0.50f,    -35.0480f,   -32.0f, "gated",       kProvMeasured            },   // prototype corrected    -34.6 -> MEASURED   -35.0480  (-0.45)
+	{  44100.0, 777, "C9", 0.00f, "sine",     1.00f,    -23.0910f,   -20.0f, "gated",       kProvMeasured            },   // prototype corrected    -22.7 -> MEASURED   -23.0910  (-0.39)
+	{  44100.0, 777, "C9", 0.25f, "triangle", 0.00f,    -28.5498f,   -25.0f, "gated",       kProvMeasured            },   // prototype corrected    -28.5 -> MEASURED   -28.5498  (-0.05)
+	{  44100.0, 777, "C9", 0.25f, "triangle", 0.50f,    -24.8652f,   -21.0f, "gated",       kProvMeasured            },   // prototype corrected    -24.9 -> MEASURED   -24.8652  (+0.03)
+	{  44100.0, 777, "C9", 0.25f, "triangle", 1.00f,    -19.8372f,   -16.0f, "gated",       kProvMeasured            },   // prototype corrected    -19.8 -> MEASURED   -19.8372  (-0.04)
+	{  44100.0, 777, "C9", 0.50f, "saw",      0.00f,    -19.0075f,   -16.0f, "gated",       kProvMeasured            },   // prototype corrected    -19.0 -> MEASURED   -19.0075  (-0.01)
+	{  44100.0, 777, "C9", 0.50f, "saw",      0.50f,    -18.8436f,   -15.0f, "gated",       kProvMeasured            },   // prototype corrected    -18.9 -> MEASURED   -18.8436  (+0.06)
+	{  44100.0, 777, "C9", 0.50f, "saw",      1.00f,    -17.4367f,   -14.0f, "gated",       kProvMeasured            },   // prototype corrected    -17.5 -> MEASURED   -17.4367  (+0.06)
+	{  44100.0, 777, "C9", 0.75f, "square",   0.00f,    -19.0075f,   -16.0f, "gated",       kProvMeasured            },   // prototype corrected    -19.0 -> MEASURED   -19.0075  (-0.01)
+	{  44100.0, 777, "C9", 0.75f, "square",   0.50f,    -18.4588f,   -15.0f, "gated",       kProvMeasured            },   // prototype corrected    -19.6 -> MEASURED   -18.4588  (IMPL WORSE by 1.14)
+	{  44100.0, 777, "C9", 0.75f, "square",   1.00f,    -21.6580f,   -18.0f, "gated",       kProvMeasured            },   // prototype corrected    -21.7 -> MEASURED   -21.6580  (+0.04)
+	{  44100.0, 777, "C9", 1.00f, "pulse 5%", 0.00f,     -9.7531f,    -6.0f, "gated",       kProvMeasured            },   // prototype corrected     -9.8 -> MEASURED    -9.7531  (+0.05)
+	{  44100.0, 777, "C9", 1.00f, "pulse 5%", 0.50f,     -9.5280f,    -6.0f, "gated",       kProvMeasured            },   // prototype corrected     -9.5 -> MEASURED    -9.5280  (-0.03)
+	{  44100.0, 777, "C9", 1.00f, "pulse 5%", 1.00f,     -7.2588f,    -4.0f, "gated",       kProvMeasured            },   // prototype corrected     -5.6 -> MEASURED    -7.2588  (IMPL BETTER by 1.66)
 
 	// =======================================================================
 	// (b) THE DIAGNOSTIC ROW — 15 cells. 44.1 kHz at K = 97 (C6), same fifteen
@@ -787,21 +828,21 @@ static const SpectrumCell SPECTRUM_GRID[] = {
 	//     to an already-clean spectrum. A grid that only looked at C7 and above
 	//     would score that as "no improvement" instead of "damage".
 	// =======================================================================
-	{ 44100.0,  97, "C6", 0.00f, "sine",     0.00f,  -75.0f, "diagnostic",   kProvDiagnosticFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
-	{ 44100.0,  97, "C6", 0.00f, "sine",     0.50f,  -73.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -67.5 -> corrected   -76.6 dB
-	{ 44100.0,  97, "C6", 0.00f, "sine",     1.00f,  -75.0f, "diagnostic",   kProvDiagnosticFloored },   // prototype naive  -117.3 -> corrected  -117.3 dB
-	{ 44100.0,  97, "C6", 0.25f, "triangle", 0.00f,  -61.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -54.5 -> corrected   -64.0 dB
-	{ 44100.0,  97, "C6", 0.25f, "triangle", 0.50f,  -52.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -55.1 -> corrected   -55.1 dB
-	{ 44100.0,  97, "C6", 0.25f, "triangle", 1.00f,  -57.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -60.5 -> corrected   -60.5 dB
-	{ 44100.0,  97, "C6", 0.50f, "saw",      0.00f,  -32.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -26.8 -> corrected   -35.4 dB
-	{ 44100.0,  97, "C6", 0.50f, "saw",      0.50f,  -32.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -26.6 -> corrected   -35.1 dB
-	{ 44100.0,  97, "C6", 0.50f, "saw",      1.00f,  -32.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -26.4 -> corrected   -35.0 dB
-	{ 44100.0,  97, "C6", 0.75f, "square",   0.00f,  -33.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -27.2 -> corrected   -36.7 dB
-	{ 44100.0,  97, "C6", 0.75f, "square",   0.50f,  -35.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -29.4 -> corrected   -38.6 dB
-	{ 44100.0,  97, "C6", 0.75f, "square",   1.00f,  -65.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -60.1 -> corrected   -68.7 dB
-	{ 44100.0,  97, "C6", 1.00f, "pulse 5%", 0.00f,  -23.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -13.2 -> corrected   -26.4 dB
-	{ 44100.0,  97, "C6", 1.00f, "pulse 5%", 0.50f,  -24.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -14.9 -> corrected   -27.2 dB
-	{ 44100.0,  97, "C6", 1.00f, "pulse 5%", 1.00f,  -33.0f, "diagnostic",   kProvDiagnostic },   // prototype naive   -36.8 -> corrected   -36.8 dB
+	{  44100.0,  97, "C6", 0.00f, "sine",     0.00f,   -116.1410f,   -75.0f, "diagnostic",  kProvDiagnosticFloored   },   // prototype corrected   -150.7 -> MEASURED  -116.1410  (APPARATUS FLOOR (-116.19 dB), not the DSP)
+	{  44100.0,  97, "C6", 0.00f, "sine",     0.50f,    -73.1731f,   -70.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -76.6 -> MEASURED   -73.1731  (IMPL WORSE by 3.43)
+	{  44100.0,  97, "C6", 0.00f, "sine",     1.00f,   -114.0990f,   -75.0f, "diagnostic",  kProvDiagnosticFloored   },   // prototype corrected   -117.3 -> MEASURED  -114.0990  (IMPL WORSE by 3.20)
+	{  44100.0,  97, "C6", 0.25f, "triangle", 0.00f,    -63.9483f,   -60.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -64.0 -> MEASURED   -63.9483  (+0.05)
+	{  44100.0,  97, "C6", 0.25f, "triangle", 0.50f,    -55.2153f,   -52.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -55.1 -> MEASURED   -55.2153  (-0.12)
+	{  44100.0,  97, "C6", 0.25f, "triangle", 1.00f,    -60.2646f,   -57.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -60.5 -> MEASURED   -60.2646  (+0.24)
+	{  44100.0,  97, "C6", 0.50f, "saw",      0.00f,    -35.4319f,   -32.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -35.4 -> MEASURED   -35.4319  (-0.03)
+	{  44100.0,  97, "C6", 0.50f, "saw",      0.50f,    -35.0575f,   -32.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -35.1 -> MEASURED   -35.0575  (+0.04)
+	{  44100.0,  97, "C6", 0.50f, "saw",      1.00f,    -35.0833f,   -32.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -35.0 -> MEASURED   -35.0833  (-0.08)
+	{  44100.0,  97, "C6", 0.75f, "square",   0.00f,    -36.7254f,   -33.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -36.7 -> MEASURED   -36.7254  (-0.03)
+	{  44100.0,  97, "C6", 0.75f, "square",   0.50f,    -38.5206f,   -35.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -38.6 -> MEASURED   -38.5206  (+0.08)
+	{  44100.0,  97, "C6", 0.75f, "square",   1.00f,    -65.2994f,   -62.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -68.7 -> MEASURED   -65.2994  (IMPL WORSE by 3.40)
+	{  44100.0,  97, "C6", 1.00f, "pulse 5%", 0.00f,    -26.3658f,   -23.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -26.4 -> MEASURED   -26.3658  (+0.03)
+	{  44100.0,  97, "C6", 1.00f, "pulse 5%", 0.50f,    -27.3031f,   -24.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -27.2 -> MEASURED   -27.3031  (-0.10)
+	{  44100.0,  97, "C6", 1.00f, "pulse 5%", 1.00f,    -36.9925f,   -33.0f, "diagnostic",  kProvDiagnostic          },   // prototype corrected    -36.8 -> MEASURED   -36.9925  (-0.19)
 
 	// =======================================================================
 	// (c) THE D-11 CROSS-RATE REGRESSION — 30 cells. 48000 Hz at K = 357 and
@@ -827,38 +868,38 @@ static const SpectrumCell SPECTRUM_GRID[] = {
 	// =======================================================================
 
 	// --- 48 kHz, K = 357, ~4183.6 Hz, 5 harmonics — same note as 44.1k C8. --
-	{ 48000.0, 357, "C8", 0.00f, "sine",     0.00f,  -75.0f, "regression",   kProvSameNoteFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
-	{ 48000.0, 357, "C8", 0.00f, "sine",     0.50f,  -68.0f, "regression",   kProvSameNote },   // prototype naive   -55.5 -> corrected   -71.5 dB
-	{ 48000.0, 357, "C8", 0.00f, "sine",     1.00f,  -73.0f, "regression",   kProvSameNote },   // prototype naive   -70.6 -> corrected   -76.4 dB
-	{ 48000.0, 357, "C8", 0.25f, "triangle", 0.00f,  -45.0f, "regression",   kProvSameNote },   // prototype naive   -33.8 -> corrected   -48.8 dB
-	{ 48000.0, 357, "C8", 0.25f, "triangle", 0.50f,  -35.0f, "regression",   kProvSameNote },   // prototype naive   -33.2 -> corrected   -38.1 dB
-	{ 48000.0, 357, "C8", 0.25f, "triangle", 1.00f,  -30.0f, "regression",   kProvSameNote },   // prototype naive   -33.5 -> corrected   -33.5 dB
-	{ 48000.0, 357, "C8", 0.50f, "saw",      0.00f,  -22.0f, "regression",   kProvSameNote },   // prototype naive   -15.6 -> corrected   -25.8 dB
-	{ 48000.0, 357, "C8", 0.50f, "saw",      0.50f,  -22.0f, "regression",   kProvSameNote },   // prototype naive   -15.4 -> corrected   -25.7 dB
-	{ 48000.0, 357, "C8", 0.50f, "saw",      1.00f,  -20.0f, "regression",   kProvSameNote },   // prototype naive   -14.7 -> corrected   -23.9 dB
-	{ 48000.0, 357, "C8", 0.75f, "square",   0.00f,  -28.0f, "regression",   kProvSameNote },   // prototype naive   -16.9 -> corrected   -31.9 dB
-	{ 48000.0, 357, "C8", 0.75f, "square",   0.50f,  -30.0f, "regression",   kProvSameNote },   // prototype naive   -17.5 -> corrected   -33.2 dB
-	{ 48000.0, 357, "C8", 0.75f, "square",   1.00f,  -44.0f, "regression",   kProvSameNote },   // prototype naive   -40.1 -> corrected   -47.7 dB
-	{ 48000.0, 357, "C8", 1.00f, "pulse 5%", 0.00f,   -8.0f, "regression",   kProvSameNote },   // prototype naive    -1.3 -> corrected   -11.6 dB
-	{ 48000.0, 357, "C8", 1.00f, "pulse 5%", 0.50f,   -8.0f, "regression",   kProvSameNote },   // prototype naive    -1.5 -> corrected   -11.1 dB
-	{ 48000.0, 357, "C8", 1.00f, "pulse 5%", 1.00f,   -7.0f, "regression",   kProvSameNote },   // prototype naive    -7.6 -> corrected   -10.8 dB
+	{  48000.0, 357, "C8", 0.00f, "sine",     0.00f,    -97.7016f,   -75.0f, "regression",  kProvCrossRateFloored    },   // prototype corrected   -150.7 -> MEASURED   -97.7016  (APPARATUS FLOOR (-97.71 dB), not the DSP)
+	{  48000.0, 357, "C8", 0.00f, "sine",     0.50f,    -63.4384f,   -60.0f, "regression",  kProvCrossRate           },   // prototype corrected    -71.5 -> MEASURED   -63.4384  (IMPL WORSE by 8.06)
+	{  48000.0, 357, "C8", 0.00f, "sine",     1.00f,    -68.4310f,   -65.0f, "regression",  kProvCrossRate           },   // prototype corrected    -76.4 -> MEASURED   -68.4310  (IMPL WORSE by 7.97)
+	{  48000.0, 357, "C8", 0.25f, "triangle", 0.00f,    -45.9493f,   -42.0f, "regression",  kProvCrossRate           },   // prototype corrected    -48.8 -> MEASURED   -45.9493  (IMPL WORSE by 2.85)
+	{  48000.0, 357, "C8", 0.25f, "triangle", 0.50f,    -37.3045f,   -34.0f, "regression",  kProvCrossRate           },   // prototype corrected    -38.1 -> MEASURED   -37.3045  (+0.80)
+	{  48000.0, 357, "C8", 0.25f, "triangle", 1.00f,    -33.6580f,   -30.0f, "regression",  kProvCrossRate           },   // prototype corrected    -33.5 -> MEASURED   -33.6580  (-0.16)
+	{  48000.0, 357, "C8", 0.50f, "saw",      0.00f,    -24.0157f,   -21.0f, "regression",  kProvCrossRate           },   // prototype corrected    -25.8 -> MEASURED   -24.0157  (IMPL WORSE by 1.78)
+	{  48000.0, 357, "C8", 0.50f, "saw",      0.50f,    -23.8260f,   -20.0f, "regression",  kProvCrossRate           },   // prototype corrected    -25.7 -> MEASURED   -23.8260  (IMPL WORSE by 1.87)
+	{  48000.0, 357, "C8", 0.50f, "saw",      1.00f,    -22.4636f,   -19.0f, "regression",  kProvCrossRate           },   // prototype corrected    -23.9 -> MEASURED   -22.4636  (IMPL WORSE by 1.44)
+	{  48000.0, 357, "C8", 0.75f, "square",   0.00f,    -29.0479f,   -26.0f, "regression",  kProvCrossRate           },   // prototype corrected    -31.9 -> MEASURED   -29.0479  (IMPL WORSE by 2.85)
+	{  48000.0, 357, "C8", 0.75f, "square",   0.50f,    -28.6222f,   -25.0f, "regression",  kProvCrossRate           },   // prototype corrected    -33.2 -> MEASURED   -28.6222  (IMPL WORSE by 4.58)
+	{  48000.0, 357, "C8", 0.75f, "square",   1.00f,    -42.9267f,   -39.0f, "regression",  kProvCrossRate           },   // prototype corrected    -47.7 -> MEASURED   -42.9267  (IMPL WORSE by 4.77)
+	{  48000.0, 357, "C8", 1.00f, "pulse 5%", 0.00f,     -9.7431f,    -6.0f, "regression",  kProvCrossRate           },   // prototype corrected    -11.6 -> MEASURED    -9.7431  (IMPL WORSE by 1.86)
+	{  48000.0, 357, "C8", 1.00f, "pulse 5%", 0.50f,     -9.4072f,    -6.0f, "regression",  kProvCrossRate           },   // prototype corrected    -11.1 -> MEASURED    -9.4072  (IMPL WORSE by 1.69)
+	{  48000.0, 357, "C8", 1.00f, "pulse 5%", 1.00f,    -11.0512f,    -8.0f, "regression",  kProvCrossRate           },   // prototype corrected    -10.8 -> MEASURED   -11.0512  (-0.25)
 
 	// --- 96 kHz, K = 179, ~4195.3 Hz, 11 harmonics — same note as 44.1k C8. -
-	{ 96000.0, 179, "C8", 0.00f, "sine",     0.00f,  -75.0f, "regression",   kProvSameNoteFloored },   // prototype naive  -150.7 -> corrected  -150.7 dB
-	{ 96000.0, 179, "C8", 0.00f, "sine",     0.50f,  -68.0f, "regression",   kProvSameNote },   // prototype naive   -55.5 -> corrected   -71.5 dB
-	{ 96000.0, 179, "C8", 0.00f, "sine",     1.00f,  -73.0f, "regression",   kProvSameNote },   // prototype naive   -70.6 -> corrected   -76.4 dB
-	{ 96000.0, 179, "C8", 0.25f, "triangle", 0.00f,  -45.0f, "regression",   kProvSameNote },   // prototype naive   -33.8 -> corrected   -48.8 dB
-	{ 96000.0, 179, "C8", 0.25f, "triangle", 0.50f,  -35.0f, "regression",   kProvSameNote },   // prototype naive   -33.2 -> corrected   -38.1 dB
-	{ 96000.0, 179, "C8", 0.25f, "triangle", 1.00f,  -30.0f, "regression",   kProvSameNote },   // prototype naive   -33.5 -> corrected   -33.5 dB
-	{ 96000.0, 179, "C8", 0.50f, "saw",      0.00f,  -22.0f, "regression",   kProvSameNote },   // prototype naive   -15.6 -> corrected   -25.8 dB
-	{ 96000.0, 179, "C8", 0.50f, "saw",      0.50f,  -22.0f, "regression",   kProvSameNote },   // prototype naive   -15.4 -> corrected   -25.7 dB
-	{ 96000.0, 179, "C8", 0.50f, "saw",      1.00f,  -20.0f, "regression",   kProvSameNote },   // prototype naive   -14.7 -> corrected   -23.9 dB
-	{ 96000.0, 179, "C8", 0.75f, "square",   0.00f,  -28.0f, "regression",   kProvSameNote },   // prototype naive   -16.9 -> corrected   -31.9 dB
-	{ 96000.0, 179, "C8", 0.75f, "square",   0.50f,  -30.0f, "regression",   kProvSameNote },   // prototype naive   -17.5 -> corrected   -33.2 dB
-	{ 96000.0, 179, "C8", 0.75f, "square",   1.00f,  -44.0f, "regression",   kProvSameNote },   // prototype naive   -40.1 -> corrected   -47.7 dB
-	{ 96000.0, 179, "C8", 1.00f, "pulse 5%", 0.00f,   -8.0f, "regression",   kProvSameNote },   // prototype naive    -1.3 -> corrected   -11.6 dB
-	{ 96000.0, 179, "C8", 1.00f, "pulse 5%", 0.50f,   -8.0f, "regression",   kProvSameNote },   // prototype naive    -1.5 -> corrected   -11.1 dB
-	{ 96000.0, 179, "C8", 1.00f, "pulse 5%", 1.00f,   -7.0f, "regression",   kProvSameNote },   // prototype naive    -7.6 -> corrected   -10.8 dB
+	{  96000.0, 179, "C8", 0.00f, "sine",     0.00f,   -102.8520f,   -75.0f, "regression",  kProvCrossRateFloored    },   // prototype corrected   -150.7 -> MEASURED  -102.8520  (APPARATUS FLOOR (-102.88 dB), not the DSP)
+	{  96000.0, 179, "C8", 0.00f, "sine",     0.50f,    -68.1778f,   -65.0f, "regression",  kProvCrossRate           },   // prototype corrected    -71.5 -> MEASURED   -68.1778  (IMPL WORSE by 3.32)
+	{  96000.0, 179, "C8", 0.00f, "sine",     1.00f,   -100.1890f,   -75.0f, "regression",  kProvCrossRateFloored    },   // prototype corrected    -76.4 -> MEASURED  -100.1890  (IMPL BETTER by 23.79)
+	{  96000.0, 179, "C8", 0.25f, "triangle", 0.00f,    -54.9689f,   -51.0f, "regression",  kProvCrossRate           },   // prototype corrected    -48.8 -> MEASURED   -54.9689  (IMPL BETTER by 6.17)
+	{  96000.0, 179, "C8", 0.25f, "triangle", 0.50f,    -44.8830f,   -41.0f, "regression",  kProvCrossRate           },   // prototype corrected    -38.1 -> MEASURED   -44.8830  (IMPL BETTER by 6.78)
+	{  96000.0, 179, "C8", 0.25f, "triangle", 1.00f,    -47.5728f,   -44.0f, "regression",  kProvCrossRate           },   // prototype corrected    -33.5 -> MEASURED   -47.5728  (IMPL BETTER by 14.07)
+	{  96000.0, 179, "C8", 0.50f, "saw",      0.00f,    -30.2544f,   -27.0f, "regression",  kProvCrossRate           },   // prototype corrected    -25.8 -> MEASURED   -30.2544  (IMPL BETTER by 4.45)
+	{  96000.0, 179, "C8", 0.50f, "saw",      0.50f,    -30.0015f,   -27.0f, "regression",  kProvCrossRate           },   // prototype corrected    -25.7 -> MEASURED   -30.0015  (IMPL BETTER by 4.30)
+	{  96000.0, 179, "C8", 0.50f, "saw",      1.00f,    -29.1015f,   -26.0f, "regression",  kProvCrossRate           },   // prototype corrected    -23.9 -> MEASURED   -29.1015  (IMPL BETTER by 5.20)
+	{  96000.0, 179, "C8", 0.75f, "square",   0.00f,    -32.6886f,   -29.0f, "regression",  kProvCrossRate           },   // prototype corrected    -31.9 -> MEASURED   -32.6886  (-0.79)
+	{  96000.0, 179, "C8", 0.75f, "square",   0.50f,    -33.4991f,   -30.0f, "regression",  kProvCrossRate           },   // prototype corrected    -33.2 -> MEASURED   -33.4991  (-0.30)
+	{  96000.0, 179, "C8", 0.75f, "square",   1.00f,    -59.3793f,   -56.0f, "regression",  kProvCrossRate           },   // prototype corrected    -47.7 -> MEASURED   -59.3793  (IMPL BETTER by 11.68)
+	{  96000.0, 179, "C8", 1.00f, "pulse 5%", 0.00f,    -14.5772f,   -11.0f, "regression",  kProvCrossRate           },   // prototype corrected    -11.6 -> MEASURED   -14.5772  (IMPL BETTER by 2.98)
+	{  96000.0, 179, "C8", 1.00f, "pulse 5%", 0.50f,    -14.3618f,   -11.0f, "regression",  kProvCrossRate           },   // prototype corrected    -11.1 -> MEASURED   -14.3618  (IMPL BETTER by 3.26)
+	{  96000.0, 179, "C8", 1.00f, "pulse 5%", 1.00f,    -22.5743f,   -19.0f, "regression",  kProvCrossRate           },   // prototype corrected    -10.8 -> MEASURED   -22.5743  (IMPL BETTER by 11.77)
 };
 
 // Which bin-centre solver a cell was measured with. Reported through
@@ -1747,6 +1788,33 @@ TEST_CASE("vco spectrum: the naive and corrected alias floors, recorded per shap
 
 		if (method == kMethodPitchCV) ++methodOneCells; else ++methodTwoCells;
 
+		// ---- THE RECORDED MEASUREMENT STILL REPRODUCES (T-32-15). -----------
+		// `measuredDb` on the row is the corrected value plan 32-07 pinned that
+		// row's threshold FROM. This CHECK is what stops it becoming a fossil: it
+		// must still be what the core produces, to within 1.0 dB.
+		//
+		// WHY 1.0 dB AND NOT ZERO. The value is a float written to four decimal
+		// places from one toolchain's run, and the alias PEAK is a max over 2043
+		// bins — a bin ordering that changes by one unit in the last place can
+		// move the reported peak by a fraction of a decibel without anything in
+		// the DSP having moved. 1.0 dB is a third of the 3 dB pinning margin, so a
+		// drift large enough to fire here is still far too small to have made any
+		// gated cell miss, and it fires as a WARNING (a CHECK) rather than as a
+		// REQUIRE for exactly that reason.
+		//
+		// >>> IF THIS FIRES, STOP AND REPORT IT RATHER THAN UPDATING THE NUMBER.
+		// The pair (measuredDb, thresholdDb) is the audit trail for T-32-15. Every
+		// gated threshold is derived from measuredDb by an assertion in the TEST-03
+		// gate below, so re-typing measuredDb to match a new run silently re-pins
+		// the whole column against whatever the implementation now produces — the
+		// exact failure mode the anti-softening clause exists to prevent. Re-run
+		// the MEASURE-TO-PIN PROTOCOL deliberately, and record what moved and why.
+		const double recordedDb = (double)cell.measuredDb;
+		const double recordedDrift = correctedDb - recordedDb;
+		CAPTURE(recordedDb);
+		CAPTURE(recordedDrift);
+		CHECK(std::fabs(recordedDrift) <= 1.0);
+
 		// ---- THE D-10 SELF-CHECK, PER CELL, BEFORE THE VALUE IS READ. -------
 		// The gate's own noise floor sits at least 10 dB below the threshold
 		// this cell will be judged against, so no figure recorded below can be
@@ -1862,103 +1930,111 @@ TEST_CASE("vco spectrum: the naive and corrected alias floors, recorded per shap
 }
 
 // ---------------------------------------------------------------------------
-// >>> THIS CASE IS A TOMBSTONE. <<<
+// >>> TEST-03: THE LIVE ALIAS-FLOOR GATE. THIS CASE WAS THE D-08 RED TOMBSTONE,
+//     AND IT WAS INVERTED IN PLACE RATHER THAN DELETED. <<<
 //
-// WHY THIS CASE EXISTS. D-08 requires the Phase 32 alias-floor gate to be
-// OBSERVED FAILING against the naive core before forge::MorphBlep lands. A gate
-// written against already-passing code proves nothing — it is indistinguishable
-// from a gate that cannot fail — and this phase's whole iteration budget is
-// spent against an objective metric rather than against ear-guessing, so the
-// metric has to be shown to bite first. The gate below was written in its FINAL
-// form, run against the naive forge::VcoCore, and observed RED. This case is
-// that failure, pinned.
+// WHAT IT USED TO BE, RECORDED RATHER THAN ERASED. Until plan 32-07 this case
+// asserted the OPPOSITE of what it asserts now: that the naive forge::VcoCore
+// FAILED this gate — a `failing >= 27` count assertion over the same 45 cells —
+// and that five named cells missed their thresholds by more than 5 dB. That was
+// the D-08 RED — a gate written in its final form, run against the naive core,
+// and OBSERVED failing, because a gate written against already-passing code is
+// indistinguishable from a gate that cannot fail. Plan 32-03's SUMMARY holds the
+// verbatim RED transcript; the observed count was 32 of the 45 gated cells.
 //
-// >>> WHAT PLAN 32-07 MUST DO. <<<
-// INVERT THIS CASE IN PLACE — same slot in this file, same SPECTRUM_GRID, same
-// 45 gated cells, same measureCellDb call with useMirror = false — into
-// CHECK(failing == 0) against the real forge::MorphBlep, and flip the five named
-// subset assertions from "misses its threshold by more than 5 dB" to
-// CHECK(correctedDb <= cell.thresholdDb). DELETING THIS CASE INSTEAD OF
-// INVERTING IT silently removes the phase's only recorded RED, and with it the
-// only evidence that the gate was ever able to fail. This is the shape Phase
-// 29's silence tombstone used and Phase 30 honoured (D-15 / D-19: inverted in
-// place, same slot, and observed red against a silenced core).
-//
-// >>> THE STANDING WARNING. <<<
-// IF THIS CASE EVER GOES GREEN WHILE forge::VcoCore::step IS STILL NAIVE, the
-// gate has stopped being able to see aliasing at all, and every threshold in
-// SPECTRUM_GRID above is decoration. A green result here does not mean the
-// oscillator improved — the oscillator is supposed to be aliasing. It means the
-// measurement stopped working, which is precisely the condition that would let
-// plan 32-07 land a broken forge::MorphBlep unnoticed.
-//
-// >>> THE ANTI-SOFTENING CLAUSE. <<<
-// A threshold that turns out to be unreachable is ESCALATED per plan 32-07's
-// documented procedure. It is NEVER quietly loosened, and the corrected column
-// in SPECTRUM_GRID is NEVER edited to match whatever the implementation happened
-// to produce. That edit would convert a measurement into a transcription of the
-// result, which is the one failure mode a threshold cannot survive (T-32-15).
+// The RED and the GREEN therefore occupy ONE place in this file. Same slot, same
+// SPECTRUM_GRID, same 45 gated cells, same measureCellDb with useMirror = false,
+// same per-cell D-10 leakage REQUIRE. Deleting the tombstone and adding a green
+// case beside it would have removed the only evidence the gate was ever able to
+// fail. This is the shape Phase 29's silence tombstone used and Phase 30
+// honoured (D-15 / D-19).
 //
 // ---------------------------------------------------------------------------
-// THE OBSERVED FIGURES, recorded 2026-08-01 against the naive forge::VcoCore at
-// commit 13ea1c7. IF ANY OF THESE EVER MOVES WHEN THIS CASE IS TOUCHED, STOP AND
-// REPORT IT RATHER THAN UPDATING THE NUMBER — the same standing instruction as
-// tests/test_vco_core.cpp:344-347. A moved figure means the change was not
-// inert; it is a finding about forge::VcoCore, not bookkeeping here.
+// >>> P-5, AS A NUMBER RATHER THAN AS AN APOLOGY. <<<
+// The roadmap's former "approximately -60 dB" is a TARGET and is not reachable
+// by 2-sample polyBLEP. The technique multiplies the spectrum by a squared sinc
+// that is only about -8 dB at Nyquist and about -10.5 dB at the first alias of a
+// C8 saw; that first alias is the saw's 6th harmonic at one sixth of the
+// fundamental, i.e. -15.6 dB, so ten decibels of attenuation lands it at -25.8
+// dB and no amount of implementation care moves it to -60. MEASURED HERE: -25.84
+// dB, which is the arithmetic reproducing to two decimal places. DAFx-16 (paper
+// 33, Table 2) independently reports the same ceiling for a FOUR-point polyBLAMP:
+// 46 dB SNR for a triangle at C8 against 45 dB for 4x oversampling. ROADMAP SC-4
+// was corrected on 2026-08-01 to per-shape measured thresholds, and THIS TABLE IS
+// THAT GATE. A LATER AGENT MUST NOT "RESTORE" -60 dB.
 //
-//   failing cells: 32 of the 45 gated cells
+// >>> P-6, AS THE REASON THE THIRD INDEX EXISTS. <<<
+// A threshold indexed by region and note ALONE cannot be both red-on-naive and
+// green-on-corrected. MEASURED: the triangle at C8 improves by 14.98 dB at
+// character 0.00 (-33.81 -> -48.79) and by 0.04 dB at character 1.00 (-33.66 ->
+// -33.70), because at character 1 the corner is already 7.7 samples wide and the
+// D-03 factor correctly returns zero. Any single number for "triangle at C8" is
+// therefore either vacuously passed by the naive path or wrongly failed by a
+// correct implementation. Collapsing the `character` column would silently delete
+// the phase's evidence.
 //
-//   the five named large-margin subset cells, measured over-threshold margins:
-//     44100 / K=389 / morph 0.25 triangle / character 0.00   -33.8085 vs -45  -> +11.191 dB
-//     44100 / K=389 / morph 0.50 saw      / character 0.00   -15.5630 vs -22  ->  +6.437 dB
-//     44100 / K=389 / morph 0.75 square   / character 0.00   -16.9030 vs -28  -> +11.097 dB
-//     44100 / K=389 / morph 1.00 pulse    / character 0.00    -1.2931 vs  -8  ->  +6.707 dB
-//     44100 / K=777 / morph 0.50 saw      / character 0.00    -9.5424 vs -16  ->  +6.458 dB
-//
-// The 13 gated cells that ALREADY PASS against the naive core are not a defect
-// in the grid and must not be "fixed" by tightening their thresholds. Ten of
-// them are the sine and high-character cells P-6 predicts: the sine at character
-// 0 has no discontinuity to alias, and the triangle at C8 / character 1 improves
-// by exactly 0.0 dB because the corner is already 7.7 samples wide and the D-03
-// factor correctly returns zero. A grid where every cell were red would mean the
-// thresholds had been set to fail rather than to measure.
 // ---------------------------------------------------------------------------
-TEST_CASE("vco spectrum: TOMBSTONE - the NAIVE core FAILS the Phase 32 alias-floor gate (D-08 RED evidence) - INVERTS IN PLAN 32-07") {
+// >>> THE ANTI-SOFTENING RULE. THIS IS AN INSTRUCTION TO THE NEXT AGENT. <<<
+//
+// A THRESHOLD IS NEVER ADJUSTED TO ACCOMMODATE A MEASURED SHORTFALL. If a gated
+// cell misses, the escalation is, in order:
+//
+//   (1) Enable the deferred NARROW-PULSE "REACH" REFINEMENT documented in
+//       src/dsp/MorphBlep.hpp's banner. That is the cheap place this phase's
+//       iteration budget is meant to go, and it targets the exact regime the
+//       measured residual sits in — sine centre with the bleed ring live, where
+//       the narrow pulse's two edges fall inside one kernel span.
+//
+//   (2) If that is insufficient, STOP AND SURFACE TO THE OPERATOR with the
+//       measured shortfall, an impact assessment and a recommendation. Raising
+//       the kernel order from two points to four is an OPERATOR DECISION, not a
+//       silent implementation choice: it changes the phase's delivered technique
+//       and its CPU budget.
+//
+// OVERSAMPLING AND minBLEP ARE FORBIDDEN IN v2.0 BY AA-05 AND REMAIN FORBIDDEN.
+// The broad escalation path is v2.1 OVERSAMPLING, explicitly NOT minBLEP.
+//
+// Editing a number in SPECTRUM_GRID is not on that list and never becomes one.
+// It would convert a measurement into a transcription of the result, which is
+// the one failure mode a threshold cannot survive (T-32-15).
+//
+// ---------------------------------------------------------------------------
+// THE MEASURED FIGURES THIS CASE PASSES ON, recorded 2026-08-01 against the
+// corrected forge::VcoCore. IF ANY OF THESE MOVES, STOP AND REPORT IT RATHER
+// THAN UPDATING THE NUMBER — the same standing instruction as
+// tests/test_vco_core.cpp:344-347.
+//
+//   failing cells: 0 of the 45 gated cells (was 32 of 45 against the naive core)
+//
+//   the five named large-margin subset cells — naive, corrected, improvement,
+//   and the margin the corrected value clears its pinned threshold by:
+//     44100 / K=389 / 0.25 triangle / char 0.00   -33.8085 -> -48.7878  +14.979 dB   vs -45  (3.79 clear)
+//     44100 / K=389 / 0.50 saw      / char 0.00   -15.5630 -> -25.8423  +10.279 dB   vs -22  (3.84 clear)
+//     44100 / K=389 / 0.75 square   / char 0.00   -16.9030 -> -31.8772  +14.974 dB   vs -28  (3.88 clear)
+//     44100 / K=389 / 1.00 pulse    / char 0.00    -1.2931 -> -11.5704  +10.277 dB   vs  -8  (3.57 clear)
+//     44100 / K=777 / 0.50 saw      / char 0.00    -9.5424 -> -19.0075   +9.465 dB   vs -16  (3.01 clear)
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: TEST-03 - the alias floor stays below its per-shape pinned threshold at C7, C8 and C9 (D-09, was the D-08 RED tombstone)") {
 
-	// THE OBSERVED COUNT WAS 32. This constant is 32 minus 5, and the gap is
-	// deliberate: a cell sitting within a decibel or two of its threshold can
-	// flip across it on a different toolchain — cell i = 19 (triangle C8,
-	// character 0.5) misses by only 1.768 dB and cell i = 34 (triangle C9,
-	// character 0.5) by 2.026 dB — and a floor pinned at the observed count
-	// would turn that into a red build for a reason that has nothing to do with
-	// the DSP.
-	//
-	// THE OBSERVED NUMBER IS A MEASUREMENT; THIS CONSTANT IS A FLOOR DERIVED
-	// FROM IT. Do not later "tighten" the floor to the observed count. The floor
-	// is not trying to be precise about how naive the naive core is — it is
-	// asserting that the gate can see a large, unambiguous population of
-	// failures, which is what makes plan 32-07's inversion to zero meaningful.
-	const int kNaiveFailuresFloor = 27;
-
-	// The five cells named in the plan, where 32-RESEARCH shows at least 8 dB of
-	// expected improvement from band-limiting and the naive value therefore
-	// misses its threshold by a wide margin. These are what make the tombstone
-	// SPECIFIC rather than merely statistical: a counter alone could be
-	// satisfied by 27 cells each missing by 0.1 dB, which would be a much weaker
-	// claim about how far the naive core actually is from the gate.
-	//
-	// The 5 dB cushion is what makes them robust: the tightest measured margin
-	// in the set is +6.437 dB, so every one of them has at least 1.4 dB of room
-	// before the assertion is in danger.
+	// The five cells the tombstone named. They were chosen because 32-RESEARCH
+	// showed at least 8 dB of expected improvement there, which is why the same
+	// five carry the ANTI-CIRCULARITY assertion below. They are what make this
+	// case SPECIFIC rather than merely statistical: `failing == 0` alone could be
+	// satisfied by a column pinned loose enough to admit anything.
 	struct SubsetCell { double sr; int K; float morph; float character; };
 	static const SubsetCell SUBSET[] = {
-		{ 44100.0, 389, 0.25f, 0.00f },   // triangle, measured +11.191 dB over threshold
-		{ 44100.0, 389, 0.50f, 0.00f },   // saw,      measured  +6.437 dB over threshold
-		{ 44100.0, 389, 0.75f, 0.00f },   // square,   measured +11.097 dB over threshold
-		{ 44100.0, 389, 1.00f, 0.00f },   // pulse,    measured  +6.707 dB over threshold
-		{ 44100.0, 777, 0.50f, 0.00f },   // saw at C9, measured +6.458 dB over threshold
+		{ 44100.0, 389, 0.25f, 0.00f },   // triangle, measured +14.979 dB improvement
+		{ 44100.0, 389, 0.50f, 0.00f },   // saw,      measured +10.279 dB improvement
+		{ 44100.0, 389, 0.75f, 0.00f },   // square,   measured +14.974 dB improvement
+		{ 44100.0, 389, 1.00f, 0.00f },   // pulse,    measured +10.277 dB improvement
+		{ 44100.0, 777, 0.50f, 0.00f },   // saw at C9, measured  +9.465 dB improvement
 	};
 	const std::size_t nSubset = sizeof(SUBSET) / sizeof(SUBSET[0]);
+
+	// The minimum improvement the five named cells must deliver. 8.0 dB is
+	// 32-RESEARCH's own expectation for this set, and the measured margin above
+	// it is 1.465 dB at the tightest cell (saw at C9, +9.465).
+	const float kMinImprovementDb = 8.0f;
 
 	const std::size_t nCells = sizeof(SPECTRUM_GRID) / sizeof(SPECTRUM_GRID[0]);
 	REQUIRE(nCells == (std::size_t)90);
@@ -1966,14 +2042,14 @@ TEST_CASE("vco spectrum: TOMBSTONE - the NAIVE core FAILS the Phase 32 alias-flo
 	int gatedWalked = 0;
 	int failing = 0;
 	int subsetChecked = 0;
+	int derivationChecked = 0;
 
 	for (std::size_t i = 0; i < nCells; ++i) {
 		const SpectrumCell& cell = SPECTRUM_GRID[i];
 
-		// Only the gated tier. The C6 diagnostic row and the D-11 cross-rate
-		// rows are recorded by the baseline case above and are NOT asserted
-		// here — the gate's note set is C7, C8 and C9 (operator decision,
-		// 2026-08-01).
+		// Only the gated tier. The C6 diagnostic row and the D-11 cross-rate rows
+		// are recorded by the measure pass above and are NOT asserted here — the
+		// gate's note set is C7, C8 and C9 (operator decision, 2026-08-01).
 		if (std::string(cell.tier) != "gated") continue;
 		++gatedWalked;
 
@@ -1982,6 +2058,7 @@ TEST_CASE("vco spectrum: TOMBSTONE - the NAIVE core FAILS the Phase 32 alias-flo
 		const float  morph     = cell.morph;
 		const float  character = cell.character;
 		const float  threshold = cell.thresholdDb;
+		const float  measured  = cell.measuredDb;
 		const std::string note(cell.note);
 		const std::string region(cell.region);
 
@@ -1993,44 +2070,95 @@ TEST_CASE("vco spectrum: TOMBSTONE - the NAIVE core FAILS the Phase 32 alias-flo
 		CAPTURE(region);
 		CAPTURE(character);
 		CAPTURE(threshold);
+		CAPTURE(measured);
 
-		// >>> useMirror = false. THIS IS THE LIVE forge::VcoCore, NOT THE
-		//     MIRROR. <<< The whole point of the RED is that the gate fails
-		//     against the SHIPPED code path. Measuring the mirror here would
-		//     make this case a statement about a test fixture, and plan 32-07's
-		//     inversion would then be comparing the corrected core against
-		//     nothing at all.
-		double aliasRmsDb = 0.0;
+		// ---- THE PINNING RULE, ASSERTED MECHANICALLY (T-32-15). -------------
+		// thresholdDb == max(ceil(measuredDb + 3.0), kThresholdFloorDb). This is
+		// the MEASURE-TO-PIN PROTOCOL step 2, expressed as an assertion instead of
+		// as a paragraph someone can decline to follow.
+		//
+		// It is the half of the anti-softening rule that does not depend on anyone
+		// reading the banner. A threshold nudged by a decibel to admit a cell that
+		// missed fails here immediately, and naming the derivation makes the only
+		// way to change a threshold an EXPLICIT re-measurement — which the
+		// reproduction CHECK in the measure pass then holds to the DSP.
+		++derivationChecked;
+		const float derived = (float)std::ceil((double)measured + 3.0);
+		const float expectedThreshold = (derived > kThresholdFloorDb) ? derived : kThresholdFloorDb;
+		CAPTURE(derived);
+		CAPTURE(expectedThreshold);
+		CHECK(threshold == expectedThreshold);
+
+		// >>> BOTH SIDES ARE MEASURED HERE, THROUGH THE SAME measureCellDb. <<<
+		// useMirror = false is the LIVE forge::VcoCore — the shipped code path,
+		// which is what the gate has to be a statement about. useMirror = true is
+		// the naive mirror, and it is measured for the anti-circularity assertion
+		// below, NOT for the threshold comparison.
+		double correctedRmsDb = 0.0;
 		double binError   = 0.0;
 		int    method     = 0;
-		const double naiveDb = measureCellDb(cell, /*useMirror=*/false, &aliasRmsDb, &binError, &method);
+		const double correctedDb = measureCellDb(cell, /*useMirror=*/false, &correctedRmsDb, &binError, &method);
 		const double impliedLeakage = impliedLeakageDb(binError);
+
+		double naiveRmsDb = 0.0;
+		double naiveBinError = 0.0;
+		int    naiveMethod   = 0;
+		const double naiveDb = measureCellDb(cell, /*useMirror=*/true, &naiveRmsDb, &naiveBinError, &naiveMethod);
 
 		CAPTURE(method);
 		CAPTURE(binError);
 		CAPTURE(impliedLeakage);
+		CAPTURE(correctedDb);
+		CAPTURE(correctedRmsDb);
 		CAPTURE(naiveDb);
-		CAPTURE(aliasRmsDb);
+		CAPTURE(naiveRmsDb);
 
-		// The D-10 self-check, per cell, before the value is read — identical to
-		// the baseline case above and for the identical reason (T-32-11). A red
-		// cell measured by an out-of-specification instrument is not evidence of
-		// anything.
+		// The D-10 self-check, per cell, before the value is read — unchanged from
+		// the tombstone and for the identical reason (T-32-11). A cell measured by
+		// an out-of-specification instrument is not evidence of anything, green or
+		// red. NOTE that the threshold column feeds this: the bar is
+		// `threshold - 10`, so re-pinning the column re-runs this REQUIRE against
+		// a different bar. That is the feedback path MEASURE-TO-PIN PROTOCOL step
+		// 6 exists for.
 		REQUIRE(impliedLeakage <= (double)threshold - 10.0);
+		REQUIRE(correctedDb > -900.0);
 		REQUIRE(naiveDb > -900.0);
+		REQUIRE(naiveMethod == method);
 
-		if (naiveDb > (double)threshold) ++failing;
+		if (correctedDb > (double)threshold) ++failing;
 
 		// ---- The named large-margin subset. --------------------------------
 		for (std::size_t s = 0; s < nSubset; ++s) {
 			if (SUBSET[s].sr != sr || SUBSET[s].K != K) continue;
 			if (SUBSET[s].morph != morph || SUBSET[s].character != character) continue;
 			++subsetChecked;
-			const double marginDb = naiveDb - (double)threshold;
-			CAPTURE(marginDb);
 
-			// >>> PLAN 32-07 FLIPS THIS LINE to CHECK(naiveDb <= (double)threshold). <<<
-			CHECK(naiveDb > (double)threshold + 5.0);
+			const double marginDb = (double)threshold - correctedDb;   // positive = clears
+			const double improvementDb = naiveDb - correctedDb;        // positive = helped
+			CAPTURE(marginDb);
+			CAPTURE(improvementDb);
+
+			// >>> WAS: CHECK(naiveDb > (double)threshold + 5.0) — the D-08 RED. <<<
+			CHECK(correctedDb <= (double)threshold);
+
+			// >>> THE ANTI-CIRCULARITY ASSERTION. THIS IS THE ONE A THRESHOLD
+			//     TABLE CANNOT FAKE. <<<
+			//
+			// Every threshold above was pinned from the implementation's own
+			// output, so every gated cell passes `correctedDb <= threshold` BY
+			// CONSTRUCTION, with 3 dB of room, and would go on passing if the
+			// correction were deleted and the column re-pinned. That is exactly
+			// T-32-15, and a pinned number cannot answer it.
+			//
+			// This line can. It compares TWO MEASUREMENTS OF THE SAME APPARATUS —
+			// the same measureCellDb, the same solver, the same warm-up, the same
+			// seeds, the same classifier, differing only in which core is driven —
+			// and CONSULTS NO PINNED NUMBER AT ALL. Re-pin the whole column to
+			// anything you like and this assertion is unmoved; it asks whether the
+			// correction actually removes 8 dB of alias energy at the five cells
+			// where 32-RESEARCH says it must, and nothing in SPECTRUM_GRID can
+			// answer that question on the DSP's behalf.
+			CHECK(improvementDb >= (double)kMinImprovementDb);
 		}
 	}
 
@@ -2040,10 +2168,15 @@ TEST_CASE("vco spectrum: TOMBSTONE - the NAIVE core FAILS the Phase 32 alias-flo
 	// indistinguishable from one that cannot fail.
 	CAPTURE(gatedWalked);
 	CAPTURE(subsetChecked);
+	CAPTURE(derivationChecked);
 	CAPTURE(failing);
 	REQUIRE(gatedWalked == 45);
 	REQUIRE(subsetChecked == (int)nSubset);
+	REQUIRE(derivationChecked == 45);
 
-	// >>> PLAN 32-07 FLIPS THIS LINE to CHECK(failing == 0). <<<
-	CHECK(failing >= kNaiveFailuresFloor);
+	// >>> WAS: CHECK(failing >= 27), against a naive-failures floor constant that
+	//     this inversion deleted along with the assertion. OBSERVED at 32 of 45
+	//     against the naive core (plan 32-03's SUMMARY holds the transcript, and
+	//     git history holds the constant by name). THIS IS THE INVERSION. <<<
+	CHECK(failing == 0);
 }
