@@ -22,10 +22,15 @@
 //   1. naive pitch tracks the C4 reference ON THE OUTPUT within 1 % across the
 //      full measured-safe grid (D-16) — explicitly NOT the TEST-02 tracking
 //      gate; see the label below
-//   2. |out| stays inside a LOOSE 6.0 V bound over the harness sweep, the fixed
-//      worst case and hostile V/OCT — and the worst case is proven to actually
-//      exceed 5.1 V, so the bound is exercised rather than merely satisfied
-//      (D-18b / T-30-01)
+//   2. |out| stays inside TWO NESTED MEASURED TIERS — a phase-wide 10.0 V outer
+//      bound with no exceptions anywhere, and an additional 5.55 V musical
+//      bound layered on top of it wherever the measurement entitles a scenario
+//      to it. Both tiers are exercised rather than merely satisfied: the fixed
+//      worst case is proven to exceed 5.1 V, and the Nyquist-ceiling scenario
+//      is proven to exceed 5.65 V, which is above the musical tier itself
+//      (D-18b / T-30-01 / T-32-03 / T-32-16). Plan 32-08 replaced the single
+//      6.0 V loose bound; the derivation that bound rested on reasoned about
+//      `morphedWave` alone, and Phase 32's corrections are additive and bipolar.
 //   3. two instances differing ONLY in spread seed diverge measurably at
 //      character = 1.0, with bit-identity at character = 0 pinned as the
 //      in-test control (D-18a / D-10 / D-11)
@@ -582,20 +587,131 @@ TEST_CASE("vco core: naive pitch tracks the C4 reference on the OUTPUT within 1 
 }
 
 // ---------------------------------------------------------------------------
-// 2. Output magnitude stays inside a LOOSE 6.0 V bound (D-18b / T-30-01).
+// 2. Output magnitude stays inside TWO MEASURED TIERS (D-18b / T-30-01 /
+//    T-32-03 / T-32-16). Plan 32-08 replaced the single 6.0 V loose bound with
+//    kHostileBoundV and kMusicalBoundV. Read the nesting paragraph before
+//    reading the assertions, because the two are NOT a partition.
 //
-//    BOUND PROVENANCE. 6.0 V sits about 8 % above the hard ANALYTIC ceiling of
-//    5.55 V. That ceiling is derived, not guessed: for character >= 0.001 the
-//    sine path is f(s) = 0.32s^3 + 0.06s^2 + 0.76s - 0.03 whose derivative is
-//    strictly positive, so f is monotone on [-1,1] with range [-1.05, +1.11];
-//    triangle, saw, square and pulse are each bounded by 1; the morph crossfade
-//    is a linear interpolation and cannot exceed the larger of its two shapes;
-//    and the bleed step is a convex combination, which cannot raise a maximum.
-//    Hence |morphedWave| <= 1.11 and |out| = 5 * |morphedWave| <= 5.55 V. That
-//    was then confirmed numerically over 161 million (morph, character, phase)
-//    points at five spread configurations. 6.0 V is a REAL bound, not a round
-//    number — and it is roughly six orders of magnitude below the measured
-//    unguarded runaway this case also has to catch.
+//    WHAT THIS BOUND IS NOW FOR — it acquired a SECOND job this phase, and it
+//    is the reason the case is worth more than it looks. It is the ONLY
+//    assertion in the whole suite that can see two of Phase 32's three most
+//    likely defects: placing the square's hard step at its SOFT edge's position,
+//    and deriving the sub-sample SIDE decision from the double accumulator
+//    rather than the float. Both measure 0.0 dB against the spectral gate in
+//    tests/test_vco_spectrum.cpp — spectrally invisible, exactly zero
+//    difference — while swinging the output envelope to about +/-9.78 V. The
+//    alias-floor gate cannot see either one. This can.
+//
+//    ------------------------------------------------------------------------
+//    THE TWO TIERS ARE NESTED, NOT PARTITIONED. THIS IS NOT A CARVE-OUT.
+//    ------------------------------------------------------------------------
+//    kHostileBoundV is the PHASE-WIDE OUTER BOUND. It applies to EVERY scenario
+//    in this suite with NO exceptions anywhere — including the audio-rate MORPH
+//    sweep plan 32-09 adds. There is exactly ONE outer bound and nothing is
+//    excused from it.
+//
+//    kMusicalBoundV is an ADDITIONAL, STRICTLY TIGHTER assertion layered ON TOP
+//    of the outer one, asserted wherever the measurement entitles a scenario to
+//    it. It is not permission to skip the outer bound — every scenario that
+//    asserts the tighter number asserts the looser one as well, on the line
+//    above it. Asserting the tighter number NOWHERE would throw away the
+//    tightest thing this suite knows about the oscillator; asserting it
+//    EVERYWHERE would be red on correct shipped behavior at the Nyquist
+//    ceiling. Each scenario names its tier in its own INFO label together with
+//    the measured figure that entitles it, so a reader never has to infer which
+//    assertions apply to which drive.
+//
+//    ------------------------------------------------------------------------
+//    kMusicalBoundV = 5.55 V — PROVENANCE
+//    ------------------------------------------------------------------------
+//    THE ANALYTIC PART, WHICH SURVIVES PHASE 32 UNCHANGED. For character
+//    >= 0.001 the sine path is f(s) = 0.32s^3 + 0.06s^2 + 0.76s - 0.03, whose
+//    derivative is strictly positive, so f is monotone on [-1,1] with range
+//    [-1.05, +1.11]; triangle, saw, square and pulse are each bounded by 1; the
+//    morph crossfade is a linear interpolation and cannot exceed the larger of
+//    its two shapes; and the bleed step is a convex combination, which cannot
+//    raise a maximum. Hence |morphedWave| <= 1.11, and 5 * 1.11 = 5.55 V.
+//
+//    WHY THAT NO LONGER COVERS THE OUTPUT ON ITS OWN — the part that CHANGED,
+//    and the reason this whole derivation had to be redone. The reasoning above
+//    bounds `morphedWave`. Since plan 32-06 the returned sample is
+//    5 * (naive + correction), and the correction is ADDITIVE and BIPOLAR. A
+//    bound on `morphedWave` alone therefore says NOTHING about `naive +
+//    correction`: the two could add. The bound MUST be MEASURED, and every
+//    number below is measured rather than argued.
+//
+//    THE MEASUREMENT, AND IT IS BETTER THAN EXPECTED. At every phase increment
+//    in the musical range the corrected envelope stays INSIDE the pre-Phase-32
+//    figure of 1.1047 (5.523 V) — the corrections consistently REDUCE the
+//    excursion at edges rather than adding to it. Measured by plan 32-08 over
+//    this case's own four scenarios, at all three sample rates, with the bound
+//    temporarily raised to 100 V so nothing could fire:
+//
+//        scenario one   (sweep)                   5.438490 / 5.438490 / 5.438290
+//        scenario two   (fixed worst, pitchCV 0)  5.518030 / 5.518030 / 5.518030
+//        scenario three (hostile V/OCT +10, +14)  5.421220 / 5.421220 / 5.421220
+//        scenario four  (hostile timing, 48 cfg)  5.000000 / 5.000000 / 5.000000
+//
+//    All four are inside 5.55 V, so all four assert the tighter tier. The
+//    tightest margin is scenario two's, at 5.55 - 5.518030 = 0.032 V, and that
+//    is stated plainly rather than hidden: this is a TIGHT bound. It is kept at
+//    the ANALYTIC ceiling rather than nudged up to a comfortable round number
+//    because 5.55 is a DERIVED figure — the naive path's true supremum — and a
+//    measured envelope sitting just under a derived ceiling is exactly the
+//    relationship worth pinning. 5.55 V is a REAL bound, not a round number.
+//
+//    ------------------------------------------------------------------------
+//    kHostileBoundV = 10.0 V — PROVENANCE
+//    ------------------------------------------------------------------------
+//    THE OPERATOR DECISION OF 2026-08-01, by name: ONE outer number with NO
+//    per-scenario exceptions anywhere in the suite, on D-09's own reasoning
+//    that an exception invites a second exception. 10.0 V is comfortably inside
+//    Rack's +/-12 V cable norm, so a bound this loose still cannot let anything
+//    reach a downstream module that the norm does not already permit (T-32-03).
+//
+//    THE MEASURED TABLE FROM 32-RESEARCH P-10, reproduced as rows. max|out| per
+//    phase increment, over morph x character grids of 400 x 40 points:
+//
+//        increment 0.0005  (~22 Hz)                            5.523 V
+//        increment 0.0200  (~882 Hz)                           5.506 V
+//        increment 0.0949  (~4185 Hz)                          5.523 V
+//        increment 0.1897  (~8366 Hz)                          5.523 V
+//        increment 0.2500  (~11025 Hz)                         5.523 V
+//        increment 0.4000  (~17640 Hz)                         5.829 V
+//        increment 0.4950  (21830 Hz, the guarded Nyquist ceiling)  9.198 V
+//        increment 0.5000  (22050 Hz, kVcoMaxDeltaPhase)       6.150 V
+//
+//    A FALSIFIED PREMISE FROM THAT TABLE, CORRECTED HERE BY MEASUREMENT. P-10's
+//    prose attributes the 9.198 V row to "the morph at the 5-percent pulse with
+//    character NEAR ZERO". Measured against the SHIPPED forge::MorphBlep that
+//    is WRONG IN BOTH COORDINATES, and the error is not small:
+//      - at pitchCV +10 (which pins the increment at 0.495 at every rate) and
+//        character 0.00, the envelope is EXACTLY 5.000000 V — the naive pulse
+//        amplitude, with the correction contributing nothing that reaches the
+//        peak. Low character is not the worst case; it is close to the BEST.
+//      - the worst point on that increment is at character 1.00, not near zero,
+//        and it measures 7.150197 V at 44.1 kHz and 7.150281 V at 48 and
+//        96 kHz — 2.05 V BELOW the 9.198 V the table records.
+//    The shipped implementation is therefore materially BETTER at the ceiling
+//    than the prototype the table was measured on. The conclusion — that the
+//    musical tier is exceeded at the guarded ceiling and an outer tier is
+//    needed — is UNCHANGED and is what the table is kept for. The premise about
+//    WHERE on the morph/character plane it is exceeded is falsified, and
+//    scenario five below is built at the measured location rather than the
+//    stated one.
+//
+//    THE WORST FIGURE MEASURED ANYWHERE by plan 32-08, over a 101 x 21
+//    morph-by-character sweep at twelve pitch points at all three rates:
+//    7.201301 V, at pitchCV +6.38 / 44.1 kHz (increment 0.494100) at morph 1.00
+//    character 1.00. 10.0 V clears that by 2.80 V.
+//
+//    WHY THE HEADROOM EXISTS AT ALL, in one sentence: the tighter figure is
+//    exceeded only where the guarded frequency is pinned at the ceiling and two
+//    edges of the narrow pulse fall inside a single sample — the deliberate
+//    D-07 overlapping-edge case at literally Nyquist, where the naive path is
+//    already meaningless — and where an input is MODULATED across the block,
+//    because the pending accumulator deliberately delivers the second half of a
+//    correction computed with the PREVIOUS sample's weight vector (D-13).
 //
 //    THIS IS EXPLICITLY NOT A +/-5 V OUTPUT-RANGE ASSERTION. D-13 returns the
 //    waveform UNCONDITIONED by decision — no DC blocker, no saturation, no
@@ -604,8 +720,14 @@ TEST_CASE("vco core: naive pitch tracks the C4 reference on the OUTPUT within 1 
 //    +/-5 V assertion here would contradict D-13 and pin an output stage that
 //    has not been designed yet.
 // ---------------------------------------------------------------------------
-TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)") {
-	const float kLooseBoundV = 6.0f;
+TEST_CASE("vco core: output magnitude stays inside two measured tiers (D-18b)") {
+	// THE OUTER BOUND. Applies to EVERY scenario below, with no exceptions, and
+	// to every scenario any later plan adds to this suite.
+	const float kHostileBoundV = 10.0f;
+	// THE TIGHTER, ADDITIONAL BOUND. Asserted ON TOP OF the outer one wherever
+	// the measurement in this case's banner entitles a scenario to it — never
+	// instead of it.
+	const float kMusicalBoundV = 5.55f;
 
 	for (double sr : SAMPLE_RATES) {
 		// --- Scenario one: the harness sweep. -------------------------------
@@ -634,7 +756,11 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 			// oscillator actually does, and doctest does not decompose the
 			// values of a successful assertion.
 			CAPTURE(maxAbs);
-			CHECK(maxAbs <= kLooseBoundV);
+			// OUTER tier first, then the tighter one layered on top. MEASURED
+			// 5.438490 / 5.438490 / 5.438290 at 44.1 / 48 / 96 kHz — inside
+			// 5.55 V, which is what entitles this scenario to the musical tier.
+			CHECK(maxAbs <= kHostileBoundV);
+			CHECK(maxAbs <= kMusicalBoundV);
 		}
 
 		// --- Scenario two: the fixed worst case. ----------------------------
@@ -689,7 +815,16 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 			// rate, which is the audit trail plan 30-07's phase gate compares
 			// the CI figures against.
 			CAPTURE(maxAbs);
-			CHECK(maxAbs <= kLooseBoundV);
+			// MEASURED 5.518030 at all three rates — inside 5.55 V by 0.032 V,
+			// the tightest margin in the case, so this scenario asserts the
+			// musical tier and is what pins it.
+			CHECK(maxAbs <= kHostileBoundV);
+			CHECK(maxAbs <= kMusicalBoundV);
+			// RE-DERIVED BY PLAN 32-08 AND STILL LOAD-BEARING. Re-measured
+			// against the BAND-LIMITED core at 5.518030 V, so the assertion
+			// still exceeds 5.1 V by 0.418 V and is still exercised rather than
+			// merely satisfied. Do not soften or delete it: it is what stops the
+			// musical tier from being a bound nothing approaches.
 			CHECK(maxAbs > 5.1f);
 		}
 
@@ -743,7 +878,15 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 					if (a > maxAbs) maxAbs = a;
 				}
 				CAPTURE(maxAbs);
-				CHECK(maxAbs <= kLooseBoundV);
+				// MEASURED 5.421220 at both pitches at all three rates. This
+				// scenario reaches the guarded Nyquist ceiling but holds morph
+				// at 0.0 — the SINE centre — so it never visits the narrow
+				// pulse where the ceiling actually costs anything, and it is
+				// comfortably entitled to the musical tier. Scenario five is
+				// the drive that goes to the same ceiling at the morph that
+				// does cost something.
+				CHECK(maxAbs <= kHostileBoundV);
+				CHECK(maxAbs <= kMusicalBoundV);
 				CHECK(allFinite);
 			}
 		}
@@ -880,7 +1023,7 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 
 						bool bad = false;
 						if (!std::isfinite(s))                            { allFinite = false;       bad = true; }
-						if (a > kLooseBoundV)                             {                          bad = true; }
+						if (a > kHostileBoundV)                           {                          bad = true; }
 						if (!(core.phase >= 0.0 && core.phase < 1.0))     { phaseInRange = false;    bad = true; }
 						if (!(core.tel.freqHz >= 0.f))                    { freqNonNegative = false; bad = true; }
 						// Negated so a NaN freqHz also counts as a failure, the
@@ -899,12 +1042,109 @@ TEST_CASE("vco core: output magnitude stays inside the 6.0 V loose bound (D-18b)
 					INFO("scenario: hostile timing driven straight into the core - no driver, nothing overwrites sampleTime/sampleRate");
 
 					CHECK(allFinite);
-					CHECK(maxAbs <= kLooseBoundV);
+					// OUTER tier, then the tighter one. MEASURED across all 48
+					// configurations at 5.000000 V exactly — the frozen-phase DC
+					// value the guards produce when a hostile rate or time
+					// zeroes the increment — so this grid is entitled to the
+					// musical tier with 0.55 V to spare. The four named
+					// assertions beside these are UNTOUCHED and none is merged:
+					// the banner above explains why no one of them is redundant
+					// with its neighbours.
+					CHECK(maxAbs <= kHostileBoundV);
+					CHECK(maxAbs <= kMusicalBoundV);
 					CHECK(phaseInRange);
 					CHECK(freqNonNegative);
 					CHECK(freqNyquistBounded);
 				}
 			}
+		}
+	}
+
+	// --- Scenario five: the P-10 Nyquist-ceiling overlapping-edge worst case. -
+	// THE LOAD-BEARING SCENARIO FOR THE HOSTILE TIER. Without it kHostileBoundV
+	// is decoration: a tier no scenario ever approaches proves nothing, which is
+	// precisely the criticism scenario two's banner levels at a sweep-only bound
+	// test. This drive is what makes the outer tier EXERCISED.
+	//
+	// WHERE IT DRIVES, AND WHY THERE. pitchCV +10 puts the requested frequency
+	// (267,904 Hz) far above every guarded ceiling, so the clamp pins it at
+	// kVcoNyquistGuardFrac * sampleRate and the phase increment lands at
+	// EXACTLY 0.495 at all three sample rates — the 9.198 V row of the P-10
+	// table, and the one increment where the 5 %-duty pulse's two edges fall
+	// inside a single sample (the deliberate D-07 overlapping-edge case). That
+	// the increment is rate-independent here is why the three rates measure
+	// almost identically; it is a property of the clamp, not a coincidence.
+	//
+	// THE CHARACTER AXIS IS THE PLAN'S GRID CORRECTED BY MEASUREMENT. P-10's
+	// prose puts the worst point at "character near zero", and plan 32-08's grid
+	// followed it: morph {0.90, 0.95, 1.00} x character {0.00, 0.05, 0.10,
+	// 0.20}. MEASURED, that grid maxes at 5.000000 V — it does not exceed even
+	// the MUSICAL tier, and a scenario five built on it would have asserted
+	// nothing. The character axis is therefore extended to 0.50 and 1.00, where
+	// the measurement actually puts the peak. That is not inventing a scenario
+	// to make a bound fire; it is the same pitch and the same intent at the
+	// coordinates the oscillator actually peaks at, and the falsified premise is
+	// recorded in this case's banner rather than quietly fixed.
+	{
+		static const float MORPHS_T5[] = {0.90f, 0.95f, 1.00f};
+		static const float CHARS_T5[]  = {0.00f, 0.05f, 0.10f, 0.20f, 0.50f, 1.00f};
+
+		for (double sr : SAMPLE_RATES) {
+			// ACCUMULATED over the whole grid, not asserted per cell: the claim
+			// is about the grid's peak, and one assertion per cell would say the
+			// same thing eighteen times per rate.
+			float gridMax = 0.f;
+			bool  allFinite = true;
+			float atMorph = -1.f, atChar = -1.f;
+
+			for (float morph : MORPHS_T5) {
+				for (float character : CHARS_T5) {
+					forge::VcoInputs base = coreBase();
+					base.pitchCV   = 10.f;
+					base.morph     = morph;
+					base.character = character;
+
+					const int n = 4096;
+					forge::VcoBlockDriver d(sr);
+					std::vector<float> out = d.run(n, [=](int) { return base; });
+					REQUIRE(out.size() == (size_t)n);
+
+					for (size_t i = 0; i < out.size(); ++i) {
+						if (!std::isfinite(out[i])) allFinite = false;
+						const float a = std::fabs(out[i]);
+						if (a > gridMax) { gridMax = a; atMorph = morph; atChar = character; }
+					}
+				}
+			}
+
+			CAPTURE(sr);
+			CAPTURE(gridMax);
+			CAPTURE(atMorph);
+			CAPTURE(atChar);
+			INFO("scenario: P-10 Nyquist-ceiling overlapping-edge worst case - HOSTILE TIER, measured 7.150197 at 44.1 kHz and 7.150281 at 48/96 kHz, at morph 1.00 character 1.00");
+
+			CHECK(allFinite);
+
+			// THE OUTER TIER. Measured 7.150197 / 7.150281 / 7.150281 against
+			// 10.0 V, so it clears by about 2.85 V.
+			CHECK(gridMax <= kHostileBoundV);
+
+			// THE EXERCISE FLOOR, and it is the whole point of this scenario.
+			// Pinned from step one's own measurement: the minimum of the three
+			// per-rate grid maxima is 7.150197 V, less a 1.5 V cushion, giving
+			// 5.650197 — pinned at 5.65 V.
+			//
+			// NOTE WHAT THIS FLOOR SITS ABOVE: 5.65 V is GREATER than
+			// kMusicalBoundV at 5.55 V. So this assertion does not merely prove
+			// the hostile tier is approached — it proves the observed maximum
+			// genuinely EXCEEDS the musical bound, which is what makes the two
+			// tiers a real distinction rather than a pair of numbers with the
+			// same content. If a future change brought this grid back under
+			// 5.55 V, this line goes RED and asks whether the outer tier still
+			// needs to exist at all. That is the intended behavior.
+			const float kExerciseFloorV = 5.65f;
+			CHECK(gridMax > kExerciseFloorV);
+			CHECK(kExerciseFloorV > kMusicalBoundV);
 		}
 	}
 }
