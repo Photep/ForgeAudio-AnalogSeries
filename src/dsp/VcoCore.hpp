@@ -4,11 +4,19 @@
 // VCO core (CORE-01): a POD forge::VcoInputs goes in, an output voltage comes
 // out, and last-step telemetry is left behind for the shell. The boundary shape
 // is Phase 29's (D-03) and does not churn — Phase 30 filled the seam without
-// touching it. step() is now a NAIVE, DELIBERATELY ALIASED morphed oscillator:
+// touching it. step() is a BAND-LIMITED morphed oscillator as of this commit:
 // a four-term volt-domain pitch sum through ONE forge::exp2_taylor5 off the C4
 // reference, a Nyquist-guarded frequency, a double-precision phase accumulator,
-// and one call into the FROZEN forge::Waveshape::morphedWave, scaled x5 and
+// one call into the FROZEN forge::Waveshape::morphedWave, PLUS an additive
+// morph-aware polyBLEP/polyBLAMP correction from forge::MorphBlep, scaled x5 and
 // returned unconditioned.
+//
+// UNTIL THIS COMMIT THAT SENTENCE READ "a NAIVE, DELIBERATELY ALIASED morphed
+// oscillator", and the naive path was the live behavior for Phases 30 and 31.
+// It is preserved — deliberately, and only — as NaiveVcoCoreMirror in
+// tests/test_vco_spectrum.cpp, which is the D-08 baseline every threshold this
+// phase pins is measured against. There is no flag, no second entry point and
+// no naive branch in this body: the naive path lives in the test TU or nowhere.
 //
 // THE PITCH CHAIN IS DELIVERED as of this commit (Phase 31). The V/OCT input,
 // coarse tune in OCTAVES, fine tune in SEMITONES and a connected-gated FM
@@ -20,11 +28,12 @@
 // is final rather than a placeholder. The double-precision accumulator
 // (PITCH-05) was already in place and is unchanged.
 //
-// The crude, aliased timbre is EXPECTED, not a defect. WHAT REMAINS IS LATER
-// PHASES' WORK, not a debt in this body:
-//   - Phase 32 (CORE-02 / AA-01..05) owns band-limiting (morph-aware
-//     polyBLEP/polyBLAMP) and still owns the alias floor, so NO assertion over
-//     this body may claim anything about spectral cleanliness.
+// WHAT REMAINS IS LATER PHASES' WORK, not a debt in this body:
+//   - Phase 32 (CORE-02 / AA-01..05) has DELIVERED band-limiting at the
+//     morphedWave call site below. It still owns the ALIAS FLOOR itself: the
+//     per-shape thresholds are re-pinned from this repository's own measurement
+//     in plan 32-07, so no assertion over this body may claim a spectral figure
+//     that tests/test_vco_spectrum.cpp has not measured.
 //   - Phase 33 owns hard sync, which is why the POD still carries no sync
 //     fields (see the sync note below).
 //   - Phase 34 (OUT-01..03) owns output conditioning and the MOVING drift
@@ -85,8 +94,9 @@
 // it transitively — include-what-you-use, matching src/dsp/LfoCore.hpp:29. This
 // is the include tests/check_includes.sh [2/7]'s exact-path exemption exists for
 // (plan 30-01): the shim is Rack-FREE, only its filename carries the substring.
-#include "dsp/RackCompat.hpp"    // forge::exp2_taylor5, forge::clamp
+#include "dsp/RackCompat.hpp"    // forge::exp2_taylor5 (forge::clamp is no longer used here — see the T-32-01 note at the morph/character guard)
 #include "dsp/Waveshape.hpp"     // forge::Waveshape::morphedWave (FROZEN — call it, never edit it)
+#include "dsp/MorphBlep.hpp"     // forge::MorphBlep — the morph-aware band-limiting layer (CORE-02 / AA-01..05)
 #include "dsp/DriftEngine.hpp"   // forge::DriftEngine
 
 namespace forge {
@@ -240,13 +250,32 @@ struct VcoCore {
 	// DSP lands. Holding + seeding an RNG is not DSP.
 	DriftEngine drift;
 
-	// Per-instance oscillator state, mirroring src/dsp/LfoCore.hpp:58-63. Both
-	// members are INSTANCE state, not static or shared — which is literally what
-	// CORE-03 asserts: two cores stepped interleaved must not see each other.
-	// `phase` is double for the same reason LfoCore's is (PITFALLS 2.2): a float
-	// accumulator loses low-order increments at audio rates over long blocks.
+	// Per-instance oscillator state, mirroring src/dsp/LfoCore.hpp:58-63. ALL
+	// THREE members — the double phase accumulator, the Waveshape and now the
+	// MorphBlep — are INSTANCE state, not static and not shared. That is
+	// literally what CORE-03 asserts and what D-14 binds by name: two cores
+	// stepped interleaved must not see each other. `phase` is double for the
+	// same reason LfoCore's is (PITFALLS 2.2): a float accumulator loses
+	// low-order increments at audio rates over long blocks.
+	//
+	// `blep` EXTENDS THAT CLAIM TO CARRIED CORRECTION STATE (Phase 32, CORE-02 /
+	// AA-01..05 / T-32-18). forge::MorphBlep holds `pending` — the second half of
+	// an edge placed on the PREVIOUS sample (D-13) — so from this commit the
+	// polyphony-ready guarantee covers a band-limiting accumulator as well as a
+	// phase accumulator. It is held BY VALUE, right here beside `wave`: no
+	// static, no global, no shared table anywhere in src/dsp/MorphBlep.hpp.
+	//
+	// THE PROOF IS BEHAVIORAL, NOT A GREP. tests/test_vco_core.cpp's
+	// two-instance interleave invariant (D-17) drives two cores sample by sample
+	// and requires each to reproduce its solo block bit-exactly; its PERMANENT
+	// positive control fails that same check when a deliberately shared static
+	// accumulator is introduced, so the invariant is known to be able to fail.
+	// `blep` sits inside the window both of them exercise from this commit
+	// onward — a static or shared correction accumulator would show up there as
+	// a red build rather than as a silent cross-voice bleed.
 	double phase = 0.0;
 	Waveshape wave;
+	MorphBlep blep;
 
 	// --- Last-step telemetry (the shell reads these to feed display atomics;
 	//     NOT part of the audio path). Populated by step() each sample. ---
@@ -358,8 +387,20 @@ struct VcoCore {
 		// a comparison ladder — `x < lo ? lo : (x > hi ? hi : x)` — and BOTH of
 		// its comparisons are FALSE for a NaN, so a NaN passes straight through
 		// it UNCHANGED. It is inert against precisely the input class this guard
-		// exists to stop. (forge::clamp is still the right tool for morph and
-		// character further down, where the inputs are already finite.)
+		// exists to stop.
+		//
+		// A FALSIFIED PREMISE, CORRECTED IN PLACE (T-32-01). This paragraph used
+		// to end with a parenthetical stating that forge::clamp was still the
+		// right tool for morph and character further down, "where the inputs are
+		// already finite". THAT PREMISE IS NOW FALSE. Plan 32-02 declared a MORPH
+		// CV jack on the Rack shell; Rack does not sanitise cable voltages, so an
+		// upstream module can deliver a not-a-number straight into
+		// forge::VcoInputs::morph and the field is no longer guaranteed finite.
+		// The CONCLUSION of this paragraph is untouched — the ladder is still
+		// rejected here, for exactly the reason given above — but the exception
+		// it granted is withdrawn: morph and character are conditioned with the
+		// SAME negated pair, negated line first, at the call site below, and the
+		// full rationale is recorded there rather than duplicated here.
 		if (!(pitchVolts > -kVcoMaxPitchVolts)) pitchVolts = -kVcoMaxPitchVolts;
 		if (pitchVolts > kVcoMaxPitchVolts) pitchVolts = kVcoMaxPitchVolts;
 
@@ -442,8 +483,33 @@ struct VcoCore {
 		// in.sampleTime; and NOTHING in forge::VcoInputs couples the two. MEASURED
 		// at in.sampleRate = 44100 with in.sampleTime = 1/1000 and pitchCV = +6:
 		// the increment reaches 16.7 and phase reaches 314,880 — an unbounded ramp
-		// at a perfectly legitimate sample rate. Phase 32's oversampled inner loop
-		// is the obvious future caller that decouples them on purpose.
+		// at a perfectly legitimate sample rate.
+		//
+		// A FALSIFIED PREMISE, CORRECTED IN PLACE. This paragraph used to end by
+		// naming "Phase 32's oversampled inner loop" as the obvious future caller
+		// that decouples the two fields on purpose. THAT PREMISE IS FALSE.
+		// AA-05 forbids oversampling in v2.0 BY NAME — its own wording is "no
+		// minBLEP, no oversampling in v2.0" — so no such loop exists in this
+		// phase and none will be added to it. The CONCLUSION is untouched, and
+		// it is the part worth keeping: nothing in forge::VcoInputs couples
+		// the two fields, the 16.7 / 314,880 measurement above still stands, and
+		// the bound below is still required.
+		//
+		// THE REAL REASON THE DECOUPLED CASE MATTERS, AND WHY IT MATTERS MORE NOW
+		// THAN IT DID. in.sampleTime and in.sampleRate are independent POD fields
+		// that ANY caller may set independently: the headless harness does
+		// exactly that in scenario four of tests/test_vco_core.cpp, and it is the
+		// only reason that scenario can reach hostile timing at all. What Phase
+		// 32 changed is what sits DOWNSTREAM of that field. Until this commit
+		// in.sampleTime was only ever MULTIPLIED — into the increment on the line
+		// below. This phase puts a DIVISOR behind it for the first time: the D-03
+		// character factor divides by dt, and the sub-sample crossing position in
+		// the band-limiter divides by it again. A decoupled, zero, subnormal or
+		// non-finite in.sampleTime therefore now reaches arithmetic that did not
+		// exist in this file's earlier phases (T-32-02). src/dsp/MorphBlep.hpp
+		// carries its OWN negated guard on both of those divisors and refuses to
+		// rely on this caller (D-15 / P-14); the bound below remains this core's
+		// own, and neither substitutes for the other.
 		//
 		// WHY 0.5 AND NOT kVcoNyquistGuardFrac. At a COUPLED rate
 		// (in.sampleTime == 1 / in.sampleRate) the guarded frequency yields an
@@ -474,14 +540,109 @@ struct VcoCore {
 		if (phase >= 1.0) phase -= 1.0;
 
 		const float p = (float)phase;
-		const float morph = clamp(in.morph, 0.f, 1.f);
-		const float character = clamp(in.character, 0.f, 1.f);
+
+		// T-32-01 — THE MORPH/CHARACTER BOUND, and it is the corrected form of
+		// the exception the forge::clamp rejection paragraph above used to grant.
+		// The NEGATED comparison comes FIRST and is the NaN catcher, exactly like
+		// the pitch-volt bound and the two frequency guards: a not-a-number fails
+		// `morph > 0.f`, so the negation is TRUE and it lands at 0.f; the plain
+		// upper comparison then leaves that 0.f unchanged.
+		//
+		// WHAT THE GUARD PROTECTS. The frozen forge::Waveshape::morphedWave
+		// computes `morph * 4.f` and casts the result to int
+		// (src/dsp/Waveshape.hpp:165-166). A float-to-int cast of a not-a-number
+		// is UNDEFINED BEHAVIOR — the same class of bug kVcoMaxPitchVolts exists
+		// to stop one call earlier.
+		//
+		// WHY THE BOUND IS HERE AND NOT THERE, in one sentence, because it is the
+		// identical argument: forge::Waveshape.hpp is byte-pinned by
+		// tests/check_frozen.sh and consumed by the SHIPPED Analog LFO, so
+		// editing it is a guardrail event and not a VCO fix. The bound is
+		// therefore LOCAL to this core, on THIS side of the call — the same
+		// placement as the pitch-volt bound ahead of the frozen exponential.
+		//
+		// WHY THE CORE GUARDS EVEN THOUGH THE SHELL ALREADY DOES. Plan 32-02's
+		// Rack shell conditions the MORPH CV before it fills forge::VcoInputs.
+		// That is not a reason to skip this one: the core MUST NOT RELY ON ITS
+		// CALLER, and the headless harness builds forge::VcoInputs DIRECTLY with
+		// no shell anywhere in the way — scenario four of tests/test_vco_core.cpp
+		// is precisely that caller, and it is the only caller that can reach this
+		// line with a hostile value.
+		//
+		// THE BIT-IDENTITY, so no existing measurement can move. For every finite
+		// input this pair returns exactly what the comparison ladder returned: at
+		// or below 0 lands at 0, above 1 lands at 1, everything between passes
+		// through untouched. The two differ for a not-a-number, where the ladder
+		// was inert — and, MEASURED and recorded here rather than glossed, for
+		// NEGATIVE ZERO, which this pair normalises to positive zero where the
+		// ladder returned it unchanged. That one case is unobservable
+		// downstream: the consumers are the float-to-int cast named above, which
+		// yields 0 for either sign of zero, and multiply/add chains in which
+		// -0.f and +0.f agree. MEASURED at C8, 44.1 kHz, over 4096 samples:
+		// morph = -0.f against morph = +0.f differs on 0 samples, and
+		// character = -0.f against character = +0.f differs on 0 samples. The
+		// whole suite was re-run across this change and no recorded figure moved.
+		//
+		// MEASURED, the guard doing its job: with BOTH fields set to a
+		// not-a-number, 4096 samples are every one of them std::isfinite and the
+		// envelope is 5.000000 V — the sine this core falls back to at morph 0,
+		// character 0. Before this pair the same input reached the frozen
+		// float-to-int cast.
+		//
+		// CHARACTER IS HARDENED ALONGSIDE MORPH even though its own CV jack is
+		// Phase 34's work (CHAR-01). The guard is the same shape for the same
+		// reason, the two are handed to the same frozen call in the same argument
+		// list, and guarding one of them would leave a half-guarded pair for a
+		// later phase to trip over.
+		float morph = in.morph;
+		if (!(morph > 0.f)) morph = 0.f;
+		if (morph > 1.f) morph = 1.f;
+		float character = in.character;
+		if (!(character > 0.f)) character = 0.f;
+		if (character > 1.f) character = 1.f;
 
 		// D-12: ONE call into the frozen Waveshape — a call, never an edit.
 		// bleedLfo = 0.f is the OU-layer-0 read, and 0 is correct because this
 		// phase steps no OU layer (D-11: no drift stepping, no per-sample RNG).
 		// Phase 34 passes the real layer-0 state here.
-		const float sample = wave.morphedWave(p, morph, character, 0.f);
+		const float naive = wave.morphedWave(p, morph, character, 0.f);
+
+		// CORE-02 / AA-01..05 — THE ONE LINE OF PHASE 32 WHERE BAND-LIMITING
+		// BECOMES AUDIBLE. Three facts make it correct.
+		//
+		// (1) THE SAME `p`, WITH THE DOUBLE HANDED OVER SEPARATELY (P-3). The
+		//     float given to the band-limiter is the SAME float given to the
+		//     frozen call one line above, and the double phase accumulator
+		//     travels alongside it as its own argument. THAT SPLIT IS
+		//     LOAD-BEARING, NOT STYLISTIC. The correction's SIDE decision must
+		//     agree with the frozen branch's own strict float comparison —
+		//     disagreement puts the correction on the WRONG SIDE of the edge and
+		//     costs the FULL jump, not half of it — while its DISTANCE must come
+		//     from the double, because the double advances by exactly the phase
+		//     increment and so makes every site fire exactly once per cycle.
+		//     MEASURED: a pure-double side test produced a systematic
+		//     full-amplitude spike, the envelope rising from 1.957 to 2.145,
+		//     whenever the phase grid RESONATED with a site position —
+		//     reproduced at dt = 0.0005 against a pulse duty of 0.374, exactly
+		//     748 samples per edge. tests/test_morph_blep.cpp's resonant case
+		//     walks 165 such increments and was OBSERVED failing (20 assertions,
+		//     maximum 1.999949 against a 1.11 bound) with the side decision
+		//     deliberately taken from the double.
+		//
+		// (2) ADDITIVE, NOT REPLACING. morphedWave is still CALLED, exactly once,
+		//     exactly as before (CORE-02, D-12) — its result is the `naive` local
+		//     above, and the frozen header is neither edited nor bypassed. The
+		//     correction is a SEPARATE ADDITIVE TERM. bleedLfo stays 0.f for the
+		//     reason given above; Phase 34 passes the real layer-0 state.
+		//
+		// (3) WHAT THE CORRECTION IS. Morph-aware polyBLEP at the value-step
+		//     sites and polyBLAMP at the triangle's slope corners, scaled by the
+		//     morph AND bleed weights and by the CHARACTERIZED jump of the frozen
+		//     waveshaper, all of it closed-form and table-free (AA-01..05). The
+		//     derivation, the nine-site union, the sign convention, the D-03
+		//     character factor and every measured magnitude live in
+		//     src/dsp/MorphBlep.hpp and are deliberately NOT restated here.
+		const float sample = naive + blep.step(wave, phase, p, deltaPhase, morph, character);
 		tel.displayPhase = p;
 
 		// D-13: returned UNCONDITIONED by decision — no DC blocker, no
