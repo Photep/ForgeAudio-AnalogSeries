@@ -1689,6 +1689,89 @@ TEST_CASE("vco spectrum: the core now DIVERGES from NaiveVcoCoreMirror by EXACTL
 //     against a superseded measurement.
 // ===========================================================================
 // ---------------------------------------------------------------------------
+
+// ===========================================================================
+// STEP-DOMINATED versus PLATEAU cells — the numerical-robustness classifier
+// that the recorded-measurement reproduction CHECK below is split on.
+//
+// WHY THIS EXISTS AT ALL. `measuredDb` was pinned in plan 32-07 from ONE
+// toolchain (Apple clang / libc++). Plan 32-10 pushed the phase to CI and
+// measured the same 90 cells on GCC/libstdc++ (ubuntu-latest) and on MinGW
+// g++ (windows-latest) for the first time. Run 30680251253 on SHA a110a9a:
+// the two non-Apple legs disagree with the recorded column by up to
+// 3.02596 dB (cell i = 86, 96 kHz square at character 1.00), on 21 cells.
+// macOS reproduces the column exactly. NOTHING IN src/ BEHAVES DIFFERENTLY:
+// `make strict` and the MinGW compile-and-link leg are green on the same SHA,
+// the TEST-03 gate itself passes on all three legs, and the shipped LFO's
+// goldens replay bit-exact everywhere. What differs is the INSTRUMENT.
+//
+// THE MECHANISM. `aliasPeakDb` reports a MAX OVER 2043 NON-HARMONIC BINS.
+// The FFT twiddles and the frozen Waveshape's own trig/pow come from the
+// platform's libm, and libm results differ between implementations in the
+// last unit in the last place. One ULP cannot move a peak that stands tens
+// of decibels clear of its neighbours — but where the alias spectrum is a
+// near-FLAT PLATEAU of near-tied bins, one ULP REORDERS which bin wins, and
+// the reported max steps to a different bin at a materially different level.
+//
+// THE PHYSICAL CRITERION, and it is stated here BEFORE the population is
+// enumerated, precisely so the split cannot be a rename of "the cells that
+// happened to fail today":
+//
+//   A cell is STEP-DOMINATED when the waveform at that (morph region,
+//   character) carries a TRUE VALUE-STEP DISCONTINUITY of substantial
+//   magnitude. A value step's harmonic series falls off at 6 dB/octave, so
+//   its fold-back produces alias peaks that stand well clear of the rest of
+//   the spectrum, and the arg-max is stable under a last-place perturbation.
+//
+//   A cell is PLATEAU-DOMINATED when it carries NO such step, so its alias
+//   content is second-order (a slope break) or comes only from the frozen
+//   bleed ring — a near-flat spectrum whose arg-max is a near-tie.
+//
+// APPLYING THE CRITERION TO THIS GRID'S FIVE REGIONS, from the frozen
+// Waveshape's own measured behaviour (all figures from plan 32-05, probed
+// against the frozen header rather than against MorphBlep's table):
+//
+//   saw       — STEP. The wrap jump is +2.000000 on computeSaw at character
+//               0.00, 0.25, 0.50, 0.75 AND 1.00. P-4's "the soft reset
+//               shrinks the step" premise was FALSIFIED; the step never
+//               shrinks. Step-dominated at EVERY character.
+//   pulse 5%  — STEP. Two hard rectangle edges at every character.
+//   square    — STEP below full character (jump -1.201655 at character 0.50)
+//               but NOT at character 1.00, where plan 32-05 measured the same
+//               jump collapse to -0.001661 — three orders of magnitude down,
+//               the edge fully softened. So square is step-dominated for
+//               character < 1.00 and plateau-dominated at 1.00.
+//   triangle  — NO value step at ANY character, by construction. Its whole
+//               alias content is the SLOPE break polyBLAMP addresses, which
+//               is why AA-02 is a separate requirement from AA-01. Plateau.
+//   sine      — NO discontinuity of its own at any character. Whatever alias
+//               energy it has comes ENTIRELY from the frozen bleed ring.
+//               Plateau.
+//
+// The population therefore FALLS OUT of the criterion as
+// {sine} u {triangle} u {square at character 1.00} = 7 cells per note block
+// x 6 blocks = 42 plateau cells, and 48 step-dominated cells. Both counts are
+// REQUIREd below, so a classifier that silently emptied either side fails
+// loudly rather than making one of the two bounds vacuous.
+//
+// THE SPLIT IS A SUPERSET OF THE OBSERVED FAILURES, WHICH IS THE POINT.
+// 21 cells drifted on CI; all 21 fall inside the 42. The other 21 plateau
+// cells reproduced within 1.0 dB on all three legs anyway — they are covered
+// by the looser bound because the criterion says they CAN be fragile, not
+// because they were seen to be. And EVERY ONE of the 48 step-dominated cells
+// reproduced within 1.0 dB on all three legs, which is the prediction the
+// criterion makes and the evidence that it is the right criterion rather
+// than a convenient one. If a step-dominated cell ever drifts past 1.0 dB,
+// that is a FINDING to report under the standing instruction below — it is
+// NOT licence to reclassify the cell.
+static bool isStepDominatedCell(const std::string& region, float character) {
+	if (region == "saw")      return true;   // +2.000000 jump at every character
+	if (region == "pulse 5%") return true;   // two hard edges at every character
+	if (region == "square")   return character < 1.0f;  // edge softened away at 1.00
+	return false;                            // sine and triangle: no value step
+}
+// ===========================================================================
+
 TEST_CASE("vco spectrum: the naive and corrected alias floors, recorded per shape, note and character (D-08 measure->pin loop)") {
 
 	const std::size_t nCells = sizeof(SPECTRUM_GRID) / sizeof(SPECTRUM_GRID[0]);
@@ -1703,6 +1786,7 @@ TEST_CASE("vco spectrum: the naive and corrected alias floors, recorded per shap
 	int sineChar0Cells = 0, pulseC9Char0Cells = 0;
 	int methodOneCells = 0, methodTwoCells = 0;
 	int correctedSaneCells = 0;
+	int stepDominatedCells = 0, plateauCells = 0;
 
 	for (std::size_t i = 0; i < nCells; ++i) {
 		const SpectrumCell& cell = SPECTRUM_GRID[i];
@@ -1791,29 +1875,68 @@ TEST_CASE("vco spectrum: the naive and corrected alias floors, recorded per shap
 		// ---- THE RECORDED MEASUREMENT STILL REPRODUCES (T-32-15). -----------
 		// `measuredDb` on the row is the corrected value plan 32-07 pinned that
 		// row's threshold FROM. This CHECK is what stops it becoming a fossil: it
-		// must still be what the core produces, to within 1.0 dB.
+		// must still be what the core produces.
 		//
-		// WHY 1.0 dB AND NOT ZERO. The value is a float written to four decimal
-		// places from one toolchain's run, and the alias PEAK is a max over 2043
-		// bins — a bin ordering that changes by one unit in the last place can
-		// move the reported peak by a fraction of a decibel without anything in
-		// the DSP having moved. 1.0 dB is a third of the 3 dB pinning margin, so a
-		// drift large enough to fire here is still far too small to have made any
-		// gated cell miss, and it fires as a WARNING (a CHECK) rather than as a
-		// REQUIRE for exactly that reason.
+		// THE BOUND IS SPLIT BY THE STEP-DOMINATED / PLATEAU CRITERION defined
+		// above this TEST_CASE. Read that banner first — it states the physical
+		// criterion, and the two populations fall out of it.
 		//
-		// >>> IF THIS FIRES, STOP AND REPORT IT RATHER THAN UPDATING THE NUMBER.
-		// The pair (measuredDb, thresholdDb) is the audit trail for T-32-15. Every
-		// gated threshold is derived from measuredDb by an assertion in the TEST-03
-		// gate below, so re-typing measuredDb to match a new run silently re-pins
-		// the whole column against whatever the implementation now produces — the
-		// exact failure mode the anti-softening clause exists to prevent. Re-run
-		// the MEASURE-TO-PIN PROTOCOL deliberately, and record what moved and why.
+		// WHY NOT ZERO, ON EITHER SIDE. The value is a float written to four
+		// decimal places from one toolchain's run, and the alias PEAK is a max
+		// over 2043 bins — a bin ordering that changes by one unit in the last
+		// place can move the reported peak without anything in the DSP moving.
+		//
+		//   STEP-DOMINATED cells: 1.0 dB, UNCHANGED from plan 32-07. A third of
+		//   the 3 dB pinning margin. MEASURED to hold on all three legs of run
+		//   30680251253 — all 48 of them, on Apple clang, GCC/libstdc++ and
+		//   MinGW g++ alike. This is the tight bound and it stays tight.
+		//
+		//   PLATEAU cells: 4.0 dB. PINNED FROM MEASUREMENT, not chosen. The
+		//   worst cross-toolchain drift observed anywhere on run 30680251253 is
+		//   3.02596 dB, at cell i = 86 (96 kHz, morph 0.75 square, character
+		//   1.00), on both non-Apple legs. 4.0 is that worst rounded OUTWARD to
+		//   the next even decibel, leaving 0.974 dB of headroom — the same
+		//   outward-rounding rule step 2 of the MEASURE-TO-PIN PROTOCOL states,
+		//   and the same shape as plan 32-07's two re-pinned tolerances (the
+		//   no-regression bound at 4.0 against a measured 2.3344, and the
+		//   cross-rate bound at 6.0 against a measured 4.7059).
+		//
+		// THE LOOSER BOUND IS STILL A REAL BOUND. It is not headroom nobody
+		// reaches: the observed population runs to 3.03 dB, so 4.0 is 1.32x the
+		// worst measurement rather than an order of magnitude above it. And it
+		// remains a live T-32-15 tripwire, because re-typing a plateau cell's
+		// measuredDb by more than 4 dB still fires here, while re-typing it by
+		// ANY amount independently breaks the derivation assertion in the
+		// TEST-03 gate below (threshold == max(ceil(measuredDb + 3), floor)).
+		// The two assertions are what make the pair (measuredDb, thresholdDb)
+		// an audit trail rather than a pair of editable numbers.
+		//
+		// >>> IF EITHER OF THESE FIRES, STOP AND REPORT IT RATHER THAN UPDATING
+		// >>> THE NUMBER OR WIDENING THE BOUND. This instruction survives plan
+		// 32-10's split unchanged in force, and applies to BOTH branches. Every
+		// gated threshold is derived from measuredDb by an assertion in the
+		// TEST-03 gate below, so re-typing measuredDb to match a new run
+		// silently re-pins the whole column against whatever the implementation
+		// now produces — the exact failure mode the anti-softening clause exists
+		// to prevent. Widening one of these two bounds to silence a red is the
+		// same act by another route. Re-run the MEASURE-TO-PIN PROTOCOL
+		// deliberately, and record what moved and why.
+		//
+		// >>> AND IF THE CELL THAT FIRES IS STEP-DOMINATED, THAT IS A FINDING
+		// >>> ABOUT THE CRITERION, NOT A CELL TO RECLASSIFY. The criterion
+		// predicts step-dominated cells are toolchain-stable. Moving a cell
+		// across the split to make a build green would empty the prediction of
+		// content and is exactly what plan 32-10 was told not to do.
 		const double recordedDb = (double)cell.measuredDb;
 		const double recordedDrift = correctedDb - recordedDb;
+		const bool   stepDominated = isStepDominatedCell(region, character);
+		const double driftBoundDb = stepDominated ? 1.0 : 4.0;
 		CAPTURE(recordedDb);
 		CAPTURE(recordedDrift);
-		CHECK(std::fabs(recordedDrift) <= 1.0);
+		CAPTURE(stepDominated);
+		CAPTURE(driftBoundDb);
+		if (stepDominated) ++stepDominatedCells; else ++plateauCells;
+		CHECK(std::fabs(recordedDrift) <= driftBoundDb);
 
 		// ---- THE D-10 SELF-CHECK, PER CELL, BEFORE THE VALUE IS READ. -------
 		// The gate's own noise floor sits at least 10 dB below the threshold
@@ -1927,6 +2050,25 @@ TEST_CASE("vco spectrum: the naive and corrected alias floors, recorded per shap
 	// assertion silently partial, and a partial invariant over an injecting
 	// correction is worth very little.
 	CHECK(correctedSaneCells == 90);
+
+	// ---- THE TWO REPRODUCTION POPULATIONS ARE NON-VACUOUS. -----------------
+	// The split introduced in plan 32-10 hands the tight 1.0 dB bound to one
+	// population and a measured 4.0 dB bound to the other. A classifier that
+	// silently emptied the STEP-DOMINATED side would move every cell onto the
+	// looser bound while every assertion above stayed green — the tight bound
+	// would still be "present" and would simply never run, which is the same
+	// unfalsifiable shape the tier census three lines up exists to prevent.
+	//
+	// The counts are derived, not chosen: {sine} u {triangle} u {square at
+	// character 1.00} is 7 of the 15 cells in each of the 6 note blocks, so 42
+	// plateau and 48 step-dominated. Asserting the exact numbers rather than
+	// ">= 1" is what makes a region label typo or a lost grid section fail here
+	// rather than quietly shifting a cell to the weaker assertion.
+	CAPTURE(stepDominatedCells);
+	CAPTURE(plateauCells);
+	CHECK(stepDominatedCells == 48);
+	CHECK(plateauCells == 42);
+	CHECK(stepDominatedCells + plateauCells == 90);
 }
 
 // ---------------------------------------------------------------------------
