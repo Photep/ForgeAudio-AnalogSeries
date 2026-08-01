@@ -29,10 +29,10 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 - [ ] **MORPH-01**: The morph engine (`Waveshape`) runs at audio rate, reused verbatim from the frozen shared core
 - [x] **MORPH-02**: MORPH knob + CV + attenuverter sweep the continuous 5-shape crossfade (sine→triangle→saw→square→narrow-pulse) at audio rate
 - [ ] **AA-01**: Morph-aware polyBLEP band-limits the value-step discontinuities (saw wrap, square edge, variable-width pulse edges) of the continuous crossfade, scaled by the morph and bleed weights
-- [ ] **AA-02**: polyBLAMP band-limits the triangle slope-corner discontinuities
-- [ ] **AA-03**: Anti-aliasing correctly handles multiple/overlapping discontinuities within one sample at narrow pulse widths
-- [ ] **AA-04**: BLEP/BLAMP magnitude is driven by the characterized (actual) jump so CHARACTER edge-softening auto-scales the correction
-- [ ] **AA-05**: Anti-aliasing is table-free and Rack-free (closed-form arithmetic) — preserving C++11-strict compilation and golden bit-stability; no minBLEP, no oversampling in v2.0
+- [x] **AA-02**: polyBLAMP band-limits the triangle slope-corner discontinuities
+- [x] **AA-03**: Anti-aliasing correctly handles multiple/overlapping discontinuities within one sample at narrow pulse widths
+- [x] **AA-04**: BLEP/BLAMP magnitude is driven by the characterized (actual) jump so CHARACTER edge-softening auto-scales the correction
+- [x] **AA-05**: Anti-aliasing is table-free and Rack-free (closed-form arithmetic) — preserving C++11-strict compilation and golden bit-stability; no minBLEP, no oversampling in v2.0
 
 ### Sync
 
@@ -127,10 +127,10 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | MORPH-01 | Phase 32 | Pending |
 | MORPH-02 | Phase 32 | Complete |
 | AA-01 | Phase 32 | Pending |
-| AA-02 | Phase 32 | Pending |
-| AA-03 | Phase 32 | Pending |
-| AA-04 | Phase 32 | Pending |
-| AA-05 | Phase 32 | Pending |
+| AA-02 | Phase 32 | Complete |
+| AA-03 | Phase 32 | Complete |
+| AA-04 | Phase 32 | Complete |
+| AA-05 | Phase 32 | Complete |
 | SYNC-01 | Phase 33 | Pending |
 | SYNC-02 | Phase 33 | Pending |
 | CHAR-01 | Phase 34 | Pending |

@@ -5,8 +5,8 @@ milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
 status: executing
-stopped_at: Completed 32-03-PLAN.md
-last_updated: "2026-07-31T23:17:14.396Z"
+stopped_at: Completed 32-05-PLAN.md
+last_updated: "2026-08-01T00:14:54.240Z"
 last_activity: 2026-07-31
 last_activity_desc: Phase 32 execution started
 progress:
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — EXECUTING
-Plan: 5 of 11
+Plan: 6 of 11
 Status: Ready to execute
 Last activity: 2026-07-31 — Phase 32 execution started
 
@@ -149,6 +149,7 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase ?]: 32-03: measureCellDb escalates the bin-centre solver per cell (method one unless that cell's own D-10 bar demands method two); 76 of 90 cells use method one, 14 escalate
 - [Phase ?]: 32-03: the alias-floor gate was observed RED on 32 of 45 gated cells against the live naive forge::VcoCore and pinned as a tombstone; kNaiveFailuresFloor = 27 is the observed 32 minus 5 and must not be tightened to the observed count
 - [Phase ?]: 32-03: the 13 gated cells that already pass naive are the P-6 population (sine, and high-character cells where the D-03 factor correctly returns zero) and must not be 'fixed' by tightening their thresholds
+- [Phase 32]: MorphBlep's dt guard gained an upper bound: a +infinity dt passed the lower-bound-only guard, reached the divisor, and left pending = NaN permanently — Measured RED against the 32-04 header; the other five hostile dt classes were already correct. Bound is 1.0, not kVcoMaxDeltaPhase, so it provably cannot fire on a legitimate input.
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -201,13 +202,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P02 | 21min | 3 tasks | 2 files |
 | Phase 32 P03 | 40 min | 2 tasks | 1 files |
 | Phase 32 P04 | 35 min | 2 tasks | 2 files |
+| Phase 32 P05 | 78 min | 3 tasks | 2 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-07-31T23:17:14.388Z
-Stopped at: Completed 32-03-PLAN.md
+Last session: 2026-08-01T00:14:54.165Z
+Stopped at: Completed 32-05-PLAN.md
 Resume: run `/gsd-verify-work 31`, then `/gsd-discuss-phase 32` for morph-aware polyBLEP/polyBLAMP band-limiting.
 
 ## Operator Next Steps
