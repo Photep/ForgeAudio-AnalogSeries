@@ -40,6 +40,13 @@
 //   5. the permanent POSITIVE CONTROL for invariant 4: a deliberately-broken
 //      stand-in core that shares one static phase accumulator between instances
 //      is required to FAIL the same check, through the same helper (D-17)
+//   6. audio-rate MORPH sweeping through every segment boundary stays finite
+//      and inside the OUTER tier across 27 configurations — three rates, three
+//      notes, three modulation rates — with the boundary crossings proven to
+//      happen BEFORE any value is asserted, and with the modulated excess over
+//      the static-input envelope pinned and explained rather than hidden
+//      (MORPH-01 / MORPH-02 / D-13 / D-16 / P-13). Appended by plan 32-09;
+//      nothing above it was renumbered.
 //
 // THE D-16 LABEL, WHICH MUST NOT BE SOFTENED. Invariant 1 is NOT the TEST-02
 // V/Oct tracking gate. TEST-02 belongs to Phase 31 and requires better than one
@@ -107,6 +114,24 @@ namespace {
 // stand-in and the interleave runner — into this SAME anonymous namespace, and
 // owns none of the three helpers defined here.
 constexpr double SAMPLE_RATES[] = {44100.0, 48000.0, 96000.0};
+
+// THE TWO NESTED OUTPUT TIERS, pinned by plan 32-08 and HOISTED HERE by plan
+// 32-09. Their full provenance — the analytic derivation of 5.55, the operator
+// decision of 2026-08-01 behind 10.0, and every measured figure that entitles a
+// scenario to the tighter one — lives in invariant 2's banner below and is NOT
+// duplicated here. Read it there.
+//
+// WHY THEY ARE NAMESPACE-SCOPE RATHER THAN LOCAL TO INVARIANT 2. Plan 32-08
+// recorded kHostileBoundV as "the PHASE-WIDE OUTER output bound, no exceptions
+// anywhere, BINDING ON EVERY SCENARIO ANY LATER PLAN ADDS". Plan 32-09 is the
+// first such later plan, and invariant 6 below is bound by exactly that
+// sentence. Left function-local, invariant 6 would have had to RE-DECLARE both
+// numbers, and this suite already carries one mirror it has to keep in step by
+// hand (DeliberatelyBrokenSharedStateCore) and has watched it drift. A bound
+// that binds two cases gets ONE definition. Do not copy these values into a
+// case body.
+constexpr float kHostileBoundV = 10.0f;
+constexpr float kMusicalBoundV = 5.55f;
 
 // Baseline core input. Built by default construction + field assignment, never a
 // brace value-list (VcoInputs has NSDMIs, so under C++11 it is not an aggregate
@@ -673,6 +698,13 @@ TEST_CASE("vco core: naive pitch tracks the C4 reference on the OUTPUT within 1 
 //    sweep plan 32-09 adds. There is exactly ONE outer bound and nothing is
 //    excused from it.
 //
+//    THAT FORWARD REFERENCE HAS LANDED, and it is recorded here rather than
+//    left dangling: invariant 6 at the bottom of this file is the audio-rate
+//    MORPH sweep, it asserts kHostileBoundV at all 27 of its configurations, and
+//    it is MEASURED at a grid-wide worst of 6.289864 V. It is also the first
+//    scenario in the suite that declines the tighter tier, which is why it
+//    carries its own assertion proving the excess is real — see its banner.
+//
 //    kMusicalBoundV is an ADDITIONAL, STRICTLY TIGHTER assertion layered ON TOP
 //    of the outer one, asserted wherever the measurement entitles a scenario to
 //    it. It is not permission to skip the outer bound — every scenario that
@@ -784,13 +816,18 @@ TEST_CASE("vco core: naive pitch tracks the C4 reference on the OUTPUT within 1 
 //    has not been designed yet.
 // ---------------------------------------------------------------------------
 TEST_CASE("vco core: output magnitude stays inside two measured tiers (D-18b)") {
-	// THE OUTER BOUND. Applies to EVERY scenario below, with no exceptions, and
-	// to every scenario any later plan adds to this suite.
-	const float kHostileBoundV = 10.0f;
-	// THE TIGHTER, ADDITIONAL BOUND. Asserted ON TOP OF the outer one wherever
-	// the measurement in this case's banner entitles a scenario to it — never
-	// instead of it.
-	const float kMusicalBoundV = 5.55f;
+	// kHostileBoundV — THE OUTER BOUND. Applies to EVERY scenario below, with no
+	// exceptions, and to every scenario any later plan adds to this suite.
+	// kMusicalBoundV — THE TIGHTER, ADDITIONAL BOUND. Asserted ON TOP OF the
+	// outer one wherever the measurement in this case's banner entitles a
+	// scenario to it — never instead of it.
+	//
+	// BOTH WERE HOISTED to the anonymous namespace at the top of this file by
+	// plan 32-09, so that invariant 6 — the first scenario a later plan added
+	// under the "binding on every scenario any later plan adds" clause — reads
+	// the SAME definition rather than a hand-kept copy of these two numbers. The
+	// values, the nesting rule and this provenance are unchanged; only the
+	// declaration site moved.
 
 	for (double sr : SAMPLE_RATES) {
 		// --- Scenario one: the harness sweep. -------------------------------
@@ -1659,4 +1696,282 @@ TEST_CASE("vco core: independence positive control - a shared static accumulator
 		// 512/512 on this construction.
 		CHECK(totalMismatch > 0);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// 6. Audio-rate MORPH sweeping through every segment boundary stays finite and
+//    bounded (MORPH-01 / MORPH-02 / D-16 / P-13 / T-32-24 / T-32-25).
+//
+//    WHY THIS CASE EXISTS AND WHY IT IS THE HARD ONE. D-16 pulled MORPH's CV
+//    jack into Phase 32 precisely because audio-rate morph sweeping through the
+//    crossfade's segment boundaries is the hardest case this phase's
+//    band-limiting has to survive: at every boundary the weight vector the
+//    correction is computed from changes SHAPE, not merely magnitude, and at
+//    0.75 it changes FORM — the frozen path stops crossfading two rectangles and
+//    switches to the direct-duty special case (src/dsp/Waveshape.hpp:179-182,
+//    mirrored at src/dsp/MorphBlep.hpp's `if (segment == 3)`). Nothing in this
+//    suite asserted that drive before this case.
+//
+//    WHAT DRIVES IT. The cross product of the three production sample rates,
+//    three notes DERIVED from forge::kVcoFreqC4 (pitchCV +3, +4 and +5, which
+//    place the fundamental at 2093.00, 4186.01 and 8372.02 Hz — C7, C8 and C9,
+//    the same three notes tests/test_vco_spectrum.cpp gates the alias floor at),
+//    and three morph modulation rates of 50, 500 and 2000 Hz. 27 configurations,
+//    20000 samples each. Character is held at 1.0, the value at which every
+//    component-spread coefficient and the whole bleed ring are live. Morph is a
+//    FULL-RANGE sinusoid over the unit interval, which is what a patched
+//    audio-rate LFO into the MORPH CV jack at a full attenuverter produces.
+//
+//    IT DRIVES THE CORE POD DIRECTLY, through forge::VcoBlockDriver, with no
+//    Rack shell anywhere in the way. src/AnalogVCO.cpp mixes
+//    MORPH_PARAM + MORPH_CV_INPUT * 0.1 * MORPH_ATTEN_PARAM and conditions the
+//    result; plan 32-06 added the MATCHING guard inside forge::VcoCore for
+//    exactly this reason — the headless harness builds forge::VcoInputs itself
+//    and the core must not rely on its caller.
+//
+//    ------------------------------------------------------------------------
+//    NON-VACUITY FIRST, BECAUSE THIS CASE IS TRIVIALLY GREEN IF THE MODULATION
+//    DOES NOTHING (T-32-25).
+//    ------------------------------------------------------------------------
+//    The same validity-first habit invariant 4 uses: the preconditions are
+//    REQUIREd before any value assertion, so a modulation that silently stopped
+//    modulating fails loudly here instead of leaving 27 bounds passing on a
+//    steady tone.
+//
+//    A PLAN PREMISE FALSIFIED AND CORRECTED IN PLACE. Plan 32-09 specified
+//    asserting that morph "crosses all four segment boundaries at 0.25, 0.50,
+//    0.75 and 1.00". THERE ARE ONLY THREE crossable boundaries. The frozen path
+//    computes `segment = (int)(morph * 4)` and then clamps `segment > 3` to 3
+//    (Waveshape.hpp:165-166, mirrored at MorphBlep.hpp), so morph = 1.00 is the
+//    top ENDPOINT of segment 3, not a division between two segments — a
+//    full-range sinusoid reaches it and turns around without ever crossing it.
+//    An assertion counting a crossing at 1.00 would have been RED on correct
+//    behavior at every configuration. The conclusion is kept and made stronger
+//    rather than weaker: this case counts crossings of the THREE real interior
+//    boundaries AND requires all FOUR segments to be occupied AND requires the
+//    sweep to reach both endpoints, which together prove strictly more than the
+//    four-crossing claim did.
+//
+//    MEASURED crossing counts, which are two to three orders of magnitude above
+//    the floor asserted: 61 at the slowest configuration (96 kHz, 50 Hz morph)
+//    and 5441 at the fastest (44.1 kHz, 2000 Hz morph).
+//
+//    ------------------------------------------------------------------------
+//    THE ONE NUMBER A READER WILL TRIP OVER, PINNED RATHER THAN LEFT TO BE
+//    REDISCOVERED AND MISTAKEN FOR A REGRESSION (D-13 / T-32-24).
+//    ------------------------------------------------------------------------
+//    A MODULATED morph legitimately EXCEEDS the static-input musical envelope.
+//    This case asserts kHostileBoundV — the phase-wide outer tier, which has no
+//    exceptions and binds this scenario like every other — and DOES NOT assert
+//    kMusicalBoundV, and the reason is measured rather than asserted:
+//
+//        grid-wide worst, swept morph   6.289864 V  (44.1 kHz, C9, 2000 Hz)
+//        the same note and rate, morph  5.518032 V  (static-morph worst over
+//        held STATIC, scanned over                   the whole morph axis,
+//        201 points of the morph axis                201 points)
+//        the excess                     0.771832 V
+//
+//    So the excess is produced by the MODULATION, not by the note: the identical
+//    oscillator at the identical note and rate stays inside the musical tier at
+//    every static morph value, and only moves outside it when morph is swept.
+//
+//    THE MECHANISM, MEASURED. The peak sample lands at morph 0.7485 (44.1 kHz)
+//    and 0.7500 (48 kHz) — ON the 0.75 boundary, the square-to-pulse switch. At
+//    that sample the naive path contributes 5.517806 V and the additive
+//    correction contributes the rest. This is D-13's design, stated plainly: the
+//    `pending` accumulator deliberately delivers the SECOND HALF of a correction
+//    computed with the PREVIOUS sample's weight vector, site position and phase
+//    increment. The rejected alternative — recomputing that second half at the
+//    next sample from the then-current values — is REJECTED BY D-13 precisely
+//    because under audio-rate MORPH and FM all three of those have moved by
+//    then, so one consistent set of values for both halves is strictly more
+//    robust even though it costs a slightly larger transient at a swept
+//    boundary. That transient is what the 0.77 V above is.
+//
+//    THE RESEARCHER'S ENVELOPE, AND THIS RUN'S OWN FIGURE BESIDE IT. 32-RESEARCH
+//    P-13 measured this same grid at max|out| <= 1.3171 in waveshaper units,
+//    i.e. 6.5855 V, with the worst point at 8372 Hz under a 2 kHz morph sweep.
+//    This run measures 1.257973 units — 6.289864 V — at the SAME coordinates.
+//    Inside P-13's envelope, and the same worst point.
+//
+//    WHY THE EXCESS ASSERTION IS GRID-WIDE AND NOT PER-RATE, which is not a
+//    convenience. MEASURED per rate, the grid maxima are 6.289864 V at 44.1 kHz,
+//    6.006541 V at 48 kHz and 5.517825 V at 96 kHz. Only TWO of the 27
+//    configurations exceed the musical tier at all, both of them C9 at 2000 Hz;
+//    the other 25 sit between 5.508759 and 5.518031 V. At 96 kHz the excess
+//    vanishes entirely — the phase increment at C9 is half as large, the swept
+//    peak coincides with the naive envelope, and a per-rate form of this
+//    assertion would be RED there on correct behavior. The honest claim is
+//    therefore about the GRID's worst configuration, and that is the one made.
+//
+//    THE LINK TO THE OPERATOR CHECK, and the two are deliberately NOT
+//    substitutes. This case is the headless counterpart of plan 32-10's in-Rack
+//    UAT: the same control surface, the same three sample rates, the same three
+//    modulation rates. THIS one bounds the numbers. THAT one judges whether it
+//    SOUNDS like zipper noise at a crossfade seam, which no assertion in this
+//    file can see. Neither one covers the other.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco core: audio-rate MORPH sweeping through every segment boundary stays finite and bounded (MORPH-01 / MORPH-02)") {
+	// Derived from forge::kVcoFreqC4 rather than hardcoded volts, so this case
+	// moves with the constant instead of silently describing a note it no longer
+	// plays: +3, +4 and +5 octaves above C4 are C7, C8 and C9.
+	static const float PITCHES_I6[] = {3.f, 4.f, 5.f};
+	static const float MORPH_RATES_HZ[] = {50.f, 500.f, 2000.f};
+
+	// The same step count scenario four uses.
+	const int n = 20000;
+
+	// The grid-wide accumulator for the excess assertion below. Deliberately
+	// OUTSIDE all three loops: the claim is about the worst configuration
+	// anywhere on the grid, for the reason given in the banner.
+	float gridWorstV  = 0.f;
+	double atRate     = 0.0;
+	float  atPitchCV  = -1.f;
+	float  atModHz    = -1.f;
+
+	for (double sr : SAMPLE_RATES) {
+		for (float pitchCV : PITCHES_I6) {
+			for (float modHz : MORPH_RATES_HZ) {
+				CAPTURE(sr);
+				CAPTURE(pitchCV);
+				CAPTURE(modHz);
+				INFO("scenario: audio-rate MORPH through the segment boundaries - HOSTILE TIER ONLY, measured 6.289864 V grid-wide worst at 44.1 kHz / C9 / 2000 Hz against a static-morph worst of 5.518032 V at the same note and rate");
+
+				const double fundHz =
+					(double)forge::kVcoFreqC4 * std::pow(2.0, (double)pitchCV);
+				CAPTURE(fundHz);
+
+				// Full-range sinusoid over the unit interval — a patched
+				// audio-rate LFO at a full attenuverter. The angular step is
+				// computed in DOUBLE so a 2 kHz modulator at 96 kHz does not
+				// accumulate a phase error across 20000 samples.
+				const double w = 2.0 * forge::kPi * (double)modHz / sr;
+
+				forge::VcoInputs base = coreBase();
+				base.pitchCV   = pitchCV;
+				base.character = 1.f;   // every spread coefficient and the whole bleed ring live
+
+				forge::VcoBlockDriver d(sr);
+				std::vector<float> out = d.run(n, [=](int i) {
+					forge::VcoInputs in = base;
+					in.morph = (float)(0.5 + 0.5 * std::sin(w * (double)i));
+					return in;
+				});
+				REQUIRE(out.size() == (size_t)n);
+
+				// --- NON-VACUITY, ASSERTED FIRST (T-32-25) ------------------
+				// The morph functor's OWN output, recomputed here from the same
+				// expression the driver was handed, so the precondition is a
+				// statement about the modulation rather than about the output it
+				// produced.
+				int  boundaryCrossings = 0;
+				bool segmentSeen[4]    = {false, false, false, false};
+				float minMorph = 2.f, maxMorph = -1.f;
+				int  prevSegment = -1;
+				for (int i = 0; i < n; ++i) {
+					const float m = (float)(0.5 + 0.5 * std::sin(w * (double)i));
+					if (m < minMorph) minMorph = m;
+					if (m > maxMorph) maxMorph = m;
+					// The FROZEN classification, mirrored exactly: (int)(morph*4)
+					// with the minimum-of-3 clamp (Waveshape.hpp:165-166). This is
+					// also why 1.00 is not a crossable boundary — see the banner.
+					int s = (int)(m * 4.f);
+					if (s > 3) s = 3;
+					segmentSeen[s] = true;
+					if (prevSegment >= 0 && s != prevSegment) ++boundaryCrossings;
+					prevSegment = s;
+				}
+				CAPTURE(boundaryCrossings);
+				CAPTURE(minMorph);
+				CAPTURE(maxMorph);
+
+				// MEASURED 61 at the slowest configuration and 5441 at the
+				// fastest. The floor of 4 is two orders of magnitude below the
+				// slowest and is a NON-VACUITY floor, not a characterisation:
+				// it says the sweep genuinely traverses the crossfade, and it
+				// would fire instantly if a future edit froze the modulator.
+				REQUIRE(boundaryCrossings >= 4);
+				// All four segments occupied, and both endpoints reached. This
+				// is what replaces the falsified "crosses 1.00" claim, and it is
+				// strictly stronger: it pins that the sweep visits the sine
+				// centre AND the narrow pulse, not merely that it moves.
+				REQUIRE(segmentSeen[0]);
+				REQUIRE(segmentSeen[1]);
+				REQUIRE(segmentSeen[2]);
+				REQUIRE(segmentSeen[3]);
+				REQUIRE(minMorph < 0.01f);
+				REQUIRE(maxMorph > 0.99f);
+
+				// --- NON-VACUITY OF THE OUTPUT BLOCK ITSELF -----------------
+				int  nonZero = 0;
+				bool constantBlock = true;
+				for (int i = 0; i < n; ++i) {
+					if (out[i] != 0.f) ++nonZero;
+					if (out[i] != out[0]) constantBlock = false;
+				}
+				CAPTURE(nonZero);
+				REQUIRE_FALSE(constantBlock);
+				// MEASURED 100.00 % non-zero at all 27 configurations.
+				REQUIRE(nonZero >= (n * 9) / 10);
+
+				// --- THE VALUE ASSERTIONS, ACCUMULATED ----------------------
+				// 27 configurations at 20000 steps would otherwise add more than
+				// half a million assertions to a suite already past 2.6 million.
+				// Same idiom as scenarios three, four and five.
+				bool  allFinite = true;
+				float maxAbs    = 0.f;
+				for (int i = 0; i < n; ++i) {
+					if (!std::isfinite(out[i])) allFinite = false;
+					const float a = std::fabs(out[i]);
+					if (a > maxAbs) maxAbs = a;
+				}
+				// Captured so the measured figure appears in `-s` output on a
+				// PASS: 27 per-configuration maxima are the audit trail this
+				// case exists to leave behind.
+				CAPTURE(maxAbs);
+
+				CHECK(allFinite);
+				// THE OUTER TIER, WITH NO EXCEPTION AVAILABLE. Plan 32-08 pinned
+				// kHostileBoundV as binding on every scenario any later plan
+				// adds, and this is that scenario. MEASURED worst 6.289864 V
+				// against 10.0 V, clearing by 3.71 V.
+				//
+				// kMusicalBoundV is NOT asserted here, and that is not a
+				// carve-out from the outer tier — the outer tier is asserted on
+				// the line above, exactly as scenario five does. The measurement
+				// in the banner is what withholds the tighter one.
+				CHECK(maxAbs <= kHostileBoundV);
+
+				if (maxAbs > gridWorstV) {
+					gridWorstV = maxAbs;
+					atRate     = sr;
+					atPitchCV  = pitchCV;
+					atModHz    = modHz;
+				}
+			}
+		}
+	}
+
+	// --- THE ASSERTION THAT KEEPS THIS CASE HONEST --------------------------
+	// Without it, withholding kMusicalBoundV above would be an unexamined
+	// exemption: a scenario that declines the tighter tier and never approaches
+	// it would be claiming headroom it does not use. This pins that the excess
+	// is REAL and pins its measured size, so a future change that brought the
+	// grid back under 5.55 V goes RED and asks whether this case still needs the
+	// exemption at all. That is the intended behavior, and it is the same
+	// argument scenario five's exercise floor rests on.
+	//
+	// NO CUSHIONED FLOOR IS PINNED HERE, unlike scenario five, and the reason is
+	// measured: scenario five clears the musical tier by 1.60 V and can afford a
+	// 1.5 V cushion, while this grid clears it by 0.74 V. A 1.5 V cushion would
+	// put the floor at 4.79 V — BELOW kMusicalBoundV — where it would assert
+	// nothing, and any smaller cushion would be a number with no derivation
+	// behind it. The bound itself is the honest comparator.
+	CAPTURE(gridWorstV);
+	CAPTURE(atRate);
+	CAPTURE(atPitchCV);
+	CAPTURE(atModHz);
+	INFO("grid-wide worst across all 27 configurations; static-morph worst at the same note and rate is 5.518032 V, so the modulated excess is 0.771832 V (D-13's pending accumulator)");
+	CHECK(gridWorstV > kMusicalBoundV);
+	CHECK(gridWorstV <= kHostileBoundV);
 }
