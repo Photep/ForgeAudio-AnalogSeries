@@ -65,6 +65,7 @@
 #include "doctest.h"
 
 #include "VcoBlockDriver.hpp"
+#include "dsp/MorphBlep.hpp"   // forge::MorphBlep — held LOCALLY by the inverted D-08 baseline case
 
 #include <vector>     // std::vector — the sample block and the FFT scratch buffer
 #include <complex>    // std::complex<double> — the FFT's working element type
@@ -424,11 +425,12 @@ double impliedLeakageDb(double binError) {
 //
 // >>> THE DELIBERATE DIVERGENCE, AND THE ONLY ONE. <<<
 // This mirror applies NO BAND-LIMITING CORRECTION. Everything else is
-// src/dsp/VcoCore.hpp field for field and line for line. Right now that is not
-// a divergence at all, because the live core applies no correction either —
-// which is exactly why this file lands in plan 32-01 and not later. Plan 32-06
-// lands forge::MorphBlep at the VcoCore.hpp:484 call site, and from that commit
-// onward this type is the ONLY remaining naive path in the repository. It must
+// src/dsp/VcoCore.hpp field for field and line for line. THAT DIVERGENCE IS
+// LIVE AS OF PLAN 32-06: until that commit it was not a divergence at all,
+// because the live core applied no correction either — which is exactly why
+// this file landed in plan 32-01 and not later. Plan 32-06 landed
+// forge::MorphBlep at the morphedWave call site, and from that commit this type
+// is the ONLY remaining naive path in the repository. It must
 // stay naive FOREVER. Plan 32-07's no-regression invariant compares the
 // corrected core against it cell by cell, and a mirror that quietly acquired
 // the correction would make that invariant compare the corrected core against
@@ -465,6 +467,25 @@ struct NaiveVcoCoreMirror {
 	forge::DriftEngine drift;
 	forge::Waveshape wave;
 	double phase = 0.0;
+
+	// --- RECORDING ONLY (plan 32-06). ------------------------------------
+	// Five members written on every step() and read by the D-08 INVERSION case
+	// below, which reconstructs the live core's sample from this mirror plus a
+	// locally held forge::MorphBlep and requires bit-exact agreement.
+	//
+	// THEY CHANGE NO ARITHMETIC, AND THEY ARE NOT A SECOND DIVERGENCE. Nothing
+	// in step() reads them, none of them appears in any expression that produces
+	// a sample, and deleting all five would leave every returned float
+	// bit-identical. The banner's "only one divergence" promise is about the
+	// CORRECTION; these are simply the inputs the correction needs, made visible
+	// so the inversion case can supply them from OUTSIDE rather than by
+	// re-deriving them — a re-derivation would be a second mirror, with a second
+	// way to drift, inside the case whose whole job is to detect drift.
+	float  lastNaive      = 0.f;   // the PRE-SCALE value the frozen call returned
+	float  lastP          = 0.f;   // the float phase handed to morphedWave this sample
+	double lastDeltaPhase = 0.0;   // the double increment this sample advanced by
+	float  lastMorph      = 0.f;   // post-conditioning, the value the frozen call saw
+	float  lastCharacter  = 0.f;   // post-conditioning, the value the frozen call saw
 
 	void seed(uint64_t s0, uint64_t s1 = 0) { drift.seed(s0, s1); }
 
@@ -525,14 +546,40 @@ struct NaiveVcoCoreMirror {
 		if (phase >= 1.0) phase -= 1.0;
 
 		const float p = (float)phase;
-		const float morph = forge::clamp(in.morph, 0.f, 1.f);
-		const float character = forge::clamp(in.character, 0.f, 1.f);
+
+		// Mirrored (plan 32-06 / T-32-01): the morph and character conditioning
+		// is the NEGATED-COMPARISON PAIR, negated line first, and NOT
+		// forge::clamp. The real core moved to this form when plan 32-02's MORPH
+		// CV jack made "the inputs are already finite" false, and the
+		// mirror-maintenance rule in the banner above requires this type to track
+		// the core's GUARD SEQUENCE, not only its arithmetic. A mirror that
+		// quietly kept the ladder would differ from the core in TWO things — the
+		// correction AND the NaN behavior — rather than in the one its banner
+		// promises, and the second difference would be invisible for exactly as
+		// long as nothing drove a not-a-number through it.
+		float morph = in.morph;
+		if (!(morph > 0.f)) morph = 0.f;
+		if (morph > 1.f) morph = 1.f;
+		float character = in.character;
+		if (!(character > 0.f)) character = 0.f;
+		if (character > 1.f) character = 1.f;
 
 		// Mirrored: ONE call into the frozen Waveshape — a call, never an edit —
 		// with bleedLfo = 0.f, and the unconditioned x5. THIS IS THE LINE THAT
-		// DIVERGES IN PLAN 32-06: the real core gains the forge::MorphBlep
+		// DIVERGED IN PLAN 32-06: the real core gained the forge::MorphBlep
 		// correction here, and this line must NOT.
-		return 5.f * wave.morphedWave(p, morph, character, 0.f);
+		const float naive = wave.morphedWave(p, morph, character, 0.f);
+
+		// Recording only — see the five members above. Written AFTER the frozen
+		// call so `lastNaive` is the value that call actually returned rather
+		// than a recomputation of it.
+		lastNaive      = naive;
+		lastP          = p;
+		lastDeltaPhase = deltaPhase;
+		lastMorph      = morph;
+		lastCharacter  = character;
+
+		return 5.f * naive;
 	}
 };
 
@@ -1222,9 +1269,81 @@ TEST_CASE("vco spectrum: the DFT apparatus is validated by DETECTING a planted s
 
 // ---------------------------------------------------------------------------
 // The D-08 baseline is only a baseline if it is a FAITHFUL copy of the core.
-// This case is what makes it one — and it is a TOMBSTONE.
+// This case is what makes it one — and it is an INVERTED TOMBSTONE.
+//
+// >>> WHAT THIS CASE USED TO BE, RECORDED RATHER THAN ERASED. <<<
+// Until plan 32-06 this case asserted that NaiveVcoCoreMirror and the live
+// forge::VcoCore were BIT-IDENTICAL — `CHECK(differing == 0)` over the same 45
+// grid points, the same three rates and the same four seed literals. That was
+// the proof that the D-08 baseline is a faithful copy of the core, and it was
+// true for exactly as long as forge::VcoCore::step applied no band-limiting.
+//
+// PLAN 32-06 LANDED forge::MorphBlep AT THE morphedWave CALL SITE, so that claim
+// became FALSE BY DESIGN. The case was INVERTED IN PLACE — same slot in this
+// file, same grid, same seeds, same three sample rates, same non-vacuity
+// REQUIREs — rather than deleted. That is the shape Phase 29's silence tombstone
+// used and Phase 30 honoured (D-15 / D-19), and it is the shape the tombstone's
+// own instructions demanded.
+//
+// >>> WHAT THE INVERTED FORM BUYS THAT THE OLD ONE DID NOT. <<<
+// The old form could only say the two paths were the same. This one says
+// something strictly stronger: the two paths differ by EXACTLY the correction
+// and by NOTHING ELSE. It reconstructs the live core's sample from the mirror's
+// own recorded pre-scale value plus a LOCALLY held forge::MorphBlep driven with
+// the mirror's own recorded p, phase, dt, morph and character, and requires the
+// reconstruction to equal the core's sample BIT-EXACTLY. So the mirror is still
+// proved to be a faithful copy of everything except the correction — which is
+// the precondition plan 32-07's no-regression invariant rests on. A mirror that
+// had quietly drifted in its pitch chain, its guard order or its accumulator
+// would fail here even though it would still "differ from the core", because
+// the difference would no longer be reproducible from forge::MorphBlep alone.
+//
+// >>> THE STANDING WARNING. <<<
+// IF THE RECONSTRUCTION MISMATCH COUNT EVER BECOMES NON-ZERO, something OTHER
+// than forge::MorphBlep changed inside forge::VcoCore::step, and the naive
+// baseline has silently stopped being a baseline. STOP AND REPORT IT. Do not
+// loosen the comparison, do not switch it to an approximate comparator, and do
+// not "allow a few samples of slack" — every one of those converts the only
+// evidence that the baseline is faithful into a statement that it is roughly
+// faithful, which is not a baseline at all.
+//
 // ---------------------------------------------------------------------------
-TEST_CASE("vco spectrum: NaiveVcoCoreMirror is bit-identical to the live forge::VcoCore (D-08 baseline validity) - THIS CASE INVERTS IN PLAN 32-06") {
+// MEASURED 2026-08-01 against plan 32-06's forge::VcoCore. Differing samples
+// out of 4096, per grid point. RECONSTRUCTION MISMATCHES ARE 0 IN EVERY CELL.
+//
+//   morph        char 0.00 / 0.50 / 1.00      44.1 kHz | 48 kHz | 96 kHz
+//   0.00 sine        0    / 1555 / 1549       diverging points: 14 | 13 | 12
+//   0.25 triangle  1546   / 1545 / 1500
+//   0.50 saw        778   / 1535 / 1497       reconstruction mismatches: 0
+//   0.75 square    1556   / 1556 / 1555       at all three rates, all 45 cells
+//   1.00 pulse      982   /  982 /  982
+//
+// The 48 kHz and 96 kHz grids have the same SHAPE with proportionally fewer
+// differing samples (fewer cycles per block), so only the cells that are
+// EXACTLY ZERO are worth naming — and they are named, all five, below.
+//
+// THE FIVE CELLS THAT DO NOT DIVERGE, AND WHY EACH IS CORRECT — this is what
+// keeps the 12-of-15 bound from looking like slack:
+//   * sine centre, character 0, at ALL THREE RATES. No discontinuity and no
+//     bleed ring, so every site magnitude is zero. This is control (4) below.
+//   * triangle centre, character 1, at 48 kHz and 96 kHz. The rounded corner is
+//     0.175 in phase units and 2*dt is 0.1743 and 0.0874 — the corner is WIDER
+//     than the kernel's own two-sample support, so the D-03 factor returns
+//     EXACTLY zero. At 44.1 kHz 2*dt is 0.18994, just wider than the corner, and
+//     the same cell diverges on 1500 samples. That rate-ordering is the D-03
+//     compact-support cutoff being read off the kernel, visible as data.
+//   * sine centre, character 1, at 96 kHz. At morph 0 the bleed ring puts the
+//     weight on the PULSE (the finding recorded in src/dsp/MorphBlep.hpp), and
+//     at character 1 the pulse's hard step is fully (1-c)-weighted to zero while
+//     its soft edge is 0.16 wide against a 2*dt of 0.0874 — zero again.
+//
+// The saw centre at character 0 differs on 778 / 713 / 358 samples, which is
+// exactly 2 per cycle at 389 / 357 / 179 cycles per block: ONE wrap edge, each
+// correction spanning the sample that contains it and the one after it (D-13).
+// That arithmetic agreeing is a second, independent reading that the placement
+// is right.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: the core now DIVERGES from NaiveVcoCoreMirror by EXACTLY the MorphBlep correction (D-08 inversion, was the baseline-validity tombstone)") {
 
 	// The bin-centred C8 row at each rate, from the pinned grid. Driving the
 	// mirror at a bin centre is not required for a bit-identity check — any
@@ -1252,6 +1371,13 @@ TEST_CASE("vco spectrum: NaiveVcoCoreMirror is bit-identical to the live forge::
 		double binErr = 0.0;
 		const float pitchCV = binCentredPitchCV(sr, K, &binErr);
 		CAPTURE(pitchCV);
+
+		// Per-rate tallies. They are asserted AFTER the fifteen cells of this
+		// rate, so a rate whose grid silently lost cells cannot satisfy them.
+		int reconstructionMismatchesThisRate = 0;   // MUST be 0 — the strong claim
+		int divergingPointsThisRate = 0;            // MUST be >= 12 of 15
+		int sawCentreChar0Differing = -1;           // MUST end up > 0
+		int sineCentreChar0Differing = -1;          // MUST end up EXACTLY 0
 
 		for (std::size_t mi = 0; mi < sizeof(MORPHS) / sizeof(MORPHS[0]); ++mi) {
 			for (std::size_t ci = 0; ci < sizeof(CHARACTERS) / sizeof(CHARACTERS[0]); ++ci) {
@@ -1287,16 +1413,45 @@ TEST_CASE("vco spectrum: NaiveVcoCoreMirror is bit-identical to the live forge::
 				mirror.seed(0x1234ULL, 0x5678ULL);
 				mirror.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
 
+				// --- THE RECONSTRUCTION INSTRUMENT. ----------------------------
+				// ONE forge::MorphBlep per grid point, held LOCALLY here and
+				// never shared between points. It is default-constructed inside
+				// this scope, so it starts drained exactly as the live core's
+				// member does, and it is destroyed with the point — which is the
+				// reset the plan asks for, expressed as a lifetime rather than
+				// as a call that could be forgotten.
+				//
+				// It is driven with the MIRROR'S OWN recorded values, not with
+				// values recomputed here. Recomputing them would put a SECOND
+				// mirror inside the case whose entire job is to detect the first
+				// one drifting.
+				forge::MorphBlep localBlep;
+
 				const float dt = (float)(1.0 / sr);
 				std::vector<float> mirrorOut;
+				std::vector<float> reconstructed;
 				mirrorOut.reserve(n);
+				reconstructed.reserve(n);
 				for (int i = 0; i < n; ++i) {
 					forge::VcoInputs in = base;
 					in.sampleTime = dt;
 					in.sampleRate = (float)sr;
 					mirrorOut.push_back(mirror.step(in));
+
+					// The mirror has just advanced its own phase accumulator, so
+					// mirror.phase is the POST-UPDATE phase — the same value the
+					// live core hands its own member on this sample. The argument
+					// order and the operation order below are the call site's,
+					// deliberately: `naive + correction` first, then the x5.
+					// Written the other way round (5*naive + 5*correction) this
+					// is a DIFFERENT float, and the comparison below is bit-exact.
+					const float correction = localBlep.step(
+						mirror.wave, mirror.phase, mirror.lastP,
+						mirror.lastDeltaPhase, mirror.lastMorph, mirror.lastCharacter);
+					reconstructed.push_back(5.f * (mirror.lastNaive + correction));
 				}
 				REQUIRE(mirrorOut.size() == coreOut.size());
+				REQUIRE(reconstructed.size() == coreOut.size());
 
 				// --- NON-VACUITY FIRST. ----------------------------------------
 				// "Identical" is trivially satisfied by two blocks of silence, and
@@ -1314,36 +1469,97 @@ TEST_CASE("vco spectrum: NaiveVcoCoreMirror is bit-identical to the live forge::
 				REQUIRE(nonZero >= (n * 9) / 10);
 				REQUIRE(constantBlock == false);
 
-				// --- THE IDENTITY CLAIM. ---------------------------------------
+				// --- THE DIVERGENCE COUNT. -------------------------------------
 				// Counted with a DIRECT float !=, never doctest's approximate
 				// comparator. That comparator applies a relative-scaling margin
 				// even at epsilon(0), so it is not a bit-exact comparator and
-				// would quietly accept the very small corrections plan 32-06 is
-				// about to introduce — the one class of difference this case
+				// would quietly absorb the very small corrections this case
 				// exists to see.
 				int differing = 0;
 				for (int i = 0; i < n; ++i)
 					if (coreOut[i] != mirrorOut[i]) ++differing;
-
-				// >>> THIS ASSERTION IS A TOMBSTONE. <<<
-				//
-				// It is true only for exactly as long as forge::VcoCore::step()
-				// applies no band-limiting correction. PLAN 32-06 MUST INVERT IT
-				// IN PLACE — same slot, same 45-point grid, same three rates, same
-				// four seed literals — into an assertion that the two now DIVERGE,
-				// and that they diverge by exactly the correction
-				// forge::MorphBlep::step returns.
-				//
-				// DELETING THIS CASE INSTEAD OF INVERTING IT silently removes the
-				// only proof that NaiveVcoCoreMirror is a faithful copy of the
-				// core, and therefore the only reason plan 32-07's no-regression
-				// invariant means anything. This is the shape Phase 29's silence
-				// tombstone used and Phase 30 honoured (D-15/D-19: inverted in
-				// place, same slot, and OBSERVED red against a silenced core).
 				CAPTURE(differing);
-				CHECK(differing == 0);
+				if (differing > 0) ++divergingPointsThisRate;
+
+				// --- >>> THE STRONG CLAIM: THE DIVERGENCE *IS* THE CORRECTION.
+				//
+				// The reconstruction is the mirror's own pre-scale value plus a
+				// locally driven forge::MorphBlep, scaled by the same x5 in the
+				// same order as the call site. It must equal the live core's
+				// sample with a DIRECT float ==, on every one of the 4096
+				// samples. A tolerance here would defeat the point: the claim is
+				// not "the two are close", it is "nothing else in step() moved".
+				//
+				// -ffp-contract=off IS WHAT MAKES THIS REPRODUCIBLE. The
+				// correction is a chain of a*b+c terms, and contraction into
+				// fused multiply-adds would give the core and this reconstruction
+				// different roundings from identical inputs. The test target
+				// passes the flag (Makefile TEST_CXXFLAGS) and
+				// src/dsp/MorphBlep.hpp's banner records it as load-bearing for
+				// that header specifically. If this comparison ever starts
+				// failing by one unit in the last place, check the flag BEFORE
+				// suspecting the DSP.
+				int reconstructionMismatches = 0;
+				for (int i = 0; i < n; ++i)
+					if (coreOut[i] != reconstructed[i]) ++reconstructionMismatches;
+				CAPTURE(reconstructionMismatches);
+				CHECK(reconstructionMismatches == 0);
+				reconstructionMismatchesThisRate += reconstructionMismatches;
+
+				// The two named control points of this rate, recorded for the
+				// assertions after the grid.
+				if (morph == 0.50f && character == 0.0f) sawCentreChar0Differing  = differing;
+				if (morph == 0.00f && character == 0.0f) sineCentreChar0Differing = differing;
 			}
 		}
+
+		// =================================================================
+		// THE PER-RATE ASSERTIONS. Everything above is per cell; these three
+		// are what make the case a statement about the grid rather than about
+		// whichever cell happened to run last.
+		// =================================================================
+		CAPTURE(reconstructionMismatchesThisRate);
+		CAPTURE(divergingPointsThisRate);
+		CAPTURE(sawCentreChar0Differing);
+		CAPTURE(sineCentreChar0Differing);
+
+		// (1) Nothing but forge::MorphBlep moved, anywhere on this rate's grid.
+		CHECK(reconstructionMismatchesThisRate == 0);
+
+		// (2) THE NAIVE-EQUALS-CORE CLAIM IS GENUINELY FALSE. 12 of 15 rather
+		//     than 15 of 15 on purpose: the sine centre at character 0 has NO
+		//     correction at all (see (4)), and the plan leaves room for the
+		//     high-character cells where the D-03 factor correctly returns
+		//     EXACTLY zero because the edge is already wider than the kernel's
+		//     own two-sample support — a cell where the correction is zero is a
+		//     cell where band-limiting is CORRECTLY declining to act, not a
+		//     cell where it failed.
+		CHECK(divergingPointsThisRate >= 12);
+
+		// (3) THE SAW CENTRE AT CHARACTER 0 IS THE LOUDEST HARD EDGE ON THE
+		//     GRID — a +2.000000 wrap jump at full authority, character-
+		//     independent (P-4). If band-limiting is live anywhere, it is live
+		//     here, so this point must show differing samples.
+		REQUIRE(sawCentreChar0Differing >= 0);   // the cell ran at all
+		CHECK(sawCentreChar0Differing > 0);
+
+		// (4) THE ZERO-CORRECTION CONTROL, AND IT IS WHAT KEEPS (2) AND (3)
+		//     HONEST. A sine at character 0 has no discontinuity of its own AND
+		//     no bleed ring — the frozen bleed block is gated on
+		//     `character >= 0.001f` (src/dsp/Waveshape.hpp:188) and
+		//     forge::MorphBlep mirrors that exact comparison — so every site
+		//     magnitude is zero and the correction is EXACTLY zero. The two
+		//     paths must therefore remain BIT-IDENTICAL here.
+		//
+		//     Without this control, (2) and (3) could be satisfied by a
+		//     correction that fired everywhere indiscriminately — including
+		//     where there is nothing to correct, which is P-1's named failure
+		//     mode and the thing the D-03 factor's EXACT zero exists to prevent.
+		//     "The two now differ" is a weak claim on its own; "they differ
+		//     everywhere there is an edge and NOWHERE there is not" is the claim
+		//     worth making.
+		REQUIRE(sineCentreChar0Differing >= 0);  // the cell ran at all
+		CHECK(sineCentreChar0Differing == 0);
 	}
 }
 
