@@ -102,7 +102,7 @@ See: `.planning/milestones/v1.4-ROADMAP.md` for full details.
 - [x] **Phase 29: VCO Test Harness & LFO Non-Regression Guardrail** - Stand up the Rack-free VcoCore harness and wire the LFO golden + strict/MinGW canary before any VCO DSP lands (completed 2026-07-28)
 - [x] **Phase 30: VcoCore Skeleton & Module Registration** - Pitch-accurate (aliased-on-purpose) VcoCore behind the POD boundary, registered as a second module (completed 2026-07-29)
 - [x] **Phase 31: Pitch, Tuning & Exponential FM** - Accurate 1V/oct + coarse/fine tune + audio-rate expo FM, all summed before one exp2, proven to <1 cent (completed 2026-07-30)
-- [ ] **Phase 32: Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP)** - The linchpin: band-limit the continuous character-deformed morph crossfade in an isolated wrapper header
+- [x] **Phase 32: Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP)** - The linchpin: band-limit the continuous character-deformed morph crossfade in an isolated wrapper header (completed 2026-08-27)
 - [ ] **Phase 33: Hard Sync** - Click-free hard sync reusing the anti-aliasing machinery at the master's sub-sample fraction
 - [ ] **Phase 34: Audio-Rate Analog Engine, Drift & Output Stage** - Morph/character/drift at audio rate with VCO-appropriate drift authority and a clean bounded output
 - [ ] **Phase 35: Shell, Panel & Display** - The Rack shell, 18HP Forge Noir panel, and audio-rate-safe CRT display
@@ -247,7 +247,7 @@ Plans:
   4. A spectral alias-floor invariant (a small DFT/Goertzel helper) asserts high-note aliasing stays below **per-shape thresholds pinned from measurement** (D-09 evidence-set thresholds, each carrying its measured justification) at **C7, C8 and C9** — TEST-03. The earlier "≈ −60 dB" figure was a target, not a reachable floor: 2-sample polyBLEP attenuates by `sinc²`, which is only ≈ −8 dB at Nyquist, so the achievable floor sits well above −60 dB (measured best at C8/44.1 kHz: saw −25.8, square −31.9, narrow pulse −11.6 dB) — corroborated by DAFx-16. Per-shape measured thresholds are the honest gate.
   5. All anti-aliasing is table-free and Rack-free (closed-form arithmetic), preserving C++11-strict compilation and golden bit-stability — no minBLEP, no oversampling in v2.0.
 
-**Plans**: 10/11 plans executed
+**Plans**: 11/11 plans executed
 
 Plans:
 **Wave 1**
@@ -283,7 +283,7 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 32-11-PLAN.md — Operator in-Rack UAT of the audio-rate MORPH sweep and the shipped-LFO guardrail (blocking checkpoint)
+- [x] 32-11-PLAN.md — Operator in-Rack UAT of the audio-rate MORPH sweep and the shipped-LFO guardrail (blocking checkpoint)
 
 **Cross-cutting constraints:**
 
@@ -356,7 +356,7 @@ Plans:
 | 29. VCO Test Harness & LFO Guardrail | 5/5 | Complete    | 2026-07-28 |
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
 | 31. Pitch, Tuning & Exponential FM | 9/9 | Complete    | 2026-07-30 |
-| 32. Morph-Aware Anti-Aliasing | 10/11 | In Progress|  |
+| 32. Morph-Aware Anti-Aliasing | 11/11 | Complete    | 2026-08-27 |
 | 33. Hard Sync | 0/? | Not started | - |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |
 | 35. Shell, Panel & Display | 0/? | Not started | - |

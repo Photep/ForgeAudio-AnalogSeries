@@ -4,17 +4,17 @@ milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 32
 current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
-status: executing
-stopped_at: 32-11-PLAN.md Task 1 complete — BLOCKED awaiting operator audition verdict (Task 2)
-last_updated: "2026-08-01T13:45:00.000Z"
-last_activity: 2026-08-01
-last_activity_desc: Phase 32 execution complete except the 32-11 operator in-Rack audition
+status: complete
+stopped_at: Completed 32-11-PLAN.md — Phase 32 complete (11/11), operator verdict recorded verbatim
+last_updated: "2026-08-27T21:33:50.000Z"
+last_activity: 2026-08-27
+last_activity_desc: Phase 32 complete — operator in-Rack UAT recorded as a QUALIFIED pass
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 35
-  completed_plans: 34
-  percent: 38
+  completed_plans: 35
+  percent: 50
 ---
 
 # Project State
@@ -30,13 +30,20 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — BLOCKED ON OPERATOR
-Plan: 11 of 11 — Task 1 of 2 complete
-Status: 32-11 Task 1 (build + whole-directory flush + install identity pinned) is committed as `9fac167`. Task 2, the operator in-Rack audition, HAS NOT RUN and no verdict exists. See `.planning/phases/32-morph-aware-anti-aliasing-polyblep-polyblamp/.continue-here.md` — it carries two `blocking` anti-patterns.
+Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — COMPLETE (11/11)
+Plan: 11 of 11 — both tasks complete
+Status: 32-11 is closed. Task 1 (build + whole-directory flush + five-way install identity pin) committed as `9fac167`; Task 2, the operator in-Rack audition, was answered and the reply is recorded VERBATIM in `32-11-SUMMARY.md`. The blocking `.continue-here.md` has been deleted — the checkpoint it guarded is answered.
 
-⚠ `32-11-SUMMARY.md` EXISTS ON DISK but is `status: checkpoint-pending`. `gsd-tools query phase-plan-index 32` tests file existence only, so it reports `incomplete: []` and a resumed `/gsd-execute-phase 32` will skip 32-11 and fall through to phase verification. Do not let it. The phase is NOT execution-complete.
+**The verdict is a QUALIFIED pass, and the qualification is load-bearing.** Verbatim: *"Seems to work well enough - but it's hard to remember what the old audio sounded like. Let's continue."* Split honestly: the **no-artefact** half of Q1 (no zipper noise, no boundary artefact, nothing clicking or dropping out across the audio-rate MORPH sweep) is **discharged** under T-32-30, because the expected-results block was presented in full first. The **audible-improvement** half is **NOT established — and did not fail**: the session supplied no A/B reference, so it was unanswerable by construction. "Seems to work well enough" is explicitly NOT read as an answer to it.
 
-Last activity: 2026-08-01 — all automated plans done; awaiting the perceptual verdict
+**Three things Phase 32 closes with OPEN, each pointed somewhere — do not read a complete phase as a clean one:**
+1. `32-REVIEW.md` **CR-01 and CR-02** — real defects in `src/dsp/MorphBlep.hpp` (out-of-bounds on a negative `morph`; NaN `character` bypassing the NaN trap at the three literal-zero-width sites), verified NOT reachable through the single shipped call site (`VcoCore.hpp:645`, arguments conditioned at `:598-602`, again at `AnalogVCO.cpp:286-288`). **High-priority hardening, not ship blockers.** Fix in a Phase 32 gap-closure plan or as Phase 33 Task 1 — **before Phase 33 adds the second call site at the hard-sync `addStep` seam.**
+2. **Deferred item 26 (NEW)** — the in-Rack audition asks whether an improvement is audible but supplies no A/B reference. Remedy is in-tree: `NaiveVcoCoreMirror` is bit-exact, so matched naive/corrected pairs can be rendered from the grid points the spectral gate already uses. Owner: Phase 36, or whichever phase next needs a perceptual verdict — likely **Phase 34**, whose DRIFT-03 value is audition-gated.
+3. **Deferred item 24** — MORPH-02's shell-side knob + CV × attenuverter mix is now **operator-attested on absence of fault**, which is the strongest evidence available while no headless driver can reach the attenuverter. It is not a measurement.
+
+**T-32-12 note:** the operator did **not** separately attest step 8, and no attestation was inferred. For this phase the LFO guardrail is discharged by **automated** evidence — six goldens byte-identical in `make test`, all 15 `FROZEN.sha256` paths at 0 changed lines over the whole phase diff, `FROZEN.sha256` byte-identical by `cmp`.
+
+Last activity: 2026-08-27 — Phase 32 complete; `make test` 94/94/0 at 2,622,319, `make strict` PASS, `make guards` PASS re-run after the session
 
 ## Performance Metrics
 
@@ -169,6 +176,13 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 32]: 32-10: T-32-15 survives the split at least as well defended — 0 grid rows edited, the standing STOP-AND-REPORT instruction preserved and EXTENDED with an anti-reclassification clause ('if the cell that fires is step-dominated that is a finding about the criterion, not a cell to reclassify'), and the threshold-derivation assertion untouched and independent
 - [Phase 32]: 32-10: no requirement was ticked by this plan — all nine Phase 32 IDs were RE-VERIFIED against a named case with a NON-ZERO matched count, because a selector matching zero cases also exits 0 and prints SUCCESS. MORPH-02 stays Complete but QUALIFIED: its shell-side knob + CV x attenuverter mix is asserted by NO test case (D-17 added zero POD fields, so no headless driver can reach the attenuverter) and is compile-gated only until 32-11
 - [Phase 32]: 32-10: the three-OS matrix delta is +13 cases and +4,266 assertions IDENTICALLY on all three legs, which is what proves every new case ran everywhere; the macOS-vs-others gap is unchanged at exactly 3 cases / 24,582 assertions (the three Apple-gated drift-ON goldens)
+- [Phase 32]: 32-11: the operator verdict is a QUALIFIED pass and Q1 is SPLIT — verbatim "Seems to work well enough - but it's hard to remember what the old audio sounded like. Let's continue." The no-artefact half is DISCHARGED (expected-results block presented in full first, T-32-30). The audible-improvement half is UNEVIDENCED BY CONSTRUCTION: the session supplied no A/B reference so it could not be answered either direction, and "seems to work well enough" is explicitly refused as a stand-in for it
+- [Phase 32]: 32-11: NO operator attestation was recorded for the LFO guardrail — the operator did not mention step 8 and inferring one from a general remark is the fabrication the checkpoint protocol exists to refuse. T-32-12 is discharged for this phase by AUTOMATED evidence only (six goldens byte-identical, all 15 FROZEN.sha256 paths at 0 changed lines over the whole phase diff, FROZEN.sha256 byte-identical by cmp), and the SUMMARY says which kind of evidence it is
+- [Phase 32]: 32-11: NEW deferred item 26 — the in-Rack audition asks whether an improvement is AUDIBLE but supplies no A/B reference, so that half is unanswerable by construction. This is the vacuous-assertion hazard moved from the test suite into the UAT: a less candid reply would have booked the coverage. Remedy is in-tree (NaiveVcoCoreMirror is bit-exact at 0 mismatches over 184,320 samples, so matched naive/corrected pairs can be rendered from the SPECTRUM_GRID points the gate already uses). Owner: Phase 36 or the next perceptual phase, likely Phase 34 whose DRIFT-03 is audition-gated
+- [Phase 32]: 32-11: the guardrail subject is PINNED BY NAME, closing deferred item 25's protocol half — both Forge plugins declare the SAME brand string 'Forge Audio', so the browser shows THREE entries under one heading and the distinction is the module NAME: shipped 'Analog LFO' (ForgeAudio-AnalogSeries 2.0.1, _modelAnalogLFO) versus stale 'LFO' (ForgeAudio 2.0.0, _modelLFO, Feb 14). Not deleted — not an executor's call
+- [Phase 32]: 32-11: the whole-directory flush CAUGHT A LIVE STALE INSTALL that a manifest check would have passed — the installed plugin.json was ALREADY 2.0.1 with ALREADY both modules while the binary was Phase 31's (5061619c -> 431b9de6) and res/AnalogVCO.svg had 10 rects instead of 12. The manifest is the check that passes on a stale install; the binary hash and the asset are what catch it. Proof of freshness requires measuring the BEFORE state, not only matching the after state to source
+- [Phase 32]: 32-11: two install hazards outside the plan's five pins were checked before the subject was declared pinned — no .vcvplugin archive anywhere under Rack2/ to re-extract over the flush at launch, and no Forge directory in plugins-mac-x64/. Same failure family as the Phase 30 false negative: something the operator's Rack reads that is not the thing just flushed
+- [Phase 32]: 32-11: Phase 32 closes COMPLETE but NOT CLEAN — 32-REVIEW.md's CR-01 and CR-02 are real MorphBlep.hpp defects, verified unreachable through the single shipped call site (VcoCore.hpp:645, arguments conditioned at :598-602 and again at AnalogVCO.cpp:286-288), recorded as High-priority hardening. Phase 33 adds the SECOND call site at the hard-sync addStep seam, which is the event that makes CR-01 live; fix before, not after
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -227,20 +241,26 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P08 | 34 min | 3 tasks | 1 files |
 | Phase 32 P09 | 22 min | 2 tasks | 1 files |
 | Phase 32 P10 | 98 min | 3 tasks | 4 files |
+| Phase 32 P11 | 22 min | 2 tasks | 0 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-01T03:20:24.404Z
-Stopped at: Completed 32-10-PLAN.md
-Resume: run plan 32-11 — the operator in-Rack UAT, the last plan in Phase 32 and the only thing no headless gate can do. The suite is GREEN on all three CI legs (macOS 94/94/0 at 2,622,319 assertions; Ubuntu and Windows 91/91/0 at 2,597,737 — the gap is exactly the 3 Apple-gated drift-ON goldens / 24,582 assertions). Two things 32-11 owns: (1) the verification-protocol fix — name the PLUGIN DIRECTORY as well as the module when asking for an audition ("the Analog LFO under Forge Audio Analog Series"), because a stale, differently-slugged `ForgeAudio` plugin puts a second Forge LFO in the module browser and would otherwise leave the guardrail sign-off's subject inferred rather than pinned (deferred item 25); (2) MORPH-02's shell-side knob + CV x attenuverter mix, which is asserted by NO test case and is compile-gated only (deferred item 24). Headless counterpart figures for the audio-rate MORPH sweep: 5.508759 to 6.289864 V across 27 configurations.
+Last session: 2026-08-27T21:33:50.000Z
+Stopped at: Completed 32-11-PLAN.md — Phase 32 complete (11/11)
+Resume: Phase 32 is closed. Both items 32-11 owned are discharged: (1) the verification-protocol fix landed — the browser carries THREE Forge Audio entries and the guardrail subject is now pinned BY NAME ("Analog LFO" from `ForgeAudio-AnalogSeries` 2.0.1, versus the stale plain "LFO" from `ForgeAudio` 2.0.0), closing deferred item 25's protocol half; (2) MORPH-02's shell-side knob + CV x attenuverter mix is operator-attested on absence of fault (deferred item 24) — the only evidence obtainable while no headless driver can reach the attenuverter.
+
+Before Phase 33 plans anything, read `32-REVIEW.md`: CR-01 and CR-02 are real defects in `src/dsp/MorphBlep.hpp`, unreachable today only because `blep.step` has exactly ONE call site whose arguments are conditioned immediately above it. **Phase 33 adds the second call site** (`addStep` at the hard-sync seam), which is precisely the event that turns CR-01 into a live out-of-bounds write — and on x86 MinGW/Linux `(int)NaN` is `INT_MIN`, not the benign `0` this arm64 host produces. Fix before, not after.
+
+New this session: deferred item 26 — the in-Rack audition asks whether an improvement is AUDIBLE but supplies no A/B reference, so that half of the question is unanswerable by construction. Phases 33/34/35 all end in an in-Rack check and all inherit it.
 
 ## Operator Next Steps
 
-- **▶ START HERE — Phase 32 needs your ears, and nothing else.** All eleven plans' automated work is done and green (`make test` 94/94/0, `make strict`, `make guards`, CI green on all four jobs including the win-x64 link leg). The plugin is built and freshly installed, with the install identity pinned five ways. What remains is the 32-11 in-Rack audition: the audio-rate MORPH sweep through the shape boundaries, and confirming the shipped Analog LFO is unchanged. Resume with `/gsd-execute-phase 32` — the `.continue-here.md` in the phase directory will stop it from skipping the audition — or run the script directly from `32-11-SUMMARY.md`.
-  - **In the module browser you will see THREE Forge Audio entries.** Judge **"Analog LFO"** (the guardrail subject) and **"Analog VCO"** (this phase's work). **Ignore plain "LFO"** — that is the stale `ForgeAudio` v2.0.0 from Feb 14.
-  - ⚠ **Start monitors low.** Peak output under audio-rate MORPH reaches ~6.3 V, hotter than a typical ±5 V module.
+- **▶ START HERE — Phase 32 is complete (11/11) and your verdict is recorded.** Next is **Phase 33 (Hard Sync)**, but **one decision comes first.** A code review (`32-REVIEW.md`, commit `3c42652`) found two critical-severity defects in `src/dsp/MorphBlep.hpp` — an out-of-bounds write on a negative `morph`, and a NaN `character` slipping past the NaN trap. **Neither is reachable today**: `blep.step` has exactly one call site and its arguments are conditioned immediately above it (and again at the shell). They are **hardening, not ship blockers.** But Phase 33's whole job is to add a *second* call site at the hard-sync seam, and the first unguarded one makes CR-01 live — on the x86 toolchains that actually ship, where `(int)NaN` is `INT_MIN` rather than the benign `0` this Mac produces. **Your call:** a short Phase 32 gap-closure plan, or Phase 33 Task 1. Doing it after Phase 33 is the one option with a real downside.
+- **Two things your audition could not answer, recorded rather than glossed.**
+  - *"It's hard to remember what the old audio sounded like"* was **correct and useful** — the script asked you to compare against a memory and gave you nothing to compare against. That half of the question is logged as unevidenced, not as passed, and the fix is filed as `deferred-items.md` item 26: render matched naive/corrected pairs from `NaiveVcoCoreMirror` (already bit-exact in-tree) and hand you a switchable A/B. **Worth doing before Phase 34**, whose drift-depth value is decided by ear.
+  - You did not separately comment on the **Analog LFO** in step 8, so no guardrail attestation was recorded for you. The LFO is still protected — six goldens replay byte-identical and every frozen path is untouched across the whole phase — but that is the automated evidence, not your ears. If you want the operator-side check on record, it is one minute of work next time Rack is open.
 - **Phase 31 remains complete and operator-approved.** Its outstanding follow-up is `/gsd-verify-work 31` if you want the UAT recorded formally.
-- **Optional housekeeping, your call.** `~/Library/Application Support/Rack2/plugins-mac-arm64/ForgeAudio` is a stale separate plugin (slug `ForgeAudio`, v2.0.0, module `ForgeAudioLFO`, Feb 14) under the pre-rename slug. It is harmless — a different slug, so it cannot shadow the current `ForgeAudio-AnalogSeries` install — but it puts a **second Forge LFO** in the module browser, which is why Phase 31's step-9 guardrail sign-off is recorded with a subject that is inferred rather than pinned. Removing it would make every future in-Rack audition unambiguous. Not done for you: deleting a plugin from your Rack installation is not an executor's call. See `deferred-items.md` item 15.
+- **Optional housekeeping, your call.** `~/Library/Application Support/Rack2/plugins-mac-arm64/ForgeAudio` is a stale separate plugin (slug `ForgeAudio`, v2.0.0, module `ForgeAudioLFO`, Feb 14) under the pre-rename slug. It is harmless — a different slug, so it cannot shadow the current `ForgeAudio-AnalogSeries` install — but it puts a **second Forge LFO** in the module browser, which is why Phase 31's step-9 guardrail sign-off is recorded with a subject that is inferred rather than pinned. Plan 32-11 pinned the subject by NAME instead (shipped is **"Analog LFO"**, stale is plain **"LFO"**), so auditions are no longer ambiguous — but removing it would still make them simpler. Not done for you: deleting a plugin from your Rack installation is not an executor's call. See `deferred-items.md` item 15.
 - **Phase 35 now holds your first piece of VCO panel feedback** — the FM depth knob's affordance, `deferred-items.md` item 14. FM-02's bipolar behavior is locked and verified; only the widget is open.

@@ -187,4 +187,16 @@ recorded qualification: its audio-rate crossfade half is discharged headlessly b
 shell-side `knob + CV x attenuverter` mix in `src/AnalogVCO.cpp` is asserted by NO test case (D-17 added
 zero POD fields, so no headless driver can reach the attenuverter) and is covered only by the compile
 gates until plan 32-11's operator UAT. See `deferred-items.md` item 7.*
+*Update: 2026-08-27 — plan 32-11's operator in-Rack UAT closed. **MORPH-02's shell-mix half is now
+OPERATOR-ATTESTED, on ABSENCE OF REPORTED FAULT** — the operator drove the MORPH CV jack and the
+bipolar MORPH CV DEPTH attenuverter through the audio-rate sweep, its inversion and its pass through
+zero, and reported no fault. That is the strongest evidence obtainable while nothing headless can
+reach the attenuverter, and it is recorded as attestation rather than as measurement. **No ID was
+ticked by plan 32-11** — all four in its frontmatter (MORPH-01, MORPH-02, AA-05, TEST-03) were already
+ticked by the plans that landed their assertions. Two limits recorded rather than absorbed: the
+**audible-improvement** half of the audition is UNEVIDENCED BY CONSTRUCTION (no A/B reference was
+supplied, so it could not be answered in either direction — `deferred-items.md` item 26), and
+**CORE-02's operator-side guardrail check was NOT separately attested**, leaving T-32-12 discharged
+for this phase by its automated evidence alone (six goldens byte-identical, all 15 `FROZEN.sha256`
+paths at 0 changed lines over the whole phase diff). Full record in `32-11-SUMMARY.md`.*
 *Prior update: 2026-07-20 — traceability populated by roadmapper (Phases 29-36); coverage corrected from 37 to 40 enumerated IDs*

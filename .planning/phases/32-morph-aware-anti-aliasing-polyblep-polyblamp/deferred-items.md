@@ -565,6 +565,56 @@ Inherited as **Phase 31 deferred item 15**. **Restated; still open, still the op
 
 ---
 
+## 26. The in-Rack audition asks whether an improvement is AUDIBLE but supplies no A/B reference
+
+**NEW — found by the operator's own reply at plan 32-11's checkpoint**, which is the only place it
+could have been found.
+
+- **Found during:** plan **32-11**, Task 2, the operator in-Rack UAT. The operator's verbatim reply
+  was: *"Seems to work well enough - but it's hard to remember what the old audio sounded like.
+  Let's continue."*
+- **Observation:** the session script's step 3 asks the operator to judge that the alias ringing
+  "should be **substantially reduced**" on the saw, square and triangle regions. It supplies **no
+  reference to compare against** — no naive rendering, no bypass, no switch. The operator is being
+  asked to compare the sound in front of them against a **memory** of a build they last heard weeks
+  earlier. That half of the question is **unanswerable by construction, in either direction.**
+- **Why it is worth a note, and worth more than it looks:** this is the **vacuous-assertion hazard
+  that fills section one of this register, moved out of the test suite and into the UAT.** An
+  audition that cannot answer its own question still returns a reply, and that reply *looks* like
+  perceptual coverage. Plan 32-11 refused to let *"seems to work well enough"* stand in for the
+  audible-improvement half and recorded it as **unevidenced** — but only because the operator was
+  candid enough to say why. A less candid reply would have booked the coverage. **It is not an
+  operator failing; it is a defect in the script.** And it is not specific to Phase 32: **every
+  remaining perceptual audition in this milestone inherits the same script shape** — Phases 33, 34
+  and 35 all end in an in-Rack check, and Phase 34's drift-depth value is explicitly
+  *audition-gated* (DRIFT-03), i.e. a decision that will be **made** on exactly this kind of
+  comparison.
+- **Why it is not fixed here:** plan 32-11 produces no code artefact and had no budget to build a
+  rendering harness mid-checkpoint; doing so would also have meant changing the instrument in the
+  middle of the measurement. The half that COULD be evidenced (no zipper noise, no boundary
+  artefact, nothing clicking or dropping out across steps 3–7) was discharged normally under
+  T-32-30, and the automated spectral evidence for the improvement itself is unaffected and strong:
+  `failing == 0` over 45 gated cells, plus the anti-circularity assertion
+  `naiveDb − correctedDb >= 8.0` at five named cells, which consults no pinned number.
+- **The remedy already exists in-tree and is cheap.** `NaiveVcoCoreMirror` in
+  `tests/test_vco_spectrum.cpp` is a **bit-exact** non-band-limited mirror of the live core —
+  proved by the D-08 reconstruction case at **0 mismatches over 184,320 samples** at three rates,
+  by direct float `==`. A future phase can render **matched naive/corrected `.wav` or `.f32`
+  pairs** from the **same grid points the spectral gate already uses** (C7/C8/C9 × five shapes ×
+  three CHARACTER settings are already enumerated in `SPECTRUM_GRID`) and hand the operator a
+  **switchable A/B** instead of a memory test. Same apparatus, same cells, so the thing the
+  operator hears is the thing the gate measured.
+- **Two constraints on whoever builds it:** (1) the renderer must drive the mirror and the live
+  core through the **same** driver in the **same** pass, exactly as the measure pass does, or the
+  pair is not like-for-like; (2) per item 8, **every absolute decibel figure this phase recorded is
+  an Apple-clang figure**, so a rendered pair is a listening aid and must not become a pinned
+  golden captured from one toolchain.
+- **Resolve at: Phase 36 (goldens / CI), or whichever phase next needs a perceptual verdict,
+  whichever is sooner.** Phase 34 is the likelier first customer, because DRIFT-03's value is
+  decided by audition rather than by calculation.
+
+---
+
 ## Phase 32's own measured figures
 
 Repeated here so a reader of this register alone sees what was measured. Full roll-up with
@@ -613,7 +663,10 @@ exactly **3 cases and 24,582 assertions**, unchanged from before the phase, matc
 ---
 
 *Phase: 32-morph-aware-anti-aliasing-polyblep-polyblamp*
-*Register written: 2026-08-01 (plan 32-10, the phase gate). 25 items — 8 falsified premises
-corrected, 17 deferred with owners.*
+*Register written: 2026-08-01 (plan 32-10, the phase gate). Extended 2026-08-27 by plan 32-11.
+**26 items** — 8 falsified premises corrected, **18** deferred with owners.*
 *Item 8 is a discovery of the phase gate itself: the CI observation this plan exists to perform is
 what found it, and it could not have been found locally.*
+*Item 26 is the same shape one layer out: the operator UAT this phase ends with is what found it,
+and it could not have been found by any gate — the defect is in the question the audition asks,
+not in anything the code does.*
