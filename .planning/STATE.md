@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Forge Analog VCO
-current_phase: 32
-current_phase_name: morph-aware-anti-aliasing-polyblep-polyblamp
-status: complete
-stopped_at: Completed 32-11-PLAN.md — Phase 32 complete (11/11), operator verdict recorded verbatim
-last_updated: "2026-08-27T21:33:50.000Z"
+current_phase: 33
+current_phase_name: Hard Sync
+status: ready
+stopped_at: Completed 32-11-PLAN.md — Phase 32 complete (11/11), verified passed, operator verdict recorded verbatim
+last_updated: "2026-08-27T21:55:54.979Z"
 last_activity: 2026-08-27
-last_activity_desc: Phase 32 complete — operator in-Rack UAT recorded as a QUALIFIED pass
+last_activity_desc: Phase 32 complete, transitioned to Phase 33
 progress:
   total_phases: 8
   completed_phases: 4
@@ -24,26 +24,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 32 — morph-aware-anti-aliasing-polyblep-polyblamp
+**Current focus:** Phase 33 — Hard Sync (not started; gated on the CR-01/CR-02 fix as Task 1 — see Operator Next Steps)
 
 > **⚠ MILESTONE GUARDRAIL — protect the shipped LFO.** No breaking/behavioral changes to the Analog LFO (live in VCV Library, golden-pinned) while adding the VCO. Prefer additive code over editing shared `src/dsp/` headers. Any LFO-regression risk (shared-header edits, plugin.json/version/registration) → surface to operator with impact + remediation options + a recommendation before acting. Tripwires: LFO `.f32` goldens + `make strict` + CI MinGW link leg. See PROJECT.md Constraints.
 
 ## Current Position
 
-Phase: 32 (morph-aware-anti-aliasing-polyblep-polyblamp) — COMPLETE (11/11)
-Plan: 11 of 11 — both tasks complete
-Status: 32-11 is closed. Task 1 (build + whole-directory flush + five-way install identity pin) committed as `9fac167`; Task 2, the operator in-Rack audition, was answered and the reply is recorded VERBATIM in `32-11-SUMMARY.md`. The blocking `.continue-here.md` has been deleted — the checkpoint it guarded is answered.
+Phase: 33 — Hard Sync
+Plan: Not started
+Status: Phase 32 is COMPLETE (11/11) and VERIFIED PASSED — 9/9 requirements each discharged by a named test case the verifier located independently by grep, not from SUMMARY prose. The operator audition was answered and the reply is recorded VERBATIM in `32-11-SUMMARY.md`. The blocking `.continue-here.md` is deleted; the checkpoint it guarded is answered.
 
 **The verdict is a QUALIFIED pass, and the qualification is load-bearing.** Verbatim: *"Seems to work well enough - but it's hard to remember what the old audio sounded like. Let's continue."* Split honestly: the **no-artefact** half of Q1 (no zipper noise, no boundary artefact, nothing clicking or dropping out across the audio-rate MORPH sweep) is **discharged** under T-32-30, because the expected-results block was presented in full first. The **audible-improvement** half is **NOT established — and did not fail**: the session supplied no A/B reference, so it was unanswerable by construction. "Seems to work well enough" is explicitly NOT read as an answer to it.
 
 **Three things Phase 32 closes with OPEN, each pointed somewhere — do not read a complete phase as a clean one:**
-1. `32-REVIEW.md` **CR-01 and CR-02** — real defects in `src/dsp/MorphBlep.hpp` (out-of-bounds on a negative `morph`; NaN `character` bypassing the NaN trap at the three literal-zero-width sites), verified NOT reachable through the single shipped call site (`VcoCore.hpp:645`, arguments conditioned at `:598-602`, again at `AnalogVCO.cpp:286-288`). **High-priority hardening, not ship blockers.** Fix in a Phase 32 gap-closure plan or as Phase 33 Task 1 — **before Phase 33 adds the second call site at the hard-sync `addStep` seam.**
+
+1. `32-REVIEW.md` **CR-01 and CR-02** — real defects in `src/dsp/MorphBlep.hpp` (out-of-bounds on a negative `morph`; NaN `character` bypassing the NaN trap at the three literal-zero-width sites), verified NOT reachable through the single shipped call site (`VcoCore.hpp:645`, arguments conditioned at `:598-602`, again at `AnalogVCO.cpp:286-288`). **High-priority hardening, not ship blockers.** **DECIDED 2026-08-27: fix as PHASE 33, TASK 1**, before the hard-sync `addStep` seam adds the second call site. Scheduled prerequisite, not an open deferral — full evidence and minimum fix in `deferred-items.md` **item 27**.
 2. **Deferred item 26 (NEW)** — the in-Rack audition asks whether an improvement is audible but supplies no A/B reference. Remedy is in-tree: `NaiveVcoCoreMirror` is bit-exact, so matched naive/corrected pairs can be rendered from the grid points the spectral gate already uses. Owner: Phase 36, or whichever phase next needs a perceptual verdict — likely **Phase 34**, whose DRIFT-03 value is audition-gated.
 3. **Deferred item 24** — MORPH-02's shell-side knob + CV × attenuverter mix is now **operator-attested on absence of fault**, which is the strongest evidence available while no headless driver can reach the attenuverter. It is not a measurement.
 
 **T-32-12 note:** the operator did **not** separately attest step 8, and no attestation was inferred. For this phase the LFO guardrail is discharged by **automated** evidence — six goldens byte-identical in `make test`, all 15 `FROZEN.sha256` paths at 0 changed lines over the whole phase diff, `FROZEN.sha256` byte-identical by `cmp`.
 
-Last activity: 2026-08-27 — Phase 32 complete; `make test` 94/94/0 at 2,622,319, `make strict` PASS, `make guards` PASS re-run after the session
+Last activity: 2026-08-27 — Phase 32 complete, transitioned to Phase 33
 
 ## Performance Metrics
 
@@ -257,7 +258,14 @@ New this session: deferred item 26 — the in-Rack audition asks whether an impr
 
 ## Operator Next Steps
 
-- **▶ START HERE — Phase 32 is complete (11/11) and your verdict is recorded.** Next is **Phase 33 (Hard Sync)**, but **one decision comes first.** A code review (`32-REVIEW.md`, commit `3c42652`) found two critical-severity defects in `src/dsp/MorphBlep.hpp` — an out-of-bounds write on a negative `morph`, and a NaN `character` slipping past the NaN trap. **Neither is reachable today**: `blep.step` has exactly one call site and its arguments are conditioned immediately above it (and again at the shell). They are **hardening, not ship blockers.** But Phase 33's whole job is to add a *second* call site at the hard-sync seam, and the first unguarded one makes CR-01 live — on the x86 toolchains that actually ship, where `(int)NaN` is `INT_MIN` rather than the benign `0` this Mac produces. **Your call:** a short Phase 32 gap-closure plan, or Phase 33 Task 1. Doing it after Phase 33 is the one option with a real downside.
+- **▶ START HERE — Phase 32 is complete (11/11), verified 9/9, and your verdict is recorded.** Next is **Phase 33 (Hard Sync)**.
+
+  **BINDING PREREQUISITE — decided 2026-08-27, do not re-open cold.** Phase 33's **Task 1** is to close `32-REVIEW.md` **CR-01 and CR-02** in `src/dsp/MorphBlep.hpp`, *before* any hard-sync work adds the second `MorphBlep` call site. Both are real defects, confirmed independently by the code reviewer and the phase verifier, and both are **unreachable today** — `blep.step` has exactly one call site (`VcoCore.hpp:645`) with its arguments conditioned at `:598-602` and again at `AnalogVCO.cpp:286-288`. They are hardening, not ship blockers, and Phase 32's green gates and four green CI legs stand.
+
+  The deadline is Phase 33 because **Phase 33 is the phase that adds the second call site** (register item 13 names `forge::MorphBlep::addStep` as the hard-sync seam). The first unguarded call site turns CR-01 into a live out-of-bounds write — on the x86 MinGW/Linux builds that actually ship, where `(int)NaN` is `INT_MIN` rather than the benign `0` this arm64 Mac produces. That is the invisible-on-Apple-clang class that got v2.0.0 rejected from the VCV Library.
+
+  Minimum fix and the full reachability evidence: **`deferred-items.md` item 27**. Mirror the existing negated-comparison idiom — do **not** introduce a clamp ladder (a clamp has both comparisons false for NaN, which is the entire reason `VcoCore` uses the negated pair).
+
 - **Two things your audition could not answer, recorded rather than glossed.**
   - *"It's hard to remember what the old audio sounded like"* was **correct and useful** — the script asked you to compare against a memory and gave you nothing to compare against. That half of the question is logged as unevidenced, not as passed, and the fix is filed as `deferred-items.md` item 26: render matched naive/corrected pairs from `NaiveVcoCoreMirror` (already bit-exact in-tree) and hand you a switchable A/B. **Worth doing before Phase 34**, whose drift-depth value is decided by ear.
   - You did not separately comment on the **Analog LFO** in step 8, so no guardrail attestation was recorded for you. The LFO is still protected — six goldens replay byte-identical and every frozen path is untouched across the whole phase — but that is the automated evidence, not your ears. If you want the operator-side check on record, it is one minute of work next time Rack is open.

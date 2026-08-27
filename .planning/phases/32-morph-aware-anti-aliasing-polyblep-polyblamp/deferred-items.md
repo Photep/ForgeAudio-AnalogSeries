@@ -613,6 +613,50 @@ could have been found.
   whichever is sooner.** Phase 34 is the likelier first customer, because DRIFT-03's value is
   decided by audition rather than by calculation.
 
+## 27. `32-REVIEW.md` CR-01 and CR-02 — `MorphBlep::step` does not defend the contract its own banner advertises
+
+**OPERATOR DECISION TAKEN 2026-08-27: fix as PHASE 33, TASK 1 — before the hard-sync work adds
+the second call site.** This is a scheduled prerequisite, not an open-ended deferral. Phase 33
+planning must not begin its `addStep` seam work until these are closed.
+
+- **The two defects, both real, both confirmed against the code by two independent readers
+  (the code reviewer and the phase verifier):**
+  - **CR-01** — `src/dsp/MorphBlep.hpp:319-320` clamps `segment` only from above
+    (`if (segment > 3) segment = 3;`) with no lower clamp, then writes `W[segment]` at `:332`
+    into a `float[5]`. A negative `morph` indexes out of bounds — reproduced as an ASan
+    stack-buffer-underflow. A NaN `morph` is worse: `(int)NaN` is UB that happens to measure
+    `0` on this arm64 host but is `INT_MIN` under `cvttss2si` on the **x86 MinGW/Linux builds
+    that actually ship**. That is precisely the invisible-on-Apple-clang class that got v2.0.0
+    rejected from the VCV Library.
+  - **CR-02** — a NaN `character` yields non-finite corrections (measured: 16 of 200).
+    `hardSq = W[3] * 2.f * (1.f - c)` is `0.f * 2.f * NaN = NaN` even at zero weight, and three
+    sites carry a **literal** `0.f` width, so `morphBlepCharFactor`'s NaN trap returns `1.f`
+    and never sees them. This also defeats the `mag[i] == 0.f` skip that makes the fixed
+    nine-site union free.
+
+- **Why they are NOT ship blockers today, verified rather than assumed:** `blep.step` has
+  exactly ONE call site in all of `src/` — `VcoCore.hpp:645` — and both arguments are
+  conditioned immediately above it at `VcoCore.hpp:598-602` with the NaN-safe negated pair
+  (NaN fails `> 0.f`, so the negation fires and it becomes `0.f`; negatives likewise), and
+  again at the shell boundary in `AnalogVCO.cpp:286-288`. Nothing VCV Rack can drive reaches
+  either defect. Phase 32's green gates and its four green CI legs are NOT invalidated.
+
+- **Why the deadline is Phase 33 and not later.** The header's banner claims caller-independence
+  in capitals but defends only `dt` — the advertised contract is not the enforced one. Item 13
+  of this register already names `forge::MorphBlep::addStep` as the hard-sync seam, so Phase 33
+  is the phase that adds the second call site. **The first unguarded call site turns CR-01 from
+  a latent defect into a live out-of-bounds write**, on the toolchain where the failure mode is
+  `INT_MIN` rather than a benign zero.
+
+- **Minimum fix:** clamp `segment` from below as well as above, and make the guard reject a
+  non-finite `morph`/`character` at entry rather than relying on every caller — i.e. make the
+  header actually honour the caller-independence its banner claims. Mirror the existing
+  negated-comparison idiom; do NOT introduce a clamp ladder (a clamp has both comparisons false
+  for NaN, which is the whole reason `VcoCore` uses the negated pair — see item 24's neighbours
+  and the T-32-01 note at `VcoCore.hpp:392`).
+
+- **Resolve at: Phase 33, Task 1 — operator-scheduled, ahead of the hard-sync seam.**
+
 ---
 
 ## Phase 32's own measured figures
@@ -663,8 +707,9 @@ exactly **3 cases and 24,582 assertions**, unchanged from before the phase, matc
 ---
 
 *Phase: 32-morph-aware-anti-aliasing-polyblep-polyblamp*
-*Register written: 2026-08-01 (plan 32-10, the phase gate). Extended 2026-08-27 by plan 32-11.
-**26 items** — 8 falsified premises corrected, **18** deferred with owners.*
+*Register written: 2026-08-01 (plan 32-10, the phase gate). Extended 2026-08-27 by plan 32-11,
+and again 2026-08-27 by the post-phase code review and its operator disposition.
+**27 items** — 8 falsified premises corrected, **19** deferred with owners.*
 *Item 8 is a discovery of the phase gate itself: the CI observation this plan exists to perform is
 what found it, and it could not have been found locally.*
 *Item 26 is the same shape one layer out: the operator UAT this phase ends with is what found it,

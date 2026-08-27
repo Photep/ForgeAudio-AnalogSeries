@@ -1,27 +1,40 @@
 ---
 phase: 32-morph-aware-anti-aliasing-polyblep-polyblamp
 verified: 2026-08-28T00:00:00Z
-status: human_needed
+status: passed
+status_history:
+  - status: human_needed
+    set: 2026-08-28T00:00:00Z
+    by: gsd-verifier
+    reason: "Blocked on three operator decisions, not on missing or unverified work. All 9 requirements were already discharged by named, independently located test cases at the time this was set."
+  - status: passed
+    set: 2026-08-27T22:10:00Z
+    by: execute-phase orchestrator
+    reason: "All three human_verification items answered by the operator and recorded — see the OPERATOR DISPOSITION section at the end of this file. No requirement changed status and the score did not move. CR-01/CR-02 scheduled as Phase 33 Task 1 (deferred register item 27); MORPH-02 qualification accepted as-is (item 24); Q1(b) accepted as unevidenced-by-construction with remedy owned (item 26)."
 score: 9/9 must-haves verified (all qualified by two open hardening defects and one honestly-unresolved perceptual claim)
 behavior_unverified: 0
 overrides_applied: 0
+human_verification_resolved: true
 human_verification:
   - test: "Decide disposition of 32-REVIEW.md CR-01 (OOB write on negative/NaN morph in MorphBlep::step) and CR-02 (NaN character bypasses the NaN trap at three literal-zero-width sites)"
+    resolved: "Fix as Phase 33 Task 1, before the hard-sync addStep seam adds the second call site. Recorded as deferred register item 27 and as a binding prerequisite in STATE.md Operator Next Steps."
     expected: "An explicit operator decision: fix in a Phase 32 gap-closure plan, or accept as the first task of Phase 33 before its second call site (hard-sync addStep) lands"
     why_human: "Both are verified-real, verified-unreachable-today defects in a shared header two future phases will call into; whether to gate Phase 33 on this fix (as the review and this verifier recommend) versus proceeding is a scope/sequencing decision, not a code-correctness question"
   - test: "Confirm the MORPH-02 shell-side knob+CV×attenuverter mix qualification (operator-attested on absence of fault, not headlessly measured) is an acceptable standing state, or decide it needs a headless harness / POD field before Phase 34 closes the gap"
     expected: "Explicit accept-as-is or a follow-up plan; REQUIREMENTS.md already carries the qualification honestly and should not be silently upgraded to an unqualified Complete"
     why_human: "No test can reach in.morph's pre-clamp CV×attenuverter path without new POD fields, which reopens the compile-canary margin question (deferred item 15) — a design tradeoff, not a gap this phase can close"
+    resolved: "Accepted as-is. Operator-attested-on-absence-of-fault remains the standing evidence; REQUIREMENTS.md keeps the qualification rather than a bare tick. Carried as deferred register item 24."
   - test: "Acknowledge that the audible-improvement half of the operator UAT (Q1(b)) is unevidenced by construction (no A/B reference existed) before treating Phase 32's perceptual claim as closed"
     expected: "The audible-improvement claim rests on automated spectral evidence only (TEST-03 `failing==0`, the anti-circularity `improvementDb>=8.0` assertion); the ear-evidence half is open and filed as deferred item 26, owned by Phase 36 or the next perceptual phase"
     why_human: "Only a human can decide whether automated-only evidence is sufficient to ship on, or whether an A/B rendering harness should be built before Phase 34's audition-gated DRIFT-03 repeats the same unanswerable-by-construction shape"
+    resolved: "Accepted as recorded — the audible-improvement half stays unevidenced by construction, neither passed nor failed. Remedy owned as deferred register item 26 (NaiveVcoCoreMirror can render matched pairs from the SPECTRUM_GRID points the gate already uses). Flagged that Phase 34's DRIFT-03 is also audition-gated."
 ---
 
 # Phase 32: Morph-Aware Anti-Aliasing (polyBLEP/polyBLAMP) Verification Report
 
 **Phase Goal:** Band-limit the continuous, character-deformed morph crossfade so the oscillator stays clean across the whole keyboard — the single dominant-risk subsystem, fully isolated in its own wrapper header with its own spectral iteration budget.
 **Verified:** 2026-08-28
-**Status:** human_needed
+**Status:** passed (initially `human_needed`; all three operator decisions answered — see OPERATOR DISPOSITION at the end of this file)
 **Re-verification:** No — initial verification
 
 ## Goal Achievement
@@ -115,5 +128,41 @@ The phase does not have "gaps" in the sense of missing or stubbed work. It has t
 
 ---
 
+## OPERATOR DISPOSITION — 2026-08-27, recorded after verification
+
+All three `human_verification` items above were put to the operator. Their answers, and the
+resulting effective status:
+
+**1. CR-01 / CR-02 disposition — ANSWERED. Fix as PHASE 33, TASK 1.**
+The operator chose to gate Phase 33's first task on closing both defects, ahead of the hard-sync
+`addStep` seam that would add the second `MorphBlep` call site and make CR-01 live. This is a
+scheduled prerequisite with a named owner and a hard ordering constraint, not an open-ended
+deferral. Recorded as **deferred register item 27** with the minimum fix, the reachability
+evidence, and the reason the deadline is Phase 33 specifically. Phase 32 therefore closes with
+these items OPEN and SCHEDULED — complete, but explicitly not clean.
+
+**2. MORPH-02's evidence standing — ACCEPTED AS-IS.**
+Operator-attested on absence of reported fault remains the standing evidence. It is the
+strongest obtainable while D-17 leaves no POD field for a headless driver to reach the
+attenuverter. Already carried as register item 24; `REQUIREMENTS.md` carries the qualification
+rather than a bare tick.
+
+**3. The A/B gap (Q1(b)) — ACCEPTED AS RECORDED, remedy owned.**
+The audible-improvement half of the audition stays *unevidenced by construction* — not passed,
+not failed. Carried as register item 26 with an in-tree remedy (`NaiveVcoCoreMirror` can render
+matched naive/corrected pairs from the `SPECTRUM_GRID` points the gate already uses). Flagged
+that **Phase 34's DRIFT-03 is also audition-gated**, so the same defect recurs there unless the
+A/B harness lands first.
+
+**EFFECTIVE STATUS AFTER DISPOSITION: passed.**
+The `human_needed` status above was correct when written — it blocked on three decisions, not on
+missing work. All three are now answered and recorded. No requirement changed status, no score
+moved, and nothing in the verification body is superseded: 9/9 requirements remain discharged by
+named, independently located test cases. The phase is complete with two hardening defects open
+and scheduled, and one perceptual claim honestly unresolved.
+
+---
+
 _Verified: 2026-08-28_
 _Verifier: Claude (gsd-verifier)_
+_Disposition recorded: 2026-08-27 by the execute-phase orchestrator, on operator answers._
