@@ -302,7 +302,7 @@ Plans:
   2. The reset uses sub-sample fractional placement plus a sync-BLEP applied at the **master's** wrap fraction, reusing the anti-aliasing machinery — explicitly **not** the LFO's 3 ms cosine crossfade — producing the sharp, buzzy sync timbre without clicks.
   3. A sync-continuity invariant bounds the per-sample step across a reset (no full-scale artifact) and correctly handles ≥1 sync event within a single sample.
 
-**Plans**: 2/12 plans executed
+**Plans**: 3/12 plans executed
 Plans:
 **Wave 1**
 
@@ -314,7 +314,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 33-03-PLAN.md — SYNC jack in the shell, both canary feeds with the `-O3` fold-away trap named, one panel jack rect (D-02 / D-18)
+- [x] 33-03-PLAN.md — SYNC jack in the shell, both canary feeds with the `-O3` fold-away trap named, one panel jack rect (D-02 / D-18)
 - [ ] 33-04-PLAN.md — SYNC-01 detection and reset through the real POD boundary, the detector's structural ceiling, the new divisor's hostile population with a withdrawal phase, and CORE-03 extended to carry sync (D-01/D-03/D-09/D-12)
 - [ ] 33-05-PLAN.md — **The phase's central question**: the sync sub-grid, a placement probe proved bit-exact against the shipped core, six legs plus two mutation probes, and the three-condition decision rule (D-06 / D-11)
 
@@ -399,7 +399,7 @@ Plans:
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
 | 31. Pitch, Tuning & Exponential FM | 9/9 | Complete    | 2026-07-30 |
 | 32. Morph-Aware Anti-Aliasing | 11/11 | Complete    | 2026-08-27 |
-| 33. Hard Sync | 2/12 | In Progress|  |
+| 33. Hard Sync | 3/12 | In Progress|  |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |
 | 35. Shell, Panel & Display | 0/? | Not started | - |
 | 36. Goldens, CI & Library Update | 0/? | Not started | - |
