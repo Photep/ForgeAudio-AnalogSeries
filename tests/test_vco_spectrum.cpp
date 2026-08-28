@@ -1361,9 +1361,52 @@ const SyncRateRow SYNC_RATES[] = {
 	// what the case below asserts. The research figure was rounded, not wrong.
 };
 
-// HAZARD ONE'S AXIS. 0.5 is the sub-unity value and it is load-bearing; the
-// rest are the classic sweep region.
-const double SYNC_RATIOS[] = { 0.5, 1.0, 2.0, 3.0, 4.0, 6.0 };
+// HAZARD ONE'S AXIS — and a THIRD hazard, MEASURED BY THIS PLAN AND NOT
+// ANTICIPATED BY THE RESEARCH, which is why the values below are not the ones
+// 33-RESEARCH and 33-VALIDATION recommend.
+//
+// >>> HAZARD THREE — AT AN EXACTLY INTEGER RATIO OF TWO OR MORE, HARD SYNC IS A
+//     NEAR-NO-OP AND THE MASTER'S FUNDAMENTAL BIN IS EMPTY, SO THE METRIC
+//     DIVIDES BY ALMOST NOTHING. <<<
+// Both source documents recommend the ratios 0.5x, 1x, 2x, 3x, 4x and 6x. Three
+// of those turn the measurement into nonsense, and the reason is physical: at an
+// exactly integer ratio the slave is ALREADY in phase at every master wrap, so
+// the reset moves it by almost nothing, the emitted signal is periodic at the
+// SLAVE's period rather than the master's, and the master's fundamental bin —
+// which is the bin aliasPeakDb NORMALISES BY — carries essentially no energy.
+// MEASURED at 44.1 kHz, K_m = 93, the saw centre at character 0, hard-edged
+// master, on the shipped core's own leg:
+//
+//   ratio | |X[K_m]| | strongest harmonic | at n | fund vs it | alias peak
+//   ------+----------+--------------------+------+------------+-----------
+//    0.5  |  3259.48 |            3259.48 |   1  |    0.00 dB |  -27.24 dB
+//    1.0  |  6502.19 |            6502.19 |   1  |    0.00 dB |  -32.22 dB
+//    2.0  |     0.81 |            6452.03 |   2  |  -78.03 dB |  +51.87 dB
+//    3.0  |     1.16 |            6368.85 |   3  |  -74.78 dB |  +52.25 dB
+//    4.0  |     1.70 |            6256.08 |   4  |  -71.32 dB |  +51.41 dB
+//    6.0  |     2.59 |            5936.22 |   6  |  -67.20 dB |  +51.29 dB
+//
+// A POSITIVE alias peak is the tell: it says a non-harmonic bin carries more
+// energy than the fundamental, which cannot happen for a signal that really is
+// master-periodic. The eight legs at those ratios differed by up to 27 dB in
+// what was almost entirely the NORMALISATION moving, not the alias floor.
+//
+// THE FIX IS THE GRID, NOT THE METRIC. aliasPeakDb is called unchanged, as the
+// derivation requires; the integer ratios at or above two are replaced with
+// non-integer ones, where the reset genuinely truncates the slave mid-cycle and
+// the master's fundamental is the dominant bin again (measured 0.00 to
+// -12.66 dB below the strongest harmonic across the set below, alias peaks
+// -27.24 to -1.50 dB). THIS IS ALSO THE PHYSICALLY REPRESENTATIVE CASE: an
+// operator sweeping a hard-synced slave passes through the integer ratios as
+// isolated NULL POINTS and spends all the rest of the sweep between them.
+// 1.0 IS KEPT — there the fundamental is still the dominant bin, so the metric
+// is sound, and the row honestly records that unity sync barely moves the
+// waveform (mean |jump| 0.0038 against 1.0 either side of it).
+// The null point itself is pinned permanently by a control in the measurement
+// case, so that no later agent "restores" the recommended ratios.
+//
+// 0.5 and 0.75 are the sub-unity values and they are load-bearing (hazard one).
+const double SYNC_RATIOS[] = { 0.5, 0.75, 1.0, 1.5, 2.5, 3.5, 5.5 };
 
 // The five shape centres, matching the standing grid's third-index discipline.
 const float       SYNC_MORPHS[]  = { 0.00f, 0.25f, 0.50f, 0.75f, 1.00f };
@@ -1464,11 +1507,20 @@ enum SyncLeg {
 	kProbeMisMap = 6,   // MUTATION PROBE. addStep(1 - f, jump) — the natural mis-mapping of the edge's position
 	kProbeBadSign= 7    // MUTATION PROBE. pastEdge with the jump computed BEFORE MINUS AFTER — this project's own prior research, transcribed verbatim
 };
-// (kSyncLegCount and the leg-name table land with plan 33-05 Task 3, the commit
-// that first CONSUMES them. A named constant added a commit early is a
-// -Wunused-const-variable warning in a suite whose standing figure is zero, and
-// tests/test_vco_core.cpp already set that precedent by deferring
-// makeMasterSawBandLimited to the commit that used it.)
+const int kSyncLegCount = 8;
+const char* const SYNC_LEG_NAME[kSyncLegCount] = {
+	"none", "detect", "pastEdge", "flatHalf", "oracle", "snap", "probe:misMap", "probe:badSign"
+};
+
+// The four IMPLEMENTABLE candidates. `oracle` consumes information the core
+// cannot have and `snap` is a landmine, so neither is selectable; the two
+// mutation probes are controls, not entrants. A decision rule evaluated over a
+// set that included any of those four would be choosing between things the
+// shipped core cannot be.
+const int kSyncCandidateCount = 4;
+const SyncLeg SYNC_CANDIDATES[kSyncCandidateCount] = {
+	kLegNone, kLegDetect, kLegPastEdge, kLegFlatHalf
+};
 
 // Recording-only observations the probe writes while it runs. NOTHING in step()
 // reads one back, no branch tests one, and deleting the whole struct would
@@ -1796,6 +1848,48 @@ double measureSyncCellDb(const SyncCell& cell, SyncLeg leg, bool useLiveCore,
 	// THE METRIC, UNCHANGED, WITH THE MASTER'S CYCLE COUNT SUBSTITUTED FOR THE
 	// SLAVE'S. See the sub-grid banner for the derivation.
 	return aliasPeakDb(block, cell.Km, &aliasBin, aliasRmsDbOut);
+}
+
+// ---------------------------------------------------------------------------
+// fundamentalDominanceDb — THE SYNC SUB-GRID'S OWN D-10 SELF-CHECK, and the
+// generalisation of hazard three from a single null point to a column.
+//
+// aliasPeakDb reports peak_nonharmonic / |X[K_m]|. For that ratio to MEAN "the
+// alias floor sits this far below the fundamental", the master's fundamental
+// has to BE the fundamental — the strongest bin on the master's own harmonic
+// lattice. Hazard three is the extreme case of it not being so: at an exactly
+// integer ratio the signal is periodic at the SLAVE's period and |X[K_m]| is
+// 78 dB down, so the metric divides by almost nothing. The same degradation
+// arrives GRADUALLY as the ratio climbs, and it must be MEASURED per cell
+// rather than assumed away, exactly as D-10 requires the leakage floor to be
+// measured rather than hoped small.
+//
+// The return value is 20*log10(|X[K_m]| / max_n |X[n*K_m]|), so it is 0.0 dB
+// exactly when the master's fundamental IS the strongest harmonic and NEGATIVE
+// by however far it is buried when it is not. It is computed on the SHIPPED
+// CORE'S OWN LEG so that it is a property of the CELL and not of the candidate
+// under test — a validity column that moved with the leg would be a validity
+// column the choice of leg could argue with.
+// ---------------------------------------------------------------------------
+double fundamentalDominanceDb(const std::vector<float>& block, int Km, int* strongestHarmonicNOut) {
+	if (strongestHarmonicNOut) *strongestHarmonicNOut = 0;
+	if (block.size() < 2 || Km < 1) return -999.0;
+	std::vector<std::complex<double> > x;
+	x.reserve(block.size());
+	for (std::size_t i = 0; i < block.size(); ++i)
+		x.push_back(std::complex<double>((double)block[i], 0.0));
+	fftRadix2(x);
+	const int half = (int)(block.size() / 2);
+	const double fund = std::abs(x[(std::size_t)Km]);
+	double strongest = 0.0;
+	int    strongestN = 0;
+	for (int n = 1; n * Km <= half - 1; ++n) {
+		const double mag = std::abs(x[(std::size_t)(n * Km)]);
+		if (mag > strongest) { strongest = mag; strongestN = n; }
+	}
+	if (strongestHarmonicNOut) *strongestHarmonicNOut = strongestN;
+	if (!(strongest > 0.0) || !(fund > 0.0)) return -999.0;
+	return 20.0 * std::log10(fund / strongest);
 }
 
 }  // namespace
@@ -3431,7 +3525,7 @@ TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, i
 	// =======================================================================
 	const std::size_t nCells = grid.size();
 	CAPTURE(nCells);
-	CHECK(nCells == 360);   // 3 rates * 2 edge shapes * 6 ratios * 5 morphs * 2 characters
+	CHECK(nCells == 420);   // 3 rates * 2 edge shapes * 7 ratios * 5 morphs * 2 characters
 
 	int subUnityCells = 0, hardEdgeCells = 0, bandLimitedCells = 0, unpinnedCells = 0;
 	for (std::size_t i = 0; i < nCells; ++i) {
@@ -3451,11 +3545,22 @@ TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, i
 	// HAZARD ONE'S AXIS EXISTS. Without a sub-unity ratio the decision rule's
 	// condition 2 has no cells to evaluate on and no defensible answer is
 	// reachable at all.
-	CHECK(subUnityCells == 60);
+	CHECK(subUnityCells == 120);   // ratios 0.5 and 0.75
 
 	// HAZARD TWO'S AXIS EXISTS, on both halves.
-	CHECK(hardEdgeCells    == 180);
-	CHECK(bandLimitedCells == 180);
+	CHECK(hardEdgeCells    == 210);
+	CHECK(bandLimitedCells == 210);
+
+	// HAZARD THREE'S AXIS. No ratio at or above two may be an exact integer:
+	// there the master's fundamental bin empties and the metric divides by
+	// almost nothing. See the SYNC_RATIOS banner for the measured table, and the
+	// permanent null-point control in the measurement case.
+	int integerRatioCellsAtOrAboveTwo = 0;
+	for (std::size_t i = 0; i < nCells; ++i)
+		if (grid[i].ratio >= 2.0 && grid[i].ratio == std::floor(grid[i].ratio))
+			++integerRatioCellsAtOrAboveTwo;
+	CAPTURE(integerRatioCellsAtOrAboveTwo);
+	CHECK(integerRatioCellsAtOrAboveTwo == 0);
 
 	// The whole grid is unpinned and says so.
 	CHECK(unpinnedCells == (int)nCells);
@@ -3617,7 +3722,7 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 
 	const std::vector<SyncCell>& grid = syncGrid();
 	const std::size_t nCells = grid.size();
-	REQUIRE(nCells == 360);
+	REQUIRE(nCells == 420);
 
 	// Per-rate tallies, asserted AFTER the cells of that rate, so a rate whose
 	// grid silently lost cells cannot satisfy them.
@@ -3690,13 +3795,713 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 		CAPTURE(tally[r].cells);
 		CAPTURE(tally[r].samples);
 		CAPTURE(tally[r].mismatches);
-		CHECK(tally[r].cells == 120);
-		CHECK(tally[r].samples == 120L * kSpectrumN);
+		CHECK(tally[r].cells == 140);
+		CHECK(tally[r].samples == 140L * kSpectrumN);
 		CHECK(tally[r].mismatches == 0);
 	}
 
 	CAPTURE(totalSamples);
 	CAPTURE(totalMismatches);
-	CHECK(totalSamples == 360L * kSpectrumN);
+	CHECK(totalSamples == 420L * kSpectrumN);
 	CHECK(totalMismatches == 0);
 }
+
+// ---------------------------------------------------------------------------
+// TASK 3 OF PLAN 33-05 — THE MEASUREMENT, AND THE THREE-CONDITION DECISION RULE.
+//
+// This case RUNS the measurement and applies D-06's decision rule. It PINS NO
+// THRESHOLD and GATES NO CELL: plan 33-07 owns both. What it asserts is the
+// integrity of the measurement itself — that every cell synced, that the
+// instrument's own bin error is still exactly zero, that the legs genuinely
+// separate, and that the two mutation probes discriminate — plus whichever of
+// the three decision conditions the measurement actually established.
+//
+// >>> THE PLATEAU / STEP-DOMINATED CRITERION, STATED ON ITS PHYSICAL BASIS
+//     BEFORE ANY POPULATION IS ENUMERATED. READ THIS BEFORE THE COUNTS. <<<
+//
+// Register item 8 splits the cross-toolchain reproduction bound in two, and the
+// split is PHYSICAL, not statistical. aliasPeakDb reports an ARG-MAX over
+// roughly two thousand non-harmonic bins. When the emitted waveform carries a
+// TRUE VALUE STEP, that step's spectrum is a broad 1/f skirt and the arg-max is
+// a GENUINE MAXIMUM — it sits well above its neighbours and no plausible
+// unit-in-the-last-place difference in a library function can reorder it. Such
+// a cell is STEP-DOMINATED and inherits the 1.0 dB bound. When there is no true
+// value step, the surviving non-harmonic energy is a near-flat PLATEAU of
+// near-tied bins, one libm ULP reorders which bin wins, and the reported figure
+// moves by several decibels for no DSP reason at all. Such a cell is PLATEAU
+// class and inherits the 4.0 dB bound.
+//
+// THE OBSERVABLE THAT DECIDES IT, chosen because it IS the physical quantity
+// and not a proxy for the outcome: under hard sync the value step in question
+// is the SYNC JUMP — the difference between the frozen waveshaper's value at
+// the pre-reset phase and at the post-reset phase, which is exactly what
+// forge::VcoCore::Telemetry::syncJump records. A cell is STEP-DOMINATED when
+// its mean absolute sync jump, measured ON THE SHIPPED CORE'S OWN LEG, is at
+// least 0.01 in pre-scale units (0.05 V at the output). Below that the reset
+// moves the waveform by less than one percent of its full range and there is no
+// step for the arg-max to lock onto.
+//
+// THE CRITERION IS FIXED HERE, IN THIS COMMENT, BEFORE THE POPULATION IS
+// COUNTED AND BEFORE ANY MARGIN IS COMPARED AGAINST IT. A CLASSIFICATION
+// PRODUCED BY RENAMING THE CELLS THAT FAILED IS FORBIDDEN BY NAME, in
+// 33-VALIDATION's Threshold Policy and here.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: (D-06 / D-11) the sync placement measurement - six legs on the sync sub-grid") {
+
+	// The physical criterion, as a constant, stated above before any count.
+	const double kStepDominatedJumpFloor = 0.01;   // pre-scale units
+	const double kBoundStepDominatedDb   = 1.0;    // register item 8
+	const double kBoundPlateauDb         = 4.0;    // register item 8
+
+	const std::vector<SyncCell>& grid = syncGrid();
+	const std::size_t nCells = grid.size();
+	REQUIRE(nCells == 420);
+
+	// =======================================================================
+	// THE MEASUREMENT. Every leg of every cell through the SAME
+	// measureSyncCellDb, parameterised by leg. There is no second measurement
+	// function and there must never be.
+	// =======================================================================
+	std::vector<std::vector<double> > db(nCells, std::vector<double>((std::size_t)kSyncLegCount, 0.0));
+	std::vector<SyncProbeDiag> diags(nCells, zeroedSyncDiag());
+	std::vector<char> stepDom(nCells, 0);
+	std::vector<char> instrumentValid(nCells, 0);
+	std::vector<double> fundDomDb(nCells, 0.0);
+
+	long   totalFires = 0, totalLateFires = 0;
+	int    cellsAllFired = 0;
+	double worstBinError = 0.0;
+
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& cell = grid[ci];
+		for (int L = 0; L < kSyncLegCount; ++L) {
+			double rms = 0.0, binErr = 0.0;
+			SyncProbeDiag d = zeroedSyncDiag();
+			db[ci][(std::size_t)L] = measureSyncCellDb(cell, (SyncLeg)L, /*useLiveCore=*/false,
+			                                           &rms, &binErr, &d, 0);
+			if (binErr > worstBinError) worstBinError = binErr;
+			// The shipped core's own leg supplies the diagnostics: the jump that
+			// decides the class, the fire count, the late fires and the phantom.
+			if (L == (int)kLegNone) {
+				diags[ci] = d;
+				// THE INSTRUMENT-VALIDITY COLUMN, taken on the shipped core's own
+				// leg so it is a property of the cell rather than of a candidate.
+				std::vector<float> refBlock;
+				double rms2 = 0.0, be2 = 0.0;
+				measureSyncCellDb(cell, kLegNone, /*useLiveCore=*/false, &rms2, &be2, 0, &refBlock);
+				int strongestN = 0;
+				fundDomDb[ci] = fundamentalDominanceDb(refBlock, cell.Km, &strongestN);
+				instrumentValid[ci] = (strongestN == 1) ? 1 : 0;
+			}
+		}
+		const SyncProbeDiag& d = diags[ci];
+		if (d.fires > 0) ++cellsAllFired;
+		totalFires     += d.fires;
+		totalLateFires += d.lateFires;
+		const double meanAbsJump = (d.fires > 0) ? d.jumpAbsSum / (double)d.fires : 0.0;
+		stepDom[ci] = (meanAbsJump >= kStepDominatedJumpFloor) ? 1 : 0;
+	}
+
+	// --- THE INSTRUMENT IS STILL THE INSTRUMENT. --------------------------
+	CAPTURE(worstBinError);
+	CHECK(worstBinError == 0.0);          // the master's bin error, asserted DIRECTLY, over every cell measured
+	CAPTURE(cellsAllFired);
+	CHECK(cellsAllFired == (int)nCells);  // non-vacuity: no cell free-ran
+	CAPTURE(totalFires);
+	CHECK(totalFires > 0);
+
+	// --- THE POPULATION, COUNTED AFTER THE CRITERION WAS FIXED. -----------
+	int nStepDominated = 0, nPlateau = 0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) { if (stepDom[ci]) ++nStepDominated; else ++nPlateau; }
+	CAPTURE(nStepDominated);
+	CAPTURE(nPlateau);
+	CHECK(nStepDominated + nPlateau == (int)nCells);
+
+	// =======================================================================
+	// THE AGGREGATED TABLE — mean alias peak per (rate x edge shape x ratio)
+	// per leg, over the ten morph-by-character cells of that group. CAPTUREd
+	// rather than MESSAGEd so a normal run stays quiet and `-s` prints it, which
+	// is this file's standing idiom.
+	// =======================================================================
+	for (std::size_t ri = 0; ri < 3; ++ri) {
+		for (std::size_t ei = 0; ei < 2; ++ei) {
+			for (std::size_t qi = 0; qi < 7; ++qi) {
+				double sum[kSyncLegCount];
+				for (int L = 0; L < kSyncLegCount; ++L) sum[L] = 0.0;
+				int n = 0, nStep = 0, fires = 0, late = 0;
+				double phMax = 0.0, phSum = 0.0; int phN = 0;
+				double masterHz = 0.0;
+				for (std::size_t ci = 0; ci < nCells; ++ci) {
+					const SyncCell& c = grid[ci];
+					if (c.sr != SYNC_RATES[ri].sr) continue;
+					if (c.edge != SYNC_EDGES[ei]) continue;
+					if (c.ratio != SYNC_RATIOS[qi]) continue;
+					masterHz = c.masterHz;
+					for (int L = 0; L < kSyncLegCount; ++L) sum[L] += db[ci][(std::size_t)L];
+					++n;
+					if (stepDom[ci]) ++nStep;
+					fires += diags[ci].fires;
+					late  += diags[ci].lateFires;
+					phSum += diags[ci].phantomAbsSum;
+					phN   += diags[ci].phantomSamples;
+					if (diags[ci].phantomAbsMax > phMax) phMax = diags[ci].phantomAbsMax;
+				}
+				REQUIRE(n == 10);
+				const double sr = SYNC_RATES[ri].sr;
+				const std::string edgeName = SYNC_EDGE_NAME[ei];
+				const double ratio = SYNC_RATIOS[qi];
+				CAPTURE(sr);
+				CAPTURE(masterHz);
+				CAPTURE(edgeName);
+				CAPTURE(ratio);
+				const double mNone     = sum[kLegNone]     / 10.0;
+				const double mDetect   = sum[kLegDetect]   / 10.0;
+				const double mPastEdge = sum[kLegPastEdge] / 10.0;
+				const double mFlatHalf = sum[kLegFlatHalf] / 10.0;
+				const double mOracle   = sum[kLegOracle]   / 10.0;
+				const double mSnap     = sum[kLegSnap]     / 10.0;
+				const double mMisMap   = sum[kProbeMisMap] / 10.0;
+				const double mBadSign  = sum[kProbeBadSign]/ 10.0;
+				CAPTURE(mNone);
+				CAPTURE(mDetect);
+				CAPTURE(mPastEdge);
+				CAPTURE(mFlatHalf);
+				CAPTURE(mOracle);
+				CAPTURE(mSnap);
+				CAPTURE(mMisMap);
+				CAPTURE(mBadSign);
+				CAPTURE(nStep);
+				CAPTURE(fires);
+				CAPTURE(late);
+				const double phantomMean = (phN > 0) ? phSum / (double)phN : 0.0;
+				CAPTURE(phantomMean);
+				CAPTURE(phMax);
+				// Every group must have synced and must have produced a real
+				// alias figure; -999.0 is aliasPeakDb's silence sentinel.
+				CHECK(fires > 0);
+				CHECK(mNone > -900.0);
+			}
+		}
+	}
+
+	// =======================================================================
+	// CONDITION 1 — SIGN CONSISTENCY, at 44.1 kHz binding.
+	//
+	// >>> THE POPULATION IS THE STEP-DOMINATED 44.1 kHz CELLS, AND THE
+	//     RESTRICTION IS PART OF THE CRITERION STATED ABOVE, NOT A RESPONSE TO
+	//     THE RESULT. <<<
+	// A cell whose sync jump is below the floor has no value step at the reset,
+	// which means IT POSES NO PLACEMENT QUESTION: there is nothing at the edge
+	// for a correction to be placed on either side of, and register item 8
+	// already says the arg-max there is a near-tie that one libm ULP reorders.
+	// Ranking four candidates on such a cell ranks rounding. BOTH FRACTIONS ARE
+	// RECORDED — over all 44.1 kHz cells and over the step-dominated ones — so
+	// the restriction cannot hide anything, and the classification was fixed on
+	// the mean absolute sync jump before any margin was looked at.
+	// =======================================================================
+	int n441 = 0, n441Step = 0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		if (grid[ci].sr != 44100.0) continue;
+		++n441;
+		if (stepDom[ci]) ++n441Step;
+	}
+	REQUIRE(n441 == 140);
+	CAPTURE(n441Step);
+	REQUIRE(n441Step > 0);
+
+	int    winsAll[kSyncCandidateCount];
+	int    winsStep[kSyncCandidateCount];
+	double worstDeficit[kSyncCandidateCount];
+	for (int k = 0; k < kSyncCandidateCount; ++k) { winsAll[k] = 0; winsStep[k] = 0; worstDeficit[k] = -1e30; }
+
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		if (grid[ci].sr != 44100.0) continue;
+		for (int k = 0; k < kSyncCandidateCount; ++k) {
+			const double mine = db[ci][(std::size_t)SYNC_CANDIDATES[k]];
+			double bestOther = 1e30;
+			for (int j = 0; j < kSyncCandidateCount; ++j) {
+				if (j == k) continue;
+				const double o = db[ci][(std::size_t)SYNC_CANDIDATES[j]];
+				if (o < bestOther) bestOther = o;
+			}
+			if (mine <= bestOther) ++winsAll[k];
+			if (stepDom[ci]) {
+				if (mine <= bestOther) ++winsStep[k];
+				// The worst single-cell deficit is taken on the step-dominated
+				// population only, for the same reason the fraction is.
+				const double deficit = mine - bestOther;   // positive = this candidate is WORSE here
+				if (deficit > worstDeficit[k]) worstDeficit[k] = deficit;
+			}
+		}
+	}
+
+	int    winnerIdx = 0;
+	double bestFrac  = -1.0;
+	for (int k = 0; k < kSyncCandidateCount; ++k) {
+		const double fracAll  = (double)winsAll[k]  / (double)n441;
+		const double fracStep = (double)winsStep[k] / (double)n441Step;
+		const std::string legName = SYNC_LEG_NAME[SYNC_CANDIDATES[k]];
+		CAPTURE(legName);
+		CAPTURE(winsAll[k]);
+		CAPTURE(winsStep[k]);
+		CAPTURE(fracAll);
+		CAPTURE(fracStep);
+		CAPTURE(worstDeficit[k]);
+		CHECK(winsStep[k] >= 0);   // recorded; the claim is the fraction below
+		if (fracStep > bestFrac) { bestFrac = fracStep; winnerIdx = k; }
+	}
+	const SyncLeg winner = SYNC_CANDIDATES[winnerIdx];
+	const std::string winnerName = SYNC_LEG_NAME[winner];
+	const double winnerFrac = bestFrac;
+	const double winnerFracAll = (double)winsAll[winnerIdx] / (double)n441;
+	const double winnerWorstDeficit = worstDeficit[winnerIdx];
+	CAPTURE(winnerName);
+	CAPTURE(winnerFrac);
+	CAPTURE(winnerFracAll);
+	CAPTURE(winnerWorstDeficit);
+
+	const bool cond1 = (winnerFrac >= 0.90) && (winnerWorstDeficit <= kBoundStepDominatedDb);
+	CAPTURE(cond1);
+
+	// =======================================================================
+	// CONDITION 2 — MARGIN ABOVE THE REPRODUCTION BOUND, on the sub-unity cells.
+	// =======================================================================
+	int    subCells = 0, subOverBound = 0;
+	double subMarginMin = 1e30, subMarginMax = -1e30, subMarginSum = 0.0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		if (grid[ci].sr != 44100.0) continue;
+		if (!(grid[ci].ratio < 1.0)) continue;
+		if (!stepDom[ci]) continue;   // no value step, no placement question — see condition 1
+		double bestOther = 1e30;
+		for (int j = 0; j < kSyncCandidateCount; ++j) {
+			if (SYNC_CANDIDATES[j] == winner) continue;
+			const double o = db[ci][(std::size_t)SYNC_CANDIDATES[j]];
+			if (o < bestOther) bestOther = o;
+		}
+		const double margin = bestOther - db[ci][(std::size_t)winner];   // positive = winner better
+		const double bound  = stepDom[ci] ? kBoundStepDominatedDb : kBoundPlateauDb;
+		++subCells;
+		if (margin > bound) ++subOverBound;
+		if (margin < subMarginMin) subMarginMin = margin;
+		if (margin > subMarginMax) subMarginMax = margin;
+		subMarginSum += margin;
+	}
+	CAPTURE(subCells);
+	REQUIRE(subCells > 0);
+	const double subMarginMean = subMarginSum / (double)subCells;
+	CAPTURE(subCells);
+	CAPTURE(subOverBound);
+	CAPTURE(subMarginMin);
+	CAPTURE(subMarginMean);
+	CAPTURE(subMarginMax);
+
+	const bool cond2 = (subOverBound == subCells);
+	CAPTURE(cond2);
+
+	// =======================================================================
+	// CONDITION 3 — RATE SIGNATURE, on the cells at or above unity ratio.
+	// =======================================================================
+	double rateMargin[3] = {0.0, 0.0, 0.0};
+	int    rateCells[3]  = {0, 0, 0};
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		if (grid[ci].ratio < 1.0) continue;
+		if (!stepDom[ci]) continue;   // no value step, no placement question — see condition 1
+		int slot = -1;
+		for (int r = 0; r < 3; ++r) if (grid[ci].sr == SYNC_RATES[r].sr) slot = r;
+		REQUIRE(slot >= 0);
+		double bestOther = 1e30;
+		for (int j = 0; j < kSyncCandidateCount; ++j) {
+			if (SYNC_CANDIDATES[j] == winner) continue;
+			const double o = db[ci][(std::size_t)SYNC_CANDIDATES[j]];
+			if (o < bestOther) bestOther = o;
+		}
+		rateMargin[slot] += bestOther - db[ci][(std::size_t)winner];
+		++rateCells[slot];
+	}
+	for (int r = 0; r < 3; ++r) { CAPTURE(rateCells[r]); REQUIRE(rateCells[r] > 0); rateMargin[r] /= (double)rateCells[r]; }
+	const double margin441 = rateMargin[0], margin48 = rateMargin[1], margin96 = rateMargin[2];
+	CAPTURE(margin441);
+	CAPTURE(margin48);
+	CAPTURE(margin96);
+
+	const bool cond3 = (margin441 > margin48) && (margin48 > margin96);
+	CAPTURE(cond3);
+
+	// The three margins on ONE COMMON CELL, as the rule requires: band-limited
+	// master, ratio 2.5, the saw centre, character 0. Ratio 2.5 rather than 2.0
+	// because 2.0 is an integer NULL POINT — see hazard three in the SYNC_RATIOS
+	// banner and the permanent control at the bottom of this case.
+	double commonMargin[3] = {0.0, 0.0, 0.0};
+	int    commonFound = 0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& c = grid[ci];
+		if (c.edge != kMasterBandLimited || c.ratio != 2.5) continue;
+		if (c.morph != 0.50f || c.character != 0.00f) continue;
+		int slot = -1;
+		for (int r = 0; r < 3; ++r) if (c.sr == SYNC_RATES[r].sr) slot = r;
+		REQUIRE(slot >= 0);
+		double bestOther = 1e30;
+		for (int j = 0; j < kSyncCandidateCount; ++j) {
+			if (SYNC_CANDIDATES[j] == winner) continue;
+			const double o = db[ci][(std::size_t)SYNC_CANDIDATES[j]];
+			if (o < bestOther) bestOther = o;
+		}
+		commonMargin[slot] = bestOther - db[ci][(std::size_t)winner];
+		++commonFound;
+	}
+	REQUIRE(commonFound == 3);
+	CAPTURE(commonMargin[0]);
+	CAPTURE(commonMargin[1]);
+	CAPTURE(commonMargin[2]);
+
+	// =======================================================================
+	// THE TWO FINDINGS THAT MAKE THIS GRID PAY FOR ITSELF TWICE, per rate and
+	// per master edge shape.
+	//
+	// SNAP vs WINNER is SYNC-02's sub-sample clause turned from an inherited
+	// warning into a measurement, and it is the one sync claim the spectral
+	// instrument can evidence with a comfortable margin.
+	//
+	// ORACLE vs WINNER decomposes the residual: the oracle-to-winner gap is the
+	// cost of the FRACTION'S ACCURACY, while the none-to-winner gap is the cost
+	// of the PLACEMENT CONVENTION. That decomposition is what tells a later
+	// phase whether to escalate to a slope-correction kernel or to accept the
+	// residual as inherent.
+	// =======================================================================
+	for (std::size_t ri = 0; ri < 3; ++ri) {
+		for (std::size_t ei = 0; ei < 2; ++ei) {
+			double snapSum = 0.0, oracleSum = 0.0, noneSum = 0.0;
+			double misSum = 0.0, badSum = 0.0;
+			int n = 0;
+			for (std::size_t ci = 0; ci < nCells; ++ci) {
+				if (grid[ci].sr != SYNC_RATES[ri].sr) continue;
+				if (grid[ci].edge != SYNC_EDGES[ei]) continue;
+				const double w = db[ci][(std::size_t)winner];
+				snapSum   += db[ci][(std::size_t)kLegSnap]      - w;
+				oracleSum += db[ci][(std::size_t)kLegOracle]    - w;
+				noneSum   += db[ci][(std::size_t)kLegNone]      - w;
+				misSum    += db[ci][(std::size_t)kProbeMisMap]  - w;
+				badSum    += db[ci][(std::size_t)kProbeBadSign] - w;
+				++n;
+			}
+			REQUIRE(n == 70);
+			const double sr = SYNC_RATES[ri].sr;
+			const std::string edgeName = SYNC_EDGE_NAME[ei];
+			CAPTURE(sr);
+			CAPTURE(edgeName);
+			const double snapVsWinner   = snapSum   / (double)n;   // positive = snap is WORSE
+			const double oracleVsWinner = oracleSum / (double)n;   // negative = oracle is BETTER
+			const double noneVsWinner   = noneSum   / (double)n;   // positive = doing nothing is WORSE
+			const double misVsWinner    = misSum    / (double)n;
+			const double badVsWinner    = badSum    / (double)n;
+			CAPTURE(snapVsWinner);
+			CAPTURE(oracleVsWinner);
+			CAPTURE(noneVsWinner);
+			CAPTURE(misVsWinner);
+			CAPTURE(badVsWinner);
+			CHECK(n == 70);
+
+			// >>> THE ONE ORDERING CLAIM THIS PLAN ASSERTS, AND IT IS A SIGN
+			//     CLAIM WITH NO PINNED DECIBEL IN IT. <<<
+			// On a BAND-LIMITED master — the only edge shape where the detector's
+			// fraction carries sub-sample information at all (hazard two) — the
+			// snap-to-zero landmine and BOTH mutation probes must land on the
+			// WORSE side of the past-edge leg. A probe that does not separate
+			// from the leg it is probing is not a probe, and a landmine that
+			// measures no worse than the thing it is a landmine for is not a
+			// landmine. The MAGNITUDES are recorded in the plan SUMMARY and are
+			// deliberately NOT gated here: this plan measures and decides, and
+			// plan 33-07 pins.
+			//   THE HARD-EDGE HALF IS DELIBERATELY NOT ASSERTED, and its absence
+			// is the finding rather than an omission: with a single-sample master
+			// wrap there is no sub-sample information for any of these legs to
+			// use, so they measure within a decibel of each other and the snap
+			// leg is actually BETTER. That is hazard two arriving as a number.
+			if (SYNC_EDGES[ei] == kMasterBandLimited) {
+				CHECK(snapVsWinner > 0.0);
+				CHECK(misVsWinner  > 0.0);
+				CHECK(badVsWinner  > 0.0);
+			}
+		}
+	}
+
+	// --- THE MUTATION PROBES, GRID-WIDE, WITH A VERDICT. ------------------
+	// A probe that does not separate from the winner is not a probe.
+	double misSumAll = 0.0, badSumAll = 0.0;
+	int    misWorse = 0, badWorse = 0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const double w = db[ci][(std::size_t)winner];
+		const double m = db[ci][(std::size_t)kProbeMisMap]  - w;
+		const double b = db[ci][(std::size_t)kProbeBadSign] - w;
+		misSumAll += m; badSumAll += b;
+		if (m > 0.0) ++misWorse;
+		if (b > 0.0) ++badWorse;
+	}
+	const double misMeanAll = misSumAll / (double)nCells;
+	const double badMeanAll = badSumAll / (double)nCells;
+	CAPTURE(misMeanAll);
+	CAPTURE(badMeanAll);
+	CAPTURE(misWorse);
+	CAPTURE(badWorse);
+
+	// --- D-07's RESIDUAL PHANTOM, AS A NUMBER RATHER THAN AN ARGUMENT. ----
+	// src/dsp/VcoCore.hpp names this residual and gives an ORDER OF MAGNITUDE
+	// explicitly labelled arithmetic, not measurement, and 33-02's deferred
+	// register asks this plan for the measurement. This is it: the magnitude of
+	// the MorphBlep accumulator CARRIED IN to a reset sample, over the shipped
+	// core's own leg.
+	double phantomGridMax = 0.0, phantomGridSum = 0.0;
+	long   phantomGridN = 0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		phantomGridSum += diags[ci].phantomAbsSum;
+		phantomGridN   += diags[ci].phantomSamples;
+		if (diags[ci].phantomAbsMax > phantomGridMax) phantomGridMax = diags[ci].phantomAbsMax;
+	}
+	REQUIRE(phantomGridN > 0);
+	const double phantomGridMean = phantomGridSum / (double)phantomGridN;
+	CAPTURE(phantomGridMean);
+	CAPTURE(phantomGridMax);
+	CAPTURE(phantomGridN);
+
+	// --- THE LATE-FIRE COLUMN, which 33-04 asked this grid to carry. ------
+	// A band-limited master's residual can push the wrap sample below the high
+	// threshold, so the detector fires ONE SAMPLE LATE. That is a placement
+	// error that exists BEFORE any seam does, and it must not be attributed to
+	// one.
+	CAPTURE(totalLateFires);
+	CAPTURE(totalFires);
+
+	// =======================================================================
+	// THE INSTRUMENT-VALIDITY PARTITION, AND THE RANKING INSIDE IT.
+	//
+	// fundamentalDominanceDb above is this sub-grid's D-10 self-check. A cell
+	// where the master's fundamental is NOT the strongest bin on its own
+	// harmonic lattice is a cell where aliasPeakDb is dividing by something that
+	// is not the fundamental, so its decibel figure is not an alias floor and
+	// cannot rank anything. The partition is reported here with the ranking
+	// recomputed inside the valid half, so the STOP-AND-REPORT above is
+	// accompanied by the structure of WHY it stopped rather than by a shrug.
+	// =======================================================================
+	int nValid = 0, nInvalid = 0;
+	double worstFundDom = 0.0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		if (instrumentValid[ci]) ++nValid; else ++nInvalid;
+		if (fundDomDb[ci] < worstFundDom) worstFundDom = fundDomDb[ci];
+	}
+	CAPTURE(nValid);
+	CAPTURE(nInvalid);
+	CAPTURE(worstFundDom);
+	CHECK(nValid + nInvalid == (int)nCells);
+	CHECK(nValid > 0);
+
+	// Conditions 2 and 3, re-evaluated on the instrument-valid population.
+	{
+		int    vSubCells = 0, vSubOverBound = 0;
+		double vSubMin = 1e30, vSubMax = -1e30, vSubSum = 0.0;
+		for (std::size_t ci = 0; ci < nCells; ++ci) {
+			if (grid[ci].sr != 44100.0) continue;
+			if (!(grid[ci].ratio < 1.0)) continue;
+			if (!stepDom[ci] || !instrumentValid[ci]) continue;
+			double bestOther = 1e30;
+			for (int j = 0; j < kSyncCandidateCount; ++j) {
+				if (SYNC_CANDIDATES[j] == winner) continue;
+				const double o = db[ci][(std::size_t)SYNC_CANDIDATES[j]];
+				if (o < bestOther) bestOther = o;
+			}
+			const double margin = bestOther - db[ci][(std::size_t)winner];
+			++vSubCells;
+			if (margin > kBoundStepDominatedDb) ++vSubOverBound;
+			if (margin < vSubMin) vSubMin = margin;
+			if (margin > vSubMax) vSubMax = margin;
+			vSubSum += margin;
+		}
+		REQUIRE(vSubCells > 0);
+		const double vSubMean = vSubSum / (double)vSubCells;
+		CAPTURE(vSubCells);
+		CAPTURE(vSubOverBound);
+		CAPTURE(vSubMin);
+		CAPTURE(vSubMean);
+		CAPTURE(vSubMax);
+		CHECK(vSubCells > 0);
+
+		double vRateMargin[3] = {0.0, 0.0, 0.0};
+		int    vRateCells[3]  = {0, 0, 0};
+		for (std::size_t ci = 0; ci < nCells; ++ci) {
+			if (grid[ci].ratio < 1.0) continue;
+			if (!stepDom[ci] || !instrumentValid[ci]) continue;
+			int slot = -1;
+			for (int r = 0; r < 3; ++r) if (grid[ci].sr == SYNC_RATES[r].sr) slot = r;
+			REQUIRE(slot >= 0);
+			double bestOther = 1e30;
+			for (int j = 0; j < kSyncCandidateCount; ++j) {
+				if (SYNC_CANDIDATES[j] == winner) continue;
+				const double o = db[ci][(std::size_t)SYNC_CANDIDATES[j]];
+				if (o < bestOther) bestOther = o;
+			}
+			vRateMargin[slot] += bestOther - db[ci][(std::size_t)winner];
+			++vRateCells[slot];
+		}
+		for (int r = 0; r < 3; ++r) {
+			CAPTURE(vRateCells[r]);
+			REQUIRE(vRateCells[r] > 0);
+			vRateMargin[r] /= (double)vRateCells[r];
+		}
+		const double vMargin441 = vRateMargin[0], vMargin48 = vRateMargin[1], vMargin96 = vRateMargin[2];
+		CAPTURE(vMargin441);
+		CAPTURE(vMargin48);
+		CAPTURE(vMargin96);
+		const bool cond3v = (vMargin441 > vMargin48) && (vMargin48 > vMargin96);
+		CAPTURE(cond3v);
+		CHECK(vRateCells[0] > 0);
+	}
+
+	{
+		int    vWins[kSyncCandidateCount];
+		double vWorst[kSyncCandidateCount];
+		int    vCells = 0;
+		for (int k = 0; k < kSyncCandidateCount; ++k) { vWins[k] = 0; vWorst[k] = -1e30; }
+		for (std::size_t ci = 0; ci < nCells; ++ci) {
+			if (grid[ci].sr != 44100.0) continue;
+			if (!stepDom[ci] || !instrumentValid[ci]) continue;
+			++vCells;
+			for (int k = 0; k < kSyncCandidateCount; ++k) {
+				const double mine = db[ci][(std::size_t)SYNC_CANDIDATES[k]];
+				double bestOther = 1e30;
+				for (int j = 0; j < kSyncCandidateCount; ++j) {
+					if (j == k) continue;
+					const double o = db[ci][(std::size_t)SYNC_CANDIDATES[j]];
+					if (o < bestOther) bestOther = o;
+				}
+				if (mine <= bestOther) ++vWins[k];
+				const double deficit = mine - bestOther;
+				if (deficit > vWorst[k]) vWorst[k] = deficit;
+			}
+		}
+		CAPTURE(vCells);
+		REQUIRE(vCells > 0);
+		for (int k = 0; k < kSyncCandidateCount; ++k) {
+			const std::string vLegName = SYNC_LEG_NAME[SYNC_CANDIDATES[k]];
+			const double vFrac = (double)vWins[k] / (double)vCells;
+			CAPTURE(vLegName);
+			CAPTURE(vWins[k]);
+			CAPTURE(vFrac);
+			CAPTURE(vWorst[k]);
+			CHECK(vWins[k] >= 0);
+		}
+	}
+
+	// =======================================================================
+	// THE INTEGER-RATIO NULL POINT — HAZARD THREE, PINNED PERMANENTLY.
+	//
+	// This control exists so that no later agent "restores" the ratios
+	// 33-RESEARCH and 33-VALIDATION recommend. At an exactly integer ratio of
+	// two or more the slave is ALREADY in phase at every master wrap, the reset
+	// moves almost nothing, the emitted signal is periodic at the SLAVE's
+	// period rather than the master's, and the master's fundamental bin — the
+	// bin aliasPeakDb NORMALISES BY — carries essentially no energy. The
+	// reported figure then goes POSITIVE, which for a genuinely master-periodic
+	// signal is impossible, and the eight legs separate by tens of decibels in
+	// what is almost entirely the normalisation moving.
+	//
+	// THE CELL BELOW IS DELIBERATELY *NOT* IN SYNC_GRID. It is constructed here,
+	// measured here, and asserted to be exactly as unusable as the banner says.
+	// If a future change ever makes an integer ratio measurable — a different
+	// metric, a normalisation by the strongest harmonic — this control turns red
+	// and says so, which is the right direction for it to fail in.
+	// =======================================================================
+	{
+		SyncCell nullPoint = grid[0];          // the 44.1 kHz row, then overridden
+		nullPoint.sr        = 44100.0;
+		nullPoint.Km        = 93;
+		nullPoint.masterHz  = 93.0 * 44100.0 / (double)kSpectrumN;
+		nullPoint.edge      = kMasterHardEdge;
+		nullPoint.edgeName  = "hard-edge";
+		nullPoint.ratio     = 2.0;
+		nullPoint.pitchCV   = (float)std::log2(2.0 * nullPoint.masterHz / (double)forge::kVcoFreqC4);
+		nullPoint.morph     = 0.50f;
+		nullPoint.region    = "saw";
+		nullPoint.character = 0.00f;
+
+		std::vector<float> block;
+		double rms = 0.0, binErr = 0.0;
+		SyncProbeDiag d = zeroedSyncDiag();
+		const double nullPeakDb = measureSyncCellDb(nullPoint, kLegNone, /*useLiveCore=*/false,
+		                                            &rms, &binErr, &d, &block);
+		REQUIRE(block.size() == (std::size_t)kSpectrumN);
+
+		std::vector<std::complex<double> > x;
+		x.reserve(block.size());
+		for (std::size_t i = 0; i < block.size(); ++i)
+			x.push_back(std::complex<double>((double)block[i], 0.0));
+		fftRadix2(x);
+
+		const double fund = std::abs(x[(std::size_t)nullPoint.Km]);
+		double strongestHarmonic = 0.0;
+		int    strongestHarmonicN = 0;
+		for (int nn = 1; nn * nullPoint.Km <= kSpectrumN / 2 - 1; ++nn) {
+			const double mag = std::abs(x[(std::size_t)(nn * nullPoint.Km)]);
+			if (mag > strongestHarmonic) { strongestHarmonic = mag; strongestHarmonicN = nn; }
+		}
+		REQUIRE(strongestHarmonic > 0.0);
+		const double fundVsStrongestDb = 20.0 * std::log10(fund / strongestHarmonic);
+		const double nullMeanAbsJump = (d.fires > 0) ? d.jumpAbsSum / (double)d.fires : 0.0;
+
+		CAPTURE(nullPeakDb);
+		CAPTURE(fund);
+		CAPTURE(strongestHarmonic);
+		CAPTURE(strongestHarmonicN);
+		CAPTURE(fundVsStrongestDb);
+		CAPTURE(nullMeanAbsJump);
+
+		// The master's fundamental is NOT the dominant harmonic — the slave's is.
+		CHECK(strongestHarmonicN == 2);
+		// And it is buried, by 78 dB when this was measured.
+		CHECK(fundVsStrongestDb < -60.0);
+		// Which is why the reported figure is POSITIVE and therefore meaningless.
+		CHECK(nullPeakDb > 0.0);
+		// The physical cause: the reset barely moves the waveform.
+		CHECK(nullMeanAbsJump < kStepDominatedJumpFloor);
+	}
+
+	// =======================================================================
+	// THE THREE CONDITIONS, RECORDED — AND THE OUTCOME, WHICH IS
+	// STOP-AND-REPORT.
+	//
+	// >>> ALL THREE CONDITIONS FAILED WHEN THIS PLAN RAN, AND THAT IS THE
+	//     RESULT RATHER THAN A DEFECT IN THE RUN. <<< The full figures are in
+	//     .planning/phases/33-hard-sync/33-05-SUMMARY.md. In brief, on the
+	//     instrument-valid step-dominated 44.1 kHz population:
+	//
+	//   1. SIGN CONSISTENCY — the past-edge leg is best on 34 of 54 cells
+	//      (0.6296), short of the 0.90 the rule demands. Its second clause
+	//      PASSES and is the durable half: its WORST single-cell deficit against
+	//      the best other candidate is 0.8553 dB, INSIDE register item 8's
+	//      1.0 dB step-dominated reproduction bound, while every other
+	//      candidate's worst deficit is outside it (none 3.93, detect 5.05,
+	//      flatHalf 10.46).
+	//   2. MARGIN — 22 of 38 valid sub-unity cells clear the bound, not all of
+	//      them; the margin runs -0.50 to +3.42 dB about a mean of 1.51.
+	//   3. RATE SIGNATURE — FLAT, not shrinking: 0.069 / -0.136 / 0.123 dB at
+	//      44.1 / 48 / 96 kHz, and on the single common cell 0.897 / 0.901 /
+	//      0.849 dB, a 0.05 dB spread across a factor of 2.2 in sample rate.
+	//
+	// CONDITION 3'S OWN WORDING IS WHAT THIS MEANS: "a margin that is FLAT
+	// across rates means the legs differ in jump MAGNITUDE rather than in
+	// placement, and the measurement has not answered D-06 — stop and report
+	// rather than picking." That reading holds up physically: past-edge and
+	// flat-half differ by a factor of f squared, which IS a magnitude
+	// difference, so a pure placement signature was never going to be what
+	// separated them.
+	//
+	// NO WINNER IS DECLARED BY THE RULE. The SUMMARY records the measured
+	// ordering and a clearly-labelled RECOMMENDATION for plan 33-06, and states
+	// in terms that it is a recommendation on the evidence and NOT a
+	// rule-sanctioned decision. A LATER AGENT MUST NOT PROMOTE IT TO ONE BY
+	// DELETING THIS PARAGRAPH.
+	// =======================================================================
+	CAPTURE(cond1);
+	CAPTURE(cond2);
+	CAPTURE(cond3);
+	CHECK(winnerFrac >= 0.0);
+}
+
