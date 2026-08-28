@@ -302,7 +302,49 @@ Plans:
   2. The reset uses sub-sample fractional placement plus a sync-BLEP applied at the **master's** wrap fraction, reusing the anti-aliasing machinery — explicitly **not** the LFO's 3 ms cosine crossfade — producing the sharp, buzzy sync timbre without clicks.
   3. A sync-continuity invariant bounds the per-sample step across a reset (no full-scale artifact) and correctly handles ≥1 sync event within a single sample.
 
-**Plans**: TBD
+**Plans**: 12 plans
+Plans:
+**Wave 1**
+
+- [ ] 33-01-PLAN.md — The operator-scheduled prerequisite: `MorphBlep.hpp` CR-01/CR-02 plus the unguarded `jump`, RED-first, each guard proved to bite alone (D-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 33-02-PLAN.md — `VcoCore.hpp`: two POD fields, per-instance trigger and voltage store, the guarded sub-sample solve, the fractional-overshoot reset and the jump — seam deliberately withheld (SYNC-01 / D-01/D-02/D-03/D-05/D-07/D-12)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 33-03-PLAN.md — SYNC jack in the shell, both canary feeds with the `-O3` fold-away trap named, one panel jack rect (D-02 / D-18)
+- [ ] 33-04-PLAN.md — SYNC-01 detection and reset through the real POD boundary, the detector's structural ceiling, the new divisor's hostile population with a withdrawal phase, and CORE-03 extended to carry sync (D-01/D-03/D-09/D-12)
+- [ ] 33-05-PLAN.md — **The phase's central question**: the sync sub-grid, a placement probe proved bit-exact against the shipped core, six legs plus two mutation probes, and the three-condition decision rule (D-06 / D-11)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 33-06-PLAN.md — Land the measured placement: the additive past-edge entry point with its forfeited-half argument, the seam call, D-08 recorded as a decision, and the identity pinned (SYNC-02 / D-06 / D-08)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 33-07-PLAN.md — Turn the sub-grid into a gate: per-cell thresholds with provenance, the snap-to-zero comparison landed permanently, the probe re-anchored, and the improvement gate refused in writing (SYNC-02 / D-01 / D-11)
+- [ ] 33-08-PLAN.md — SC-3's time-domain instrument: the measured reset-delta envelope, the anti-circularity margin from one pass, a discriminating mutation probe, and the output tiers re-derived for sync (D-10)
+- [ ] 33-09-PLAN.md — PITCH-04's third input class, re-ticked only where sync is observed FIRING (D-12; closes Phase 31 deferred item 11)
+- [ ] 33-10-PLAN.md — The reusable A/B audition renderer, both guard costs paid before the TU lands, uncommitted output on demand (D-13/D-14/D-15/D-16)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 33-11-PLAN.md — Phase gate: full local suite as a precondition, CI link leg observed by SHA, requirement re-verification with non-zero matched counts, deferred register
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 33-12-PLAN.md — Operator in-Rack UAT with the A/B pair in the room; all four D-17 precedents including the blocking resume marker (blocking checkpoint)
+
+**Cross-cutting constraints:**
+
+- **Task 1 is a scheduled prerequisite.** Plan 33-01 closes `32-REVIEW.md` CR-01/CR-02 and the unguarded `jump` before any `addStep` seam work begins — operator decision of 2026-08-27, `32-deferred-items.md` item 27.
+- **The placement convention is MEASURED, not argued** (D-06). Plan 33-05 runs before plan 33-06 finalises the seam; a plan that writes the seam call and measures afterwards has skipped the phase's central question.
+- The reset never snaps to exactly `phase = 0`; guards use the negated-comparison idiom, never `forge::clamp`.
+- No frozen shared header is edited and `src/AnalogLFO.cpp` stays absent from the phase diff; `FROZEN.sha256` needs no bump by construction.
+
+**Research flag**: RESOLVED at plan time for the *specification*, OPEN by design for the *answer*. `33-RESEARCH.md` specifies D-06's apparatus, grid, metric, decision rule and per-candidate prediction, and reports an in-session prototype predicting the past-edge residual wins and the naive detection-sample placement is worse than no correction at all. That prediction is falsifiable: the binding measurement is plan 33-05's, in-repo, against the real `forge::VcoCore`. This is the risk concentrator — budget iteration at 33-05/33-06.
 
 ### Phase 34: Audio-Rate Analog Engine, Drift & Output Stage
 
