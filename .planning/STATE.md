@@ -6,14 +6,14 @@ current_phase: 33
 current_phase_name: hard-sync
 status: ready
 stopped_at: Completed 33-03-PLAN.md
-last_updated: "2026-08-28T22:09:21.764Z"
+last_updated: "2026-08-28T23:01:05.290Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 33 execution started
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 47
-  completed_plans: 39
+  completed_plans: 40
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 33 (hard-sync) — EXECUTING
-Plan: 5 of 12
+Plan: 6 of 12
 
 **Phase 33 planning is complete (2026-08-29).** Research, pattern map and validation strategy all landed; the plan-checker passed on the first iteration with zero blockers and zero warnings; requirements coverage is 2/2 (SYNC-01, SYNC-02) and decision coverage is 18/18 (D-01…D-18, all cited in plan frontmatter `must_haves`).
 
@@ -51,7 +51,7 @@ Prior phase status: Phase 32 is COMPLETE (11/11) and VERIFIED PASSED — 9/9 req
 
 **T-32-12 note:** the operator did **not** separately attest step 8, and no attestation was inferred. For this phase the LFO guardrail is discharged by **automated** evidence — six goldens byte-identical in `make test`, all 15 `FROZEN.sha256` paths at 0 changed lines over the whole phase diff, `FROZEN.sha256` byte-identical by `cmp`.
 
-Last activity: 2026-08-28 — Phase 33 execution started
+Last activity: 2026-08-29 — Plan 33-05 complete. The D-06 placement measurement RAN and REFUSED: all three conditions FAIL, no winner is declared, and a labelled (not rule-sanctioned) recommendation is recorded for 33-06. Three of the six ratios the research recommends turned out to be metric null points and the grid's ratio axis was corrected. **Read the new Blockers entry before starting 33-06.**
 
 ## Performance Metrics
 
@@ -206,6 +206,14 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase ?]: 33-04: 33-RESEARCH Pitfall 7 falsified by measurement: a band-limited master cannot push the sub-sample fraction out of [0,1], because the trigger only fires when now >= 1.0 and only from LOW, so prev < 1.0 <= now by construction
 - [Phase ?]: 33-04: The plan's own non-vacuity probe for the fraction guard is insensitive - both halves of the negated pair catch a not-a-number; the discriminating mutant is the whole guard line, 0 reds during the hostile block and 21 after withdrawal
 - [Phase ?]: 33-04: DeliberatelyBrokenSharedStateCore mirrors the sync block even though the omission would have been inert, following the plan-31-07 precedent that an inert drift is invisible exactly when it matters
+- [Phase 33]: 33-05: THE D-06 PLACEMENT MEASUREMENT STOPS AND REPORTS — all three conditions FAIL and NO winner is declared by the rule. Condition 1 fails its 90% clause (past-edge best on 34 of 54 valid step-dominated 44.1 kHz cells, 0.6296) but PASSES its deficit clause; condition 2 fails (22 of 38 sub-unity cells clear the bound); condition 3 fails FLAT (0.897/0.901/0.849 dB on the common cell across a factor of 2.2 in rate), which by its own wording means the legs differ in jump MAGNITUDE, not placement
+- [Phase 33]: 33-05: a RECOMMENDATION is recorded for 33-06 and is labelled in source AND in the SUMMARY as NOT rule-sanctioned — the PAST-EDGE leg, `blep.addStep(0.f, -f*f*jump)` at the SYNC JUMP COMPLETION line, NO header change required (the identity is exact: at xAhead 0 the forward term vanishes and inject takes exactly -h*f^2/2). It is the only candidate whose worst single-cell deficit (0.8553 dB) is INSIDE register item 8's 1.0 dB bound; none 3.93, detect 5.05, flatHalf 10.46 are all outside it. `addPastStep` is NOT required by the measurement
+- [Phase 33]: 33-05: HAZARD THREE, found by measurement and not anticipated by the research — at an exactly integer master/slave ratio of 2+ hard sync is a near-no-op, the signal is periodic at the SLAVE's period, and the master's fundamental bin (which aliasPeakDb NORMALISES BY) is 67-78 dB down, so the reported figure goes POSITIVE. THREE of the six ratios 33-RESEARCH and 33-VALIDATION recommend are such null points. The grid's ratio axis is non-integer; the metric is untouched; a permanent control pins the null point
+- [Phase 33]: 33-05: the ORACLE leg (the master's TRUE wrap fraction) is 0.45-0.71 dB WORSE than the detector's own on band-limited masters. 5.88% of resets (1,820 of 30,940) fire ONE SAMPLE LATE, so the true g is sized for an edge the reset did not correspond to. THE FRACTION THAT MATTERS IS THE ONE CONSISTENT WITH THE RESET. A later phase should target the DETECTION THRESHOLD, not the interpolation; the BLAMP escalation is specifically NOT indicated
+- [Phase 33]: 33-05: the snap-to-zero landmine measures 4.99-5.61 dB WORSE on band-limited masters at all three rates (SYNC-02's sub-sample clause as evidence) and 0.77-1.04 dB BETTER on hard-edge ones — the sub-sample reset is a win only when the master is band-limited, and 33-RESEARCH's "they measure identically" is falsified in direction
+- [Phase 33]: 33-05: the spectral instrument is BLIND on hard-edge masters and on 210 of 420 cells (fundamental-dominance check). Read any hard-edge row as "no information", not "no difference"; the click claim's non-circular evidence lives in D-10's time-domain instrument (plan 33-08)
+- [Phase 33]: 33-05: D-07's residual phantom measured — mean 0.0569, MAX 0.9624 over 30,940 reset samples. The maximum is very nearly full-scale, much larger than the header's arithmetic estimate reads. Disposition unchanged (accept and document); 33-02 deferred item 1 now carries a number
+- [Phase 33]: 33-05: SYNC-02 declined for the eighth consecutive time — this plan adds NO shipped code (whole diff is one test file) and the seam is still absent; non-comment addStep count in src/dsp/VcoCore.hpp is still 0
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -220,6 +228,7 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 
 - open for v2.0. The v1.4 IP/public-flip gates all CLEARED (repo PUBLIC 2026-07-10; #929 live). Full v1.4 blocker history archived in `milestones/v1.4-ROADMAP.md`.
 - Plan 33-03 MUST NOT read a local check_canary.sh [2b/5] PASS as evidence that the two new VcoInputs fields are runtime-live: the per-field check is MEASURED insensitive on this host (33-02-SUMMARY Deferred Register #2 — it reports syncVolts runtime-live while the canary never assigns it). Observe the CI GCC leg on the commit, or add a sensitivity control that bites locally.
+- Plan 33-06 is scheduled to implement a decision that was NOT formally taken: 33-05's D-06 three-condition rule REFUSED (all three FAIL) and no winner is declared. 33-06 must say so before writing seam code, then either proceed on 33-05's labelled recommendation (past-edge — the only candidate whose worst deficit, 0.8553 dB, is inside the 1.0 dB reproduction bound), escalate to D-10's time-domain instrument, or escalate to the operator at 33-12's UAT. See 33-05-SUMMARY Deferred Register item 1.
 
 ## Deferred Items
 
@@ -270,12 +279,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 33 P02 | 22min | 3 tasks | 1 files |
 | Phase 33 P03 | 17min | 3 tasks | 3 files |
 | Phase 33 P04 | 39min | 3 tasks | 2 files |
+| Phase 33 P05 | 47min | 3 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-28T22:04:59.412Z
+Last session: 2026-08-28T23:00:57.441Z
 Stopped at: Completed 33-03-PLAN.md
 Resume: Phase 32 is closed. Both items 32-11 owned are discharged: (1) the verification-protocol fix landed — the browser carries THREE Forge Audio entries and the guardrail subject is now pinned BY NAME ("Analog LFO" from `ForgeAudio-AnalogSeries` 2.0.1, versus the stale plain "LFO" from `ForgeAudio` 2.0.0), closing deferred item 25's protocol half; (2) MORPH-02's shell-side knob + CV x attenuverter mix is operator-attested on absence of fault (deferred item 24) — the only evidence obtainable while no headless driver can reach the attenuverter.
 
