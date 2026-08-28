@@ -7,9 +7,16 @@
 // touching it. step() is a BAND-LIMITED morphed oscillator as of this commit:
 // a four-term volt-domain pitch sum through ONE forge::exp2_taylor5 off the C4
 // reference, a Nyquist-guarded frequency, a double-precision phase accumulator,
-// one call into the FROZEN forge::Waveshape::morphedWave, PLUS an additive
-// morph-aware polyBLEP/polyBLAMP correction from forge::MorphBlep, scaled x5 and
-// returned unconditioned.
+// A HARD-SYNC RESET TO A SUB-SAMPLE FRACTIONAL OVERSHOOT (Phase 33), one call
+// into the FROZEN forge::Waveshape::morphedWave, PLUS an additive morph-aware
+// polyBLEP/polyBLAMP correction from forge::MorphBlep, scaled x5 and returned
+// unconditioned.
+//
+// THE SYNC RESET IS LANDED BUT ITS BAND-LIMITING SEAM IS NOT, deliberately: as
+// of this commit the reset is applied and the sync correction is withheld, which
+// is measurement leg `none` for the plan 33-05 placement measurement. Plan 33-06
+// lands the seam once that measurement has chosen the convention. The full
+// argument sits at the sync block in step(), not here.
 //
 // UNTIL THIS COMMIT THAT SENTENCE READ "a NAIVE, DELIBERATELY ALIASED morphed
 // oscillator", and the naive path was the live behavior for Phases 30 and 31.
@@ -616,8 +623,6 @@ struct VcoCore {
 		phase += deltaPhase;
 		if (phase >= 1.0) phase -= 1.0;
 
-		const float p = (float)phase;
-
 		// T-32-01 — THE MORPH/CHARACTER BOUND, and it is the corrected form of
 		// the exception the forge::clamp rejection paragraph above used to grant.
 		// The NEGATED comparison comes FIRST and is the NaN catcher, exactly like
@@ -671,6 +676,15 @@ struct VcoCore {
 		// reason, the two are handed to the same frozen call in the same argument
 		// list, and guarding one of them would leave a half-guarded pair for a
 		// later phase to trip over.
+		//
+		// THIS BLOCK MOVED IN PLAN 33-02, and the move is the whole reason it now
+		// sits above the `p` snapshot instead of below it. Nothing about the pair
+		// changed — not its order, not its wording, not its comparisons. What
+		// changed is that the hard-sync block below calls the frozen waveshaper
+		// AGAIN, BEFORE the point this block used to sit at, so the conditioned
+		// values have to exist by then. Leaving the block where it was would have
+		// handed the sync path `in.morph` and `in.character` RAW, which is the
+		// one caller class this guard exists to stop. Do not move it back down.
 		float morph = in.morph;
 		if (!(morph > 0.f)) morph = 0.f;
 		if (morph > 1.f) morph = 1.f;
@@ -678,11 +692,255 @@ struct VcoCore {
 		if (!(character > 0.f)) character = 0.f;
 		if (character > 1.f) character = 1.f;
 
+		// ===================== HARD SYNC (SYNC-01, plan 33-02) =====================
+		//
+		// WHERE THIS BLOCK SITS IS PART OF WHAT IT ASSERTS (D-07). It is strictly
+		// BETWEEN the single-subtract wrap above and the `p` snapshot below, so
+		// `p`, the naive sample and the single band-limiter call ALL see the
+		// POST-reset phase. Do not hoist the snapshot above this block and do not
+		// push this block below it.
+		//
+		// DETECTION IS GATED ON THE CONNECTED FLAG FIRST (D-02), exactly mirroring
+		// the shipped LFO's reset path (src/dsp/LfoCore.hpp:136-145) and this
+		// core's own FM gate: with the jack unpatched the detector is not merely
+		// fed zero, it is NOT RUN, so an unpatched instance cannot fire however
+		// hostile `in.syncVolts` is.
+		//
+		// THE HYSTERESIS PAIR IS INHERITED, NOT INVENTED. The two literals below
+		// are byte-for-byte what src/dsp/LfoCore.hpp:137 and
+		// src/dsp/ClockTracker.hpp:111 already pass, and what the project's own
+		// stack research recommends. Two in-house sites, one convention, nothing
+		// to choose (D-03).
+		//
+		// AND THE LFO'S BODY IS REJECTED BY NAME, in the same breath, because a
+		// reader who follows the precedent to its source will find the wrong half
+		// sitting next to the right one. src/dsp/LfoCore.hpp:138-143 responds to
+		// its edge with a 3 ms COSINE CROSSFADE and a `phase = 0.0` SNAP. SYNC-02
+		// forbids the crossfade by name — at audio rate 3 ms is roughly 130
+		// samples and would smear the very transient hard sync exists to produce
+		// — and the snap is the landmine the guard below is built around. Exactly
+		// ONE thing is borrowed from that code: the outer connected gate and the
+		// two threshold literals. Nothing else.
+		//
+		// -- THE GUARDED SUB-SAMPLE SOLVE (D-01 / D-12), AND ITS THREE LANDMINES --
+		//
+		// The quotient is the distance from the previous sample's voltage to the
+		// HIGH threshold, divided by the distance the voltage actually travelled
+		// this sample: a linear interpolation of WHEN, between sample n-1 and
+		// sample n, the master crossed. It is the first NEW DIVISOR this file has
+		// acquired since Phase 32, and it is guarded with the negated-comparison
+		// pair the whole file uses — NEGATED LINE FIRST, plain comparison second.
+		//
+		// LANDMINE 1 — A NOT-A-NUMBER FRACTION, AND WHY THIS GUARD IS LOAD-BEARING
+		// RATHER THAN DEFENSIVE. A not-a-number `syncVolts` cannot fire the
+		// trigger: all three of forge::SchmittTrigger::process's comparisons are
+		// false for it, so the state is unchanged and it returns false. The
+		// detector therefore looks robust. But the value IS STORED by the
+		// unconditional store below, and on the NEXT finite crossing the quotient
+		// is (1 - NaN)/(now - NaN) = NaN. Unguarded, `phase` becomes NaN — and
+		// `phase` CARRIES NO GUARD OF ITS OWN. The floor above guards deltaPhase,
+		// the INCREMENT, not the ACCUMULATOR: from that sample on `phase +=
+		// deltaPhase` stays NaN, `phase >= 1.0` is false so the wrap never fires
+		// again, `p` is NaN, and the frozen waveshaper's float-to-int cast is
+		// reached with a NaN. ONE HOSTILE SAMPLE KILLS THE INSTANCE PERMANENTLY,
+		// AFTER THE INPUT HAS RECOVERED. The negated lower comparison is TRUE for
+		// a not-a-number, so the fraction lands on the fallback and never reaches
+		// the accumulator. Plan 33-04 pins this with a poisoned-instance case that
+		// has a WITHDRAWAL PHASE — a case that only asserts finiteness DURING the
+		// hostile sample cannot see this defect at all.
+		//
+		// LANDMINE 2 — A FRACTION OF EXACTLY ONE, WHICH IS THE SNAP-TO-ZERO
+		// LANDMINE ARRIVING THROUGH THE FRONT DOOR. The upper comparison is
+		// STRICT for this reason and no other. The quotient is exactly 1.0
+		// whenever this sample's voltage equals the high threshold exactly, and a
+		// gate output idling at that level or a quantised CV does that ROUTINELY —
+		// it is not a measure-zero event. A fraction of one makes the reset
+		// `(1 - 1) * deltaPhase`, i.e. exactly zero, and the sub-sample timing
+		// this whole block exists to preserve is destroyed without anyone having
+		// chosen to snap. MEASURED cost of snapping, on this project's own
+		// prototype: 4.5 dB at a 3136 Hz slave and 4.95 dB at 4186 Hz.
+		//
+		// LANDMINE 3 — THE FALLBACK VALUE. It is ZERO. Any value except ONE would
+		// do; ONE would reintroduce landmine 2 through the guard itself, which is
+		// the failure mode of a guard that "sanitises" to the nearest bound. Zero
+		// means "treat the edge as coincident with the previous sample", giving
+		// `phase = deltaPhase` — the largest overshoot in range, and strictly
+		// positive.
+		//
+		// forge::clamp IS REJECTED HERE BY NAME, for the same reason the pitch
+		// bound and the morph/character pair reject it: it is a comparison ladder
+		// and BOTH of its comparisons are false for a not-a-number, so it is inert
+		// against precisely landmine 1 — the one input class this guard exists to
+		// stop. A ladder here would look like a guard, pass review, and change
+		// nothing.
+		//
+		// WHY BOTH ENDS ARE BOUNDED RATHER THAN JUST THE TOP. The reachability
+		// analysis at the store below gives the fraction the range (0, 1] for a
+		// RAW threshold crossing, which would make the lower bound redundant. It
+		// is not, for two independent reasons: the master is itself usually
+		// band-limited, so the samples around its wrap carry BLEP residuals and
+		// the interpolated fraction can land outside the range (worked for a
+		// polyBLEP'd falling saw it reaches 1.2); and a not-a-number is out of
+		// range in neither direction but fails the negated line. VCV Fundamental
+		// gates the same quantity on both ends for the same reason.
+		//
+		// -- THE RESET, AND WHY IT CAN STILL BE ZERO --
+		//
+		// The reset is the FRACTIONAL OVERSHOOT: one minus the guarded fraction,
+		// times the phase increment, in double. Because the fraction is bounded
+		// strictly below one, `1 - f` is strictly positive, so the reset is
+		// strictly positive FOR EVERY REACHABLE FRACTION. State the caveat
+		// honestly rather than overclaim: the product is still zero when
+		// `deltaPhase` is zero, which the guards above produce for a non-positive
+		// or non-finite sample rate or an extreme negative pitch. That is not the
+		// snap this block is written against — at a zero increment the oscillator
+		// is frozen and silent regardless — but a test asserting `phase > 0.0`
+		// unconditionally would be asserting something false. Plan 33-04's
+		// assertion belongs on a live increment.
+		//
+		// -- THE JUMP, ITS SIGN, AND WHERE IT IS COMPLETED (D-05) --
+		//
+		// The jump handed to the band-limiting seam is the difference of two
+		// frozen-waveshaper values: the value at the PRE-reset advanced phase and
+		// the value at the POST-reset phase. The sign is AFTER MINUS BEFORE.
+		//
+		// THAT SIGN IS LOAD-BEARING AND THE PROJECT'S OWN PRIOR RESEARCH WRITES IT
+		// THE OTHER WAY. src/dsp/MorphBlep.hpp's documented convention is
+		// value-after minus value-before; .planning/research/STACK.md:124
+		// prescribes a correction scaled by "out_preReset - morphedWave(newPhase)",
+		// which is the NEGATION of the same quantity. Both documents are
+		// internally consistent; only the composition is wrong. Transcribing the
+		// research expression verbatim inverts the correction from pulling the
+		// stepped sample TOWARD the band-limited midpoint into pushing it AWAY,
+		// which doubles the artefact instead of removing it.
+		//
+		// THE BLEED NORMALIZATION IS SATISFIED BY CONSTRUCTION and must not be
+		// applied a second time. The frozen waveshaper already divides by
+		// (1 + bleedIntensity) internally (src/dsp/Waveshape.hpp:212), so a
+		// DIFFERENCE of two of its outputs is already in the normalized domain.
+		// Multiplying the jump by another such factor would over-correct by
+		// exactly that factor.
+		//
+		// ONE EXTRA FROZEN CALL, AND THE ROLES ARE THE OPPOSITE WAY ROUND FROM
+		// THE OBVIOUS READING. D-05 authorises exactly one extra `morphedWave`
+		// call per sample on which sync actually fires, on the argument that the
+		// other term is a value this step was going to compute anyway. Under the
+		// D-07 ordering this block is required to sit in, the term that is free is
+		// the POST-reset one — it is `naive` below, computed at the post-reset
+		// phase for the output — and the term that costs the extra call is the
+		// PRE-RESET one, taken here. So `before` is computed inside this block and
+		// the subtraction is COMPLETED IMMEDIATELY AFTER `naive`, at the line
+		// marked SYNC JUMP COMPLETION. Doing both calls here instead would make
+		// `naive` a bit-identical recomputation of the second one and cost TWO
+		// extra calls while the comment claimed one.
+		//   TWO CONSEQUENCES A LATER EDITOR MUST NOT UNDO. (1) `naive` below is
+		// unchanged and unconditional — the jump reads the emitted sample itself,
+		// so the two cannot drift apart. (2) PLAN 33-06's SEAM CALL BELONGS AT THE
+		// COMPLETION LINE, NOT HERE, because the jump does not exist yet at this
+		// point in the sample.
+		//
+		// D-05 IS A REASONED DEPARTURE FROM PHASE 32'S THROUGH-LINE, NOT AN
+		// OVERSIGHT TO BE TIDIED. That phase's rule is compute the jump, do not
+		// measure it, and every morph site obeys it because every morph site is a
+		// KNOWN discontinuity with a closed form. A sync reset is not: it lands at
+		// an ARBITRARY phase determined by an external cable, so there is no
+		// closed form to derive. Deriving it would mean approximating the whole
+		// waveform rather than characterising a known edge. THIS MUST NOT BE
+		// "RESTORED" TO AN ANALYTIC MAGNITUDE FOR CONSISTENCY.
+		bool  syncFired  = false;
+		float syncFrac   = 0.f;
+		float syncBefore = 0.f;   // pre-reset naive value; meaningful only while syncFired
+		if (in.syncConnected && syncTrig.process(in.syncVolts, 0.1f, 1.0f)) {
+			float f = (1.0f - prevSyncVolts) / (in.syncVolts - prevSyncVolts);
+			if (!(f >= 0.f) || !(f < 1.f)) f = 0.f;
+			syncBefore = wave.morphedWave((float)phase, morph, character, 0.f);
+			phase = (double)(1.f - f) * deltaPhase;
+			syncFired = true;
+			syncFrac = f;
+		}
+
+		// THE UNCONDITIONAL STORE — THE INVARIANT THE GUARD ABOVE RESTS ON
+		// (D-02 / Pattern 3). This line runs on EVERY sample and EVERY branch,
+		// whatever the connected flag says and whether or not the trigger fired.
+		// The invariant it maintains is exactly one sentence: `prevSyncVolts` is
+		// the voltage the trigger saw on the IMMEDIATELY PRECEDING sample.
+		//
+		// WHY THAT MAKES A DIVIDE-BY-ZERO UNREACHABLE. When
+		// forge::SchmittTrigger::process returns true its previous state was LOW,
+		// which means the previous sample did NOT satisfy the high comparison — it
+		// would have fired then if it had. So the previous voltage is strictly
+		// below the threshold and this one is at or above it, the denominator is
+		// strictly positive BY CONSTRUCTION, and the divisor cannot be zero while
+		// the invariant holds.
+		//
+		// SO A DIVIDE-BY-ZERO HERE WOULD BE A STATE-MANAGEMENT DEFECT, NOT AN
+		// ARITHMETIC ONE, and that is the useful way to hold it. A store gated on
+		// the connected flag, skipped on any branch, or left stale across a
+		// connect or a sample-rate transition can hold ANY value, including
+		// exactly this sample's. Patch a cable carrying a steady 5 V into a core
+		// whose trigger is LOW and whose store is stale at 5 V and the quotient is
+		// 0/0. The guard above covers those transitions; this line is what stops
+		// them being reachable in the first place. Neither substitutes for the
+		// other.
+		//
+		// THE STANDING DISCRETION ITEM, RESOLVED HERE RATHER THAN INHERITED:
+		// NEITHER `prevSyncVolts` NOR `syncTrig` IS RESET ON A SAMPLE-RATE CHANGE.
+		// A rate change does not alter which sample was the previous one, so
+		// resetting either would BREAK the very invariant the guard rests on — it
+		// would manufacture the stale-store case rather than prevent it. Plan
+		// 33-04 is where that choice is ASSERTED rather than merely written down.
+		prevSyncVolts = in.syncVolts;
+		tel.syncFired = syncFired;
+		tel.syncFrac = syncFrac;
+
+		// -- THE SEAM CALL IS DELIBERATELY ABSENT FROM THIS COMMIT (D-06) --
+		//
+		// No forge::MorphBlep entry point is called from this block, and that is a
+		// decision rather than an omission. THE REASON IS A CONTRACT MISMATCH THAT
+		// HAS NOT BEEN RESOLVED BY MEASUREMENT YET: MorphBlep::addStep's documented
+		// contract is FUTURE-FACING — its edge lies ahead of this sample, so both
+		// halves of the two-sample residual are still deliverable — whereas a
+		// Schmitt-detected edge is ALWAYS IN THE PAST, having happened between the
+		// previous sample and this one. Three placement candidates follow from
+		// that, they are not equivalent, and the phase's central question is which
+		// one to use.
+		//
+		// PLAN 33-05 MEASURES THEM AGAINST EXACTLY THIS ORDERING, and plan 33-06
+		// lands the winner. Writing a seam call here and measuring afterwards would
+		// skip the question and pin the convention by assumption.
+		//
+		// WHAT THAT MAKES THE CORE'S BEHAVIOR AS OF THIS COMMIT, stated precisely
+		// because the measurement depends on it: the reset is APPLIED and the sync
+		// correction is WITHHELD. That is measurement leg `none`, exactly — which
+		// is what lets plan 33-05's probe check itself for bit-exactness against
+		// this core before it trusts any of its other legs.
+		//
+		// The correction telemetry is therefore zero on every sample and every
+		// branch. Plan 33-06 populates it, at the same line as its seam call.
+		tel.syncCorrection = 0.f;
+
+		const float p = (float)phase;
+
 		// D-12: ONE call into the frozen Waveshape — a call, never an edit.
 		// bleedLfo = 0.f is the OU-layer-0 read, and 0 is correct because this
 		// phase steps no OU layer (D-11: no drift stepping, no per-sample RNG).
 		// Phase 34 passes the real layer-0 state here.
 		const float naive = wave.morphedWave(p, morph, character, 0.f);
+
+		// SYNC JUMP COMPLETION (D-05, plan 33-02). The other half of the sync
+		// block above, and it is HERE rather than there for the one-extra-call
+		// reason recorded in full at that block: the post-reset term is `naive`
+		// itself, the sample this step was already computing, so taking it from
+		// this local is what keeps the sync path's cost at ONE extra frozen call
+		// on the samples where it fires.
+		//   THE SIGN IS AFTER MINUS BEFORE, matching src/dsp/MorphBlep.hpp's
+		// documented convention and NOT .planning/research/STACK.md:124, which
+		// writes the same quantity negated.
+		//   PLAN 33-06'S SEAM CALL BELONGS ON THE NEXT LINE, inside this same
+		// condition, feeding this jump and the guarded fraction in tel.syncFrac.
+		// It must stay AHEAD of the single blep.step call below so the residual it
+		// deposits is drained on this sample.
+		tel.syncJump = syncFired ? (naive - syncBefore) : 0.f;
 
 		// CORE-02 / AA-01..05 — THE ONE LINE OF PHASE 32 WHERE BAND-LIMITING
 		// BECOMES AUDIBLE. Three facts make it correct.
