@@ -34,8 +34,11 @@
 //     per-shape thresholds are re-pinned from this repository's own measurement
 //     in plan 32-07, so no assertion over this body may claim a spectral figure
 //     that tests/test_vco_spectrum.cpp has not measured.
-//   - Phase 33 owns hard sync, which is why the POD still carries no sync
-//     fields (see the sync note below).
+//   - Phase 33 owns hard sync. Its POD fields, its per-instance detection state
+//     and its telemetry LAND IN THIS COMMIT (see the sync note below); the
+//     detection, the reset and the jump land in plan 33-02 Task 2, and the
+//     BLEP seam call is deliberately withheld until plan 33-05 has MEASURED
+//     which placement convention to use.
 //   - Phase 34 (OUT-01..03) owns output conditioning and the MOVING drift
 //     engine (the OU layers this phase deliberately does not step); see the x5
 //     note in step().
@@ -57,9 +60,29 @@
 // compiles silently in any TU that includes only one of the two headers, and
 // only detonates at link time on the strictest toolchain (MinGW/GCC in CI).
 //
-// Sync fields (syncVoltage / syncConnected) are deliberately ABSENT. Phase 33
-// owns hard sync and adds them then; adding POD fields later is a non-breaking
-// additive change because the VCO has no golden fixtures until Phase 36.
+// SYNC CROSSES THIS BOUNDARY AS RAW VOLTS (SYNC-01 / D-02, plan 33-02). The POD
+// carries `syncVolts` and `syncConnected`; forge::VcoCore below owns the
+// forge::SchmittTrigger, the previous-voltage store and the sub-sample solve.
+// UNTIL THIS COMMIT THIS PARAGRAPH ASSERTED THE OPPOSITE — that the sync fields
+// were intentionally missing, and that Phase 33 would add them later. It is
+// corrected in the same commit that lands them rather than left standing as a
+// forward reference pointing at work already performed. (The old wording is
+// deliberately NOT quoted verbatim here: plan 33-02's own acceptance criterion
+// is a literal grep for it, and a file that quotes the phrase it is being
+// grepped against is the same trap src/AnalogVCO.cpp's banner documents.)
+//
+// WHY RAW VOLTS AND NOT AN ALREADY-DECIDED BOOLEAN. The obvious alternative is a
+// shell-side trigger handing the core a `bool syncEdge`. That is rejected, and
+// the reason is TESTABILITY, not taste: an already-decided boolean means NO TEST
+// CAN EVER SEE A MIS-DETECTED EDGE, because the only code that could mis-detect
+// one would live in src/AnalogVCO.cpp, which no headless harness can reach.
+// Raw volts put hysteresis, the previous-voltage store and the sub-sample solve
+// on THIS side of the boundary, so the whole SYNC-01 path is assertable through
+// tests/VcoBlockDriver.hpp with the shell nowhere in the way — and so the
+// hostile-voltage classes (a not-a-number from an upstream module, a sample
+// landing exactly on the high threshold) are reachable by a test rather than
+// only by a user. It is also the same shape the FM pair already uses: the shell
+// forwards, the core decides (D-09 / D-17).
 //
 // Two-standard rule (TEST-06): this header must compile clean under BOTH
 // -std=c++11 -pedantic-errors (the Rack plugin toolchain — this is the standard
@@ -227,8 +250,11 @@ constexpr double kVcoMaxDeltaPhase = 0.5;
 
 // POD core boundary (D-03; RESEARCH "Recommended VcoInputs field set"). Each
 // field maps to the params[]/inputs[]/ProcessArgs source the shell will read;
-// the core never sees Rack indices. Field set covers the near-term Phase 30/31
-// needs; sync is deferred to Phase 33.
+// the core never sees Rack indices. Field set covers Phases 30/31 and — as of
+// this commit — Phase 33's hard-sync pair; the full rationale for carrying RAW
+// sync volts across this boundary is in the sync paragraph of the banner above,
+// not restated here. Growing this struct is a non-breaking additive change
+// because the VCO has no golden fixtures until Phase 36.
 struct VcoInputs {
 	float pitchCV = 0.f;        // V/OCT input volts (Phase 30/31)
 	float coarse = 0.f;         // coarse tune, octaves (Phase 31)
@@ -236,6 +262,8 @@ struct VcoInputs {
 	float fmVolts = 0.f;        // exponential FM input volts, summed into the pitch volt domain before the single exp2 (Phase 31)
 	float fmAtten = 0.f;        // bipolar FM attenuverter (Phase 31)
 	bool  fmConnected = false;  // FM jack patched
+	float syncVolts = 0.f;      // hard-sync input volts, RAW and unsanitised — the core owns the SchmittTrigger and the sub-sample solve (Phase 33, SYNC-01 / D-02)
+	bool  syncConnected = false;  // SYNC jack patched; gates the whole sync block, mirroring fmConnected and LfoCore's resetConnected (Phase 33)
 	float morph = 0.f;          // post-CV, post-clamp [0,1] (Phase 34; name matches forge::Inputs::morph on purpose so the shared Waveshape/DriftEngine wiring is copy-paste later)
 	float character = 0.f;      // post-CV, post-clamp [0,1] (Phase 34)
 	float drift = 0.f;          // post-CV, post-clamp [0,1] (Phase 34)
@@ -251,12 +279,13 @@ struct VcoCore {
 	DriftEngine drift;
 
 	// Per-instance oscillator state, mirroring src/dsp/LfoCore.hpp:58-63. ALL
-	// THREE members — the double phase accumulator, the Waveshape and now the
-	// MorphBlep — are INSTANCE state, not static and not shared. That is
-	// literally what CORE-03 asserts and what D-14 binds by name: two cores
-	// stepped interleaved must not see each other. `phase` is double for the
-	// same reason LfoCore's is (PITFALLS 2.2): a float accumulator loses
-	// low-order increments at audio rates over long blocks.
+	// FIVE members — the double phase accumulator, the Waveshape, the MorphBlep
+	// and now the hard-sync SchmittTrigger and its previous-voltage store — are
+	// INSTANCE state, not static and not shared. That is literally what CORE-03
+	// asserts and what D-14 binds by name: two cores stepped interleaved must
+	// not see each other. `phase` is double for the same reason LfoCore's is
+	// (PITFALLS 2.2): a float accumulator loses low-order increments at audio
+	// rates over long blocks.
 	//
 	// `blep` EXTENDS THAT CLAIM TO CARRIED CORRECTION STATE (Phase 32, CORE-02 /
 	// AA-01..05 / T-32-18). forge::MorphBlep holds `pending` — the second half of
@@ -273,16 +302,64 @@ struct VcoCore {
 	// `blep` sits inside the window both of them exercise from this commit
 	// onward — a static or shared correction accumulator would show up there as
 	// a red build rather than as a silent cross-voice bleed.
+	//
+	// THE SYNC STATE IS INSIDE THE SAME WINDOW ONLY ONCE THE INVARIANT DRIVES
+	// SYNC, AND THAT IS NOT TRUE YET (plan 33-02). `syncTrig` and
+	// `prevSyncVolts` are per-instance by construction — held by value, right
+	// here, no static, no global, no shared latch — but the CORE-03 proof this
+	// file relies on is BEHAVIORAL, and a behavioral proof only covers what its
+	// inputs actually exercise. The interleave invariant currently drives
+	// pitch, morph and character; with `syncConnected` false on both instances
+	// the sync branch is never entered, so a hypothetical shared trigger would
+	// stay invisible to it. PLAN 33-04 IS WHAT MAKES THE CLAIM TRUE: it extends
+	// the two-instance interleave case to drive SYNC VOLTAGES, at which point
+	// these two members sit inside the window the invariant covers. Until then
+	// this paragraph deliberately claims less than the one above it — the claim
+	// must not outrun its evidence, which is the same discipline plan 30-08
+	// applied to the T-30-02 seed-literal comment.
 	double phase = 0.0;
 	Waveshape wave;
 	MorphBlep blep;
+	SchmittTrigger syncTrig;    // hard-sync rising-edge detection, hysteresis 0.1 / 1.0 V (SYNC-01 / D-03); FROZEN primitive from RackCompat.hpp:46-58 — called, never edited
+	float prevSyncVolts = 0.f;  // the voltage the trigger saw on the IMMEDIATELY PRECEDING sample — stored unconditionally, which is what makes the sub-sample divisor non-zero (D-02 / Pattern 3)
 
 	// --- Last-step telemetry (the shell reads these to feed display atomics;
-	//     NOT part of the audio path). Populated by step() each sample. ---
+	//     NOT part of the audio path). Populated by step() each sample.
+	//     THAT "NOT part of the audio path" SENTENCE COVERS THE THREE SYNC
+	//     FLOATS ADDED BELOW AS WELL (plan 33-02): they are RECORDING-ONLY.
+	//     Nothing in step() ever reads one back, no branch tests one, and
+	//     deleting all three would leave every returned sample bit-identical.
+	//     They exist so the measurement plans (33-05) and the audition renderer
+	//     (33-08 / D-14) can observe the sync path from the SAME PASS that
+	//     produced the audio, instead of from a second core or a mirror. ---
 	struct Telemetry {
 		float freqHz = 0.f;        // final oscillator frequency (Phase 31)
 		float displayPhase = 0.f;  // wrapped phase for the animated display (Phase 35)
 		bool  syncFired = false;   // a hard-sync reset fired this sample (Phase 33)
+
+		// --- Hard-sync recording-only observability (Phase 33, plan 33-02) ---
+		float syncFrac = 0.f;      // the GUARDED sub-sample fraction actually used this sample (post-fallback, never the raw quotient) — consumer: plan 33-04's guard assertions and plan 33-05's placement grid
+		float syncJump = 0.f;      // the jump magnitude the sync seam was handed, `after - before` in MorphBlep's convention — consumer: plan 33-05's placement grid and plan 33-06's sign check
+		// The correction the sync seam deposited into `inject` THIS sample, in
+		// the PRE-MULTIPLY domain — i.e. before the `5.f *` at the return, so it
+		// is in the same units as `naive` and the MorphBlep return value, not in
+		// output volts. Zero as of plan 33-02, which withholds the seam call;
+		// plan 33-06 populates it.
+		//
+		// ITS PURPOSE IS PRECISE AND IS WHAT MAKES D-14's SECOND AUDITION LEG
+		// RECONSTRUCTIBLE FROM THE SAME PASS. Under the PAST-EDGE placement
+		// (candidate (b)) the sync correction deposits NOTHING into `pending` —
+		// the whole residual lands on this sample — so it is purely additive
+		// per sample and the withheld leg is EXACTLY the full leg minus five
+		// times this value: leg_none[n] == leg_full[n] - 5.f * syncCorrection[n].
+		// That is what removes the need for a second core, a NaiveVcoCoreMirror
+		// or a `bool bandLimit` flag in the shipped body.
+		//   THE SHORTCUT IS SPECIFIC TO THAT PLACEMENT. Under candidates (a) or
+		// (c) the correction also touches `pending`, the per-sample subtraction
+		// is no longer exact, and the reconstruction needs both halves. Plan
+		// 33-06 MUST RE-STATE this relationship against whichever candidate the
+		// 33-05 measurement selects rather than inheriting this sentence.
+		float syncCorrection = 0.f;  // consumer: plan 33-08's audition renderer (D-14 withheld leg) — see the paragraph above before relying on the subtraction
 
 		// seam observability (TEST-01) — populated by step() even while the seam
 		// is silent, so the harness's timing-injection assertions are NOT vacuous.
