@@ -5,14 +5,14 @@ milestone_name: Forge Analog VCO
 current_phase: 33
 current_phase_name: Hard Sync
 status: ready
-stopped_at: Phase 33 context gathered
-last_updated: "2026-08-28T10:19:25.342Z"
-last_activity: 2026-08-27
-last_activity_desc: Phase 32 complete, transitioned to Phase 33
+stopped_at: Phase 33 planned — 12 plans in 7 waves, ready to execute
+last_updated: "2026-08-28T20:15:32.000Z"
+last_activity: 2026-08-29
+last_activity_desc: Phase 33 planned — 12 plans in 7 waves
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 35
+  total_plans: 47
   completed_plans: 35
   percent: 50
 ---
@@ -31,8 +31,15 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 33 — Hard Sync
-Plan: Not started
-Status: Phase 32 is COMPLETE (11/11) and VERIFIED PASSED — 9/9 requirements each discharged by a named test case the verifier located independently by grep, not from SUMMARY prose. The operator audition was answered and the reply is recorded VERBATIM in `32-11-SUMMARY.md`. The blocking `.continue-here.md` is deleted; the checkpoint it guarded is answered.
+Plan: PLANNED — 12 plans (33-01 … 33-12) across 7 waves. None started. Ready to execute.
+
+**Phase 33 planning is complete (2026-08-29).** Research, pattern map and validation strategy all landed; the plan-checker passed on the first iteration with zero blockers and zero warnings; requirements coverage is 2/2 (SYNC-01, SYNC-02) and decision coverage is 18/18 (D-01…D-18, all cited in plan frontmatter `must_haves`).
+
+**The two ordering gates are enforced structurally by `depends_on`, not just narratively:** plan 33-01 (the operator-scheduled CR-01/CR-02 + unguarded-`jump` prerequisite) is Wave 1 with no dependencies, and 33-02 — the first plan that could touch the seam — depends on it and deliberately withholds the `addStep` call. Plan 33-05 (the D-06 placement measurement) strictly precedes 33-06 (which finalises the seam convention) in the dependency graph.
+
+**One research finding changed the gate design and should not be re-litigated at execution time:** the sync BLEP's own spectral improvement measures ≈0.5 dB, so a Phase-32-shaped `naiveDb − correctedDb >= 8.0` gate fails by construction. Plan 33-07 refuses that gate shape *in writing, with its measured reason*; the click's evidence lives in 33-08's time-domain instrument, because register item 5 measured that single-sample full-amplitude spikes read 0.0 dB spectrally. The spectral grid instead evidences the snap-to-zero landmine at 4.5–5.0 dB, which is SYNC-02's sub-sample half.
+
+Prior phase status: Phase 32 is COMPLETE (11/11) and VERIFIED PASSED — 9/9 requirements each discharged by a named test case the verifier located independently by grep, not from SUMMARY prose. The operator audition was answered and the reply is recorded VERBATIM in `32-11-SUMMARY.md`. The blocking `.continue-here.md` is deleted; the checkpoint it guarded is answered.
 
 **The verdict is a QUALIFIED pass, and the qualification is load-bearing.** Verbatim: *"Seems to work well enough - but it's hard to remember what the old audio sounded like. Let's continue."* Split honestly: the **no-artefact** half of Q1 (no zipper noise, no boundary artefact, nothing clicking or dropping out across the audio-rate MORPH sweep) is **discharged** under T-32-30, because the expected-results block was presented in full first. The **audible-improvement** half is **NOT established — and did not fail**: the session supplied no A/B reference, so it was unanswerable by construction. "Seems to work well enough" is explicitly NOT read as an answer to it.
 
@@ -44,7 +51,7 @@ Status: Phase 32 is COMPLETE (11/11) and VERIFIED PASSED — 9/9 requirements ea
 
 **T-32-12 note:** the operator did **not** separately attest step 8, and no attestation was inferred. For this phase the LFO guardrail is discharged by **automated** evidence — six goldens byte-identical in `make test`, all 15 `FROZEN.sha256` paths at 0 changed lines over the whole phase diff, `FROZEN.sha256` byte-identical by `cmp`.
 
-Last activity: 2026-08-27 — Phase 32 complete, transitioned to Phase 33
+Last activity: 2026-08-29 — Phase 33 planned (12 plans, 7 waves); research, patterns and validation strategy committed
 
 ## Performance Metrics
 
