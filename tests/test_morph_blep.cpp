@@ -1356,3 +1356,544 @@ TEST_CASE("morph blep: RESONANT phase increments do not spike the envelope - the
 	CAPTURE(rowsWalked);
 	REQUIRE(rowsWalked == 165);
 }
+
+// ===========================================================================
+// CASES 7, 8 AND 9 — THE D-04 HOSTILE-PARAMETER SET (phase 33, plan 33-01).
+//
+// WHY THESE THREE CASES EXIST AND WHY THEY EXIST *NOW*. src/dsp/MorphBlep.hpp's
+// banner claims caller-independence in capitals — "MorphBlep REFUSES TO RELY ON
+// ITS CALLER" — but as Phase 32 shipped it, the header defended exactly ONE of
+// its six parameters: `dt`. `morph`, `character` and `jump` were all
+// undefended. 32-REVIEW.md's CR-01 and CR-02 named two of the three, the Phase
+// 33 discussion found the third, and the operator scheduled all three as a
+// PREREQUISITE (deferred item 27, decided 2026-08-27) — to be closed BEFORE the
+// hard-sync work adds the second `MorphBlep` call site.
+//
+// THE REACHABILITY ARGUMENT, WHICH IS THE WHOLE REASON FOR THE DEADLINE. As of
+// Phase 32 `blep.step` had exactly ONE call site in all of `src/` —
+// VcoCore.hpp:645 — and both of its hostile arguments were conditioned two
+// lines above it at VcoCore.hpp:597-602 with the NaN-safe negated pair. That
+// single conditioned caller is the ONLY reason CR-01 was latent rather than
+// live. Phase 33 adds the SECOND call site, and D-05 feeds `jump` a COMPUTED
+// DIFFERENCE OF TWO `morphedWave` VALUES rather than an analytic constant —
+// the first caller in the project's history that can put a non-finite value on
+// that path.
+//
+// THE TOOLCHAIN HALF, STATED ONCE FOR ALL THREE CASES. A green run of these
+// cases on the arm64 development host proves LESS than it looks. The
+// float-to-int cast of a not-a-number is UNDEFINED BEHAVIOR, and this host's
+// answer is not the shipping toolchain's answer — see case 7 subcase B, where
+// the measurement is recorded rather than described. That divergence class is
+// exactly what got v2.0.0 rejected from the VCV Library, and no `-fsyntax-only`
+// gate on any platform can see it (the Phase 29 P-2 lesson).
+//
+// THE SANITIZER BOUNDARY (register item 12). CR-01's out-of-bounds WRITE was
+// additionally evidenced under AddressSanitizer, as a SCOPED ONE-SHOT PROBE
+// compiled and run OUTSIDE the repository. There is deliberately NO ASan target
+// in the Makefile, in GUARD_SCRIPTS, in TEST_CXXFLAGS or in any CI workflow, and
+// one must not be added: the SHIPPED Analog LFO carries shared latent undefined
+// behavior that is deliberately unowned, and a permanent repo-wide sanitizer
+// gate would trip on it immediately. The report is quoted in 33-01-SUMMARY.md
+// and at the guard it evidences in src/dsp/MorphBlep.hpp.
+// ===========================================================================
+
+namespace {
+
+// WHAT THESE WALKS ARE FOR, AND WHY A ONE-SHOT `step()` CALL IS NOT ENOUGH. A
+// hostile `morph` or `character` only reaches the arithmetic that misbehaves on
+// a sample where a SITE ACTUALLY FIRES, and the correction stream is SPARSE — it
+// is exactly 0.f except within one sample of a site, which at dt = 1/44100 is
+// about eight samples out of forty-four thousand. MEASURED while building these
+// cases: a single `step(wv, 0.3, 0.3f, 1.0/44100.0, morph, 0.5f)` call returns
+// 0.f for morph = 0, for morph = -0.25 AND for morph = NaN alike, because phase
+// 0.3 is nowhere near a site. A case built on that call is VACUOUS and would go
+// green against a completely broken header. That is the same trap case three
+// hit with a 64-sample block, and the same reason case six reports its `fired`
+// count. So every case below walks at least one full cycle and reports its own
+// fired count as the non-vacuity figure.
+
+// The pair of streams case 7 compares. The hostile stream and the reference
+// stream are walked IN LOCKSTEP from the same start phase with the same
+// increment, so they are compared sample for sample rather than in aggregate:
+// an aggregate (a sum, an envelope) can agree while every individual sample
+// disagrees.
+struct HostileWalk {
+	int nonFinite;   // hostile samples whose correction was not finite
+	int differing;   // hostile samples differing from the reference by float ==
+	int fired;       // samples on which the REFERENCE correction was non-zero
+};
+
+HostileWalk walkAgainstReference(const forge::Waveshape& wv, double dt, int n,
+                                 float hotMorph, float hotChar,
+                                 float refMorph, float refChar) {
+	HostileWalk r;
+	r.nonFinite = 0;
+	r.differing = 0;
+	r.fired     = 0;
+
+	forge::MorphBlep hot;
+	forge::MorphBlep ref;
+	double hotPhase = 0.0;
+	double refPhase = 0.0;
+
+	for (int k = 0; k < n; ++k) {
+		const float a = driveOneSite(hot, wv, hotPhase, dt, hotMorph, hotChar);
+		const float b = driveOneSite(ref, wv, refPhase, dt, refMorph, refChar);
+		if (!std::isfinite(a)) ++r.nonFinite;
+		// EXACT float equality, never a tolerance. The claim being tested is
+		// BIT-IDENTITY — that conditioning a hostile morph to zero produces the
+		// stream the one shipped caller already produces — and a tolerance would
+		// let a real magnitude error hide inside it.
+		if (a != b) ++r.differing;
+		if (b != 0.f) ++r.fired;
+	}
+	return r;
+}
+
+// The single-stream form case 8 uses: no reference to compare against, because
+// the CR-02 claim is about FINITENESS rather than about equality.
+struct FiniteWalk {
+	int nonFinite;
+	int fired;
+};
+
+FiniteWalk walkFiniteness(const forge::Waveshape& wv, double dt, int n,
+                          float morph, float character) {
+	FiniteWalk r;
+	r.nonFinite = 0;
+	r.fired     = 0;
+
+	forge::MorphBlep b;
+	double phase = 0.0;
+	for (int k = 0; k < n; ++k) {
+		const float y = driveOneSite(b, wv, phase, dt, morph, character);
+		if (!std::isfinite(y)) ++r.nonFinite;
+		if (y != 0.f) ++r.fired;
+	}
+	return r;
+}
+
+// THE CR-02 POPULATION, WRITTEN AS A FUNCTION SO ITS SHAPE IS STATED ONCE.
+// 200 points over `character`: 184 legitimate values swept across [0,1] and 16
+// non-finite members placed at every thirteenth index from 4, cycling through
+// the three non-finite classes so no single class carries the whole finding.
+//
+// THE INDICES ARE COMPUTED, NOT TYPED, for the same reason case six computes its
+// resonant grid: `(i % 13) == 4` over [0, 199] yields exactly 16 points
+// (4, 17, 30, ... 199), and a hand-typed list would silently drift if the
+// population size were ever changed.
+float cr02CharacterPoint(int i, bool& hostileOut) {
+	if ((i % 13) == 4) {
+		hostileOut = true;
+		const int which = (i / 13) % 3;
+		if (which == 0) return std::numeric_limits<float>::quiet_NaN();
+		if (which == 1) return  std::numeric_limits<float>::infinity();
+		return -std::numeric_limits<float>::infinity();
+	}
+	hostileOut = false;
+	return (float)i / 199.f;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// 7. A NEGATIVE OR NOT-A-NUMBER `morph` CANNOT INDEX `W` OUTSIDE THE `float[5]`
+//    (D-04 / CR-01 / T-33-01 / T-33-02).
+//
+//    THE DEFECT, AS 32-REVIEW.md WROTE IT. src/dsp/MorphBlep.hpp clamped
+//    `segment` only from ABOVE (`if (segment > 3) segment = 3;`) and then wrote
+//    `W[segment]` and `W[segment + 1]` into a `float[5]`. `segment` is
+//    `(int)(morph * 4.f)`, so a negative `morph` indexes BEFORE the array.
+//
+//    THE THREE DISTINCT INPUT CLASSES, WHICH ARE NOT ONE DEFECT BUT THREE, and
+//    which is why this case has three subcases rather than one loop:
+//      A  a small negative morph — a defined cast to a small negative int, so
+//         the write lands a few floats before the array, inside the frame.
+//         ASan-reproduced as a stack-buffer-underflow.
+//      B  a not-a-number morph — the cast itself is UNDEFINED, and its answer is
+//         TOOLCHAIN-DEPENDENT. This subcase records the answer rather than
+//         assuming it.
+//      C  a large-magnitude negative morph — the cast SATURATES, and the write
+//         lands gigabytes away. This one does not corrupt a neighbour: it
+//         SIGSEGVs.
+//
+//    WHY THE ASSERTION IS EQUALITY-TO-MORPH-ZERO RATHER THAN MERELY FINITENESS.
+//    A negative `morph` has no meaning — the parameter is a normalized position
+//    across five shapes — so the only defensible behavior is the clamped-at-zero
+//    one, and that is ALSO the behavior the one shipped caller already produces
+//    (VcoCore.hpp:597-602 conditions morph with the same negated pair before the
+//    call). Asserting equality rather than finiteness is what makes this case
+//    also a BIT-IDENTITY test: it fails if the fix changes the answer for a
+//    hostile morph to anything other than the answer the live signal path
+//    already gives.
+//
+//    THE `dt` SWEEP IS NOT DECORATION, AND IT WAS ADDED IN RESPONSE TO A
+//    MEASURED VACUITY. This case was FIRST written at the single legitimate
+//    increment 1/44100, and at that increment it CANNOT SEE the value error at
+//    all: MEASURED against the unmodified header, morph = -0.25 produced a
+//    stream differing from the morph-zero stream on 0 of 44108 samples.
+//    The reason is D-03's exact zero. At dt = 1/44100 the soft-edge widths
+//    (wSq = wPl = 0.04 at character 0.5) are enormously wider than 2*dt, so
+//    `morphBlepCharFactor` returns EXACTLY 0 and every soft site is skipped.
+//    Only the three LITERAL-ZERO-WIDTH sites survive, and their magnitudes
+//    happen to coincide: the out-of-bounds write puts the bleed weight on W[3]
+//    instead of W[4], but `mag[0]` sums `hardSq + hardPl`, so the two land on
+//    the same number, and the square's hard step at 0.5f sits at the same phase
+//    as the pulse's hard step at pulseDuty = 0.5. The streams are bit-identical
+//    while the header is writing one float before the array.
+//    So a case pinned to 1/44100 alone is a MEMORY-SAFETY test only — its
+//    value assertions are unfalsifiable, exactly the "green for free" class the
+//    file banner is written against. 0.0949 (C8 at 44.1 kHz, already one of
+//    FACTOR_DTS) is swept alongside it because there 2*dt = 0.1898 comfortably
+//    exceeds the soft widths, the soft sites go LIVE, and the square's soft edge
+//    at dutySq = 0.51 no longer coincides with the pulse's at 0.50 — which is
+//    where the wrong weight vector finally becomes a wrong SAMPLE.
+// ---------------------------------------------------------------------------
+TEST_CASE("morph blep: (D-04 / CR-01) a negative or not-a-number morph cannot index W outside the float[5]") {
+	forge::Waveshape wv;
+
+	// Legitimate in every respect except the morph under test: character
+	// mid-knob, and TWO phase increments for the reason the banner records.
+	// 1/44100 is the C4-ish working point where the MEMORY-SAFETY claim lives
+	// and where the value claim is provably unfalsifiable; 0.0949 is C8 at
+	// 44.1 kHz — already one of FACTOR_DTS — and is the increment on which the
+	// soft-edge sites are live and the wrong weight vector becomes a wrong
+	// sample. Each walk covers at least one full cycle plus a margin, so every
+	// site is crossed and the wrap is walked.
+	const double dts[2] = { 1.0 / 44100.0, 0.0949 };
+	const int    ns[2]  = { 44108, 64 };
+	const float character = 0.5f;
+
+	SUBCASE("A: a negative morph produces the morph-zero stream, not a write before the array") {
+		const float bad[2] = { -0.25f, -1.f };
+		for (int i = 0; i < 2; ++i) {
+			for (int d = 0; d < 2; ++d) {
+				CAPTURE(bad[i]);
+				CAPTURE(dts[d]);
+				// MEASURED against the unmodified Phase 32 header: at
+				// morph = -0.25 `scaled` is -1.0, `segment` is -1, `frac` is 0,
+				// and the header writes `W[-1] += 1.f` — one float BEFORE the
+				// array — while leaving W[0] at zero. The bleed ring then
+				// indexes `W[(-1 - 1 + 5) % 5]`, i.e. W[3], instead of W[4]. So
+				// the weight vector is not merely unsafe, it is WRONG.
+				const HostileWalk r = walkAgainstReference(
+					wv, dts[d], ns[d], bad[i], character, 0.f, character);
+				CAPTURE(r.nonFinite);
+				CAPTURE(r.differing);
+				CAPTURE(r.fired);
+
+				// NON-VACUITY FIRST. A walk on which no site ever fired would
+				// satisfy both assertions below for free, because both streams
+				// would be identically zero. MEASURED reference fired counts:
+				// 2 at dt = 1/44100 (only the two literal-zero-width sites
+				// survive D-03's exact zero there) and 30 at dt = 0.0949.
+				REQUIRE(r.fired >= 2);
+
+				CHECK(r.nonFinite == 0);
+				CHECK(r.differing == 0);
+			}
+		}
+	}
+
+	SUBCASE("B: a not-a-number morph produces the morph-zero stream, not an undefined cast") {
+		// THE MEASUREMENT THAT MAKES THIS SUBCASE EVIDENCE RATHER THAN A GREEN
+		// TICK, and the reason it is CAPTUREd rather than asserted.
+		//
+		// `(int)(morph * 4.f)` for a not-a-number `morph` is UNDEFINED BEHAVIOR.
+		// MEASURED ON THIS HOST (arm64 Apple clang 16, -O2): the answer is 0,
+		// because arm64's `fcvtzs` returns zero for a NaN operand. That is a
+		// BENIGN answer — `segment` 0 is in bounds — and it is precisely why
+		// CR-01's not-a-number half is INVISIBLE here.
+		//
+		// THE SHIPPING TOOLCHAIN'S ANSWER IS DIFFERENT. The Windows and Linux
+		// builds that actually reach users are x86, where the same cast compiles
+		// to `cvttss2si`, whose documented result for a NaN (and for any operand
+		// outside the destination range) is the INTEGER INDEFINITE VALUE —
+		// INT_MIN, -2147483648. `W[INT_MIN]` is not a neighbouring float; it is
+		// an address eight gigabytes below the array. So an arm64-green run
+		// PROVES NOTHING about the platforms this plugin ships on. That is the
+		// same invisible-on-Apple-clang class that got v2.0.0 rejected from the
+		// VCV Library, and it is why the guard is landed rather than the
+		// measurement being trusted.
+		//
+		// The `volatile` is load-bearing: without it the compiler folds the cast
+		// at compile time and the recorded figure would be the CONSTANT FOLDER's
+		// answer rather than the RUNTIME instruction's.
+		volatile float vm = std::numeric_limits<float>::quiet_NaN();
+		const int nanCastOnThisHost = (int)(vm * 4.f);
+		CAPTURE(nanCastOnThisHost);
+
+		for (int d = 0; d < 2; ++d) {
+			CAPTURE(dts[d]);
+			const HostileWalk r = walkAgainstReference(
+				wv, dts[d], ns[d], std::numeric_limits<float>::quiet_NaN(),
+				character, 0.f, character);
+			CAPTURE(r.nonFinite);
+			CAPTURE(r.differing);
+			CAPTURE(r.fired);
+
+			REQUIRE(r.fired >= 2);
+
+			// MEASURED against the unmodified header: `frac` becomes `NaN - 0`,
+			// so BOTH `W[0]` and `W[1]` become not-a-number, every magnitude
+			// built from them is not-a-number, and the `mag[i] == 0.f` skip that
+			// makes the fixed nine-site union free is DEFEATED — a not-a-number
+			// is not equal to zero, so every site fires.
+			CHECK(r.nonFinite == 0);
+			CHECK(r.differing == 0);
+		}
+	}
+
+	SUBCASE("C: a large-magnitude negative morph saturates the cast and must not reach the array") {
+		// READ THIS BEFORE REMOVING THE GUARD THIS SUBCASE PROTECTS. Unlike every
+		// other assertion in this file, a regression here does NOT report as a
+		// failed CHECK. MEASURED against the unmodified Phase 32 header in a
+		// standalone probe: `(int)(-1e30f * 4.f)` saturates to INT_MIN on this
+		// host, `W[INT_MIN]` addresses eight gigabytes below the frame, and the
+		// process dies with SIGSEGV (exit 139) before doctest can report
+		// anything. The whole `make test` binary goes with it.
+		//
+		// That is recorded here deliberately rather than softened: it is the
+		// clearest single piece of evidence that CR-01 was a real out-of-bounds
+		// WRITE and not a theoretical index question, and on x86 the SAME
+		// saturation is what a not-a-number morph produces (subcase B).
+		for (int d = 0; d < 2; ++d) {
+			CAPTURE(dts[d]);
+			const HostileWalk r = walkAgainstReference(
+				wv, dts[d], ns[d], -1e30f, character, 0.f, character);
+			CAPTURE(r.nonFinite);
+			CAPTURE(r.differing);
+			CAPTURE(r.fired);
+
+			REQUIRE(r.fired >= 2);
+			CHECK(r.nonFinite == 0);
+			CHECK(r.differing == 0);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 8. A NON-FINITE `character` PRODUCES NO NON-FINITE CORRECTION, INCLUDING AT
+//    THE THREE SITES WHOSE WIDTH IS A LITERAL ZERO (D-04 / CR-02 / T-33-02).
+//
+//    THE MECHANISM, FROM DEFERRED ITEM 27, BECAUSE IT IS NOT OBVIOUS AND A
+//    READER WILL OTHERWISE ASSUME `morphBlepCharFactor` ALREADY COVERS IT.
+//    `morphBlepCharFactor` DOES carry a not-a-number trap — `!(u > 0.f)` returns
+//    0 for a not-a-number width. But three of the nine sites carry a width that
+//    is a LITERAL `0.f` (entries 1, 4 and 6 of the table: the coincident wrap,
+//    the square's hard step and the pulse's hard step). For those three,
+//    `morphBlepCharFactor(0.f, fdt)` returns EXACTLY 1 — that is D-03's first
+//    limit and is correct — so the trap never sees the hostile character at all.
+//
+//    The character then arrives by a different door: `hardSq = W[3] * 2.f *
+//    (1.f - c)` and `hardPl = W[4] * 2.f * (1.f - c)`. In IEEE arithmetic
+//    `0.f * NaN` is NaN, so a ZERO WEIGHT does not save it — and that ALSO
+//    defeats the `mag[i] == 0.f` skip that makes the fixed nine-site union cost
+//    nothing at morph positions where a shape is absent.
+//
+//    WHY A 200-POINT POPULATION RATHER THAN THREE HOSTILE VALUES. The count is
+//    the finding. Item 27 recorded "16 of 200" for the shape of population it
+//    used; this case builds its OWN population, states its shape in
+//    `cr02CharacterPoint` above, and records the count THIS header produces.
+//    Copying the register's figure would be asserting a number rather than
+//    measuring one.
+//
+//    THE MEASURED RED, AND WHY IT IS 11 AND NOT 16. MEASURED against the
+//    unmodified Phase 32 header over this population: 11 of the 200 points
+//    produced a non-finite correction, out of 16 non-finite members. The five
+//    that did NOT are the whole -INFINITY class, and the reason is the FROZEN
+//    code's own threshold, replicated at MorphBlep.hpp:317:
+//        const float c = (character < 0.001f) ? 0.f : character * character;
+//    `-infinity < 0.001f` is TRUE, so a minus-infinity character takes the
+//    early branch and becomes EXACTLY the same `c = 0.f` a legitimate zero
+//    character produces. It is benign by accident of that comparison, not by
+//    design. It stays in the population as a CONTROL: it must be finite before
+//    the guard and finite after it, and a "fix" that made it non-finite would
+//    be caught here. The two classes that DO reach the defect are the
+//    not-a-number six (`NaN < 0.001f` is false, so `c` becomes NaN) and the
+//    plus-infinity five (`+inf < 0.001f` is false, `c` becomes +inf, the bleed
+//    ring's `norm` collapses to 0 and `inf * 0` seeds not-a-number into W).
+//
+//    A PREMISE FROM THE PLAN, CORRECTED IN PLACE. The plan for this case named
+//    morph 0.75 as "the square centre where W[3] is live". IT IS NOT. At morph
+//    0.75 `scaled` is exactly 3.0, so `segment` is 3 and the frozen direct-duty
+//    special case (MorphBlep.hpp:326-330, Waveshape.hpp:179-182) puts ALL the
+//    weight on W[4] — W[3] is zero there apart from bleed. The two named morphs
+//    therefore exercise `hardPl` twice and `hardSq` never. A third morph of 0.70
+//    is swept alongside them for that reason: `scaled` 2.8 gives segment 2, frac
+//    0.8, and W[3] = 0.8 genuinely live, which is the site the plan meant.
+// ---------------------------------------------------------------------------
+TEST_CASE("morph blep: (D-04 / CR-02) a non-finite character produces no non-finite correction at the literal-zero-width sites") {
+	forge::Waveshape wv;
+
+	// dt = 0.02 is the working point plan 32-04's probe used: 50 samples per
+	// cycle, so one full cycle is cheap enough to walk 200 times at three morphs
+	// while still crossing every site.
+	const double dt = 0.02;
+	const int n = 54;
+
+	// 0.70 puts W[3] genuinely live (see the premise correction above); 0.75 and
+	// 1.00 are the plan's two named centres, both of which land on W[4].
+	const float morphs[3] = { 0.70f, 0.75f, 1.00f };
+	const char* morphNames[3] = { "0.70 (W[3] live)", "0.75 (direct-duty)", "1.00 (pulse centre)" };
+
+	int hostilePoints  = 0;   // how many of the 200 are non-finite by construction
+	int nonFinitePoints = 0;  // how many of the 200 produced a non-finite correction
+	int legitFired      = 0;  // non-vacuity: sites actually fired on legitimate points
+
+	for (int i = 0; i < 200; ++i) {
+		bool hostile = false;
+		const float ch = cr02CharacterPoint(i, hostile);
+		if (hostile) ++hostilePoints;
+
+		bool pointWentNonFinite = false;
+		for (int m = 0; m < 3; ++m) {
+			const FiniteWalk r = walkFiniteness(wv, dt, n, morphs[m], ch);
+			if (r.nonFinite != 0) {
+				pointWentNonFinite = true;
+				CAPTURE(i);
+				CAPTURE(ch);
+				CAPTURE(morphNames[m]);
+				CAPTURE(r.nonFinite);
+			}
+			if (!hostile) legitFired += r.fired;
+		}
+		if (pointWentNonFinite) ++nonFinitePoints;
+	}
+
+	// THE POPULATION IS WHAT IT CLAIMS TO BE. A population that had quietly
+	// stopped containing hostile members would make the property below
+	// unfalsifiable — the same vacuity trap case four's `overlaps` figure exists
+	// to close.
+	CAPTURE(hostilePoints);
+	REQUIRE(hostilePoints == 16);
+
+	// NON-VACUITY, EMPIRICAL: the legitimate points must actually have driven
+	// sites, or the walk measured nothing but the between-sites zero.
+	CAPTURE(legitFired);
+	REQUIRE(legitFired > 0);
+
+	// THE PROPERTY. Recorded as a COUNT rather than as a per-point assertion so
+	// the RED figure travels with the case: a bare "some point failed" tells a
+	// later reader nothing about whether a fix narrowed the defect or closed it.
+	CAPTURE(nonFinitePoints);
+	CHECK(nonFinitePoints == 0);
+}
+
+// ---------------------------------------------------------------------------
+// 9. A NON-FINITE `jump` IS REJECTED BY `addStep` AND THE INSTANCE RECOVERS
+//    (D-04 third item / T-33-03).
+//
+//    THE THIRD DEFECT, FOUND DURING THE PHASE 33 DISCUSSION RATHER THAN BY THE
+//    PHASE 32 REVIEW. `addStep`'s entry gate gets `xAhead` exactly right — the
+//    negated comparison first, so a not-a-number is rejected before per-instance
+//    state is touched — and then does nothing whatsoever about `jump`, which it
+//    multiplies straight into `inject` and `pending`. The header's own banner
+//    documents `jump` as "already scaled by whatever weights the caller owns"
+//    and says nothing about finiteness, so the ADVERTISED contract and the
+//    ENFORCED contract disagree. That gap is the substance of the finding.
+//
+//    WHY IT MATTERS NOW AND NOT IN PHASE 32. Phase 32 had no caller for
+//    `addStep` at all — the seam was designed, not driven. Phase 33's D-05 feeds
+//    `jump` a COMPUTED DIFFERENCE OF TWO `morphedWave` VALUES, which is the first
+//    expression in the project's history that can put a non-finite value on this
+//    path.
+//
+//    WHY THE ASSERTION IS EXACT EQUALITY TO 0.0f RATHER THAN A TOLERANCE. This
+//    is the shape subcase B of case five already uses for the `xAhead` gate, and
+//    it is the right shape for the same reason: the claim is that the function
+//    RETURNED BEFORE TOUCHING STATE, which is a claim about zero, not about
+//    smallness.
+//
+//    A PREMISE FROM THE PLAN, FALSIFIED BY MEASUREMENT AND CORRECTED IN PLACE.
+//    The plan for this case, and deferred item 27's neighbours, described this
+//    defect as the IDENTICAL permanent-poison mode plan 32-05 measured for a
+//    +infinity `dt`: one bad sample and the instance returns not-a-number
+//    FOREVER, even after the input recovers. IT IS NOT THE SAME MODE.
+//    MEASURED against the unmodified header: after `addStep(0.5f, +infinity)`,
+//    EXACTLY ONE of the next twenty `step()` calls returns a non-finite value —
+//    the first, sample 0 — and `pending` is finite after every one of the
+//    twenty. The reason is structural and worth stating, because it is the
+//    difference between the two defects: `step()`'s preamble DRAINS `inject`
+//    and `pending` into a local and zeroes both UNCONDITIONALLY before the `dt`
+//    guard, so an accumulator poisoned from OUTSIDE is flushed on the very next
+//    sample. The `dt` defect was permanent because it re-poisoned `pending`
+//    from INSIDE the site loop, downstream of that drain, on every sample.
+//
+//    THE GUARD IS STILL REQUIRED, and the corrected figure is the reason to say
+//    why rather than to lean on the borrowed narrative. One not-a-number sample
+//    is not a rounding error: forge::VcoCore ADDS this correction to the naive
+//    sample (VcoCore.hpp:645), so a single poisoned event puts a not-a-number on
+//    the module's output — a full-scale click at best. And the caller Phase 33
+//    is about to add computes `jump` from a DIFFERENCE OF TWO `morphedWave`
+//    VALUES every sample, so "one sample" becomes "every sample" the moment the
+//    upstream value is bad. The measured scope is smaller than the plan assumed;
+//    the conclusion survives on the corrected evidence.
+// ---------------------------------------------------------------------------
+TEST_CASE("morph blep: (D-04 third item) a non-finite jump is rejected by addStep and the instance recovers") {
+	forge::Waveshape wv;
+
+	const float badJumps[3] = {
+		 std::numeric_limits<float>::infinity(),
+		-std::numeric_limits<float>::infinity(),
+		 std::numeric_limits<float>::quiet_NaN()
+	};
+
+	SUBCASE("rejection: a non-finite jump leaves inject and pending untouched") {
+		for (int i = 0; i < 3; ++i) {
+			CAPTURE(badJumps[i]);
+			// A FRESH instance each time, so "untouched" means exactly the
+			// post-construction state and not "unchanged from whatever the
+			// previous iteration left behind".
+			forge::MorphBlep b;
+			b.addStep(0.5f, badJumps[i]);
+			CAPTURE(b.inject);
+			CAPTURE(b.pending);
+			CHECK(b.inject  == 0.0f);
+			CHECK(b.pending == 0.0f);
+		}
+	}
+
+	SUBCASE("recovery: the hostile value is WITHDRAWN and the instance still returns finite") {
+		// THE WITHDRAWAL PHASE IS THE WHOLE POINT OF THIS SUBCASE, and it is
+		// modelled on case five subcase C's poisoned-instance narrative for a
+		// +infinity `dt`. A defect that is bad only DURING the hostile sample is
+		// a glitch; a defect that is bad AFTER the hostile value has been taken
+		// away has killed the instance. Only a withdrawal phase can tell the two
+		// apart, and asserting on the hostile sample alone cannot.
+		//
+		// AND IT IS THE PHASE THAT FALSIFIED THE BORROWED NARRATIVE — see the
+		// banner above. MEASURED against the unmodified header: nonFinite = 1 of
+		// 20, firstBadSample = 0, nonFinitePending = 0. The instance RECOVERS on
+		// sample 1, so this defect is "bad during", not "bad forever". The
+		// counts are kept as counts, and `firstBadSample` is CAPTUREd, precisely
+		// so a future regression reports WHICH shape it took rather than only
+		// that something failed.
+		forge::MorphBlep b;
+		b.addStep(0.5f, std::numeric_limits<float>::infinity());
+		CAPTURE(b.inject);
+		CAPTURE(b.pending);
+
+		// Everything from here on is LEGITIMATE: a 44.1 kHz increment, morph
+		// mid-sweep, character mid-knob. Nothing hostile is supplied again.
+		const double dt = 0.02;
+		double phase = 0.0;
+		int nonFinite = 0;
+		int nonFinitePending = 0;
+		int firstBadSample = -1;
+		for (int k = 0; k < 20; ++k) {
+			const float y = driveOneSite(b, wv, phase, dt, 0.5f, 0.5f);
+			if (!std::isfinite(y)) {
+				++nonFinite;
+				if (firstBadSample < 0) firstBadSample = k;
+			}
+			if (!std::isfinite(b.pending)) ++nonFinitePending;
+		}
+		CAPTURE(nonFinite);
+		CAPTURE(nonFinitePending);
+		CAPTURE(firstBadSample);
+
+		CHECK(nonFinite == 0);
+		CHECK(nonFinitePending == 0);
+	}
+}
