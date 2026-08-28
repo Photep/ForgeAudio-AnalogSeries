@@ -5,8 +5,8 @@ milestone_name: Forge Analog VCO
 current_phase: 33
 current_phase_name: Hard Sync
 status: ready
-stopped_at: Completed 32-11-PLAN.md — Phase 32 complete (11/11), verified passed, operator verdict recorded verbatim
-last_updated: "2026-08-27T21:55:54.979Z"
+stopped_at: Phase 33 context gathered
+last_updated: "2026-08-28T10:19:25.342Z"
 last_activity: 2026-08-27
 last_activity_desc: Phase 32 complete, transitioned to Phase 33
 progress:
@@ -246,10 +246,10 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 
 ## Session Continuity
 
-**Resume file:** None
+**Resume file:** .planning/phases/33-hard-sync/33-CONTEXT.md
 
-Last session: 2026-08-27T21:33:50.000Z
-Stopped at: Completed 32-11-PLAN.md — Phase 32 complete (11/11)
+Last session: 2026-08-28T10:19:25.332Z
+Stopped at: Phase 33 context gathered
 Resume: Phase 32 is closed. Both items 32-11 owned are discharged: (1) the verification-protocol fix landed — the browser carries THREE Forge Audio entries and the guardrail subject is now pinned BY NAME ("Analog LFO" from `ForgeAudio-AnalogSeries` 2.0.1, versus the stale plain "LFO" from `ForgeAudio` 2.0.0), closing deferred item 25's protocol half; (2) MORPH-02's shell-side knob + CV x attenuverter mix is operator-attested on absence of fault (deferred item 24) — the only evidence obtainable while no headless driver can reach the attenuverter.
 
 Before Phase 33 plans anything, read `32-REVIEW.md`: CR-01 and CR-02 are real defects in `src/dsp/MorphBlep.hpp`, unreachable today only because `blep.step` has exactly ONE call site whose arguments are conditioned immediately above it. **Phase 33 adds the second call site** (`addStep` at the hard-sync seam), which is precisely the event that turns CR-01 into a live out-of-bounds write — and on x86 MinGW/Linux `(int)NaN` is `INT_MIN`, not the benign `0` this arm64 host produces. Fix before, not after.
