@@ -310,20 +310,29 @@ struct VcoCore {
 	// onward — a static or shared correction accumulator would show up there as
 	// a red build rather than as a silent cross-voice bleed.
 	//
-	// THE SYNC STATE IS INSIDE THE SAME WINDOW ONLY ONCE THE INVARIANT DRIVES
-	// SYNC, AND THAT IS NOT TRUE YET (plan 33-02). `syncTrig` and
-	// `prevSyncVolts` are per-instance by construction — held by value, right
-	// here, no static, no global, no shared latch — but the CORE-03 proof this
-	// file relies on is BEHAVIORAL, and a behavioral proof only covers what its
-	// inputs actually exercise. The interleave invariant currently drives
-	// pitch, morph and character; with `syncConnected` false on both instances
-	// the sync branch is never entered, so a hypothetical shared trigger would
-	// stay invisible to it. PLAN 33-04 IS WHAT MAKES THE CLAIM TRUE: it extends
-	// the two-instance interleave case to drive SYNC VOLTAGES, at which point
-	// these two members sit inside the window the invariant covers. Until then
-	// this paragraph deliberately claims less than the one above it — the claim
-	// must not outrun its evidence, which is the same discipline plan 30-08
-	// applied to the T-30-02 seed-literal comment.
+	// THE SYNC STATE IS NOW INSIDE THE SAME WINDOW — A PREMISE CORRECTED IN
+	// PLACE BY THE PLAN THAT FALSIFIED IT (plan 33-04). This paragraph used to
+	// say the sync state was inside the window "ONLY ONCE THE INVARIANT DRIVES
+	// SYNC, AND THAT IS NOT TRUE YET", deliberately claiming less than the
+	// paragraph above it and naming plan 33-04 as what would make the claim
+	// true. That plan has landed and the forward reference is resolved: the
+	// two-instance interleave case now drives DIFFERENT hard-sync masters on
+	// its two instances — one patched throughout, one with its jack pulled over
+	// a window in the middle — so `syncTrig` and `prevSyncVolts` sit inside
+	// exactly the window `blep` sits in.
+	//
+	// AND THE WINDOW IS PROVED ABLE TO FAIL FOR THESE TWO MEMBERS SPECIFICALLY,
+	// which the permanent positive control does NOT establish on its own: that
+	// control shares a phase accumulator, which says nothing about whether the
+	// check can see a shared trigger. Two out-of-tree probes, one per member,
+	// each turning exactly one of them into a process-wide static: the shared
+	// store measures 961 and 982 interleave mismatches of 1024, the shared
+	// trigger 630 and 976, on both instances at all three sample rates.
+	// Neither figure is saturated.
+	//
+	// The claim still must not outrun its evidence — the same discipline plan
+	// 30-08 applied to the T-30-02 seed-literal comment. What changed is that
+	// the evidence now exists; the discipline did not.
 	double phase = 0.0;
 	Waveshape wave;
 	MorphBlep blep;
