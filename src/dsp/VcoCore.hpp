@@ -977,6 +977,74 @@ struct VcoCore {
 		//     derivation, the nine-site union, the sign convention, the D-03
 		//     character factor and every measured magnitude live in
 		//     src/dsp/MorphBlep.hpp and are deliberately NOT restated here.
+		//
+		// (4) D-07's SUPPRESSION RULE, WRITTEN AS THE ORDERING CLAIM IT ACTUALLY
+		//     IS (plan 33-02). D-07 says a free-run site the hard-sync reset
+		//     jumped over must not fire on this sample. NO PREDICATE IMPLEMENTS
+		//     THAT, and none should: the ordering above already provides exactly
+		//     what a predicate would assert, so adding one would be a rule that
+		//     gates nothing — which this project treats as worse than no rule at
+		//     all, because it reads like protection.
+		//
+		//     THE MECHANISM. The sync block ran BEFORE the snapshot, so by the
+		//     time control reaches this line `phase` is the post-reset value,
+		//     which is one minus the guarded fraction times the phase increment
+		//     and therefore STRICTLY LESS than one increment. The band-limiter's
+		//     site loop fires a site only when it lies within ONE increment AHEAD
+		//     of the phase it is handed: it takes the site's distance from the
+		//     double accumulator (src/dsp/MorphBlep.hpp:715), adds a whole cycle
+		//     when the site is not ahead of the float `p` (:716), and skips
+		//     anything whose distance in samples fails the fire gate (:718) — and
+		//     that wrap adjustment is what makes a BEHIND site's distance nearly a
+		//     whole cycle rather than a small negative. A site the reset jumped
+		//     over is behind the post-reset phase, so its distance is huge and it
+		//     cannot fire. Nothing is cached, nothing is remembered, and no member
+		//     is added.
+		//
+		//     WHY SUPPRESSION IS THE SAFE DIRECTION AND NOT A NICETY. A free-run
+		//     correction placed for an edge the waveform JUMPED OVER rather than
+		//     crossed is not a filter — it is new broadband energy added to a
+		//     signal that has no step there. The general form of that mistake is
+		//     already MEASURED in this project's own register: at character 1, C6,
+		//     the square centre, a naive floor of -60.1 dB became -29.9 dB when a
+		//     step-shaped correction was applied to a signal with no step. A 30 dB
+		//     REGRESSION. That measurement is what made the D-03 factor's compact
+		//     support a requirement rather than a preference, and D-07 is the same
+		//     instinct applied to sync.
+		//
+		//     THE RESIDUAL THIS ORDERING DOES NOT COVER, NAMED IN FULL RATHER THAN
+		//     LEFT FOR A READER TO DISCOVER. The claim above is about THIS
+		//     sample's site loop. It says nothing about the PREVIOUS sample's. At
+		//     sample n-1 the loop fired every site within one increment ahead and
+		//     deposited BOTH halves of each residual — the first into that
+		//     sample's output, the second into the carried accumulator. Sites the
+		//     reset then jumped over were never actually traversed, so BOTH halves
+		//     are phantom, and the second half is still sitting in that accumulator
+		//     when this line drains it. The window is one minus the fraction, times
+		//     the phase increment. At C7 and 44.1 kHz the increment is about 0.047
+		//     of a cycle, so a mid-crossing reset leaves a window about 0.024 of a
+		//     cycle wide; against the live subset of the nine-site union that is on
+		//     the order of one phantom site every few sync events at that note, not
+		//     a corner case. (Order of magnitude, ARITHMETIC not measurement —
+		//     plan 33-05's grid is where a real number should come from.)
+		//
+		//     WHY IT IS NOT FIXED HERE. The carried accumulator is a SCALAR SUM
+		//     (src/dsp/MorphBlep.hpp:233), so there is nothing to subtract a single
+		//     site's contribution from — retroactive per-site cancellation is
+		//     impossible without recording per-site contributions, i.e. without
+		//     restructuring a header this phase is otherwise only HARDENING. THE
+		//     DISPOSITION TAKEN IS TO ACCEPT AND DOCUMENT, for two reasons. First,
+		//     the effect is PARTLY SELF-CANCELLING: the pre-reset term of the sync
+		//     jump is taken PAST the jumped-over site, so the jump already carries
+		//     that site's step with the opposite sign. Second, restructuring the
+		//     band-limiting header for this would be out of proportion to a
+		//     residual of this size. Recorded in the phase's deferred register
+		//     rather than in the implementation.
+		//
+		//     AND THE CONSTRAINT THAT BINDS ANY FUTURE ATTEMPT: RECOMPUTE, NEVER
+		//     CACHE. The site geometry already moves with character, and it will
+		//     move every sample once a later phase's drift writes the spread
+		//     fields. Nothing about this suppression may be cached across samples.
 		const float sample = naive + blep.step(wave, phase, p, deltaPhase, morph, character);
 		tel.displayPhase = p;
 
