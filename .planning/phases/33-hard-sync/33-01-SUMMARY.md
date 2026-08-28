@@ -45,12 +45,12 @@ patterns-established:
   - "Pattern 2: a borrowed narrative that measurement falsifies is corrected in place at both the header and the test, never silently inherited"
   - "Pattern 3: a hostile-parameter case must sweep at least one dt on which its property is falsifiable — D-03's exact zero can make a single-dt case vacuous while the defect is live"
 
-requirements-completed: [SYNC-02]
+requirements-completed: []  # SYNC-02 is in this plan's frontmatter but is NOT delivered here — see Deviations #5. Nine plans in this phase contribute to it; the last one marks it complete.
 
 coverage:
   - id: D1
     description: "A negative or not-a-number morph cannot index W outside the float[5] — CR-01 closed by Guard A (unreachable) plus Guard B (safe regardless)"
-    requirement: "SYNC-02"
+    requirement: "SYNC-02"  # contributes to; not completed by this plan
     verification:
       - kind: unit
         ref: "tests/test_morph_blep.cpp#morph blep: (D-04 / CR-01) a negative or not-a-number morph cannot index W outside the float[5]"
@@ -61,7 +61,7 @@ coverage:
     human_judgment: false
   - id: D2
     description: "A non-finite character produces no non-finite correction, including at the three sites whose width is a literal 0.f — CR-02 closed by Guard A"
-    requirement: "SYNC-02"
+    requirement: "SYNC-02"  # contributes to; not completed by this plan
     verification:
       - kind: unit
         ref: "tests/test_morph_blep.cpp#morph blep: (D-04 / CR-02) a non-finite character produces no non-finite correction at the literal-zero-width sites"
@@ -69,7 +69,7 @@ coverage:
     human_judgment: false
   - id: D3
     description: "A non-finite jump is rejected by addStep at the entry gate and leaves inject/pending exactly 0.0f; a finite jump of any magnitude is still accepted"
-    requirement: "SYNC-02"
+    requirement: "SYNC-02"  # contributes to; not completed by this plan
     verification:
       - kind: unit
         ref: "tests/test_morph_blep.cpp#morph blep: (D-04 third item) a non-finite jump is rejected by addStep and the instance recovers"
@@ -288,9 +288,20 @@ Recorded as a pair so later plans in this phase can account for their own deltas
 - **Verification:** `--list-test-cases` output quoted above; post-guard the single-run form works and reports 3 cases / 59 assertions / 0 failures.
 - **Committed in:** n/a (procedure, recorded here and in `642af20`'s message)
 
+**5. [Rule 1 — Bug] Marking SYNC-02 complete after this plan is a false-green signal**
+
+- **Found during:** state updates, after Task 3
+- **Issue:** This plan's frontmatter carries `requirements: [SYNC-02]`, so the state-update step marked SYNC-02 complete in `.planning/REQUIREMENTS.md` — both its checkbox and its traceability row. **SYNC-02 is not delivered.** It reads *"Sync reset uses sub-sample fractional placement plus a sync-BLEP (click-free), reusing the anti-aliasing machinery"*, and this plan implemented **no sync behavior at all** — it hardened the machinery SYNC-02 will reuse. **Nine** of this phase's twelve plans carry SYNC-02 in their frontmatter (33-01, 33-02, 33-05, 33-06, 33-07, 33-08, 33-09, 33-10, 33-11, 33-12); marking it complete at the first of them would tell the audit-open scanner, the milestone audit and the operator that hard sync ships, eight plans early.
+- **Fix:** Reverted both edits — SYNC-02 is back to `[ ]` and `Pending`. It should be marked complete by the last contributing plan (33-12, or 33-11 at the phase gate), not the first.
+- **Files modified:** `.planning/REQUIREMENTS.md` (reverted to its pre-plan state; `git diff` on it is empty)
+- **Verification:** `git diff .planning/REQUIREMENTS.md` produces no output.
+- **Committed in:** n/a — the file is unchanged from its pre-plan state
+
+**Standing note for the rest of Phase 33:** the same auto-mark will fire on every one of the eight remaining SYNC-02 plans. Each should apply the same judgement, and only the final contributing plan should let it stand.
+
 ---
 
-**Total deviations:** 4 auto-fixed (2 × Rule 1, 1 × Rule 2, 1 × Rule 3)
+**Total deviations:** 5 auto-fixed (3 × Rule 1, 1 × Rule 2, 1 × Rule 3)
 **Impact on plan:** All four were necessary for the plan's own stated goals. Two closed measured vacuities that would have shipped test cases incapable of failing; one corrected an inherited premise the project's own conventions require correcting in place; one adapted a measurement procedure to a crash the plan itself predicted. **No scope creep** — the diff is still exactly `src/dsp/MorphBlep.hpp` and `tests/test_morph_blep.cpp`.
 
 ## Issues Encountered
@@ -312,6 +323,15 @@ Recorded as a pair so later plans in this phase can account for their own deltas
 - **T-33-08 (toolchain divergence) is not discharged locally.** `(int)(NaN * 4.f)` measures 0 on this arm64 host and is `INT_MIN` under x86 `cvttss2si`. The guards close the defect on both, but the *proof* needs the CI MinGW link leg on this exact commit.
 - **Guard C's idiom depends on IEEE semantics.** If `-ffast-math` is ever introduced, or `-ffp-contract=off` dropped, Guard C must be re-verified. The constraint is written into the guard's comment.
 - **Register item 12 still stands:** no sanitizer target may be added to `Makefile`, `GUARD_SCRIPTS`, `TEST_CXXFLAGS` or CI while the shipped LFO's latent UB is unowned.
+
+## Self-Check: PASSED
+
+Verified against disk and git rather than asserted:
+
+- **Files exist:** `src/dsp/MorphBlep.hpp`, `tests/test_morph_blep.cpp`, `.planning/phases/33-hard-sync/33-01-SUMMARY.md` — all FOUND.
+- **Commits exist:** `642af20`, `4213a0e`, `dd56013`, `b6227b7` — all FOUND in `git log --all`.
+- **All three guards are present in `HEAD`,** confirmed by reading the committed blob rather than the working tree: `if (!(morph > 0.f)) morph = 0.f;` at `:446` (Guard A), `if (segment < 0) segment = 0;` at `:526` (Guard B), and `!(jump - jump == 0.f)` inside `addStep`'s single early return at `:329` (Guard C).
+- **Three `(D-04 ...)` `TEST_CASE`s are present in `HEAD`** — `grep -c` on the committed blob returns 3.
 
 ---
 *Phase: 33-hard-sync*

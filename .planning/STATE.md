@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Forge Analog VCO
 current_phase: 33
-current_phase_name: Hard Sync
+current_phase_name: hard-sync
 status: ready
-stopped_at: Phase 33 planned — 12 plans in 7 waves, ready to execute
-last_updated: "2026-08-28T20:15:32.000Z"
+stopped_at: Completed 33-01-PLAN.md
+last_updated: "2026-08-28T20:44:45.208Z"
 last_activity: 2026-08-29
-last_activity_desc: Phase 33 planned — 12 plans in 7 waves
+last_activity_desc: Plan 33-01 complete — MorphBlep hostile-parameter guards (CR-01/CR-02 + jump)
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 47
-  completed_plans: 35
+  completed_plans: 36
   percent: 50
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** The three-knob analog engine (morph, character, drift) that lets users dial in anywhere from pristine digital to authentic vintage analog character, with immediate visual feedback.
-**Current focus:** Phase 33 — Hard Sync (not started; gated on the CR-01/CR-02 fix as Task 1 — see Operator Next Steps)
+**Current focus:** Phase 33 — hard-sync
 
 > **⚠ MILESTONE GUARDRAIL — protect the shipped LFO.** No breaking/behavioral changes to the Analog LFO (live in VCV Library, golden-pinned) while adding the VCO. Prefer additive code over editing shared `src/dsp/` headers. Any LFO-regression risk (shared-header edits, plugin.json/version/registration) → surface to operator with impact + remediation options + a recommendation before acting. Tripwires: LFO `.f32` goldens + `make strict` + CI MinGW link leg. See PROJECT.md Constraints.
 
 ## Current Position
 
-Phase: 33 — Hard Sync
-Plan: PLANNED — 12 plans (33-01 … 33-12) across 7 waves. None started. Ready to execute.
+Phase: 33 (hard-sync) — EXECUTING
+Plan: 2 of 12
 
 **Phase 33 planning is complete (2026-08-29).** Research, pattern map and validation strategy all landed; the plan-checker passed on the first iteration with zero blockers and zero warnings; requirements coverage is 2/2 (SYNC-01, SYNC-02) and decision coverage is 18/18 (D-01…D-18, all cited in plan frontmatter `must_haves`).
 
@@ -51,7 +51,7 @@ Prior phase status: Phase 32 is COMPLETE (11/11) and VERIFIED PASSED — 9/9 req
 
 **T-32-12 note:** the operator did **not** separately attest step 8, and no attestation was inferred. For this phase the LFO guardrail is discharged by **automated** evidence — six goldens byte-identical in `make test`, all 15 `FROZEN.sha256` paths at 0 changed lines over the whole phase diff, `FROZEN.sha256` byte-identical by `cmp`.
 
-Last activity: 2026-08-29 — Phase 33 planned (12 plans, 7 waves); research, patterns and validation strategy committed
+Last activity: 2026-08-28 — Phase 33 execution started
 
 ## Performance Metrics
 
@@ -250,13 +250,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P09 | 22 min | 2 tasks | 1 files |
 | Phase 32 P10 | 98 min | 3 tasks | 4 files |
 | Phase 32 P11 | 22 min | 2 tasks | 0 files |
+| Phase 33 P01 | 62min | 3 tasks | 2 files |
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/33-hard-sync/33-CONTEXT.md
+**Resume file:** None
 
-Last session: 2026-08-28T10:19:25.332Z
-Stopped at: Phase 33 context gathered
+Last session: 2026-08-28T20:44:45.198Z
+Stopped at: Completed 33-01-PLAN.md
 Resume: Phase 32 is closed. Both items 32-11 owned are discharged: (1) the verification-protocol fix landed — the browser carries THREE Forge Audio entries and the guardrail subject is now pinned BY NAME ("Analog LFO" from `ForgeAudio-AnalogSeries` 2.0.1, versus the stale plain "LFO" from `ForgeAudio` 2.0.0), closing deferred item 25's protocol half; (2) MORPH-02's shell-side knob + CV x attenuverter mix is operator-attested on absence of fault (deferred item 24) — the only evidence obtainable while no headless driver can reach the attenuverter.
 
 Before Phase 33 plans anything, read `32-REVIEW.md`: CR-01 and CR-02 are real defects in `src/dsp/MorphBlep.hpp`, unreachable today only because `blep.step` has exactly ONE call site whose arguments are conditioned immediately above it. **Phase 33 adds the second call site** (`addStep` at the hard-sync seam), which is precisely the event that turns CR-01 into a live out-of-bounds write — and on x86 MinGW/Linux `(int)NaN` is `INT_MIN`, not the benign `0` this arm64 host produces. Fix before, not after.
