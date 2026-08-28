@@ -317,10 +317,13 @@ struct MorphBlep {
 	// THE TEST THAT FOUND IT: tests/test_morph_blep.cpp's `(D-04 third item)`
 	// case. Its WITHDRAWAL PHASE is the half that distinguishes "bad during"
 	// from "bad forever" and is what produced the corrected figure above.
-	// REVERT-ONE-ONLY PROBE (plan 33-01 Task 3): removing this clause ALONE
-	// turns that case red at 7 of 8 assertions — the six exact-equality
-	// accumulator checks in its `rejection` subcase plus `nonFinite == 0` in its
-	// `recovery` subcase — and leaves every other case in the suite green.
+	// REVERT-ONE-ONLY PROBE (plan 33-01 Task 3), MEASURED: removing this clause
+	// ALONE turns exactly ONE case red at SEVEN assertions — the six
+	// exact-equality accumulator checks of its `rejection` subcase (`inject` and
+	// `pending` reported as inf, -inf and nan) plus `CHECK( nonFinite == 0 )` at
+	// `1 == 0` in its `recovery` subcase — and leaves every other case in the
+	// suite green, including both CR-01 and CR-02. That signature shares no
+	// failing assertion with Guard A's.
 	// ------------------------------------------------------------------------
 	void addStep(float xAhead, float jump) {
 		if (!(xAhead >= 0.f) || xAhead > 1.f || !(jump - jump == 0.f)) return;
@@ -425,10 +428,15 @@ inline float MorphBlep::step(const Waveshape& wv, double phase, float p, double 
 	//   threshold replicated below — `-inf < 0.001f` is true, so `c` becomes
 	//   exactly the 0.f a legitimate zero character gives.
 	//   THE TEST THAT FOUND IT: tests/test_morph_blep.cpp's `(D-04 / CR-02)`
-	//   case. REVERT-ONE-ONLY PROBE (Task 3): removing THIS guard alone turns
-	//   that case red at 1 of 3 assertions with `nonFinitePoints == 11`, AND
-	//   turns the `(D-04 / CR-01)` case red at 4 of 6 in its not-a-number
-	//   subcase — a signature that shares no failing assertion with Guard B's.
+	//   case. REVERT-ONE-ONLY PROBE (plan 33-01 Task 3), MEASURED: removing THIS
+	//   guard alone and leaving B and C in place turns TWO cases red at ELEVEN
+	//   assertions — `(D-04 / CR-01)` at ten (four in its negative-morph
+	//   subcase, four in its not-a-number subcase, two in its saturating-cast
+	//   subcase, first failure `CHECK( r.differing == 0 )` at `2 == 0`) and
+	//   `(D-04 / CR-02)` at one (`CHECK( nonFinitePoints == 0 )` at `11 == 0`).
+	//   `(D-04 third item)` stays green. That signature shares no failing
+	//   assertion with Guard C's, which is what makes green-after-a-three-part-
+	//   fix evidence that each part is load-bearing rather than that one is.
 	//
 	// EVERY EXPRESSION BELOW CONSUMES THE CONDITIONED VALUES, and that includes
 	// the ones a reader is most likely to overlook: the `character < 0.001f`
@@ -492,12 +500,29 @@ inline float MorphBlep::step(const Waveshape& wv, double phase, float p, double 
 	// is precisely what got v2.0.0 rejected from the VCV Library.
 	//
 	// THE TEST THAT FOUND IT: tests/test_morph_blep.cpp's `(D-04 / CR-01)` case.
-	// REVERT-ONE-ONLY PROBE (Task 3): removing THIS clamp alone leaves the whole
-	// suite green — Guard A already makes it unreachable — EXCEPT that the ASan
-	// probe above goes red again once Guard A is also absent. That "green alone"
-	// result is recorded rather than hidden: it is what DEFENCE IN DEPTH means,
-	// and 33-01-SUMMARY.md carries the paired probe (A+B removed together) that
-	// distinguishes this clamp from dead code.
+	//
+	// THIS GUARD'S REVERT-ONE-ONLY PROBE IS THE ONE THAT DID NOT GO RED, AND
+	// THAT RESULT IS RECORDED RATHER THAN HIDDEN. MEASURED (plan 33-01 Task 3):
+	// removing THIS clamp alone leaves the ENTIRE suite green — 97 cases,
+	// 2,622,378 assertions, 0 failures — because Guard A above already makes a
+	// negative `segment` unreachable from the parameters. On the project's own
+	// standard (a guard is load-bearing only if its own probe bites) a green
+	// probe would ordinarily mean DEAD CODE and the clamp should be deleted.
+	//
+	// TWO PAIRED MEASUREMENTS SHOW IT IS NOT DEAD CODE, and they are the reason
+	// it stays:
+	//   (1) With GUARD A ALONE removed and this clamp PRESENT, the
+	//       saturating-cast subcase does NOT crash — it reports two ordinary
+	//       value differences. This clamp is what absorbs `(int)(-1e30f * 4.f)`
+	//       saturating to INT_MIN.
+	//   (2) With GUARD A AND THIS CLAMP BOTH removed, that same subcase SIGSEGVs
+	//       and the ASan probe reproduces the stack-buffer-underflow quoted
+	//       above.
+	// So this clamp is not a duplicate of Guard A; it is the layer that converts
+	// "Guard A was edited" from a memory-safety failure into an ordinary test
+	// failure. That is exactly what DEFENCE IN DEPTH buys, and the honest
+	// statement of it is that its individual probe is green BY CONSTRUCTION.
+	// 33-01-SUMMARY.md carries all four probe signatures.
 	if (segment < 0) segment = 0;                    // GUARD B — the lower bound
 	if (segment > 3) segment = 3;                    // mirrors the frozen minimum-of-3 (:166)
 	const float frac = scaled - (float)segment;

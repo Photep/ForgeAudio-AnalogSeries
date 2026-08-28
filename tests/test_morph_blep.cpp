@@ -1896,4 +1896,54 @@ TEST_CASE("morph blep: (D-04 third item) a non-finite jump is rejected by addSte
 		CHECK(nonFinite == 0);
 		CHECK(nonFinitePending == 0);
 	}
+
+	SUBCASE("largeness: a finite jump of ANY magnitude is accepted — the gate rejects non-finiteness, not size") {
+		// WHAT THIS SUBCASE EXISTS TO STOP, stated plainly because it is a
+		// standing invitation. The obvious negated shape for a finiteness gate is
+		// a magnitude pair — `!(jump > -3.4e38f) || !(jump < 3.4e38f)` — and it
+		// looks like a tightening rather than a weakening. IT IS A BOUND ON
+		// LARGENESS, and a correction silently discarded by it is
+		// indistinguishable from a correction that was never computed: no error,
+		// no gate, just an alias floor that quietly got worse at exactly the
+		// character settings where the site magnitudes are largest. The guard's
+		// job is to keep a not-a-number and an infinity out of the accumulator,
+		// and nothing else.
+		//
+		// THE MAGNITUDES ARE DELIBERATELY ABSURD, and that is the point. Phase
+		// 33's sync seam feeds `jump` a DIFFERENCE OF TWO `morphedWave` VALUES,
+		// so in practice |jump| is bounded by about 2. 1e30 is thirty orders
+		// above anything the seam can produce; +/-FLT_MAX is the top of the type,
+		// which is precisely where a bound written "just below infinity" would
+		// start biting. Both must pass, or the gate has become a limiter.
+		const float bigJumps[4] = {
+			 1e30f, -1e30f,
+			 3.402823466e38f, -3.402823466e38f     // +/-FLT_MAX, typed exactly
+		};
+		for (int i = 0; i < 4; ++i) {
+			CAPTURE(bigJumps[i]);
+			forge::MorphBlep b;
+			// xAhead = 0.5 so BOTH halves of the split are non-zero. At xAhead = 0
+			// the pending half is `jump * -0.5f * 0.f * 0.f`, i.e. zero for every
+			// jump, and the "deposits into both" claim below would be
+			// unfalsifiable — the same vacuity trap case five subcase C closes by
+			// priming with a SINGLE-SIDED event.
+			b.addStep(0.5f, bigJumps[i]);
+			CAPTURE(b.inject);
+			CAPTURE(b.pending);
+
+			CHECK(b.inject  != 0.0f);
+			CHECK(b.pending != 0.0f);
+			CHECK(std::isfinite(b.inject));
+			CHECK(std::isfinite(b.pending));
+
+			// EXACT float equality against the documented two-half split,
+			// restated from the kernel banner's sign convention rather than read
+			// out of the implementation. Exact is right here and a tolerance
+			// would be meaningless: every factor is a power of two, so the
+			// arithmetic is exact at any magnitude the type can hold — and an
+			// absolute tolerance at 1e38 asserts nothing at all.
+			CHECK(b.inject  == bigJumps[i] *  0.5f * 0.25f);
+			CHECK(b.pending == bigJumps[i] * -0.5f * 0.25f);
+		}
+	}
 }
