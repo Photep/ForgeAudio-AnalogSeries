@@ -6,14 +6,14 @@ current_phase: 33
 current_phase_name: hard-sync
 status: ready
 stopped_at: Completed 33-03-PLAN.md
-last_updated: "2026-08-28T21:23:45.547Z"
+last_updated: "2026-08-28T22:09:21.764Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 33 execution started
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 47
-  completed_plans: 38
+  completed_plans: 39
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 33 (hard-sync) — EXECUTING
-Plan: 4 of 12
+Plan: 5 of 12
 
 **Phase 33 planning is complete (2026-08-29).** Research, pattern map and validation strategy all landed; the plan-checker passed on the first iteration with zero blockers and zero warnings; requirements coverage is 2/2 (SYNC-01, SYNC-02) and decision coverage is 18/18 (D-01…D-18, all cited in plan frontmatter `must_haves`).
 
@@ -202,6 +202,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase ?]: 33-03: [2b/5] enumerates float members only, so fmConnected and syncConnected are structurally invisible to it — and both are outer gates on whole code blocks, the highest-leverage fields in the POD to constant-fold
 - [Phase ?]: 33-03: the fold-away trap was REPRODUCED (witness symbol in the sync branch, inliner forced): pre-task commit ABSENT, this commit PRESENT, literal-false ABSENT — the pre-task canary genuinely covered the sync branch with nothing
 - [Phase ?]: 33-03: SYNC-01 declined for the seventh consecutive time. The jack half of 33-02's two-part decline is discharged — a user can now reach the DSP — but no permanent test asserts it; plan 33-04 marks it
+- [Phase ?]: 33-04: SYNC-01 MARKED COMPLETE after three consecutive declines - the jack (33-03), the DSP (33-02) and now permanent assertions (33-04) are all in place
+- [Phase ?]: 33-04: 33-RESEARCH Pitfall 7 falsified by measurement: a band-limited master cannot push the sub-sample fraction out of [0,1], because the trigger only fires when now >= 1.0 and only from LOW, so prev < 1.0 <= now by construction
+- [Phase ?]: 33-04: The plan's own non-vacuity probe for the fraction guard is insensitive - both halves of the negated pair catch a not-a-number; the discriminating mutant is the whole guard line, 0 reds during the hostile block and 21 after withdrawal
+- [Phase ?]: 33-04: DeliberatelyBrokenSharedStateCore mirrors the sync block even though the omission would have been inert, following the plan-31-07 precedent that an inert drift is invisible exactly when it matters
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -265,12 +269,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 33 P01 | 62min | 3 tasks | 2 files |
 | Phase 33 P02 | 22min | 3 tasks | 1 files |
 | Phase 33 P03 | 17min | 3 tasks | 3 files |
+| Phase 33 P04 | 39min | 3 tasks | 2 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-28T21:23:45.539Z
+Last session: 2026-08-28T22:04:59.412Z
 Stopped at: Completed 33-03-PLAN.md
 Resume: Phase 32 is closed. Both items 32-11 owned are discharged: (1) the verification-protocol fix landed — the browser carries THREE Forge Audio entries and the guardrail subject is now pinned BY NAME ("Analog LFO" from `ForgeAudio-AnalogSeries` 2.0.1, versus the stale plain "LFO" from `ForgeAudio` 2.0.0), closing deferred item 25's protocol half; (2) MORPH-02's shell-side knob + CV x attenuverter mix is operator-attested on absence of fault (deferred item 24) — the only evidence obtainable while no headless driver can reach the attenuverter.
 

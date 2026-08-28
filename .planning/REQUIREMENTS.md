@@ -36,7 +36,7 @@ Requirements for the initial VCO release. Each maps to a roadmap phase.
 
 ### Sync
 
-- [ ] **SYNC-01**: Hard sync input resets oscillator phase on a master rising edge
+- [x] **SYNC-01**: Hard sync input resets oscillator phase on a master rising edge
 - [ ] **SYNC-02**: Sync reset uses sub-sample fractional placement plus a sync-BLEP (click-free), reusing the anti-aliasing machinery — not the LFO's 3 ms cosine crossfade
 
 ### Analog Character & Drift
@@ -131,7 +131,7 @@ Every v1 requirement maps to exactly one phase. Phases 29-36 (v2.0 milestone; nu
 | AA-03 | Phase 32 | Complete |
 | AA-04 | Phase 32 | Complete |
 | AA-05 | Phase 32 | Complete |
-| SYNC-01 | Phase 33 | Pending |
+| SYNC-01 | Phase 33 | Complete |
 | SYNC-02 | Phase 33 | Pending |
 | CHAR-01 | Phase 34 | Pending |
 | DRIFT-01 | Phase 34 | Pending |
