@@ -12,14 +12,24 @@
 // calculation here and tests/test_vco_core.cpp silently stops describing the
 // module a user plugged a cable into.
 //
-// Ten controls, no more (D-07, carried forward by Phase 31's D-16 and again by
-// Phase 32's D-16): V/OCT in, FM in, MORPH CV in, MORPH, CHARACTER, COARSE,
-// FINE, FM DEPTH, MORPH DEPTH, OUT. They are the ten the DSP consumes, so every
-// control that moves is a control you can hear and an in-Rack check is honest.
-// The converse binds just as hard, and it is why all four Phase-31 controls are
-// declared in the same phase as the arithmetic they feed: DSP that no control
-// can reach cannot be auditioned, and this phase signs off in an
-// operator-driven Rack session rather than on a headless count.
+// Eleven controls, no more (D-07, carried forward by Phase 31's D-16, again by
+// Phase 32's D-16, and again by Phase 33's D-18): V/OCT in, FM in, MORPH CV in,
+// SYNC in, MORPH, CHARACTER, COARSE, FINE, FM DEPTH, MORPH DEPTH, OUT. They are
+// the eleven the DSP consumes, so every control that moves is a control you can
+// hear and an in-Rack check is honest. The converse binds just as hard, and it
+// is why all four Phase-31 controls are declared in the same phase as the
+// arithmetic they feed: DSP that no control can reach cannot be auditioned, and
+// this phase signs off in an operator-driven Rack session rather than on a
+// headless count.
+//
+// THE COUNT MOVED TO ELEVEN IN PHASE 33, and the eleventh qualifies under the
+// SAME rule rather than as an exception to it. forge::VcoCore::step already
+// carries the whole hard-sync path as of plan 33-02 — detection, the guarded
+// sub-sample solve and the fractional-overshoot reset — and until this jack
+// existed that DSP was code no user could reach. Declaring the jack here is the
+// converse clause being honoured, not relaxed: the behavior landed first and
+// the control follows it, which is the ordering D-07 asks for and the opposite
+// of declaring a control ahead of its reason to move.
 //
 // PHASE 32'S TWO ARE THAT SAME RULE APPLIED TO ITSELF, which is the whole
 // argument for declaring them here rather than in Phase 34. The audio-rate MORPH
@@ -57,9 +67,14 @@
 // which is the cleanest position this phase has against the guardrail. A
 // dedicated pre-Phase-35 phase owns the knob redesign and its backport.
 //
-// The panel is throwaway on purpose. res/AnalogVCO.svg is twelve rectangles at
+// The panel is throwaway on purpose. res/AnalogVCO.svg is thirteen rectangles at
 // the FINAL 18 HP geometry and the FINAL filename, so Phase 35 (PANEL-01/PANEL-02)
-// is an art swap rather than a rewiring. The CRT display is Phase 35's
+// is an art swap rather than a rewiring. Phase 33 (D-18) added the thirteenth in
+// the same commit as the widget coordinate it marks, and deliberately added
+// NOTHING else to that asset: no label, no group, no id, no Forge Noir styling.
+// The physical form and the final placement of the SYNC jack are Phase 35's
+// call, exactly as the FM depth control's are; making this asset pretty here
+// would only be work Phase 35 has to undo. The CRT display is Phase 35's
 // DISP-01..03 and is deliberately absent here, as is any patch-state
 // serialization: the VCO persisted nothing in Phase 30 and still persists
 // nothing in Phase 31, so no control declared above survives a patch save yet.
@@ -103,6 +118,11 @@ struct AnalogVCO : Module {
 		VOCT_INPUT,
 		FM_INPUT,
 		MORPH_CV_INPUT,
+		// APPENDED, never inserted, and before the length sentinel. Appending
+		// keeps every existing index stable — nothing has shipped, so patch
+		// compatibility is not the reason yet, but it is this file's convention
+		// and the phase that DOES ship will inherit it already true.
+		SYNC_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
@@ -186,6 +206,7 @@ struct AnalogVCO : Module {
 		configInput(VOCT_INPUT, "V/Oct");
 		configInput(FM_INPUT, "FM");
 		configInput(MORPH_CV_INPUT, "Morph CV");
+		configInput(SYNC_INPUT, "Sync");
 		configOutput(OUTPUT, "Audio");
 
 		// T-30-02. BOTH calls are required and neither is optional. seed()
@@ -310,11 +331,37 @@ struct AnalogVCO : Module {
 		// And a conditional in this function would be the first computation in a
 		// file whose banner promises none — which is the property that lets the
 		// headless suite stand as evidence about what a user hears.
+		//
+		// PHASE 33'S SYNC PAIR CROSSES THE SAME WAY, AND THE REASON IS NOT THE
+		// FM ARGUMENT REPEATED — it is one clause STRONGER, which is why it is
+		// written out rather than folded into the paragraph above. Two of the
+		// three reasons above carry over verbatim: Rack already returns zero
+		// volts from an unpatched SYNC jack, and a conditional here would still
+		// be the first computation in a file that promises none. The third is
+		// different in kind. forge::VcoCore::step gates the ENTIRE sync block on
+		// in.syncConnected — not the FM term's arithmetic, but the detector, the
+		// SchmittTrigger transition, the sub-sample solve and the reset — so an
+		// unpatched jack means none of that machinery runs at all, whatever the
+		// two fields hold. Substituting zero here could not buy that; it would
+		// merely feed a quiet voltage into a state machine that was still
+		// stepping.
+		//
+		// AND THE DECISIVE ONE, WHICH IS ABOUT EVIDENCE RATHER THAN ARITHMETIC:
+		// a shell-side forge::SchmittTrigger would hand forge::VcoCore an
+		// ALREADY-DECIDED boolean, and no headless test could ever observe the
+		// detection going wrong. Every edge case that matters here — hysteresis
+		// across the 0.1/1.0 thresholds, the previous-voltage store that makes
+		// the sub-sample divisor non-zero, a not-a-number cable voltage that must
+		// not fire but must still be stored — lives on the RAW volts. D-02 puts
+		// the raw volts across the POD boundary precisely so tests/ can drive
+		// them, and this shell's job is to stay out of the way of that.
 		in.coarse = params[COARSE_PARAM].getValue();
 		in.fine = params[FINE_PARAM].getValue();
 		in.fmAtten = params[FM_ATTEN_PARAM].getValue();
 		in.fmVolts = inputs[FM_INPUT].getVoltage();
 		in.fmConnected = inputs[FM_INPUT].isConnected();
+		in.syncVolts = inputs[SYNC_INPUT].getVoltage();
+		in.syncConnected = inputs[SYNC_INPUT].isConnected();
 		outputs[OUTPUT].setVoltage(core.step(in));
 
 		// Exactly ONE forge::VcoInputs field is still left at its header
@@ -325,11 +372,33 @@ struct AnalogVCO : Module {
 		// sentence and into the block above.
 		//
 		// Consequence worth stating here, with numbers this phase moved: this
-		// shell now feeds runtime-derived values into SEVEN of the eight
+		// shell now feeds runtime-derived values into EIGHT of the nine
 		// VcoInputs DSP fields, while src/vco_compile_canary.cpp feeds all
-		// EIGHT. The single field the canary feeds and this shell does not is
-		// drift. That is what keeps check_canary.sh [2b/5] reporting eight
+		// NINE. The single field the canary feeds and this shell does not is
+		// drift. That is what keeps check_canary.sh [2b/5] reporting nine
 		// fields runtime-live at -O3.
+		//
+		// BOTH NUMBERS ARE RESTATED FROM THE LANDED SOURCE, NOT DERIVED BY
+		// ARITHMETIC ON THE SENTENCE THEY REPLACE, and the "nine" is smaller
+		// than the count of fields Phase 33 actually added. [2b/5] enumerates
+		// `struct VcoInputs`'s FLOAT members only, less the two injected timing
+		// fields — so syncVolts joined the enumeration when plan 33-02 declared
+		// it (eight became nine) and syncConnected did NOT, because it is a
+		// bool. The claim about drift is re-checked rather than carried: drift
+		// is still the one field the canary feeds and this shell does not,
+		// because this commit adds two fields to BOTH sides at once.
+		//
+		// READ THE NEXT SENTENCE BEFORE TRUSTING THE ONE ABOVE. Neither bool
+		// field — fmConnected or syncConnected — is enumerated by [2b/5] at all,
+		// so "nine fields runtime-live" is a claim about nine floats and says
+		// NOTHING about the two flags. That gap is not cosmetic for this phase:
+		// a constant-`false` syncConnected folds the entire sync branch away at
+		// -O3 while [2b/5] still reports PASS, which is exactly the failure the
+		// canary exists to catch, arriving through a field the canary's own
+		// enumeration cannot see. src/vco_compile_canary.cpp's LOAD-BEARING
+		// banner carries that trap and the bit-slice feed that closes it; this
+		// sentence exists so a later reader of THIS file does not mistake the
+		// nine for total coverage.
 		//
 		// The field-count margin is therefore down to ONE, so read what follows
 		// as the actual load-bearing argument rather than as arithmetic — it
@@ -353,12 +422,17 @@ struct AnalogVCO : Module {
 		// finding rather than skipped in silence, so a later reader does not
 		// have to re-derive it from the diff: D-17 adds NO forge::VcoInputs
 		// field. The mix above feeds a field that already existed and was
-		// already runtime-live. So every number in this block is unmoved — this
-		// shell still feeds SEVEN of the eight DSP fields, the canary still
-		// feeds all EIGHT, drift is still the single field the canary feeds and
-		// this shell does not, the margin is still ONE, and
-		// tests/check_canary.sh [2b/5] still reports eight fields runtime-live
-		// at -O3. Phase 34 is still the phase that closes the gap.
+		// already runtime-live. Every number in that phase's block was unmoved.
+		//
+		// PHASE 33 RE-READ IT AND FOUND WORK, which is why the numbers above
+		// changed. D-02 adds TWO forge::VcoInputs fields — syncVolts and
+		// syncConnected — and the growth rule bound immediately: both are fed
+		// runtime-derived values in src/vco_compile_canary.cpp by this same
+		// plan, from non-overlapping bit slices of that file's loop counter.
+		// Only one of the two moves the [2b/5] number, for the enumeration
+		// reason stated above, and the one that does NOT is the one whose
+		// omission would have been the more damaging. Phase 34 is still the
+		// phase that closes the drift gap.
 	}
 };
 
@@ -370,7 +444,7 @@ struct AnalogVCOWidget : ModuleWidget {
 		// panel. No screws, no display, no context menu, no serialization hooks.
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/AnalogVCO.svg")));
 
-		// These ten coordinates are the ten marker rects drawn in
+		// These eleven coordinates are the eleven marker rects drawn in
 		// res/AnalogVCO.svg, each rect sitting at its control centre minus five
 		// in both axes. The two files are written together; move one and the
 		// panel starts lying about where its controls are — which is exactly why
@@ -386,6 +460,20 @@ struct AnalogVCOWidget : ModuleWidget {
 		// 91.44 mm panel's 45.72 mm centre line and sits vertically aligned under
 		// the MORPH and CHARACTER knobs — the depth control directly beneath the
 		// knob it attenuates. All EIGHT earlier coordinates are unmoved.
+		//
+		// Phase 33 added ONE jack (D-18) at the LEFT END of the existing y = 100
+		// jack row, x = 15.24, extending that row's uniform 15.24 mm pitch by one
+		// slot rather than opening a new row. That keeps the three INPUTS
+		// contiguous — SYNC, V/OCT, FM — with OUT still at the right of them, so
+		// the throwaway panel stays legible without any label to read. It does
+		// NOT restore the row's symmetry about the 45.72 mm centre line, and
+		// that is stated rather than glossed: a symmetric four-jack row would
+		// need the two Phase-30 coordinates moved, and every phase so far has
+		// left earlier coordinates alone. All TEN earlier coordinates are
+		// unmoved. The physical form and the final placement are Phase 35's
+		// call — this asset is replaced wholesale there — so buying symmetry
+		// now by moving shipped-adjacent coordinates would pay a real cost for a
+		// layout that does not survive the phase after next.
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.48f, 40.f)),
 		         module, AnalogVCO::MORPH_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.96f, 40.f)),
@@ -404,6 +492,8 @@ struct AnalogVCOWidget : ModuleWidget {
 		         module, AnalogVCO::FM_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(60.96f, 80.f)),
 		         module, AnalogVCO::MORPH_CV_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(15.24f, 100.f)),
+		         module, AnalogVCO::SYNC_INPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.96f, 100.f)),
 		          module, AnalogVCO::OUTPUT));
 	}
