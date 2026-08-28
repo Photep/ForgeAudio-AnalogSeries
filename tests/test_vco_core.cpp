@@ -36,7 +36,10 @@
 //      in-test control (D-18a / D-10 / D-11)
 //   4. two differently-seeded cores driven INTERLEAVED, sample by sample, each
 //      reproduce their solo block BIT-EXACTLY — the behavioral form of CORE-03
-//      (D-17), carrying all five measured non-vacuity preconditions
+//      (D-17), carrying all five measured non-vacuity preconditions. PLAN
+//      33-04 ADDED A SIXTH: the two drives now carry DIFFERENT HARD-SYNC
+//      MASTERS, which is what puts Phase 33's per-instance trigger and
+//      previous-voltage store inside the window this invariant covers
 //   5. the permanent POSITIVE CONTROL for invariant 4: a deliberately-broken
 //      stand-in core that shares one static phase accumulator between instances
 //      is required to FAIL the same check, through the same helper (D-17)
@@ -47,6 +50,22 @@
 //      the static-input envelope pinned and explained rather than hidden
 //      (MORPH-01 / MORPH-02 / D-13 / D-16 / P-13). Appended by plan 32-09;
 //      nothing above it was renumbered.
+//   7. HARD SYNC — a master rising edge through the real forge::VcoInputs
+//      boundary resets the phase to the fractional overshoot, the connected
+//      flag gates it, the hysteresis band is OBSERVED rather than assumed, and
+//      the reset is never exactly zero including on the exactly-on-threshold
+//      case that reaches a fraction of one BY ARITHMETIC (SYNC-01 / D-01 /
+//      D-03)
+//   8. the detector's STRUCTURAL CEILING, with the limitation named before the
+//      gate is written against it: one voltage per sample can carry at most one
+//      rising transition, so every observable edge fires exactly once and the
+//      missed set is identical at all three rates (SYNC-01 / D-09 / SC-3)
+//   9. the new divisor cannot poison the phase accumulator — a hostile sync
+//      population each entry of which is WITHDRAWN and the instance re-checked
+//      afterwards, the previous-voltage store's invariant asserted directly on
+//      every branch, and the sample-rate-change choice asserted rather than
+//      inherited (D-12 / D-02)
+//      Appended by plan 33-04; nothing above them was renumbered.
 //
 // THE D-16 LABEL, WHICH MUST NOT BE SOFTENED. Invariant 1 is NOT the TEST-02
 // V/Oct tracking gate. TEST-02 belongs to Phase 31 and requires better than one
@@ -439,6 +458,40 @@ InterleaveResult runInterleaveCheck(
 // REPORT IT RATHER THAN UPDATING THE NUMBER. A moved figure means the addition
 // was NOT inert — it means the change altered behavior this control was pinning,
 // which is a finding about the real core and not a bookkeeping update here.
+//
+// BROUGHT IN STEP A FOURTH TIME BY PLAN 33-04, AND THE PRECEDENT IS WHAT
+// DECIDED IT. Phase 33 gave the real core a hard-sync block: a
+// forge::SchmittTrigger, a previous-voltage store, a guarded sub-sample solve
+// and a fractional-overshoot reset, with the morph/character conditioning MOVED
+// above it and the `p` snapshot left below it (src/dsp/VcoCore.hpp:850-892 and
+// 922). All of it is mirrored below, INCLUDING the reordering.
+//
+// IT WOULD HAVE BEEN CHEAPER NOT TO. Invariant 5's drives leave the jack
+// UNPATCHED, so the real core's sync branch is not entered on this control's
+// own inputs either, and a mirror that simply omitted the block would have been
+// behaviourally exact today. That is precisely the argument the plan-31-07
+// paragraph above REJECTS: the FM addition was inert on these drives too and
+// was mirrored anyway, because "a stand-in drifting from what it claims to
+// mirror is invisible precisely when the drift is inert". A later plan that
+// gives invariant 5 sync voltages — and plan 33-04 came within one decision of
+// being that plan — would otherwise find a control that silently stopped being
+// a copy of the thing it is a copy of.
+//
+// ONE LINE OF THE REAL SYNC BLOCK IS DELIBERATELY NOT MIRRORED, AND IT IS NAMED
+// RATHER THAN LEFT TO BE NOTICED: the real core's extra
+// `wave.morphedWave((float)phase, ...)` call, which captures the PRE-reset
+// value for `tel.syncJump`. forge::Waveshape::morphedWave is `const`
+// (src/dsp/Waveshape.hpp:158) and its result feeds telemetry only, so the call
+// cannot move a sample; this type has no Telemetry, so mirroring it would add a
+// frozen call whose result is discarded. The behavioural mirror is complete.
+//
+// RE-OBSERVED AFTER THE PLAN-33-04 UPDATE, AND UNCHANGED AGAIN: 512 / 512 /
+// total 1024 at every one of the three rates — the fourth consecutive capture
+// at those figures. The addition is genuinely inert here, for a checkable
+// reason rather than a hopeful one: invariant 5 drives coreBase(), which leaves
+// `syncConnected` at its header default of FALSE, so the branch is not merely
+// unfired, it is NOT EVALUATED, and the only sync line that runs at all is the
+// unconditional store — which nothing downstream reads.
 // ---------------------------------------------------------------------------
 struct DeliberatelyBrokenSharedStateCore {
 	// Per-instance, exactly as the real core holds them. Only `sharedPhase`
@@ -455,6 +508,15 @@ struct DeliberatelyBrokenSharedStateCore {
 	// accumulator, and the control would stop being the specific fixture its
 	// banner claims. One defect, named and marked, and nothing else.
 	forge::MorphBlep blep;
+	// PER-INSTANCE FOR THE SAME REASON, AND THE REASON IS NOW LOAD-BEARING IN
+	// BOTH DIRECTIONS (plan 33-04). These two mirror forge::VcoCore's own
+	// per-instance sync state (src/dsp/VcoCore.hpp:330-331). Making either of
+	// them a shared static here would give this control a SECOND defect and
+	// blur what invariant 5 isolates — and it would also destroy the only
+	// negative control invariant 4's new sync coverage has, because a shared
+	// sync store is exactly the defect invariant 4 now exists to detect.
+	forge::SchmittTrigger syncTrig;
+	float prevSyncVolts = 0.f;
 
 	void seed(uint64_t s0, uint64_t s1 = 0) { drift.seed(s0, s1); }
 
@@ -514,20 +576,45 @@ struct DeliberatelyBrokenSharedStateCore {
 		sharedPhase += deltaPhase;
 		if (sharedPhase >= 1.0) sharedPhase -= 1.0;
 
-		const float p = (float)sharedPhase;
-
-		// MIRRORED FROM src/dsp/VcoCore.hpp:597-602 (plan 32-06, T-32-01). The
+		// MIRRORED FROM src/dsp/VcoCore.hpp:688-693 (plan 32-06, T-32-01). The
 		// comparison-ladder forge::clamp that used to sit here is transparent to
 		// a not-a-number, and the frozen forge::Waveshape::morphedWave casts
 		// `morph * 4.f` to int. The real core replaced the ladder with this
 		// NEGATED-comparison pair — negation FIRST as the NaN catcher — so this
 		// mirror does too.
+		//
+		// THE PAIR MOVED UP HERE IN PLAN 33-04, MIRRORING THE MOVE PLAN 33-02
+		// MADE IN THE REAL CORE, and the move is part of what is being mirrored
+		// rather than a tidy-up. The real core's sync block calls the frozen
+		// waveshaper AGAIN, above the `p` snapshot, so the conditioned values
+		// have to exist by then; leaving the pair below would hand the sync path
+		// raw fields. The pair itself is byte-unchanged — same order, same
+		// wording, same comparisons.
 		float morph = in.morph;
 		if (!(morph > 0.f)) morph = 0.f;
 		if (morph > 1.f) morph = 1.f;
 		float character = in.character;
 		if (!(character > 0.f)) character = 0.f;
 		if (character > 1.f) character = 1.f;
+
+		// THE HARD-SYNC BLOCK, MIRRORED FROM src/dsp/VcoCore.hpp:850-892 (plan
+		// 33-02, mirrored here by plan 33-04). The connected gate first, the
+		// same two inherited threshold literals, the same guarded sub-sample
+		// solve with the negation FIRST and the upper bound STRICT, the same
+		// fractional-overshoot reset, and the same UNCONDITIONAL store. The
+		// trigger and the store are per-instance members of this type; see their
+		// declarations above for why that is not a place to add a second defect.
+		if (in.syncConnected && syncTrig.process(in.syncVolts, 0.1f, 1.0f)) {
+			float f = (1.0f - prevSyncVolts) / (in.syncVolts - prevSyncVolts);
+			if (!(f >= 0.f) || !(f < 1.f)) f = 0.f;
+			sharedPhase = (double)(1.f - f) * deltaPhase;
+		}
+		prevSyncVolts = in.syncVolts;
+
+		// STRICTLY BELOW THE SYNC BLOCK, exactly as in the real core (D-07): the
+		// snapshot, the naive sample and the single band-limiter call all see
+		// the POST-reset phase.
+		const float p = (float)sharedPhase;
 
 		// MIRRORED FROM src/dsp/VcoCore.hpp:608-645 (plan 32-06). The single
 		// frozen call is now a NAMED local plus a SEPARATE ADDITIVE correction —
@@ -1698,6 +1785,67 @@ TEST_CASE("vco core: spread seed divergence at character 1.0 (D-18a)") {
 //    MEASURED RESULT for this construction: interleaved-versus-solo mismatches
 //    A = 0 / 1024 and B = 0 / 1024, with soloA[i] == soloB[i] on 0 of 1024
 //    samples.
+//
+//    ------------------------------------------------------------------------
+//    (vi) THE DRIVES CARRY SYNC. ADDED BY PLAN 33-04, AND THE REASON IS THAT
+//    WITHOUT IT THIS CASE WOULD HAVE COVERED PHASE 33'S NEW STATE WITH NOTHING
+//    WHILE STILL REPORTING GREEN.
+//    ------------------------------------------------------------------------
+//    Phase 33 gave forge::VcoCore two new per-instance members: a
+//    forge::SchmittTrigger and a previous-voltage store
+//    (src/dsp/VcoCore.hpp:330-331). ABSENCE OF SHARING IS EXACTLY THE PROPERTY
+//    A SOURCE-TEXT GREP PROVES BADLY — `grep static src/dsp/VcoCore.hpp` finds
+//    nothing today and would also find nothing if the state were shared through
+//    a namespace-scope object, a singleton accessor, or a static inside a
+//    helper called from step(). The proof this file relies on is BEHAVIOURAL,
+//    and a behavioural proof covers only what its inputs exercise.
+//
+//    With `syncConnected` false on both drives — which is what this case did
+//    before plan 33-04 — the sync branch is NOT ENTERED, so a hypothetical
+//    shared trigger or shared store would be invisible here. The header said so
+//    itself, in a paragraph that deliberately claimed less than the one above
+//    it and named this plan as what would make the claim true. This is that
+//    change; the header's paragraph was corrected in the same phase.
+//
+//    THE TWO DRIVES ARE GIVEN GENUINELY DIFFERENT SYNC, not the same master
+//    twice. A runs 16 master cycles across the block with the jack patched
+//    throughout; B runs 24 and has its jack PULLED over samples 384..639. So
+//    the two instances take different sync branches on the same sample index,
+//    which is the arrangement a shared trigger or a shared store would corrupt:
+//    each instance's branch would start depending on the other's voltage. A
+//    version of this check that gave both drives the SAME master would still
+//    catch a shared store, but only by luck of the sample alignment.
+//
+//    MEASURED with the sync extension, and the two property assertions are
+//    UNMOVED at every rate: A = 0 / 1024, B = 0 / 1024, soloEqual 0 / 1024,
+//    with 16 resets on drive A and 18 on drive B (24 cycles less the 6 that
+//    fall inside the unpatched window) and 0 resets on B while unpatched.
+//
+//    AND THE NEW COVERAGE IS PROVED ABLE TO FAIL, BY MEASUREMENT RATHER THAN
+//    BY INSPECTION. Invariant 5's permanent control shares a PHASE ACCUMULATOR,
+//    which says nothing about whether this check can see a shared SYNC member.
+//    Two out-of-tree probes were built against a scratch copy of
+//    src/dsp/VcoCore.hpp — one per new member, each turning exactly one of them
+//    into a process-wide static and changing nothing else — and both produce a
+//    real red on BOTH instances at all three rates:
+//
+//        probe                        mismatchA     mismatchB
+//        prevSyncVolts shared          961 / 1024    982 / 1024
+//        syncTrig shared               630 / 1024    976 / 1024
+//
+//    Neither figure is saturated, so unlike invariant 5's 512/512 these two CAN
+//    move in both directions and are a real pin rather than a ceiling. The
+//    header was restored and re-verified byte-identical afterwards; no
+//    repository artifact was created.
+//
+//    THE POSITIVE CONTROL WAS RE-RUN AND ITS FIGURES ARE UNMOVED TOO: 512 /
+//    512 / total 1024 at all three rates, the fourth consecutive capture at
+//    those numbers. Read the saturation paragraph on
+//    DeliberatelyBrokenSharedStateCore before reading anything into that: those
+//    three figures are pinned at the ceiling of their own metric and can only
+//    ever detect a change that pushes the count DOWN. "Unchanged" there is
+//    insensitivity, not evidence of inertness — the evidence of inertness is
+//    the separate argument written at the mirror itself.
 // ---------------------------------------------------------------------------
 TEST_CASE("vco core: two-instance independence under sample-by-sample interleaving (D-17)") {
 	const int n = 1024;
@@ -1732,16 +1880,44 @@ TEST_CASE("vco core: two-instance independence under sample-by-sample interleavi
 		// fixed morph; B holds a DIFFERENT fixed pitch and sweeps morph. Neither
 		// instance ever sees the other's input, so any state they share shows up
 		// as a mismatch against their own solo run.
+		//
+		// REQUIREMENT (vi), ADDED BY PLAN 33-04: THE TWO DRIVES CARRY SYNC, AND
+		// THEY CARRY DIFFERENT SYNC. See the banner paragraph above for why a
+		// version of this check that left the jack unpatched would cover the two
+		// new members with NOTHING while still reporting green.
+		//   The masters are computed IN CLOSED FORM from the sample index, never
+		// from a running accumulator. That is load-bearing: runInterleaveCheck
+		// calls each functor FOUR times over the block — solo A, solo B and the
+		// two interleaved instances — and a stateful generator would hand the
+		// four runs four different masters and the case would fail for a reason
+		// that has nothing to do with the core. Both increments are dyadic and
+		// (i+1)*dtm is exact in double for every i in this block, so all four
+		// calls return bit-identical voltages.
+		const double kDtmA = 16.0 / 1024.0;   // 16 master cycles across the block
+		const double kDtmB = 24.0 / 1024.0;   // 24 — a DIFFERENT master, deliberately
+		const int    kUnpatchedFrom = 384;    // B's jack is pulled for this window...
+		const int    kUnpatchedTo   = 640;    // ...and pushed back in here
 		const std::function<forge::VcoInputs(int)> inA = [=](int i) {
 			forge::VcoInputs in = base;
 			in.pitchCV = -1.f + 2.f * ((float)i / denom);   // -1 V .. +1 V
 			in.morph   = 0.25f;
+			const double ph = (double)(i + 1) * kDtmA;
+			in.syncVolts     = (float)(5.0 * (1.0 - 2.0 * (ph - std::floor(ph))));
+			in.syncConnected = true;                        // patched for the whole block
 			return in;
 		};
 		const std::function<forge::VcoInputs(int)> inB = [=](int i) {
 			forge::VcoInputs in = base;
 			in.pitchCV = 0.5f;                              // a different, FIXED pitch
 			in.morph   = (float)i / denom;                  // 0 .. 1
+			const double ph = (double)(i + 1) * kDtmB;
+			in.syncVolts     = (float)(5.0 * (1.0 - 2.0 * (ph - std::floor(ph))));
+			// UNPATCHED over a window in the middle, so the two instances take
+			// DIFFERENT sync branches on the same sample index. That difference
+			// is the point: a shared trigger or a shared store would make each
+			// instance's branch depend on the other's voltage, and every one of
+			// those samples would diverge from its own solo run.
+			in.syncConnected = !(i >= kUnpatchedFrom && i < kUnpatchedTo);
 			return in;
 		};
 
@@ -1760,13 +1936,51 @@ TEST_CASE("vco core: two-instance independence under sample-by-sample interleavi
 		// order, or reused a core between runs — would sail through every
 		// assertion below this line. It cannot get past this one.
 		forge::VcoBlockDriver d(sr, 0xC0FFEEULL, 0xBADF00DULL, 0x9E3779B9ULL, 0x7F4A7C15ULL);
-		std::vector<float> harnessA = d.run(n, inA);
+		SyncTrace trA;
+		std::vector<float> harnessA = driveTraced(d, n, inA, trA);
 		REQUIRE(harnessA.size() == r.soloA.size());
 		bool helperMatchesHarness = true;
 		for (size_t i = 0; i < harnessA.size(); ++i) {
 			if (harnessA[i] != r.soloA[i]) { helperMatchesHarness = false; break; }
 		}
 		REQUIRE(helperMatchesHarness);
+
+		// --- 1b. THE SYNC DRIVES ARE NON-VACUOUS (requirement vi). -----------
+		// REQUIREd, not CHECKed, and ahead of everything below it — the same
+		// validity-first habit as the block above. Without this the extension is
+		// unfalsifiable in the worst way: a functor that stopped setting
+		// syncVolts, or a `syncConnected` that quietly went false, would leave
+		// invariant 4 passing exactly as it did before Phase 33 and still
+		// claiming to cover the two new members. This is the only line that
+		// would notice.
+		//   Instance B's trace comes from a SECOND driver run rather than from
+		// runInterleaveCheck, which returns samples and not telemetry. That is
+		// 1024 extra steps and it buys the one assertion the extension rests on.
+		forge::VcoBlockDriver dB(sr, 0xC0FFEEULL, 0xBADF00DULL, 0xDEADBEEFULL, 0xCAFEF00DULL);
+		SyncTrace trB;
+		std::vector<float> harnessB = driveTraced(dB, n, inB, trB);
+		REQUIRE(harnessB.size() == (size_t)n);
+
+		int firedA = 0, firedB = 0, firedBWhileUnpatched = 0;
+		for (int i = 0; i < n; ++i) {
+			if (trA.fired[(size_t)i]) ++firedA;
+			if (trB.fired[(size_t)i]) {
+				++firedB;
+				if (i >= kUnpatchedFrom && i < kUnpatchedTo) ++firedBWhileUnpatched;
+			}
+		}
+		CAPTURE(firedA);
+		CAPTURE(firedB);
+		CAPTURE(firedBWhileUnpatched);
+		INFO("requirement vi: both drives must actually RESET, and B must reset on a different schedule from A");
+		// MEASURED: A = 16 resets (one per master cycle), B = 18 — 24 cycles
+		// less the 6 that fall inside the unpatched window.
+		REQUIRE(firedA > 0);
+		REQUIRE(firedB > 0);
+		REQUIRE(firedA != firedB);
+		// And the gate holds inside the interleave drive too, not only in
+		// invariant 7's own dedicated case.
+		REQUIRE(firedBWhileUnpatched == 0);
 
 		// --- 2. DISTINGUISHABILITY (requirement iv). ------------------------
 		// Measured with this construction: equal at 0 of 1024 samples. The
