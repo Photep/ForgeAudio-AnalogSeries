@@ -302,7 +302,7 @@ Plans:
   2. The reset uses sub-sample fractional placement plus a sync-BLEP applied at the **master's** wrap fraction, reusing the anti-aliasing machinery — explicitly **not** the LFO's 3 ms cosine crossfade — producing the sharp, buzzy sync timbre without clicks.
   3. A sync-continuity invariant bounds the per-sample step across a reset (no full-scale artifact) and correctly handles ≥1 sync event within a single sample.
 
-**Plans**: 1/12 plans executed
+**Plans**: 2/12 plans executed
 Plans:
 **Wave 1**
 
@@ -310,7 +310,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 33-02-PLAN.md — `VcoCore.hpp`: two POD fields, per-instance trigger and voltage store, the guarded sub-sample solve, the fractional-overshoot reset and the jump — seam deliberately withheld (SYNC-01 / D-01/D-02/D-03/D-05/D-07/D-12)
+- [x] 33-02-PLAN.md — `VcoCore.hpp`: two POD fields, per-instance trigger and voltage store, the guarded sub-sample solve, the fractional-overshoot reset and the jump — seam deliberately withheld (SYNC-01 / D-01/D-02/D-03/D-05/D-07/D-12)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -399,7 +399,7 @@ Plans:
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
 | 31. Pitch, Tuning & Exponential FM | 9/9 | Complete    | 2026-07-30 |
 | 32. Morph-Aware Anti-Aliasing | 11/11 | Complete    | 2026-08-27 |
-| 33. Hard Sync | 1/12 | In Progress|  |
+| 33. Hard Sync | 2/12 | In Progress|  |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |
 | 35. Shell, Panel & Display | 0/? | Not started | - |
 | 36. Goldens, CI & Library Update | 0/? | Not started | - |

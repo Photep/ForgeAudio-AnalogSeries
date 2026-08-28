@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 33
 current_phase_name: hard-sync
 status: ready
-stopped_at: Completed 33-01-PLAN.md
-last_updated: "2026-08-28T20:44:45.208Z"
-last_activity: 2026-08-29
-last_activity_desc: Plan 33-01 complete — MorphBlep hostile-parameter guards (CR-01/CR-02 + jump)
+stopped_at: Completed 33-02-PLAN.md
+last_updated: "2026-08-28T21:06:21.604Z"
+last_activity: 2026-08-28
+last_activity_desc: Plan 33-02 complete — the VcoCore sync block (detection, guarded sub-sample solve, fractional-overshoot reset, jump); seam deliberately withheld for the 33-05 measurement
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 47
-  completed_plans: 36
+  completed_plans: 37
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 33 (hard-sync) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 
 **Phase 33 planning is complete (2026-08-29).** Research, pattern map and validation strategy all landed; the plan-checker passed on the first iteration with zero blockers and zero warnings; requirements coverage is 2/2 (SYNC-01, SYNC-02) and decision coverage is 18/18 (D-01…D-18, all cited in plan frontmatter `must_haves`).
 
@@ -191,6 +191,12 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 32]: 32-11: the whole-directory flush CAUGHT A LIVE STALE INSTALL that a manifest check would have passed — the installed plugin.json was ALREADY 2.0.1 with ALREADY both modules while the binary was Phase 31's (5061619c -> 431b9de6) and res/AnalogVCO.svg had 10 rects instead of 12. The manifest is the check that passes on a stale install; the binary hash and the asset are what catch it. Proof of freshness requires measuring the BEFORE state, not only matching the after state to source
 - [Phase 32]: 32-11: two install hazards outside the plan's five pins were checked before the subject was declared pinned — no .vcvplugin archive anywhere under Rack2/ to re-extract over the flush at launch, and no Forge directory in plugins-mac-x64/. Same failure family as the Phase 30 false negative: something the operator's Rack reads that is not the thing just flushed
 - [Phase 32]: 32-11: Phase 32 closes COMPLETE but NOT CLEAN — 32-REVIEW.md's CR-01 and CR-02 are real MorphBlep.hpp defects, verified unreachable through the single shipped call site (VcoCore.hpp:645, arguments conditioned at :598-602 and again at AnalogVCO.cpp:286-288), recorded as High-priority hardening. Phase 33 adds the SECOND call site at the hard-sync addStep seam, which is the event that makes CR-01 live; fix before, not after
+- [Phase 33]: 33-02: raw sync volts cross the POD boundary and the CORE owns detection (D-02) — a shell-side trigger would hand the core an already-decided boolean and NO test could ever see a mis-detected edge
+- [Phase 33]: 33-02: the jump's second term is `naive` itself and the subtraction is completed AFTER the naive call — under the D-07 ordering the POST-reset value is the free one, so the plan's step list had the roles inverted and would have cost TWO extra frozen calls against a stated budget of one
+- [Phase 33]: 33-02: the sub-sample fraction's upper bound is STRICT and its fallback is ZERO — a fallback of ONE would reintroduce the snap-to-zero landmine through the guard itself. MEASURED with the guard removed: frac=1/phase=0 at a master sample landing on 1.0 V, and 200 of 200 samples non-finite AFTER the NaN was withdrawn (phase has no drain, unlike MorphBlep's accumulators — so 33-01's falsified permanent-poison narrative is TRUE here)
+- [Phase 33]: 33-02: neither prevSyncVolts nor syncTrig is reset on a sample-rate change — a rate change does not alter which sample was the previous one, and resetting either would MANUFACTURE the stale-store case that is the only route to a zero divisor
+- [Phase 33]: 33-02: NO requirement marked — SYNC-01 declined as well as SYNC-02. SYNC-01 has no jack (33-03 adds SYNC_INPUT, so no user can reach the code) and no permanent assertion (33-04). Sixth consecutive decline of an auto-mark in this project
+- [Phase 33]: 33-02: check_canary.sh [2b/5] is INSENSITIVE on Apple clang — it reports syncVolts runtime-live while the canary never assigns it, and a deliberately constant-fed morph still emits its table symbol at -O3. Plan 33-03's field-feeding gate is green whether or not it does the work; it must observe the CI GCC leg or add a control that bites locally
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -203,7 +209,8 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 
 ### Blockers/Concerns
 
-- None open for v2.0. The v1.4 IP/public-flip gates all CLEARED (repo PUBLIC 2026-07-10; #929 live). Full v1.4 blocker history archived in `milestones/v1.4-ROADMAP.md`.
+- open for v2.0. The v1.4 IP/public-flip gates all CLEARED (repo PUBLIC 2026-07-10; #929 live). Full v1.4 blocker history archived in `milestones/v1.4-ROADMAP.md`.
+- Plan 33-03 MUST NOT read a local check_canary.sh [2b/5] PASS as evidence that the two new VcoInputs fields are runtime-live: the per-field check is MEASURED insensitive on this host (33-02-SUMMARY Deferred Register #2 — it reports syncVolts runtime-live while the canary never assigns it). Observe the CI GCC leg on the commit, or add a sensitivity control that bites locally.
 
 ## Deferred Items
 
@@ -251,13 +258,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 32 P10 | 98 min | 3 tasks | 4 files |
 | Phase 32 P11 | 22 min | 2 tasks | 0 files |
 | Phase 33 P01 | 62min | 3 tasks | 2 files |
+| Phase 33 P02 | 22min | 3 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-28T20:44:45.198Z
-Stopped at: Completed 33-01-PLAN.md
+Last session: 2026-08-28T21:06:17.657Z
+Stopped at: Completed 33-02-PLAN.md
 Resume: Phase 32 is closed. Both items 32-11 owned are discharged: (1) the verification-protocol fix landed — the browser carries THREE Forge Audio entries and the guardrail subject is now pinned BY NAME ("Analog LFO" from `ForgeAudio-AnalogSeries` 2.0.1, versus the stale plain "LFO" from `ForgeAudio` 2.0.0), closing deferred item 25's protocol half; (2) MORPH-02's shell-side knob + CV x attenuverter mix is operator-attested on absence of fault (deferred item 24) — the only evidence obtainable while no headless driver can reach the attenuverter.
 
 Before Phase 33 plans anything, read `32-REVIEW.md`: CR-01 and CR-02 are real defects in `src/dsp/MorphBlep.hpp`, unreachable today only because `blep.step` has exactly ONE call site whose arguments are conditioned immediately above it. **Phase 33 adds the second call site** (`addStep` at the hard-sync seam), which is precisely the event that turns CR-01 into a live out-of-bounds write — and on x86 MinGW/Linux `(int)NaN` is `INT_MIN`, not the benign `0` this arm64 host produces. Fix before, not after.
