@@ -240,9 +240,14 @@ struct MorphBlep {
 	// `xAhead` is the edge's position in SAMPLES relative to THIS output sample:
 	// 0 means the edge lands immediately after this sample, 1 means it lands on
 	// the next sample. `jump` is (value_after - value_before), already scaled by
-	// whatever weights the caller owns. The event feeds THE SAME accumulator as
-	// the morph sites, so sync events and morph edges compose by summation
-	// (D-07) rather than one overwriting the other.
+	// whatever weights the caller owns, AND MUST BE FINITE — a not-a-number or an
+	// infinity is REJECTED by the entry gate below rather than accumulated. That
+	// finiteness clause is part of the contract, not an implementation detail:
+	// before plan 33-01 the advertised contract said nothing about it while the
+	// enforced contract checked nothing, and that gap IS 32-REVIEW.md's finding.
+	// The event feeds THE SAME accumulator as the morph sites, so sync events and
+	// morph edges compose by summation (D-07) rather than one overwriting the
+	// other.
 	//
 	// THE BOUNDARY, STATED SO IT IS NOT CROSSED EARLY. Phase 32 implements NO
 	// sync behavior and adds NO sync fields to forge::VcoInputs. The seam exists
@@ -254,8 +259,71 @@ struct MorphBlep {
 	// not-a-number `xAhead` is REJECTED rather than accumulated: `xAhead >= 0.f`
 	// is false for a NaN, so the negation fires and the function returns before
 	// touching per-instance state that would then poison every following sample.
+	//
+	// ------------------------------------------------------------------------
+	// GUARD C (D-04 third item, T-33-03, plan 33-01) — THE `jump` FINITENESS
+	// CLAUSE OF THAT SAME EARLY RETURN.
+	//
+	// THE FORM, AND WHY IT IS THIS ONE. `jump - jump == 0.f` is EXACTLY the
+	// finite predicate, in closed form, with no new include: for every finite
+	// float — including +/-FLT_MAX, subnormals and both zeros — the subtraction
+	// is exactly 0 and cannot overflow, while +infinity, -infinity and any
+	// not-a-number all produce a not-a-number, which compares false against
+	// everything. WRITTEN NEGATED, so it is the not-a-number that falls into the
+	// early return rather than out of it. COVERAGE, CLAUSE BY CLAUSE, as the
+	// three input classes: `+inf - +inf` is NaN; `-inf - -inf` is NaN;
+	// `NaN - NaN` is NaN. One expression catches all three.
+	//   VERIFIED across clang -O0/-O2/-O3 at BOTH -std=c++11 and -std=c++17
+	//   (the two-standard contract at the top of this file): the seven finite
+	//   classes are accepted and the three non-finite classes are rejected at
+	//   every one of those six settings, with no warning under -Wall -Wextra.
+	//   The verification exists because the idiom is only sound under IEEE
+	//   semantics — -ffast-math WOULD fold it to `true`. This project forbids
+	//   -ffast-math and pins -ffp-contract=off (see the banner at the top of
+	//   this file); if that ever changes, this guard must be re-verified.
+	//   THE ALTERNATIVES AND WHY THEY WERE REJECTED. A magnitude pair such as
+	//   `!(jump > -3.4e38f) || !(jump < 3.4e38f)` is the obvious negated shape,
+	//   but it is a BOUND ON LARGENESS: it silently discards legitimate finite
+	//   corrections near FLT_MAX. This gate's job is to keep a not-a-number and
+	//   an infinity out of the accumulator, and nothing else — tests/
+	//   test_morph_blep.cpp's `(D-04 third item)` case carries a subcase whose
+	//   only purpose is to stop a later editor "tightening" this into a
+	//   magnitude bound. Naming an infinity as a literal (`1e40f`) is ILL-FORMED
+	//   under -pedantic-errors, which `make strict` runs. forge::clamp is
+	//   rejected for the reason this file rejects it everywhere else: both of
+	//   its comparisons are false for a not-a-number, so it is inert against
+	//   exactly the input class this guard exists to stop.
+	//
+	// THE MEASURED DEFECT, AND A BORROWED NARRATIVE CORRECTED IN PLACE. The
+	// finding was originally written up as the IDENTICAL permanent-poison mode
+	// plan 32-05 measured for a +infinity `dt`. IT IS NOT THE SAME MODE, and the
+	// difference is worth a reader's time. MEASURED against this header as plan
+	// 32-04 landed it: after `addStep(0.5f, +infinity)`, EXACTLY ONE of the next
+	// twenty `step()` calls returned a non-finite value — the first — and
+	// `pending` was finite after every one of the twenty. step()'s preamble
+	// drains `inject` and `pending` and zeroes both UNCONDITIONALLY, so an
+	// accumulator poisoned from OUTSIDE is flushed on the next sample. The `dt`
+	// defect was permanent because it re-poisoned `pending` from INSIDE the site
+	// loop, downstream of that drain.
+	//   The guard is required anyway, on the corrected evidence rather than the
+	//   borrowed one: forge::VcoCore ADDS this correction to the naive sample
+	//   (VcoCore.hpp:645), so one poisoned event puts a not-a-number on the
+	//   module's output. And Phase 33's D-05 is what makes the path live — the
+	//   sync seam feeds `jump` a COMPUTED DIFFERENCE OF TWO `morphedWave` VALUES
+	//   rather than an analytic constant, which is the first caller in this
+	//   project that can put a non-finite value here at all. "One sample"
+	//   becomes "every sample" the moment that upstream difference goes bad.
+	//
+	// THE TEST THAT FOUND IT: tests/test_morph_blep.cpp's `(D-04 third item)`
+	// case. Its WITHDRAWAL PHASE is the half that distinguishes "bad during"
+	// from "bad forever" and is what produced the corrected figure above.
+	// REVERT-ONE-ONLY PROBE (plan 33-01 Task 3): removing this clause ALONE
+	// turns that case red at 7 of 8 assertions — the six exact-equality
+	// accumulator checks in its `rejection` subcase plus `nonFinite == 0` in its
+	// `recovery` subcase — and leaves every other case in the suite green.
+	// ------------------------------------------------------------------------
 	void addStep(float xAhead, float jump) {
-		if (!(xAhead >= 0.f) || xAhead > 1.f) return;
+		if (!(xAhead >= 0.f) || xAhead > 1.f || !(jump - jump == 0.f)) return;
 		const float u = 1.f - xAhead;
 		inject  += jump * ( 0.5f) * u * u;
 		pending += jump * (-0.5f) * xAhead * xAhead;
@@ -305,6 +373,73 @@ inline float MorphBlep::step(const Waveshape& wv, double phase, float p, double 
 	const float fdt = (float)dt;
 	if (!(fdt > 0.f) || !(fdt <= 1.f)) return now;
 
+	// --- GUARD A — THE ENTRY CONDITIONING (D-04 / CR-02 / T-33-02) ------------
+	// (plan 33-01. 32-REVIEW.md CR-02, and the `morph` half of CR-01.)
+	//
+	// THE SAME NEGATED PAIR forge::VcoCore uses at VcoCore.hpp:597-602, on THIS
+	// side of the call, because this header REFUSES TO RELY ON ITS CALLER — the
+	// claim its banner makes in capitals and, until this guard, honoured for
+	// `dt` alone. The NEGATED comparison comes FIRST and is the not-a-number
+	// catcher: a NaN fails `> 0.f`, so the negation is TRUE and it lands at 0.f;
+	// the plain upper comparison then leaves that 0.f unchanged. NEVER
+	// forge::clamp — both of ITS comparisons are false for a not-a-number, so it
+	// is inert against exactly the input class this guard exists to stop, which
+	// is the same reason morphBlepCharFactor and the `dt` guard above reject it
+	// by name.
+	//
+	// THE PARAMETERS ARE REASSIGNED IN PLACE, NOT SHADOWED BY NEW LOCALS, and
+	// that is deliberate rather than a shortcut. C++ forbids redeclaring a
+	// parameter name in the function's top-level scope, so "conditioned locals"
+	// would have to be NEW names — and then correctness would depend on every
+	// one of the twenty-odd expressions below having been switched over to them,
+	// with a single missed line silently reopening the defect. Reassigning the
+	// by-value parameters makes it structurally impossible to read the raw value
+	// downstream: there is no name left that holds it.
+	//
+	// THE DECISION: CONDITION, DO NOT EARLY-RETURN — and the reason is
+	// bit-identity. Returning `now` for a hostile `morph`/`character` would be
+	// the cheaper guard, but it would CHANGE THE CORRECTION on a sample the one
+	// shipped caller has ALREADY conditioned to exactly these values two lines
+	// above the call, and every recorded magnitude, alias threshold and envelope
+	// figure in the Phase 32 suite is measured through that caller. Conditioning
+	// makes this header's answer for a hostile morph IDENTICAL to the answer the
+	// live signal path already produces, so no recorded figure can move.
+	//   MEASURED: 4096 samples through forge::VcoCore at 44.1 kHz, morph 0.75 /
+	//   character 0.5, against the pre-guard binary — 0 differing samples by
+	//   direct float equality; and the whole suite (94 cases, 2,622,319
+	//   assertions) replays unmoved, including the six shipped-LFO goldens.
+	//
+	// THE MEASURED DEFECT (CR-02). `morphBlepCharFactor` DOES trap a
+	// not-a-number width, but THREE of the nine sites carry a width that is a
+	// LITERAL `0.f` — the coincident wrap, the square's hard step and the
+	// pulse's hard step — and for those the factor correctly returns EXACTLY 1
+	// (D-03's first limit) and never sees the character at all. The character
+	// arrives by a different door: `hardSq = W[3] * 2.f * (1.f - c)` is
+	// `0.f * NaN`, which is NaN even at ZERO WEIGHT, and that also defeats the
+	// `mag[i] == 0.f` skip that makes the fixed nine-site union free.
+	//   THE RED, AS A NUMBER PRODUCED BY THIS HEADER rather than copied from the
+	//   register: over a 200-point `character` population containing 16
+	//   non-finite members, driven at morph 0.70 / 0.75 / 1.00, ELEVEN of the
+	//   200 points returned a non-finite correction. Eleven and not sixteen
+	//   because the whole -INFINITY class is benign by accident of the frozen
+	//   threshold replicated below — `-inf < 0.001f` is true, so `c` becomes
+	//   exactly the 0.f a legitimate zero character gives.
+	//   THE TEST THAT FOUND IT: tests/test_morph_blep.cpp's `(D-04 / CR-02)`
+	//   case. REVERT-ONE-ONLY PROBE (Task 3): removing THIS guard alone turns
+	//   that case red at 1 of 3 assertions with `nonFinitePoints == 11`, AND
+	//   turns the `(D-04 / CR-01)` case red at 4 of 6 in its not-a-number
+	//   subcase — a signature that shares no failing assertion with Guard B's.
+	//
+	// EVERY EXPRESSION BELOW CONSUMES THE CONDITIONED VALUES, and that includes
+	// the ones a reader is most likely to overlook: the `character < 0.001f`
+	// early-return threshold and the `character >= 0.001f` bleed gate (both of
+	// which must stay the FROZEN code's exact comparisons — P-12), `morph * 4.f`
+	// and its cast, and the bleed ring's modular indices.
+	if (!(morph > 0.f)) morph = 0.f;
+	if (morph > 1.f) morph = 1.f;
+	if (!(character > 0.f)) character = 0.f;
+	if (character > 1.f) character = 1.f;
+
 	// --- SECTION A — WEIGHT ALGEBRA, REPLICATED, NOT APPROXIMATED -------------
 	// (AA-01 / D-05 / P-12.) Every expression here mirrors
 	// forge::Waveshape::morphedWave's own, INCLUDING its early-return threshold.
@@ -317,6 +452,53 @@ inline float MorphBlep::step(const Waveshape& wv, double phase, float p, double 
 	const float c = (character < 0.001f) ? 0.f : character * character;
 	const float scaled = morph * 4.f;
 	int segment = (int)scaled;
+	// --- GUARD B — THE LOWER CLAMP (D-04 / CR-01 / T-33-01) ------------------
+	// (plan 33-01. 32-REVIEW.md CR-01.)
+	//
+	// THIS IS DEFENCE IN DEPTH BENEATH GUARD A, NOT A DUPLICATE OF IT, and the
+	// distinction is the whole reason both exist. Guard A makes a negative
+	// `segment` UNREACHABLE FROM THE PARAMETERS. This clamp makes the array
+	// writes at `W[segment]` and `W[segment + 1]` below SAFE EVEN IF a later
+	// editor moves, narrows or removes that conditioning — which is exactly the
+	// failure this file already suffered once: the header's banner claimed
+	// caller-independence in capitals while the enforced contract checked only
+	// `dt`, and the defect stayed latent purely because the one shipped caller
+	// happened to condition its arguments two lines above the call.
+	//
+	// THE MEASURED DEFECT. `segment` was clamped only from ABOVE, so a negative
+	// `morph` wrote one or more floats BEFORE a `float[5]`. REPRODUCED under
+	// AddressSanitizer as a stack-buffer-underflow — verbatim, from a scoped
+	// one-shot probe run outside the repository:
+	//     ERROR: AddressSanitizer: stack-buffer-underflow on address 0x00016d3c627c
+	//     READ of size 4 at 0x00016d3c627c thread T0
+	//         #0 ... forge::MorphBlep::step(...) MorphBlep.hpp:332
+	//     [32, 52) 'W' (line 325) <== Memory access at offset 28 underflows this variable
+	// (The `+=` is a read-modify-write, so the READ half trips first; the write
+	// to the same address follows.) THAT PROBE IS NOT A REPO ARTIFACT: register
+	// item 12 forbids a permanent repo-wide sanitizer gate, because the SHIPPED
+	// Analog LFO carries shared latent undefined behavior that is deliberately
+	// unowned. There is no ASan target in the Makefile, in GUARD_SCRIPTS, in
+	// TEST_CXXFLAGS or in any CI workflow, and one must not be added.
+	//
+	// THE TOOLCHAIN HALF, WHICH IS WHY AN ARM64-GREEN RUN PROVES NOTHING. The
+	// float-to-int cast above is UNDEFINED for a not-a-number. MEASURED on the
+	// arm64 development host: `(int)(NaN * 4.f)` is 0 — benign, in bounds, and
+	// therefore INVISIBLE here. Under the x86 `cvttss2si` instruction that the
+	// MinGW and Linux builds who actually reach users compile it to, the same
+	// expression yields the integer indefinite value, INT_MIN. `W[INT_MIN]` is
+	// not a neighbouring float; it is an address eight gigabytes below the
+	// frame. MEASURED on this host by forcing the same saturation with
+	// `morph = -1e30f`: SIGSEGV, exit 139. That invisible-on-Apple-clang class
+	// is precisely what got v2.0.0 rejected from the VCV Library.
+	//
+	// THE TEST THAT FOUND IT: tests/test_morph_blep.cpp's `(D-04 / CR-01)` case.
+	// REVERT-ONE-ONLY PROBE (Task 3): removing THIS clamp alone leaves the whole
+	// suite green — Guard A already makes it unreachable — EXCEPT that the ASan
+	// probe above goes red again once Guard A is also absent. That "green alone"
+	// result is recorded rather than hidden: it is what DEFENCE IN DEPTH means,
+	// and 33-01-SUMMARY.md carries the paired probe (A+B removed together) that
+	// distinguishes this clamp from dead code.
+	if (segment < 0) segment = 0;                    // GUARD B — the lower bound
 	if (segment > 3) segment = 3;                    // mirrors the frozen minimum-of-3 (:166)
 	const float frac = scaled - (float)segment;
 	const float pulseFrac = (scaled > 3.f) ? (scaled - 3.f) : 0.f;                 // :170
