@@ -66,6 +66,14 @@
 // from `i`. forge::MorphBlep is reached through forge::VcoCore::step (plan
 // 32-06), whose inputs are already runtime-derived here, so this header is
 // odr-used with non-constant arguments exactly as [2b/5] requires.
+//
+// PHASE 33 ADDS NO VCO HEADER EITHER, so the growth point is still TAKEN by
+// Phase 32 and this include list is unchanged. Recorded rather than left silent,
+// because the field block below DID need addition this time and the two rules
+// are easy to conflate: D-08 governs HEADERS, and Phase 33's hard sync lives
+// entirely inside dsp/VcoCore.hpp, which is already the first include above. The
+// separate growth rule that governs FIELDS bound hard — D-02 adds two
+// forge::VcoInputs members and both are fed below.
 #include "dsp/MorphBlep.hpp"
 
 namespace forge {
@@ -101,6 +109,58 @@ float vcoCompileCanaryProbe(int i) {
 	// A runtime-derived LOOP TRIP COUNT is NOT sufficient on its own: it preserves
 	// how many times step() is called, but nothing inside step() depends on it.
 	// tests/check_canary.sh [2b/5] asserts this property mechanically.
+	//
+	// ---------------------------------------------------------------------
+	// PHASE 33 ADDS A STRICTLY STRONGER REQUIREMENT THAN "NO LITERALS", AND
+	// THIS PARAGRAPH IS THE REASON THE TWO SYNC FEEDS BELOW ARE NOT MERELY
+	// MECHANICAL.
+	//
+	// The rule above is about a field's VALUE being unfoldable. `syncConnected`
+	// introduces a second failure mode that the rule above does not reach,
+	// because the field is not an operand of any arithmetic — it is the OUTER
+	// GATE on the whole hard-sync block in forge::VcoCore::step. Fed a constant
+	// `false`, -O3 does not merely fold a value: it proves the branch dead and
+	// DELETES the detector, the SchmittTrigger transition, the sub-sample solve,
+	// the reset and the extra morphedWave call. The MinGW link leg would then
+	// have nothing of the sync path left to resolve, and the canary would cover
+	// the newest code in the seam with NOTHING.
+	//
+	// AND THE GATE WOULD STILL REPORT PASS. tests/check_canary.sh [2b/5]
+	// enumerates the FLOAT members of struct VcoInputs, so `syncConnected` — a
+	// bool — is not in its field list at all and could never be reported
+	// missing. `syncVolts` IS enumerated, so a constant-false flag paired with a
+	// runtime-derived voltage produces the worst available outcome: a green
+	// per-field report over a branch that no longer exists. That is a false
+	// green of exactly the class this whole file was written against.
+	//
+	// THE TWO OBLIGATIONS THAT FOLLOW, both of which the feeds below satisfy:
+	//   1. `syncConnected` must be a runtime BIT TEST — never a literal, never
+	//      the NSDMI default (which is a literal `false`) — so the flag VARIES
+	//      with the runtime parameter and is true for half of its domain. It is
+	//      written in exactly the shape `fmConnected` uses, for that reason.
+	//   2. `syncVolts` must STRADDLE BOTH hysteresis thresholds (0.1 V low,
+	//      1.0 V high — see the syncTrig.process call in dsp/VcoCore.hpp). A
+	//      voltage that only ever sat on one side of them would leave the
+	//      trigger idling in a single state, so the LOW -> HIGH arm — the only
+	//      arm that returns true, and therefore the only route into the solve
+	//      and the reset — would never be exercised. The bit slice below spans
+	//      -3 V to +4 V, which crosses both, and the per-iteration term inside
+	//      the loop makes the trigger transition WITHIN a call rather than only
+	//      across calls.
+	//
+	// DO NOT "SIMPLIFY" EITHER FEED. A later editor who replaces the flag with
+	// `true` has not simplified anything — `true` is a literal too, and it
+	// deletes the unpatched half of the branch instead of the patched half.
+	// ---------------------------------------------------------------------
+	//
+	// BIT BUDGET, enumerated rather than assumed, because the two naming groups
+	// below deliberately OVERLAP each other and "non-overlapping" cannot be read
+	// off the shift amounts alone. Group A (pitch/tune/FM) occupies bits 0-12:
+	// pitchCV 0-2, coarse 3-4, fine 5-6, fmVolts 7-9, fmAtten 10-11,
+	// fmConnected 12. Group B (morph/character/drift) occupies bits 0-11:
+	// morph 0-3, character 4-7, drift 8-11. The loop trip count below re-uses
+	// bits 0-1. The highest bit spoken for anywhere is therefore 12, so the two
+	// new slices start at 13 and 16 and collide with nothing.
 	in.pitchCV     = (float)(i & 7) - 4.f;
 	in.coarse      = (float)((i >> 3) & 3);
 	in.fine        = (float)((i >> 5) & 3);
@@ -110,6 +170,8 @@ float vcoCompileCanaryProbe(int i) {
 	in.morph       = (float)(i & 15) / 15.f;
 	in.character   = (float)((i >> 4) & 15) / 15.f;
 	in.drift       = (float)((i >> 8) & 15) / 15.f;
+	in.syncVolts   = (float)((i >> 13) & 7) - 3.f;   // bits 13-15 -> -3..+4 V: crosses BOTH 0.1 V and 1.0 V
+	in.syncConnected = ((i >> 16) & 1) != 0;         // bit 16, a bit test exactly like fmConnected — never a literal
 
 	// The runtime-derived trip count is load-bearing too, exactly like the external
 	// linkage above. A compile-time-constant count would let the compiler unroll
@@ -122,6 +184,17 @@ float vcoCompileCanaryProbe(int i) {
 		// Keeps every iteration distinct, so per-iteration folding cannot collapse
 		// the loop body to a single constant evaluation either.
 		in.pitchCV += (float)n * 0.125f;
+		// The master voltage OSCILLATES by a 4 V step — up on even iterations,
+		// down on odd — which is wider than the 0.9 V hysteresis band. It must
+		// oscillate rather than accumulate: `in.pitchCV` above is deliberately
+		// monotonic, but a monotonic syncVolts would walk past the thresholds
+		// once and never come back, leaving the trigger latched and the
+		// LOW -> HIGH arm — the only arm that returns true, and so the only route
+		// into the sub-sample solve and the reset — permanently unreached. With
+		// the -3..+4 V base above, part of the runtime parameter's domain drives
+		// a genuine LOW -> HIGH transition WITHIN a single call rather than only
+		// across separate calls the compiler cannot see anyway.
+		in.syncVolts += (float)(1 - 2 * (n & 1)) * 4.f;
 		acc += core.step(in);
 	}
 
