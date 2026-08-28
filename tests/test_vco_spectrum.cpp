@@ -1443,6 +1443,361 @@ const std::vector<SyncCell>& syncGrid() {
 	return SYNC_GRID;
 }
 
+// ---------------------------------------------------------------------------
+// THE SIX LEGS AND THE TWO MUTATION PROBES. All eight come out of ONE struct.
+//
+// SIX ARE LEGS OF THE MEASUREMENT; TWO ARE MUTATION PROBES AND ARE NOT
+// CANDIDATES. The distinction is not cosmetic: a probe exists to demonstrate
+// that the measurement can SEE a wrong answer, and reporting one as if it were
+// in the running would be reporting a control as a result. The four
+// IMPLEMENTABLE candidates are `none`, `detect`, `pastEdge` and `flatHalf`;
+// `oracle` consumes information the core cannot have and `snap` is a landmine
+// rendered as a measurement, so neither is selectable either.
+// ---------------------------------------------------------------------------
+enum SyncLeg {
+	kLegNone     = 0,   // CANDIDATE. Reset applied, sync correction withheld ENTIRELY. This is the shipped core as of plan 33-02
+	kLegDetect   = 1,   // CANDIDATE. addStep(f, jump) — the detection-sample placement, accepting the one-sample shift
+	kLegPastEdge = 2,   // CANDIDATE. The current sample takes the AFTER-EDGE half, scaled by f squared, and nothing is owed forward
+	kLegFlatHalf = 3,   // CANDIDATE. addStep(0, jump) — a flat half-jump on the detection sample
+	kLegOracle   = 4,   // DIAGNOSTIC. pastEdge with f replaced by the generator's TRUE wrap fraction
+	kLegSnap     = 5,   // DIAGNOSTIC. pastEdge with the reset forced to EXACTLY zero phase — the landmine, measured
+	kProbeMisMap = 6,   // MUTATION PROBE. addStep(1 - f, jump) — the natural mis-mapping of the edge's position
+	kProbeBadSign= 7    // MUTATION PROBE. pastEdge with the jump computed BEFORE MINUS AFTER — this project's own prior research, transcribed verbatim
+};
+// (kSyncLegCount and the leg-name table land with plan 33-05 Task 3, the commit
+// that first CONSUMES them. A named constant added a commit early is a
+// -Wunused-const-variable warning in a suite whose standing figure is zero, and
+// tests/test_vco_core.cpp already set that precedent by deferring
+// makeMasterSawBandLimited to the commit that used it.)
+
+// Recording-only observations the probe writes while it runs. NOTHING in step()
+// reads one back, no branch tests one, and deleting the whole struct would
+// leave every returned float bit-identical — the same posture, for the same
+// reason, as NaiveVcoCoreMirror's five recording members above.
+struct SyncProbeDiag {
+	int    fires;            // sync resets inside the MEASURED block
+	int    lateFires;        // resets on a sample the master did NOT wrap on — a placement error that exists BEFORE any seam
+	double fracMin, fracMax; // the detector's guarded fraction, range
+	double jumpAbsSum;       // sum of |jump| over firing samples — the physical input to the step-dominated classification
+	double phantomAbsMax;    // |pending| CARRIED IN to a reset sample — D-07's residual phantom, as a number
+	double phantomAbsSum;
+	int    phantomSamples;
+};
+
+inline SyncProbeDiag zeroedSyncDiag() {
+	SyncProbeDiag d;
+	d.fires = 0; d.lateFires = 0;
+	d.fracMin = 2.0; d.fracMax = -1.0;
+	d.jumpAbsSum = 0.0;
+	d.phantomAbsMax = 0.0; d.phantomAbsSum = 0.0; d.phantomSamples = 0;
+	return d;
+}
+
+// ---------------------------------------------------------------------------
+// SyncPlacementProbe — THE MEASUREMENT INSTRUMENT. Read this banner before
+// believing any decibel this file reports about hard sync.
+//
+// -- (1) WHAT IT IS FOR --
+// Phase 33's central question is where the sync correction goes. The answer is
+// decided by comparing eight per-sample arithmetic sequences that differ in
+// ONE place and are identical everywhere else. This struct is that one place,
+// parameterised.
+//
+// -- (2) IT MIRRORS THE SHIPPED CORE. IT DOES NOT APPROXIMATE IT. --
+// Every line of forge::VcoCore::step is reproduced below IN ORDER: the
+// volt-domain pitch summation, the D-14 bound with the negated comparison
+// first, the single forge::exp2_taylor5 off forge::kVcoFreqC4, the sanitised
+// rate, the ceiling-then-negated-floor order, the deltaPhase bound, the
+// single-subtract wrap, the moved morph/character conditioning pair, the whole
+// sync block including the guarded sub-sample solve and its zero fallback, the
+// unconditional previous-voltage store, the `p` snapshot, the naive frozen
+// call, the jump completion, and the ONE band-limiter call. It holds a REAL
+// forge::Waveshape and a REAL forge::MorphBlep by value and calls them; it
+// reimplements neither.
+//   AND THE MIRRORING IS PROVED, NOT ASSERTED. The case named
+// "(D-06) the sync placement probe reproduces forge::VcoCore bit-exactly on the
+// no-correction leg" drives this struct and the LIVE core through the SAME loop
+// with the SAME inputs, the SAME seeds and the SAME injected timing, and
+// requires ZERO mismatches by DIRECT FLOAT EQUALITY over the whole grid at all
+// three rates. That is the same non-vacuity move NaiveVcoCoreMirror already
+// carries, and it exists for the same reason: a measurement instrument that has
+// silently drifted from the thing it claims to measure produces figures about
+// something else, and it goes on producing them greenly.
+//   THE MIRROR-MAINTENANCE RULE APPLIES HERE VERBATIM. Every future change to
+// forge::VcoCore::step's sequence must be mirrored here. If mirroring one ever
+// moves a figure this file records, STOP AND REPORT rather than updating the
+// number.
+//
+// -- (3) WHY THE PRE-EDGE HALF IS UNRECOVERABLE. THE DERIVATION. --
+// src/dsp/MorphBlep.hpp's residual is r(x) = (x+1)^2/2 on the sample BEFORE an
+// edge and r(x) = -(x-1)^2/2 on the sample AFTER it, zero outside [-1, 1]. D-01
+// defines f as the fraction of the way from sample n-1 to sample n at which the
+// master crossed HIGH, so the edge sits at absolute time (n-1) + f. Therefore:
+//
+//     sample n-1 : x = -f       ideal residual  +h*(1-f)^2/2   ALREADY EMITTED
+//     sample n   : x = +(1-f)   ideal residual  -h*f^2/2       available
+//     sample n+1 : x = +(2-f)   zero (outside the support)     n/a
+//
+// The two-point residual straddles the edge SYMMETRICALLY, so for a PAST edge
+// the half owed to sample n-1 is forfeited: that sample has been emitted and
+// nothing downstream can reach it. Recovering it needs a one-sample output
+// delay buffer, and src/dsp/MorphBlep.hpp:225-230 rejects that on two grounds —
+// it adds a sample of latency a VCO would have to declare, and it "complicates
+// Phase 33, which needs to act on the CURRENT sample rather than on one already
+// emitted". THIS PHASE IS ONE OF THE TWO REASONS THAT BUFFER DOES NOT EXIST, so
+// this phase does not get to ask for it. This is a property of the KERNEL, not
+// of the implementation: a minimum-phase kernel (minBLEP, which AA-05 forbids
+// by name) places all of its correction after the edge and has no forfeited
+// half at all.
+//
+// -- (4) THE ALGEBRAIC IDENTITY: THE PAST-EDGE LEG NEEDS NO HEADER CHANGE. --
+// The recoverable half is exactly -h*f^2/2, and it is reachable through the
+// EXISTING, PINNED addStep with no edit to src/dsp/MorphBlep.hpp whatsoever, by
+// calling it at forward position ZERO with the jump PRE-SCALED by the negative
+// square of the fraction. The arithmetic, so a reader can check it rather than
+// take it:
+//
+//     addStep(0.f, -f*f*h)
+//       u        = 1 - 0 = 1
+//       inject  += (-f*f*h) *  0.5 * u * u  =  (-f*f*h) * 0.5 * 1 * 1  = -h*f^2/2
+//       pending += (-f*f*h) * -0.5 * 0 * 0  =  0
+//
+// At forward position zero the FORWARD-OWED term vanishes identically — it is
+// multiplied by xAhead squared, and xAhead is zero — and the current-sample
+// term is EXACTLY the past-edge residual. The entry gate passes on its own
+// terms (0 >= 0 is true, 0 > 1 is false), so the documented [0,1] contract is
+// HONOURED, not reinterpreted, and the finiteness clause still applies to the
+// pre-scaled jump. Whether the explicit `addPastStep(xBehind, jump)` entry
+// point is preferable ON LEGIBILITY is plan 33-06's call; the two forms are
+// numerically identical and this probe uses the zero-header-change one so that
+// nothing in this file's measurement depends on a header edit that has not
+// happened.
+//
+// -- WHAT THE LEG PARAMETER DOES AND DOES NOT TOUCH --
+// `snap` is the ONLY leg that changes the RESET. `oracle` changes only the
+// FRACTION THE CORRECTION USES, never the reset — its point is to price the
+// fraction's accuracy, and moving the reset too would confound that with a
+// second effect. Every other leg differs from `none` in the seam call alone.
+// ---------------------------------------------------------------------------
+struct SyncPlacementProbe {
+	// Per-instance state, held exactly as forge::VcoCore holds it.
+	forge::DriftEngine   drift;
+	double               phase = 0.0;
+	forge::Waveshape     wave;
+	forge::MorphBlep     blep;
+	forge::SchmittTrigger syncTrig;
+	float                prevSyncVolts = 0.f;
+
+	// --- THE ONE PARAMETER. ----------------------------------------------
+	SyncLeg leg = kLegNone;
+
+	// --- RECORDING ONLY. --------------------------------------------------
+	// `master` supplies the oracle leg's true wrap fraction and the late-fire
+	// diagnostic; `idx` is the sample counter that indexes it. Neither is read
+	// on the `none` leg, which is what lets the bit-exactness gate compare this
+	// struct against a core that has neither.
+	const SyncMaster* master = 0;
+	int               idx = 0;
+	SyncProbeDiag     diag = zeroedSyncDiag();
+
+	void seed(uint64_t s0, uint64_t s1 = 0) { drift.seed(s0, s1); }
+
+	void setSpreadSeed(uint64_t s0, uint64_t s1 = 0) {
+		drift.setSpreadSeed(s0, s1);
+		wave.triAsymmetrySpread = drift.triAsymmetrySpread;
+		wave.sawCurvatureSpread = drift.sawCurvatureSpread;
+		wave.squareDutySpread   = drift.squareDutySpread;
+		wave.pulseEdgeSpread    = drift.pulseEdgeSpread;
+		wave.bleedSpread        = drift.bleedSpread;
+	}
+
+	float step(const forge::VcoInputs& in) {
+		// D-07's residual phantom, read BEFORE anything this sample can touch
+		// the accumulator. src/dsp/VcoCore.hpp names it and gives an ARITHMETIC
+		// order of magnitude; 33-02's deferred register asks this plan for a
+		// measured number instead. This is that number's source.
+		const float pendingCarriedIn = blep.pending;
+
+		float pitchVolts = in.pitchCV + in.coarse + in.fine * (1.f / 12.f);
+		if (in.fmConnected) pitchVolts += in.fmVolts * in.fmAtten;
+		if (!(pitchVolts > -forge::kVcoMaxPitchVolts)) pitchVolts = -forge::kVcoMaxPitchVolts;
+		if (pitchVolts > forge::kVcoMaxPitchVolts) pitchVolts = forge::kVcoMaxPitchVolts;
+
+		float freq = forge::kVcoFreqC4 * forge::exp2_taylor5(pitchVolts);
+
+		const float safeRate = (in.sampleRate > 0.f) ? in.sampleRate : 0.f;
+		const float maxFreq = forge::kVcoNyquistGuardFrac * safeRate;
+		if (freq > maxFreq) freq = maxFreq;
+		if (!(freq > 0.f)) freq = 0.f;
+
+		double deltaPhase = (double)freq * (double)in.sampleTime;
+		if (!(deltaPhase > 0.0)) deltaPhase = 0.0;
+		if (deltaPhase > forge::kVcoMaxDeltaPhase) deltaPhase = forge::kVcoMaxDeltaPhase;
+		phase += deltaPhase;
+		if (phase >= 1.0) phase -= 1.0;
+
+		// The conditioning pair, ABOVE the sync block, exactly as plan 33-02
+		// moved it — the sync path calls the frozen waveshaper and must not be
+		// handed raw fields.
+		float morph = in.morph;
+		if (!(morph > 0.f)) morph = 0.f;
+		if (morph > 1.f) morph = 1.f;
+		float character = in.character;
+		if (!(character > 0.f)) character = 0.f;
+		if (character > 1.f) character = 1.f;
+
+		bool  syncFired  = false;
+		float syncFrac   = 0.f;
+		float syncBefore = 0.f;
+		if (in.syncConnected && syncTrig.process(in.syncVolts, 0.1f, 1.0f)) {
+			float f = (1.0f - prevSyncVolts) / (in.syncVolts - prevSyncVolts);
+			if (!(f >= 0.f) || !(f < 1.f)) f = 0.f;
+			syncBefore = wave.morphedWave((float)phase, morph, character, 0.f);
+			// THE ONLY LEG THAT MOVES THE RESET. Everything else differs from
+			// `none` in the seam call alone.
+			phase = (leg == kLegSnap) ? 0.0 : (double)(1.f - f) * deltaPhase;
+			syncFired = true;
+			syncFrac = f;
+		}
+		prevSyncVolts = in.syncVolts;
+
+		const float p = (float)phase;
+		const float naive = wave.morphedWave(p, morph, character, 0.f);
+		const float jump = syncFired ? (naive - syncBefore) : 0.f;
+
+		// ==================== THE SEAM, PER LEG ==========================
+		// It sits HERE — at the jump-completion line, after `naive` and ahead
+		// of the single blep.step call — for the reason src/dsp/VcoCore.hpp
+		// records at both ends: the jump does not exist yet inside the sync
+		// block, because the post-reset term IS `naive`. Depositing ahead of
+		// blep.step is what makes the residual drain on THIS sample: step()'s
+		// preamble consumes `inject` unconditionally.
+		if (syncFired) {
+			switch (leg) {
+				case kLegNone:
+					break;                                                  // withheld ENTIRELY — this is the shipped core
+				case kLegDetect:
+					blep.addStep(syncFrac, jump);                           // one sample late, and it also owes forward
+					break;
+				case kLegPastEdge:
+					blep.addStep(0.f, -syncFrac * syncFrac * jump);         // the identity in banner item (4)
+					break;
+				case kLegFlatHalf:
+					blep.addStep(0.f, jump);                                // a flat half-jump on the detection sample
+					break;
+				case kLegOracle: {
+					// The generator's TRUE wrap fraction, which the test knows
+					// exactly and the core CANNOT: the core sees two voltages.
+					const float fo = master ? (float)master->wrapGHeld[(std::size_t)idx] : syncFrac;
+					blep.addStep(0.f, -fo * fo * jump);
+					break;
+				}
+				case kLegSnap:
+					blep.addStep(0.f, -syncFrac * syncFrac * jump);         // pastEdge; the reset above is what differs
+					break;
+				case kProbeMisMap:
+					blep.addStep(1.f - syncFrac, jump);                     // MUTATION PROBE
+					break;
+				case kProbeBadSign: {
+					const float badJump = syncBefore - naive;               // MUTATION PROBE — STACK.md:124's sign
+					blep.addStep(0.f, -syncFrac * syncFrac * badJump);
+					break;
+				}
+			}
+		}
+
+		const float sample = naive + blep.step(wave, phase, p, deltaPhase, morph, character);
+
+		// --- RECORDING ONLY, and only over the MEASURED block. ------------
+		if (syncFired && idx >= kSpectrumN) {
+			++diag.fires;
+			if (master && master->wrappedHere[(std::size_t)idx] == 0) ++diag.lateFires;
+			if ((double)syncFrac < diag.fracMin) diag.fracMin = (double)syncFrac;
+			if ((double)syncFrac > diag.fracMax) diag.fracMax = (double)syncFrac;
+			diag.jumpAbsSum += std::fabs((double)jump);
+			const double ph = std::fabs((double)pendingCarriedIn);
+			if (ph > diag.phantomAbsMax) diag.phantomAbsMax = ph;
+			diag.phantomAbsSum += ph;
+			++diag.phantomSamples;
+		}
+		++idx;
+
+		return 5.f * sample;
+	}
+};
+
+// ---------------------------------------------------------------------------
+// measureSyncCellDb — THE ONE CELL-MEASURING FUNCTION, parameterised by leg.
+//
+// >>> THERE IS NO SECOND ONE, AND THERE MUST NEVER BE. <<< measureCellDb's
+// banner already states the rule for the standing grid: "If a later agent adds
+// a second measurement function for the corrected path, the phase's central
+// claim stops being a measurement and becomes a coincidence." Eight near-copies
+// of this body, one per leg, would make the RANKING below a coincidence in
+// exactly that sense — the legs would differ in whatever else drifted between
+// the copies as well as in the seam. Same master, same block, same warm-up,
+// same seeds, same classifier, same drive loop; one switch.
+//
+// `useLiveCore` mirrors measureCellDb's `useMirror` exactly, and it is what
+// lets the bit-exactness gate below compare the probe against forge::VcoCore
+// THROUGH THIS FUNCTION rather than beside it.
+//
+// THE FOUR SEED LITERALS ARE COPIED VERBATIM from tests/VcoBlockDriver.hpp:42-43
+// and must never be invented: a forge::Xoroshiro128Plus seeded (0, 0) is a
+// fixed point emitting an all-zero stream, which makes std::normal_distribution's
+// rejection loop never terminate — a hung suite here, and a HANG ON PATCH LOAD
+// in Rack (T-32-09).
+//
+// NO BIN-CENTRING SOLVER RUNS HERE, and that is the derivation in the sub-grid
+// banner being obeyed rather than an omission: the fundamental is the MASTER's,
+// the master's bin error is exactly zero by construction, and the SLAVE IS FREE.
+// ---------------------------------------------------------------------------
+double measureSyncCellDb(const SyncCell& cell, SyncLeg leg, bool useLiveCore,
+                         double* aliasRmsDbOut, double* masterBinErrorOut,
+                         SyncProbeDiag* diagOut = 0, std::vector<float>* blockOut = 0) {
+	const SyncMaster m = makeSyncMaster(2 * kSpectrumN, cell.Km, 5.0, cell.edge);
+	if (masterBinErrorOut) *masterBinErrorOut = m.binError;
+
+	// Copy-and-assign, never a brace value-list: forge::VcoInputs has NSDMIs, so
+	// under C++11 it is not an aggregate and a value-list init is a hard error.
+	forge::VcoInputs base;
+	base.pitchCV   = cell.pitchCV;
+	base.coarse    = 0.f;
+	base.fine      = 0.f;
+	base.morph     = cell.morph;
+	base.character = cell.character;
+	base.drift     = 0.f;
+
+	const float dt = (float)(1.0 / cell.sr);
+	std::vector<float> block;
+
+	if (useLiveCore) {
+		forge::VcoCore core;
+		core.seed(0x1234ULL, 0x5678ULL);
+		core.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
+		driveSecondBlock(core, base, dt, cell.sr, block, &m.volts);
+		// The live core carries no SyncProbeDiag. Zeroed rather than
+		// half-filled, so a caller cannot read a partially populated diagnostic
+		// as a measurement.
+		if (diagOut) *diagOut = zeroedSyncDiag();
+	} else {
+		SyncPlacementProbe probe;
+		probe.leg    = leg;
+		probe.master = &m;
+		probe.seed(0x1234ULL, 0x5678ULL);
+		probe.setSpreadSeed(0x9E3779B9ULL, 0x7F4A7C15ULL);
+		driveSecondBlock(probe, base, dt, cell.sr, block, &m.volts);
+		if (diagOut) *diagOut = probe.diag;
+	}
+
+	if (blockOut) *blockOut = block;
+
+	int aliasBin = -1;
+	// THE METRIC, UNCHANGED, WITH THE MASTER'S CYCLE COUNT SUBSTITUTED FOR THE
+	// SLAVE'S. See the sub-grid banner for the derivation.
+	return aliasPeakDb(block, cell.Km, &aliasBin, aliasRmsDbOut);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -3228,4 +3583,120 @@ TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, i
 	const double spreadPct = 100.0 * (hzMax - hzMin) / hzMin;
 	CAPTURE(spreadPct);
 	CHECK(spreadPct < 1.5);
+}
+
+// ---------------------------------------------------------------------------
+// TASK 2 OF PLAN 33-05 — THE PROBE'S OWN NON-VACUITY GATE.
+//
+// WHY THIS CASE EXISTS. The measurement that follows is only about the real
+// oscillator to the extent that SyncPlacementProbe IS the real oscillator. This
+// is the same move NaiveVcoCoreMirror already makes and it is made for the same
+// reason: an instrument that has silently drifted from the thing it claims to
+// measure keeps producing figures, and keeps producing them greenly. T-33-17 is
+// the highest-severity threat assigned to this plan and this case is its
+// mitigation.
+//
+// >>> PLAN 33-07 MUST RE-ANCHOR THIS GATE, AND IF IT DOES NOT, THIS ASSERTION
+//     SILENTLY BECOMES A COMPARISON OF TWO DIFFERENT THINGS. <<<
+// As of plan 33-02 the shipped forge::VcoCore IS measurement leg `none`: the
+// reset is applied and the sync correction is withheld, deliberately and in
+// writing (src/dsp/VcoCore.hpp, "THE SEAM CALL IS DELIBERATELY ABSENT FROM THIS
+// COMMIT"). Plan 33-06 lands the seam. FROM THAT COMMIT THE SHIPPED CORE STOPS
+// BEING THE NO-CORRECTION LEG, and `kLegNone` below stops describing it. The
+// comparison would then be probe-without-correction against core-with-
+// correction, it would go red, and the tempting repair — loosening the equality
+// — would delete the gate. THE CORRECT REPAIR IS TO RE-ANCHOR: change the leg
+// argument to whichever leg 33-06 landed and keep the equality EXACT.
+//
+// The comparison is a DIRECT float ==, never doctest's approximate comparator:
+// that comparator applies a relative-scaling margin even at epsilon(0), so it
+// is not a bit-exact comparator and would quietly absorb precisely the small
+// arithmetic drifts this case exists to see.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCore bit-exactly on the no-correction leg") {
+
+	const std::vector<SyncCell>& grid = syncGrid();
+	const std::size_t nCells = grid.size();
+	REQUIRE(nCells == 360);
+
+	// Per-rate tallies, asserted AFTER the cells of that rate, so a rate whose
+	// grid silently lost cells cannot satisfy them.
+	struct RateTally { double sr; long samples; long mismatches; int cells; };
+	RateTally tally[3];
+	for (int i = 0; i < 3; ++i) {
+		tally[i].sr = SYNC_RATES[i].sr;
+		tally[i].samples = 0;
+		tally[i].mismatches = 0;
+		tally[i].cells = 0;
+	}
+
+	long totalSamples = 0, totalMismatches = 0;
+	int  cellsWithSyncActivity = 0;
+
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& cell = grid[ci];
+
+		std::vector<float> probeBlock, coreBlock;
+		double rms = 0.0, binErr = 0.0;
+		SyncProbeDiag diag = zeroedSyncDiag();
+
+		// BOTH SIDES THROUGH THE SAME FUNCTION, WHICH GOES THROUGH THE SAME
+		// DRIVE LOOP. A comparator whose two sides run different loops proves
+		// nothing about the difference between them.
+		measureSyncCellDb(cell, kLegNone, /*useLiveCore=*/false, &rms, &binErr, &diag, &probeBlock);
+		measureSyncCellDb(cell, kLegNone, /*useLiveCore=*/true,  &rms, &binErr, 0,     &coreBlock);
+
+		REQUIRE(probeBlock.size() == (std::size_t)kSpectrumN);
+		REQUIRE(coreBlock.size()  == (std::size_t)kSpectrumN);
+
+		long mismatches = 0;
+		for (int i = 0; i < kSpectrumN; ++i)
+			if (probeBlock[(std::size_t)i] != coreBlock[(std::size_t)i]) ++mismatches;
+
+		// NON-VACUITY: the cell must have actually SYNCED. Two blocks of a
+		// free-running oscillator would be trivially identical and would say
+		// nothing at all about the sync path.
+		if (diag.fires > 0) ++cellsWithSyncActivity;
+
+		int slot = 0;
+		for (int r = 0; r < 3; ++r) if (cell.sr == SYNC_RATES[r].sr) slot = r;
+		tally[slot].samples    += kSpectrumN;
+		tally[slot].mismatches += mismatches;
+		tally[slot].cells      += 1;
+		totalSamples    += kSpectrumN;
+		totalMismatches += mismatches;
+
+		if (mismatches != 0) {
+			// Only report per cell when something is wrong: 360 CAPTUREd cells
+			// would bury the finding.
+			CAPTURE(cell.sr);
+			CAPTURE(cell.Km);
+			CAPTURE(cell.edgeName);
+			CAPTURE(cell.ratio);
+			CAPTURE(cell.morph);
+			CAPTURE(cell.character);
+			CAPTURE(mismatches);
+			CHECK(mismatches == 0);
+		}
+	}
+
+	// EVERY cell must fire. A grid where some cell silently free-ran would let
+	// the identity claim pass on samples the sync block never touched.
+	CAPTURE(cellsWithSyncActivity);
+	CHECK(cellsWithSyncActivity == (int)nCells);
+
+	for (int r = 0; r < 3; ++r) {
+		CAPTURE(tally[r].sr);
+		CAPTURE(tally[r].cells);
+		CAPTURE(tally[r].samples);
+		CAPTURE(tally[r].mismatches);
+		CHECK(tally[r].cells == 120);
+		CHECK(tally[r].samples == 120L * kSpectrumN);
+		CHECK(tally[r].mismatches == 0);
+	}
+
+	CAPTURE(totalSamples);
+	CAPTURE(totalMismatches);
+	CHECK(totalSamples == 360L * kSpectrumN);
+	CHECK(totalMismatches == 0);
 }
