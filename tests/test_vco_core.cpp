@@ -541,6 +541,134 @@ struct DeliberatelyBrokenSharedStateCore {
 	}
 };
 
+// ===========================================================================
+// HARD SYNC support (plan 33-04). Everything below this line belongs to the
+// four "vco sync: ..." cases at the bottom of this file. Nothing above it is
+// redefined, wrapped or shadowed — the same discipline plan 30-04 followed
+// when it appended its CORE-03 helpers into this same anonymous namespace.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// MasterBlock / makeMasterSaw — THE MASTER IS GENERATED IN THE TEST, never by a
+// second forge::VcoCore. A second core would make every sync claim circular:
+// the thing under test would be producing its own stimulus.
+//
+// WHAT IT PRODUCES, AND WHY THE POLARITY IS CHOSEN RATHER THAN INHERITED. A
+// +/-amp FALLING saw, sampled once per slave sample. A falling ramp crosses the
+// 0.1 V LOW threshold DOWNWARD in the middle of every master cycle, which
+// RE-ARMS forge::SchmittTrigger, and then jumps UPWARD through the 1.0 V HIGH
+// threshold at the wrap, which FIRES it. One arm and one fire per master cycle,
+// out of one waveform, with no hand-built gate sequence anywhere — and it is
+// the Forge saw's own polarity, so it is what an operator actually patches.
+//
+// WHY THE INCREMENT MUST BE DYADIC. `dtm` is master cycles per SAMPLE and every
+// caller passes Km / 2^k. A dyadic increment is exactly representable, so
+// `phim += dtm` carries NO accumulated rounding across the block, the block
+// holds an EXACT integer number of master cycles, and the reset counts the
+// cases below assert are exact expectations rather than tolerances. Same
+// argument as 33-RESEARCH's spectral sub-grid master and as Phase 32's
+// bin-centred frequencies; do not "simplify" a caller to a rounded Hz figure.
+//
+// AND IT KNOWS THE TRUE WRAP FRACTION, WHICH IS THE PART LATER PLANS NEED.
+// `wrapG[j]` is g = (1 - phim[k-1]) / dtm — the fraction of the sample interval
+// at which the master ACTUALLY crossed, taken from the generator's own state
+// rather than inferred from the samples it emitted. THIS PLAN ASSERTS NOTHING
+// AGAINST IT, and the first case below records the MEASURED reason why not: for
+// a hard-edged master g and the detector's interpolated fraction are different
+// quantities and do not track each other. Plan 33-05's placement grid needs an
+// oracle for the true crossing instant, and this field is it.
+// ---------------------------------------------------------------------------
+struct MasterBlock {
+	std::vector<float>  volts;         // the master voltage, one entry per slave sample
+	std::vector<int>    wrapAt;        // sample indices on which the master wrapped
+	std::vector<double> wrapG;         // the TRUE wrap fraction of the first wrap in that sample
+	std::vector<long>   wrapsBySample; // cumulative wraps completed THROUGH each sample
+	long                totalWraps = 0;
+};
+
+MasterBlock makeMasterSaw(int n, double dtm, double amp, double phi0) {
+	MasterBlock m;
+	m.volts.reserve((size_t)n);
+	m.wrapsBySample.reserve((size_t)n);
+	double phim = phi0;
+	for (int i = 0; i < n; ++i) {
+		const double before = phim;
+		phim += dtm;
+		if (phim >= 1.0) {
+			// std::floor rather than a single subtract: `dtm` deliberately
+			// EXCEEDS 1.0 in the structural-ceiling case, where a single
+			// subtract would silently leave the accumulator above 1.
+			const double k = std::floor(phim);
+			m.wrapAt.push_back(i);
+			m.wrapG.push_back((1.0 - before) / dtm);
+			m.totalWraps += (long)k;
+			phim -= k;
+		}
+		m.wrapsBySample.push_back(m.totalWraps);
+		m.volts.push_back((float)(amp * (1.0 - 2.0 * phim)));
+	}
+	return m;
+}
+
+// ---------------------------------------------------------------------------
+// SyncTrace / driveTraced — per-sample observation of the sync path THROUGH
+// forge::VcoBlockDriver, with tests/VcoBlockDriver.hpp completely unchanged.
+// That file's banner forbids templating, subclassing or aliasing it because it
+// feeds the SHIPPED Analog LFO's bit-exact golden replay leg; this pair obtains
+// everything these cases need without touching a byte of it.
+//
+// THE OFF-BY-ONE IS DELIBERATE AND IS THE WHOLE TRICK. The driver owns its loop
+// and hands back only the samples, so there is no hook after each step(). But
+// the input functor is invoked IMMEDIATELY BEFORE step(i), so the telemetry it
+// can see is step(i-1)'s. driveTraced therefore records at the TOP of call i
+// for every i > 0, and records the final sample once more after run() returns.
+// The result is exactly n entries, entry i describing step i — asserted by the
+// callers with a REQUIRE on the size rather than trusted.
+//
+// WHY THE PHASE ACCUMULATOR IS CARRIED HERE TOO. The reset expression is
+// `phase = (double)(1.f - f) * deltaPhase`, and the only way to check it is to
+// read `core.phase` on the sample the reset happened, in double. Reading the
+// returned SAMPLE instead would re-derive the claim through the whole frozen
+// waveshaper and the band-limiter, which is a different assertion.
+// ---------------------------------------------------------------------------
+struct SyncTrace {
+	std::vector<char>   fired;
+	std::vector<float>  frac;
+	std::vector<double> phase;
+	std::vector<float>  freqHz;
+
+	void record(const forge::VcoCore& c) {
+		fired.push_back(c.tel.syncFired ? (char)1 : (char)0);
+		frac.push_back(c.tel.syncFrac);
+		phase.push_back(c.phase);
+		freqHz.push_back(c.tel.freqHz);
+	}
+};
+
+std::vector<float> driveTraced(forge::VcoBlockDriver& d, int n,
+                               const std::function<forge::VcoInputs(int)>& inputAt,
+                               SyncTrace& tr) {
+	std::vector<float> out = d.run(n, [&](int i) {
+		if (i > 0) tr.record(d.core);
+		return inputAt(i);
+	});
+	tr.record(d.core);
+	return out;
+}
+
+// expectedDeltaPhase — the phase increment the core is SUPPOSED to have used,
+// recomputed here from the recorded frequency and the driver's own float
+// sampleTime, through the same two guards and in the same order the header
+// applies them (VcoCore.hpp:620-622). Stated independently rather than echoed:
+// the point of the reset assertion is that the accumulator matches an increment
+// the TEST derived, not one the header handed back.
+double expectedDeltaPhase(float freqHz, float dt) {
+	double dp = (double)freqHz * (double)dt;
+	if (!(dp > 0.0)) dp = 0.0;
+	if (dp > forge::kVcoMaxDeltaPhase) dp = forge::kVcoMaxDeltaPhase;
+	return dp;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -1974,4 +2102,309 @@ TEST_CASE("vco core: audio-rate MORPH sweeping through every segment boundary st
 	INFO("grid-wide worst across all 27 configurations; static-morph worst at the same note and rate is 5.518032 V, so the modulated excess is 0.771832 V (D-13's pending accumulator)");
 	CHECK(gridWorstV > kMusicalBoundV);
 	CHECK(gridWorstV <= kHostileBoundV);
+}
+
+// ---------------------------------------------------------------------------
+// 7. HARD SYNC — detection, the gate, the hysteresis band and the
+//    fractional-overshoot reset (SYNC-01 / D-01 / D-03). Appended by plan
+//    33-04; nothing above it was renumbered.
+//
+//    WHY THIS CASE CAN EXIST AT ALL, which is a design decision being cashed in
+//    rather than a convenience. D-02 put the SchmittTrigger, the previous-volts
+//    store and the sub-sample solve INSIDE forge::VcoCore and made
+//    forge::VcoInputs carry RAW VOLTS. A shell-side trigger would have handed
+//    the core an already-decided boolean, and no headless test could ever have
+//    watched a mis-detected edge — the same vacuity shape this project's
+//    register records for a shell-side morph mix. Every assertion below reads
+//    the real POD boundary, so all of it is reachable.
+//
+//    WHAT WAS ASSERTED BEFORE THIS CASE: NOTHING. Plans 33-01, 33-02 and 33-03
+//    added zero assertions to this suite for the sync path between them; every
+//    behaviour they recorded came from one-shot probes built outside the
+//    repository and discarded. This is the first permanent evidence.
+//
+//    ------------------------------------------------------------------------
+//    THE THRESHOLD LITERALS ARE INHERITED, AND THE TWO SHIPPED SITES ARE NAMED
+//    ------------------------------------------------------------------------
+//    low = 0.1 V, high = 1.0 V. Byte-for-byte what src/dsp/LfoCore.hpp:137 and
+//    src/dsp/ClockTracker.hpp:111 already pass (D-03). They are written into
+//    this banner rather than into a test-local constant on purpose: a local
+//    copy would be a fourth site to keep in step, and this file already carries
+//    one hand-kept mirror it has watched drift.
+//
+//    ------------------------------------------------------------------------
+//    A MEASURED FACT THAT LOOKS LIKE A BUG AND IS NOT, RECORDED BEFORE THE
+//    ASSERTIONS SO NOBODY "FIXES" IT: g AND f ARE DIFFERENT QUANTITIES.
+//    ------------------------------------------------------------------------
+//    `MasterBlock::wrapG` is g, the TRUE fraction of the sample interval at
+//    which the master crossed. `tel.syncFrac` is f, the linear interpolation
+//    the detector computes between the previous and current SAMPLE voltages.
+//    For a HARD-EDGED master they do not track each other at all, and the
+//    algebra says why: with a falling saw of increment dtm, prev and now sit on
+//    opposite sides of a jump of fixed height, so f collapses to
+//    (phim[k-1] - 0.4) / (1 - dtm), which barely moves.
+//
+//    MEASURED at dtm = 1/128, both offsets, every rate:
+//
+//        phi0 = 0        -> g = 1.000000 at every wrap, f = 0.596850
+//        phi0 = 0.5/128  -> g = 0.500000 at every wrap, f = 0.600787
+//
+//    g HALVES and f moves by four thousandths. That is not a detector defect:
+//    linear interpolation across a discontinuity has no information about where
+//    inside the sample the discontinuity was. It is 33-RESEARCH Pitfall 10
+//    ("a grid whose masters all have hard edges tests nothing about sub-sample
+//    placement") arriving as a number, and it is the reason plan 33-05's
+//    placement grid MUST NOT be built on hard-edged masters alone. The
+//    band-limited subcase in the D-12 case below is where f starts tracking g.
+//
+//    So this case asserts what the detector actually contracts to do — the
+//    reset lands at (1 - f) * deltaPhase for the f it recorded — and does NOT
+//    assert f == g, which would be red on correct behaviour.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco sync: (SYNC-01 / D-01 / D-03) a master rising edge resets the phase to the fractional overshoot") {
+	const int    n   = 4096;
+	const int    Km  = 32;                              // master cycles in the block
+	const double dtm = (double)Km / (double)n;          // 1/128 — exactly representable
+
+	// Two master phase offsets, giving TRUE wrap fractions of 1.0 and 0.5. Both
+	// are driven so the g-versus-f measurement in the banner is reproduced by
+	// this case on every run rather than quoted from a session that has gone.
+	static const double PHI0[] = {0.0, 0.5 / 128.0};
+
+	for (double sr : SAMPLE_RATES) {
+		CAPTURE(sr);
+		const float  dtf      = (float)(1.0 / sr);      // exactly what the driver injects
+		const double masterHz = dtm * sr;
+		CAPTURE(masterHz);
+
+		forge::VcoInputs base = coreBase();
+		// A LIVE INCREMENT, and it is a requirement rather than a default. Plan
+		// 33-02 recorded that `(1 - f) * deltaPhase` is still ZERO when
+		// deltaPhase is zero — which the guards produce at a non-positive or
+		// non-finite rate and at extreme negative pitch — so the strictly-positive
+		// claim below belongs on a running oscillator and nowhere else. C4.
+		base.pitchCV   = 0.f;
+		base.morph     = 0.35f;
+		base.character = 0.6f;
+
+		// --- Subcase A: the reset fires, once per master cycle, and lands
+		//     exactly where D-01 says it does. --------------------------------
+		for (double phi0 : PHI0) {
+			CAPTURE(phi0);
+			const MasterBlock m = makeMasterSaw(n, dtm, 5.0, phi0);
+			REQUIRE(m.totalWraps == (long)Km);
+
+			forge::VcoBlockDriver d(sr);
+			SyncTrace tr;
+			std::vector<float> out = driveTraced(d, n, [&](int i) {
+				forge::VcoInputs in = base;
+				in.syncVolts     = m.volts[(size_t)i];
+				in.syncConnected = true;
+				return in;
+			}, tr);
+			REQUIRE(out.size() == (size_t)n);
+			REQUIRE(tr.fired.size() == (size_t)n);
+
+			// ACCUMULATE-THEN-ASSERT. This suite is already past two and a half
+			// million assertions; a per-sample form at 4096 x 2 offsets x 3 rates
+			// would add a quarter of a million more and say nothing extra.
+			int    fired          = 0;
+			int    phaseMismatch  = 0;
+			int    nonPositive    = 0;
+			int    firstBadStep   = -1;
+			double minPostReset   = 1.0;
+			float  minFrac        = 2.f, maxFrac = -1.f;
+			bool   allFinite      = true;
+			float  maxAbs         = 0.f;
+
+			for (int i = 0; i < n; ++i) {
+				if (!std::isfinite(out[(size_t)i])) allFinite = false;
+				const float a = std::fabs(out[(size_t)i]);
+				if (a > maxAbs) maxAbs = a;
+				if (!tr.fired[(size_t)i]) continue;
+				++fired;
+				const float  f        = tr.frac[(size_t)i];
+				const double dp       = expectedDeltaPhase(tr.freqHz[(size_t)i], dtf);
+				// The header's own expression, in the header's own order and
+				// precision: a float subtraction widened to double, then a double
+				// multiply. Compared with ==, never doctest::Approx — Approx's
+				// epsilon(0) still applies a relative margin and this is a
+				// bit-exactness claim or it is nothing.
+				const double expected = (double)(1.f - f) * dp;
+				if (tr.phase[(size_t)i] != expected) {
+					++phaseMismatch;
+					if (firstBadStep < 0) firstBadStep = i;
+				}
+				if (!(tr.phase[(size_t)i] > 0.0)) ++nonPositive;
+				if (tr.phase[(size_t)i] < minPostReset) minPostReset = tr.phase[(size_t)i];
+				if (f < minFrac) minFrac = f;
+				if (f > maxFrac) maxFrac = f;
+			}
+
+			CAPTURE(fired);
+			CAPTURE(minFrac);
+			CAPTURE(maxFrac);
+			CAPTURE(minPostReset);
+			CAPTURE(firstBadStep);
+			CAPTURE(maxAbs);
+			INFO("subcase A: +/-5 V falling-saw master through the real forge::VcoInputs boundary, syncConnected true");
+
+			// Exactly one reset per master cycle, at every rate.
+			CHECK(fired == Km);
+			// The reset lands at the fractional overshoot, to the bit.
+			CHECK(phaseMismatch == 0);
+			// SYNC-02's never-zero clause, on a live increment.
+			CHECK(nonPositive == 0);
+			CHECK(allFinite);
+			// The phase-wide OUTER tier binds this scenario like every other
+			// (plan 32-08). The tighter musical tier is deliberately NOT asserted
+			// on any sync drive in this plan, and the withholding is stated with
+			// its measurement rather than left to be inferred: this drive
+			// measures 4.920715 / 4.920976 / 4.921710 V at the three rates and
+			// would clear 5.55 V with 0.63 V to spare. It is withheld because the
+			// sync reset is currently UN-BAND-LIMITED BY DESIGN — the seam is
+			// withheld until plan 33-06 — so a tier asserted now would be pinning
+			// a transient plan 33-06 is about to change. T-33-07 makes plan 33-08
+			// the owner of the sync envelope's tighter tier. THE HEADROOM IS
+			// RECORDED SO THAT PLAN IS NOT STARTING FROM NOTHING.
+			CHECK(maxAbs <= kHostileBoundV);
+		}
+
+		// --- Subcase B: the gate, and the hysteresis band OBSERVED. ----------
+		// Three drives that only agree with each other if the band is real:
+		// unpatched fires nothing however live the master; a master peaking
+		// BELOW the high threshold fires nothing; the same master crossing both
+		// thresholds fires once per cycle.
+		{
+			const MasterBlock full = makeMasterSaw(n, dtm, 5.0, 0.0);
+			const MasterBlock low  = makeMasterSaw(n, dtm, 0.9, 0.0);   // peak 0.9 V < 1.0 V
+
+			struct GateDrive { const MasterBlock* m; bool connected; int expect; const char* what; };
+			const GateDrive DRIVES[] = {
+				{&full, false, 0,  "unpatched: a live +/-5 V master, syncConnected FALSE"},
+				{&low,  true,  0,  "patched but never reaching the 1.0 V high threshold (peak 0.9 V)"},
+				{&full, true,  Km, "patched and crossing BOTH thresholds"},
+			};
+
+			for (const GateDrive& gd : DRIVES) {
+				forge::VcoBlockDriver d(sr);
+				SyncTrace tr;
+				std::vector<float> out = driveTraced(d, n, [&](int i) {
+					forge::VcoInputs in = base;
+					in.syncVolts     = gd.m->volts[(size_t)i];
+					in.syncConnected = gd.connected;
+					return in;
+				}, tr);
+				REQUIRE(out.size() == (size_t)n);
+
+				int fired = 0;
+				for (int i = 0; i < n; ++i) if (tr.fired[(size_t)i]) ++fired;
+				CAPTURE(fired);
+				CAPTURE(gd.expect);
+				INFO(gd.what);
+				CHECK(fired == gd.expect);
+			}
+		}
+
+		// --- Subcase B2: the band itself, with a master built to sit INSIDE it.
+		// The three drives above are consistent with a plain one-threshold
+		// comparator. This one is not: after the first fire the master dips to
+		// 0.5 V — BELOW the high threshold but ABOVE the low one — and rises
+		// again. A comparator fires twice. A hysteresis band fires ONCE, and
+		// only fires a second time after the master goes below 0.1 V.
+		{
+			static const float BAND_V[]   = {0.05f, 3.f, 0.5f, 3.f, 0.05f, 3.f};
+			const int          seg        = 16;
+			const int          nBand      = seg * 6;
+			forge::VcoBlockDriver d(sr);
+			SyncTrace tr;
+			std::vector<float> out = driveTraced(d, nBand, [&](int i) {
+				forge::VcoInputs in = base;
+				in.syncVolts     = BAND_V[i / seg];
+				in.syncConnected = true;
+				return in;
+			}, tr);
+			REQUIRE(out.size() == (size_t)nBand);
+
+			int fired = 0, firedInMiddleRise = 0;
+			for (int i = 0; i < nBand; ++i) {
+				if (!tr.fired[(size_t)i]) continue;
+				++fired;
+				if (i / seg == 3) ++firedInMiddleRise;   // the 0.5 V -> 3 V rise
+			}
+			CAPTURE(fired);
+			CAPTURE(firedInMiddleRise);
+			INFO("subcase B2: 0.05 -> 3 -> 0.5 -> 3 -> 0.05 -> 3 V. The 0.5 V dip does NOT re-arm; only the 0.05 V dip does");
+			CHECK(fired == 2);
+			CHECK(firedInMiddleRise == 0);
+		}
+
+		// --- Subcase C: the never-zero claim, and the landmine reached BY
+		//     ARITHMETIC rather than by choice. ------------------------------
+		// A master sample landing EXACTLY on the high threshold makes the raw
+		// quotient (1 - prev)/(now - prev) exactly 1.0 when prev is 0 — and the
+		// reset would then be (1 - 1) * deltaPhase, i.e. exactly zero, with the
+		// sub-sample timing the whole block exists to preserve destroyed and
+		// nobody having chosen to snap. This is NOT a measure-zero event: a gate
+		// output idling at that level, or a quantised CV, produces it routinely.
+		//
+		// WHAT STOPS IT IS THE GUARD'S STRICT UPPER BOUND, `!(f < 1.f)`, TOGETHER
+		// WITH ITS FALLBACK OF ZERO. The fallback value is itself load-bearing:
+		// ONE would reintroduce this exact landmine through the guard that was
+		// supposed to stop it, which is the failure mode of a guard that
+		// "sanitises" to the nearest bound. Any value except one would do; zero
+		// means "treat the edge as coincident with the previous sample" and
+		// yields the LARGEST in-range overshoot, deltaPhase itself.
+		{
+			const int   seg   = 8;
+			const int   nAdv  = seg * 3;
+			// 0 V arms the trigger LOW, then EXACTLY 1.0f — bit-for-bit the high
+			// threshold the core passes to forge::SchmittTrigger.
+			auto voltsAt = [&](int i) { return (i < seg) ? 0.f : 1.f; };
+
+			forge::VcoBlockDriver d(sr);
+			SyncTrace tr;
+			std::vector<float> out = driveTraced(d, nAdv, [&](int i) {
+				forge::VcoInputs in = base;
+				in.syncVolts     = voltsAt(i);
+				in.syncConnected = true;
+				return in;
+			}, tr);
+			REQUIRE(out.size() == (size_t)nAdv);
+
+			// The raw quotient the core WOULD have used, recomputed here from the
+			// two voltages the test itself supplied. Asserting this is what makes
+			// the subcase non-vacuous: without it, a green result is equally
+			// consistent with the arithmetic never having reached 1 at all.
+			const float rawQuotient = (1.0f - voltsAt(seg - 1)) / (voltsAt(seg) - voltsAt(seg - 1));
+
+			int   fired = 0, firstFire = -1, nonPositive = 0;
+			for (int i = 0; i < nAdv; ++i) {
+				if (!tr.fired[(size_t)i]) continue;
+				++fired;
+				if (firstFire < 0) firstFire = i;
+				if (!(tr.phase[(size_t)i] > 0.0)) ++nonPositive;
+			}
+			REQUIRE(fired == 1);
+			REQUIRE(firstFire == seg);
+
+			const double dp       = expectedDeltaPhase(tr.freqHz[(size_t)seg], dtf);
+			const float  recorded = tr.frac[(size_t)seg];
+			CAPTURE(rawQuotient);
+			CAPTURE(recorded);
+			CAPTURE(dp);
+			CAPTURE(tr.phase[(size_t)seg]);
+			INFO("subcase C: a master sample landing EXACTLY on the 1.0 V high threshold - the snap-to-zero landmine reached by arithmetic");
+
+			// The arithmetic really does reach exactly one.
+			CHECK(rawQuotient == 1.0f);
+			// The guard really does catch it, and lands on ZERO rather than on
+			// the nearest bound.
+			CHECK(recorded == 0.f);
+			// So the reset is the largest in-range overshoot, not the snap.
+			CHECK(tr.phase[(size_t)seg] == dp);
+			CHECK(nonPositive == 0);
+			CHECK(tr.phase[(size_t)seg] > 0.0);
+		}
+	}
 }
