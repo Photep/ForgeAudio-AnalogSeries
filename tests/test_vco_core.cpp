@@ -610,6 +610,49 @@ MasterBlock makeMasterSaw(int n, double dtm, double amp, double phi0) {
 	return m;
 }
 
+// makeMasterSawBandLimited — the same saw with the TWO-POINT polyBLEP residual
+// applied at each wrap: +amp*(1-g)^2 on the sample BEFORE it and -amp*g^2 on
+// the sample carrying it. Transcribed from 33-RESEARCH Pitfall 7's own worked
+// expressions rather than re-derived, so the case that consumes it measures the
+// research's construction and not a variant of it.
+MasterBlock makeMasterSawBandLimited(int n, double dtm, double amp, double phi0) {
+	MasterBlock m = makeMasterSaw(n, dtm, amp, phi0);
+	for (size_t j = 0; j < m.wrapAt.size(); ++j) {
+		const int    k = m.wrapAt[j];
+		const double g = m.wrapG[j];
+		if (k - 1 >= 0) m.volts[(size_t)(k - 1)] += (float)(amp * (1.0 - g) * (1.0 - g));
+		m.volts[(size_t)k] -= (float)(amp * g * g);
+	}
+	return m;
+}
+
+// ---------------------------------------------------------------------------
+// HOSTILE_SYNC — the sync-voltage population for the D-12 case, following
+// scenario four's discipline exactly: a NAMED array, one entry per PHYSICAL
+// case, and a trailing comment on every entry saying which one. An array whose
+// entries a reader cannot map back to something that can actually happen on a
+// patch cable is a list of numbers, not a threat model.
+//
+// EVERY ENTRY IS HELD CONSTANT ACROSS ITS BLOCK, which is not incidental — it
+// is how the "equal consecutive samples" case (D-12's zero divisor) is
+// delivered. Each entry is driven TWICE: once from sample 0, where the trigger
+// initialises against the hostile value itself, and once after a 0 V arming
+// prefix, where the trigger is LOW when the value arrives. Only the second
+// state can reach the divisor at all, and the two together are what stop the
+// grid from covering one branch and reporting both.
+// ---------------------------------------------------------------------------
+static const float HOSTILE_SYNC[] = {
+	5.f,                                        // a +5 V gate ALREADY HIGH when the cable is patched — Pitfall 5's stale-store zero-divisor case, verbatim
+	2.f,                                        // THE LEGITIMATE CONTROL EDGE: an ordinary +2 V gate. It MUST fire, or this grid passes by never detecting anything
+	1.f,                                        // EXACTLY the 1.0 V high threshold — the raw quotient is exactly 1 and lands on the guard's STRICT upper bound
+	0.1f,                                       // EXACTLY the 0.1 V low threshold — the arming edge of the hysteresis band, held rather than crossed
+	std::numeric_limits<float>::quiet_NaN(),    // a mis-wired host, an uninitialised port read, or an upstream 0/0 — the ONLY entry that can poison `phase` PERMANENTLY
+	std::numeric_limits<float>::infinity(),     // an upstream overflow on a cable: it DOES fire, with a divisor of +infinity, giving a fraction of exactly zero
+	-std::numeric_limits<float>::infinity(),    // its sign partner: it cannot fire, but it IS stored, and inf/inf on the next real crossing is a not-a-number
+	1e30f,                                      // finite and enormous: passes a naive std::isfinite check while dwarfing every threshold
+	std::numeric_limits<float>::denorm_min(),   // an upstream underflow: below the low threshold, so it ARMS rather than fires
+};
+
 // ---------------------------------------------------------------------------
 // SyncTrace / driveTraced — per-sample observation of the sync path THROUGH
 // forge::VcoBlockDriver, with tests/VcoBlockDriver.hpp completely unchanged.
@@ -636,12 +679,14 @@ struct SyncTrace {
 	std::vector<float>  frac;
 	std::vector<double> phase;
 	std::vector<float>  freqHz;
+	std::vector<float>  prevStore;   // forge::VcoCore::prevSyncVolts AFTER the step
 
 	void record(const forge::VcoCore& c) {
 		fired.push_back(c.tel.syncFired ? (char)1 : (char)0);
 		frac.push_back(c.tel.syncFrac);
 		phase.push_back(c.phase);
 		freqHz.push_back(c.tel.freqHz);
+		prevStore.push_back(c.prevSyncVolts);
 	}
 };
 
@@ -2405,6 +2450,670 @@ TEST_CASE("vco sync: (SYNC-01 / D-01 / D-03) a master rising edge resets the pha
 			CHECK(tr.phase[(size_t)seg] == dp);
 			CHECK(nonPositive == 0);
 			CHECK(tr.phase[(size_t)seg] > 0.0);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 8. THE DETECTOR'S STRUCTURAL CEILING, NAMED BEFORE IT IS GATED
+//    (SYNC-01 / D-09 / SC-3). Appended by plan 33-04.
+//
+//    ------------------------------------------------------------------------
+//    THE LIMITATION, STATED FIRST, BEFORE ANY ASSERTION IS WRITTEN AGAINST IT
+//    ------------------------------------------------------------------------
+//    A Schmitt trigger reading ONE VOLTAGE PER SAMPLE can observe AT MOST ONE
+//    RISING EDGE PER SAMPLE, by construction. forge::SchmittTrigger::process
+//    takes a single float and returns a single bool
+//    (src/dsp/RackCompat.hpp:50-56), so a master running faster than the sample
+//    rate has edges this VCO cannot see — not because the detection is wrong,
+//    but because the information is not in its input.
+//
+//    THAT IS WHAT SC-3's "handles >= 1 sync event within a single sample"
+//    CLAUSE IS DISCHARGED AS. The criterion is satisfiable as a statement about
+//    HANDLING, and the handling asserted here is: every edge the detector CAN
+//    observe fires EXACTLY ONCE, the edges it misses are missed IDENTICALLY at
+//    all three sample rates, and the output stays finite and inside the outer
+//    tier throughout. No document edit is required and none was made (D-09).
+//
+//    THE ALTERNATIVE IS REJECTED BY NAME, not left unconsidered: inferring the
+//    master's RATE from the timing of successive edges and firing several
+//    events inside one sample. It is rejected for two reasons. The VCO sees a
+//    VOLTAGE, not a phase — there is nothing in a single sample to interpolate
+//    a second edge from. And period estimation is the CLOCK machinery the
+//    shipped LFO uses at clock rates (src/dsp/ClockTracker.hpp), which is the
+//    wrong instrument at audio rate: it needs several cycles to converge, and a
+//    master four times the sample rate gives it aliased garbage to converge on.
+//
+//    AND THE ORDER OF THOSE TWO PARAGRAPHS IS THE POINT. This project's own
+//    register (item 6) records the precedent that an instrument's limitation
+//    must be NAMED rather than worked around. Naming it BEFORE the gate is
+//    written is that move applied ahead of time instead of as a rescue after a
+//    measurement came back inconvenient.
+//
+//    ------------------------------------------------------------------------
+//    WHY THE CROSS-RATE AGREEMENT IS THE RIGHT INSTRUMENT, AND WHAT IT WOULD
+//    CATCH
+//    ------------------------------------------------------------------------
+//    The masters below are parametrised by dtm — master cycles PER SAMPLE — and
+//    NOT by Hz. So the voltage sequence handed to the detector is bit-identical
+//    at 44.1, 48 and 96 kHz, and the fired/missed pattern must be too. That is
+//    not a tautology dressed as a test: it is exactly the property that FAILS
+//    if any part of the detection ever starts reading sampleRate or sampleTime
+//    — which is precisely what the rejected alternative above would require.
+//    The assertion is a permanent tripwire on that design boundary.
+//
+//    MEASURED, and the three descriptions agree at every dtm:
+//
+//        dtm      master vs rate   wraps   observed   what the ceiling costs
+//        0.0625   1/16x            512     512        nothing
+//        0.125    1/8x            1024    1024        nothing
+//        0.25     1/4x            2048    2048        nothing
+//        0.75     3/4x            6144    2048        2 of every 3 edges
+//        1.0      1x              8192       0        EVERY edge: at exactly the
+//                                                     sample rate the master is a
+//                                                     CONSTANT +5 V and the trigger
+//                                                     never re-arms
+//        1.5      3/2x           12288    4096        2 of every 3
+//        2.5      5/2x           20480    4096        4 of every 5
+//        4.0      4x             32768       0        every edge, same constant-
+//                                                     voltage reason as 1.0
+//
+//    The dtm = 1.0 and dtm = 4.0 rows are the honest face of the ceiling and
+//    are kept in the grid for that reason: an integer-ratio master above the
+//    sample rate is INVISIBLE, not merely under-sampled. Nothing here pretends
+//    otherwise.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco sync: (SYNC-01 / D-09) the detector's structural ceiling, named before it is gated") {
+	// Swept from well below the sample rate to four times above it. Every value
+	// is dyadic so the master accumulates without rounding at any of them, and
+	// `makeMasterSaw` uses std::floor rather than a single subtract precisely so
+	// the above-1.0 entries wrap correctly.
+	static const double SYNC_DTM[] = {1.0 / 16, 1.0 / 8, 1.0 / 4, 3.0 / 4, 1.0, 3.0 / 2, 5.0 / 2, 4.0};
+	// Below this the falling saw is guaranteed to place a sample in BOTH the
+	// arming region (phim >= 0.49, where the ramp is under 0.1 V) and the firing
+	// region (phim < 0.4, where it is over 1.0 V), so every wrap is observable
+	// and the count is an equality rather than an inequality.
+	const double kEveryWrapObservable = 0.4;
+	const int    n = 8192;
+
+	for (double dtm : SYNC_DTM) {
+		CAPTURE(dtm);
+
+		// The three per-rate descriptions, compared as VALUES at the end. Not a
+		// boolean: a boolean would say the rates agreed without saying on what.
+		long              descWraps[3]  = {0, 0, 0};
+		int               descFired[3]  = {0, 0, 0};
+		unsigned long long descHash[3]  = {0, 0, 0};
+
+		for (int r = 0; r < 3; ++r) {
+			const double sr  = SAMPLE_RATES[r];
+			CAPTURE(sr);
+			const MasterBlock m = makeMasterSaw(n, dtm, 5.0, 0.0);
+			REQUIRE(m.totalWraps > 0);
+
+			forge::VcoInputs base = coreBase();
+			base.pitchCV   = 0.f;
+			base.morph     = 0.5f;
+			base.character = 1.f;   // every spread coefficient and the whole bleed ring live
+
+			forge::VcoBlockDriver d(sr);
+			SyncTrace tr;
+			std::vector<float> out = driveTraced(d, n, [&](int i) {
+				forge::VcoInputs in = base;
+				in.syncVolts     = m.volts[(size_t)i];
+				in.syncConnected = true;
+				return in;
+			}, tr);
+			REQUIRE(out.size() == (size_t)n);
+
+			// cycleFired[j] — did the master's OWN cycle j produce an observed
+			// reset? Expressing the missed set against the MASTER'S cycle index,
+			// rather than against the sample index, is what makes the three rates
+			// comparable at all.
+			std::vector<char> cycleFired((size_t)m.totalWraps, (char)0);
+			int   firedSamples = 0;
+			bool  allFinite    = true;
+			bool  phaseInRange = true;
+			float maxAbs       = 0.f;
+			int   firstBadStep = -1;
+
+			for (int i = 0; i < n; ++i) {
+				bool bad = false;
+				if (!std::isfinite(out[(size_t)i]))                { allFinite = false;    bad = true; }
+				const float a = std::fabs(out[(size_t)i]);
+				if (a > maxAbs) maxAbs = a;
+				if (a > kHostileBoundV)                            {                       bad = true; }
+				if (!(tr.phase[(size_t)i] >= 0.0 && tr.phase[(size_t)i] < 1.0)) { phaseInRange = false; bad = true; }
+				if (bad && firstBadStep < 0) firstBadStep = i;
+				if (tr.fired[(size_t)i]) {
+					++firedSamples;
+					const long ci = m.wrapsBySample[(size_t)i] - 1;
+					if (ci >= 0 && ci < (long)cycleFired.size()) cycleFired[(size_t)ci] = (char)1;
+				}
+			}
+
+			int firedCycles = 0;
+			for (size_t j = 0; j < cycleFired.size(); ++j) if (cycleFired[j]) ++firedCycles;
+
+			// FNV-1a over the whole fired/missed pattern. A count alone would let
+			// two rates agree on HOW MANY edges were missed while disagreeing on
+			// WHICH; this pins the positions.
+			unsigned long long h = 1469598103934665603ULL;
+			for (size_t j = 0; j < cycleFired.size(); ++j) {
+				h ^= (unsigned long long)(unsigned char)cycleFired[j];
+				h *= 1099511628211ULL;
+			}
+
+			descWraps[r] = m.totalWraps;
+			descFired[r] = firedCycles;
+			descHash[r]  = h;
+
+			CAPTURE(m.totalWraps);
+			CAPTURE(firedSamples);
+			CAPTURE(firedCycles);
+			CAPTURE(maxAbs);
+			CAPTURE(firstBadStep);
+			INFO("the detector's structural ceiling: one voltage per sample can carry at most one rising transition");
+
+			// (1) THE CEILING. Every observable edge fires EXACTLY ONCE. The
+			//     boolean tel.syncFired already caps a sample at one event; this
+			//     is the stronger statement — no master CYCLE fires twice either,
+			//     so the counts cannot be inflated by a re-fire inside one cycle.
+			CHECK(firedSamples == firedCycles);
+			CHECK((long)firedCycles <= m.totalWraps);
+			// ... and when the master is slow enough that every wrap is separated
+			//     by at least one sample, "at most" becomes "exactly".
+			if (dtm <= kEveryWrapObservable) CHECK((long)firedCycles == m.totalWraps);
+
+			// (3) Bounded and finite THROUGHOUT, including at four times the
+			//     sample rate. The outer tier binds here as everywhere; the
+			//     tighter musical tier is withheld for the reason recorded in
+			//     invariant 7 (the sync reset is un-band-limited until 33-06).
+			//     MEASURED worst on this whole grid: 4.999978 V.
+			CHECK(allFinite);
+			CHECK(maxAbs <= kHostileBoundV);
+			CHECK(phaseInRange);
+		}
+
+		// (2) THE MISSED-EDGE RULE IS THE SAME AT ALL THREE RATES, compared as
+		//     three concrete descriptions rather than as a boolean.
+		CAPTURE(descWraps[0]); CAPTURE(descWraps[1]); CAPTURE(descWraps[2]);
+		CAPTURE(descFired[0]); CAPTURE(descFired[1]); CAPTURE(descFired[2]);
+		CAPTURE(descHash[0]);  CAPTURE(descHash[1]);  CAPTURE(descHash[2]);
+		INFO("the limitation is a property of the INSTRUMENT, not a rate-dependent defect - if any part of detection ever started reading sampleRate, these three would part company");
+		CHECK(descWraps[0] == descWraps[1]);
+		CHECK(descWraps[1] == descWraps[2]);
+		CHECK(descFired[0] == descFired[1]);
+		CHECK(descFired[1] == descFired[2]);
+		CHECK(descHash[0] == descHash[1]);
+		CHECK(descHash[1] == descHash[2]);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 9. THE NEW DIVISOR CANNOT POISON THE PHASE ACCUMULATOR (D-12 / D-02 /
+//    T-33-04 / T-33-05 / T-33-11). Appended by plan 33-04.
+//
+//    THE DIVISOR IS `in.syncVolts - prevSyncVolts`, the first new divisor
+//    src/dsp/VcoCore.hpp has acquired since Phase 32, and it has three
+//    landmines. Two of them are pinned by invariant 7 above. THIS case owns the
+//    third, and the third is the one an ordinary hostile-input test cannot see.
+//
+//    ------------------------------------------------------------------------
+//    WHY THE WITHDRAWAL PHASE IS THE HALF THAT MATTERS
+//    ------------------------------------------------------------------------
+//    Scenario four's hostile-timing grid records a FIRST-BAD-STEP INDEX, and
+//    that index cannot distinguish BAD-DURING from BAD-FOREVER. For `phase` the
+//    difference is the whole defect. A not-a-number syncVolts cannot fire the
+//    trigger — all three of forge::SchmittTrigger::process's comparisons are
+//    false for it — so the detector looks robust. But the value IS stored, and
+//    on the NEXT finite crossing the quotient is (1 - NaN)/(now - NaN) = NaN.
+//    `phase` carries NO guard of its own: the header guards deltaPhase, the
+//    INCREMENT, not the ACCUMULATOR. From that sample on `phase += deltaPhase`
+//    stays NaN, `phase >= 1.0` is false so the wrap never fires again, and the
+//    instance is dead — AFTER the hostile input has gone.
+//
+//    THIS IS A REAL DIFFERENCE FROM THE MorphBlep CASE PLAN 33-01 MEASURED, and
+//    it is recorded because the two look identical from the plan. There the
+//    "permanent poisoning" narrative was FALSIFIED: MorphBlep::step's preamble
+//    drains and zeroes both accumulators unconditionally, so exactly one of the
+//    following twenty samples went non-finite. Here it is TRUE, and plan 33-02
+//    measured it at 200 OF 200 post-withdrawal samples with the guard removed.
+//    The structural reason is one sentence: `phase` has no drain.
+//
+//    So a hostile-input test that only asserts finiteness DURING the hostile
+//    drive books coverage it does not have. Every entry below is followed by a
+//    block of wholly legitimate master and wholly legitimate timing, and that
+//    block carries its own assertions.
+//
+//    ------------------------------------------------------------------------
+//    A 33-RESEARCH PREMISE FALSIFIED HERE BY MEASUREMENT, AND CORRECTED IN
+//    PLACE RATHER THAN QUIETLY DROPPED (Pitfall 7)
+//    ------------------------------------------------------------------------
+//    Pitfall 7 states that a band-limited master pushes the fraction OUT of
+//    [0,1] and works it to 1.2 at g = 1. The subcase at the bottom of this case
+//    drives exactly that construction — the research's own two-point residual,
+//    transcribed rather than re-derived — and MEASURES the raw quotient at
+//    every firing sample at 0.150582 .. 0.828161. It never approaches 1, let
+//    alone exceeds it.
+//
+//    THE REASON IS STRUCTURAL AND IS WORTH MORE THAN THE CORRECTION. f > 1
+//    requires (1 - prev) > (now - prev), i.e. now < 1.0. But the trigger only
+//    RETURNS TRUE when now >= 1.0. And it only returns true from LOW, which
+//    means the previous sample failed the same comparison, so prev < 1.0 <= now
+//    and f lands in (0, 1] BY CONSTRUCTION. Pitfall 7's worked value of 1.2 is
+//    computed at g = 1, where the residual drives the wrap sample to 0 V — and
+//    at 0 V the trigger does not fire at all, so that fraction is never taken.
+//
+//    WHAT THE GUARD'S LOWER BOUND IS THEREFORE FOR, since it is NOT for this:
+//    a not-a-number, and only a not-a-number. It arrives by two reachable
+//    routes, both in the grid below — a NaN stored from a sample that could not
+//    fire, and a -infinity stored from one that could not either, which gives
+//    inf/inf on the next real crossing. The guard is load-bearing; the reason
+//    written for it in the research is the wrong one. The CONCLUSION (guard
+//    both ends) is unchanged and is what the pitfall is kept for.
+//
+//    ------------------------------------------------------------------------
+//    A SECOND FALSIFIED PREMISE, THIS ONE FROM THE PLAN'S OWN PROBE, AND IT IS
+//    THE SHARPER OF THE TWO: THE NEGATED PAIR IS REDUNDANT AGAINST A
+//    NOT-A-NUMBER
+//    ------------------------------------------------------------------------
+//    Plan 33-04's acceptance criterion prescribes proving this case can fail by
+//    "removing the negated lower comparison from the fraction guard". MEASURED:
+//    that mutant is GREEN. Every assertion in this case passes, and so does the
+//    whole suite.
+//
+//    The reason is that BOTH halves of `if (!(f >= 0.f) || !(f < 1.f))` are
+//    negated comparisons, and a not-a-number fails BOTH `f >= 0.f` AND
+//    `f < 1.f`. So EITHER half alone catches it. The pair is redundant against
+//    the one input class the lower half was written for, and each half is
+//    individually load-bearing only for its own FINITE out-of-range direction:
+//
+//        f < 0   -> the lower half. UNREACHABLE at a firing sample, by the
+//                   structural argument above.
+//        f >= 1  -> the upper half. REACHABLE, and invariant 7's subcase C
+//                   drives it with a master sample landing exactly on 1.0 V.
+//
+//    So on this call site, TODAY, the lower comparison's only live duty is a
+//    redundant one. It is still correct to keep it — it costs one comparison on
+//    sync samples only, it is the file's standing idiom, and a future caller or
+//    a future master-conditioning stage could make f < 0 reachable — but a
+//    reader must not believe the two halves are independently load-bearing,
+//    because a mutation probe aimed at the lower one will come back green and
+//    be mistaken for a passing test rather than an insensitive one. This is the
+//    same shape plan 33-02 recorded when its mutant B stayed green on case 5.
+//
+//    THE MUTANT THAT DOES DISCRIMINATE is the WHOLE GUARD LINE REMOVED, and its
+//    red lands EXACTLY where this case's design predicts:
+//
+//        assertion                          hostile block   withdrawal block
+//        CHECK(hFinite) / CHECK(hRange)     0 reds          -
+//        CHECK(wFinite)                     -               9 reds
+//        CHECK(wRange)                      -               9 reds
+//        CHECK(wFirstFrac == 0.f)           -               3 reds
+//
+//    ZERO reds during the hostile drive and 21 after it was withdrawn. That is
+//    the whole argument for the withdrawal phase, measured rather than argued:
+//    a case that stopped at the hostile block would have reported SUCCESS on a
+//    core whose instances were permanently dead.
+//
+//    AND ONE MEASURED FACT PLAN 33-05 SHOULD INHERIT RATHER THAN REDISCOVER: at
+//    g = 0.96875 the residual pushes the wrap sample to 0.31 V, BELOW the high
+//    threshold, so the detector fires ONE SAMPLE LATE with a fraction of
+//    0.150582 instead of the ~0.99 the geometry would suggest. A late wrap
+//    fraction under a band-limited master is a one-sample placement error
+//    before any seam exists. That belongs in 33-05's grid.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco sync: (D-12) the new divisor cannot poison the phase accumulator") {
+	const int nArm  = 64;     // 0 V, long enough to arm the trigger LOW
+	const int nHost = 256;    // the hostile value, HELD (equal consecutive samples)
+	const int nWith = 512;    // the withdrawal: wholly legitimate master and timing
+
+	for (double sr : SAMPLE_RATES) {
+		CAPTURE(sr);
+
+		forge::VcoInputs base = coreBase();
+		base.pitchCV   = 0.f;
+		base.morph     = 0.5f;
+		base.character = 1.f;
+
+		// --- Subcase 1: the hostile population, each entry with a WITHDRAWAL. -
+		{
+			// The withdrawal master starts at phim = 0, so its FIRST sample is
+			// +4.92 V. That is deliberate: when the trigger is LOW coming out of
+			// the hostile block, the very first legitimate sample fires with the
+			// HOSTILE value still in the store — which is the only way the
+			// poisoned quotient is ever computed.
+			const MasterBlock w = makeMasterSaw(nWith, 1.0 / 128.0, 5.0, 0.0);
+
+			int totalFiredAnywhere = 0;
+
+			for (float hv : HOSTILE_SYNC) {
+				for (int armed = 0; armed < 2; ++armed) {
+					CAPTURE(hv);
+					CAPTURE(armed);
+
+					forge::VcoBlockDriver d(sr);
+
+					// Phase 1 — the arming prefix, present only for armed == 1.
+					if (armed) {
+						SyncTrace t0;
+						std::vector<float> o0 = driveTraced(d, nArm, [&](int) {
+							forge::VcoInputs in = base;
+							in.syncVolts     = 0.f;
+							in.syncConnected = true;
+							return in;
+						}, t0);
+						REQUIRE(o0.size() == (size_t)nArm);
+					}
+
+					// Phase 2 — the hostile value, HELD.
+					SyncTrace th;
+					std::vector<float> oh = driveTraced(d, nHost, [&](int) {
+						forge::VcoInputs in = base;
+						in.syncVolts     = hv;
+						in.syncConnected = true;
+						return in;
+					}, th);
+					REQUIRE(oh.size() == (size_t)nHost);
+
+					// Phase 3 — THE WITHDRAWAL, on the SAME instance.
+					SyncTrace tw;
+					std::vector<float> ow = driveTraced(d, nWith, [&](int i) {
+						forge::VcoInputs in = base;
+						in.syncVolts     = w.volts[(size_t)i];
+						in.syncConnected = true;
+						return in;
+					}, tw);
+					REQUIRE(ow.size() == (size_t)nWith);
+
+					bool  hFinite = true, hRange = true;
+					float hMaxAbs = 0.f;
+					int   hFired  = 0, hFirstBad = -1;
+					for (int i = 0; i < nHost; ++i) {
+						bool bad = false;
+						if (!std::isfinite(oh[(size_t)i]))                       { hFinite = false; bad = true; }
+						const float a = std::fabs(oh[(size_t)i]);
+						if (a > hMaxAbs) hMaxAbs = a;
+						if (a > kHostileBoundV)                                  {                  bad = true; }
+						if (!(th.phase[(size_t)i] >= 0.0 && th.phase[(size_t)i] < 1.0)) { hRange = false; bad = true; }
+						if (bad && hFirstBad < 0) hFirstBad = i;
+						if (th.fired[(size_t)i]) ++hFired;
+					}
+
+					bool  wFinite = true, wRange = true;
+					float wMaxAbs = 0.f;
+					int   wFired  = 0, wFirstBad = -1;
+					float wFirstFrac = -1.f;
+					for (int i = 0; i < nWith; ++i) {
+						bool bad = false;
+						if (!std::isfinite(ow[(size_t)i]))                       { wFinite = false; bad = true; }
+						const float a = std::fabs(ow[(size_t)i]);
+						if (a > wMaxAbs) wMaxAbs = a;
+						if (a > kHostileBoundV)                                  {                  bad = true; }
+						if (!(tw.phase[(size_t)i] >= 0.0 && tw.phase[(size_t)i] < 1.0)) { wRange = false; bad = true; }
+						if (bad && wFirstBad < 0) wFirstBad = i;
+						if (tw.fired[(size_t)i]) {
+							++wFired;
+							if (wFirstFrac < 0.f) wFirstFrac = tw.frac[(size_t)i];
+						}
+					}
+					totalFiredAnywhere += hFired + wFired;
+
+					CAPTURE(hFired);
+					CAPTURE(hMaxAbs);
+					CAPTURE(hFirstBad);
+					CAPTURE(wFired);
+					CAPTURE(wMaxAbs);
+					CAPTURE(wFirstBad);
+					CAPTURE(wFirstFrac);
+
+					// --- DURING the hostile drive. ------------------------
+					INFO("hostile sync held constant across the block - the equal-consecutive-samples case D-12 names");
+					CHECK(hFinite);
+					CHECK(hMaxAbs <= kHostileBoundV);
+					CHECK(hRange);
+
+					// --- AFTER it is WITHDRAWN. This is the half that
+					//     distinguishes this case from the existing grid.
+					CHECK(wFinite);
+					CHECK(wMaxAbs <= kHostileBoundV);
+					CHECK(wRange);
+
+					// The poisoning path, pinned specifically rather than
+					// inferred from the finiteness above. With the trigger LOW
+					// and a not-a-number in the store, the FIRST withdrawal
+					// sample fires and the quotient is a not-a-number — so the
+					// guard must be what is observed, and its observable
+					// signature is the fallback value.
+					if (armed && std::isnan(hv)) {
+						CHECK(wFired > 0);
+						CHECK(wFirstFrac == 0.f);
+					}
+					// NON-VACUITY: the legitimate control edge MUST fire. A
+					// hostile grid in which nothing ever fires asserts nothing
+					// about sync, however green it is.
+					if (armed && hv == 2.f) {
+						CHECK(hFired == 1);
+					}
+				}
+			}
+
+			CAPTURE(totalFiredAnywhere);
+			CHECK(totalFiredAnywhere > 0);
+		}
+
+		// --- Subcase 2: the store's invariant, ASSERTED DIRECTLY. -------------
+		// D-02 / Pattern 3. The invariant is one sentence — `prevSyncVolts` is
+		// the voltage the trigger saw on the IMMEDIATELY PRECEDING sample — and
+		// it is what makes the zero divisor unreachable. Inferring it from a
+		// finite result after the fact would be the weaker claim: a store that
+		// was correct on nine branches out of ten would still produce finite
+		// output almost always.
+		//
+		// FINITE VOLTAGES ONLY IN THIS SUBCASE, and the reason is stated so it
+		// does not read as a gap: a not-a-number compares unequal to itself, so
+		// an equality check against a NaN supplied voltage would report a
+		// mismatch on a CORRECT store. The NaN store is covered in subcase 1,
+		// through the guard's fallback, which is an observable consequence
+		// rather than an equality.
+		{
+			const int nStore = 400;
+			const MasterBlock m = makeMasterSaw(nStore, 1.0 / 32.0, 5.0, 0.0);
+
+			forge::VcoBlockDriver d(sr);
+			// The first sample after construction: the NSDMI, before any step.
+			CHECK(d.core.prevSyncVolts == 0.f);
+
+			SyncTrace tr;
+			std::vector<float> out = driveTraced(d, nStore, [&](int i) {
+				forge::VcoInputs in = base;
+				in.syncVolts = m.volts[(size_t)i];
+				// Toggling every 7 samples, so the invariant is asserted on
+				// UNPATCHED samples as well as patched ones. The store is
+				// unconditional; a store gated on this flag is the exact defect
+				// Pitfall 5 says produces the zero divisor.
+				in.syncConnected = ((i / 7) % 2) == 0;
+				return in;
+			}, tr);
+			REQUIRE(out.size() == (size_t)nStore);
+			REQUIRE(tr.prevStore.size() == (size_t)nStore);
+
+			int storeMismatch = 0, firstMismatch = -1;
+			for (int i = 0; i < nStore; ++i) {
+				if (tr.prevStore[(size_t)i] != m.volts[(size_t)i]) {
+					++storeMismatch;
+					if (firstMismatch < 0) firstMismatch = i;
+				}
+			}
+			CAPTURE(storeMismatch);
+			CAPTURE(firstMismatch);
+			INFO("the store runs on EVERY sample and EVERY branch, patched or not");
+			CHECK(storeMismatch == 0);
+		}
+
+		// --- Subcase 3: NEITHER the store NOR the trigger is reset on a
+		//     sample-rate change — the stated choice ASSERTED, not inherited. --
+		// Plan 33-02 resolved the standing discretion item in the source: a rate
+		// change does not alter which sample was the previous one, so resetting
+		// either would MANUFACTURE the stale-store case the guard rests against.
+		// That sentence is a claim about behaviour and this is where it is
+		// measured.
+		//
+		// HOW EACH HALF IS DISCRIMINATED, because "it still works" would not be
+		// evidence of either:
+		//   THE TRIGGER. The sample before the change is 0.05 V, below the low
+		//   threshold, so the trigger is LOW going in. The sample AT the change
+		//   is 3 V. A surviving LOW trigger takes the LOW -> HIGH arm and returns
+		//   TRUE. A trigger reset to UNINITIALIZED takes the UNINITIALIZED arm,
+		//   which sets HIGH and returns FALSE (RackCompat.hpp:51,53). So the fire
+		//   itself is the discriminator.
+		//   THE STORE. A surviving store gives (1 - 0.05)/(3 - 0.05) = 0.322034.
+		//   A store reset to its NSDMI would give (1 - 0)/(3 - 0) = 0.333333. The
+		//   two differ in the second decimal place and the comparison below is
+		//   bit-exact, so the discrimination is real rather than nominal.
+		{
+			const int   nPre  = 32;
+			const int   nPost = 16;
+			const float vPre  = 0.05f;   // below the 0.1 V low threshold: arms LOW
+			const float vPost = 3.f;
+
+			forge::VcoBlockDriver d(44100.0);
+			SyncTrace tPre;
+			std::vector<float> oPre = driveTraced(d, nPre, [&](int) {
+				forge::VcoInputs in = base;
+				in.syncVolts     = vPre;
+				in.syncConnected = true;
+				return in;
+			}, tPre);
+			REQUIRE(oPre.size() == (size_t)nPre);
+
+			// THE RATE CHANGE, on the SAME instance. forge::VcoBlockDriver
+			// recomputes sampleTime from this on its next run(), so both timing
+			// fields move together exactly as a host would move them.
+			d.sampleRate = 96000.0;
+
+			SyncTrace tPost;
+			std::vector<float> oPost = driveTraced(d, nPost, [&](int) {
+				forge::VcoInputs in = base;
+				in.syncVolts     = vPost;
+				in.syncConnected = true;
+				return in;
+			}, tPost);
+			REQUIRE(oPost.size() == (size_t)nPost);
+
+			const float expectFrac = (1.0f - vPre) / (vPost - vPre);
+			CAPTURE(expectFrac);
+			CAPTURE(tPost.frac[0]);
+			CAPTURE(tPre.prevStore[(size_t)(nPre - 1)]);
+			INFO("a sample-rate change resets NEITHER prevSyncVolts NOR syncTrig - plan 33-02 Decisions #3, asserted here");
+
+			// The store carried the pre-change voltage across the transition...
+			CHECK(tPre.prevStore[(size_t)(nPre - 1)] == vPre);
+			// ...the trigger was still LOW, so the first post-change sample fired...
+			CHECK(tPost.fired[0] != 0);
+			// ...and the fraction was computed from the SURVIVING store.
+			CHECK(tPost.frac[0] == expectFrac);
+			// The invariant still holds on the far side of the transition.
+			int postMismatch = 0;
+			for (int i = 0; i < nPost; ++i) if (tPost.prevStore[(size_t)i] != vPost) ++postMismatch;
+			CAPTURE(postMismatch);
+			CHECK(postMismatch == 0);
+		}
+
+		// --- Subcase 4: the fraction under a BAND-LIMITED master. -------------
+		// Read the falsified-premise paragraph in this case's banner first: the
+		// out-of-range direction this subcase was written to find turns out to
+		// be unreachable, and the measurement is what says so.
+		{
+			// Dyadic wrap fractions, so `phi0 = 1 - dtm*(1+g)` is exact and every
+			// wrap in the block lands at the SAME g.
+			static const double SYNC_G[] = {1.0 / 32, 0.25, 0.5, 0.75, 31.0 / 32};
+			const double dtm = 1.0 / 128.0;
+			const int    nb  = 2048;
+
+			float spreadMin = 2.f, spreadMax = -1.f;
+
+			for (double g : SYNC_G) {
+				CAPTURE(g);
+				const double      phi0 = 1.0 - dtm * (1.0 + g);
+				const MasterBlock m    = makeMasterSawBandLimited(nb, dtm, 5.0, phi0);
+				REQUIRE(m.totalWraps == 16);
+
+				forge::VcoBlockDriver d(sr);
+				SyncTrace tr;
+				std::vector<float> out = driveTraced(d, nb, [&](int i) {
+					forge::VcoInputs in = base;
+					in.syncVolts     = m.volts[(size_t)i];
+					in.syncConnected = true;
+					return in;
+				}, tr);
+				REQUIRE(out.size() == (size_t)nb);
+
+				int   fired = 0, fracOutOfRange = 0, rawOutOfRange = 0, guardFired = 0;
+				bool  allFinite = true, phaseInRange = true;
+				float maxAbs = 0.f, fMin = 2.f, fMax = -1.f, rawMin = 9.f, rawMax = -9.f;
+
+				for (int i = 0; i < nb; ++i) {
+					if (!std::isfinite(out[(size_t)i])) allFinite = false;
+					const float a = std::fabs(out[(size_t)i]);
+					if (a > maxAbs) maxAbs = a;
+					if (!(tr.phase[(size_t)i] >= 0.0 && tr.phase[(size_t)i] < 1.0)) phaseInRange = false;
+					if (!tr.fired[(size_t)i] || i == 0) continue;
+					++fired;
+					const float f = tr.frac[(size_t)i];
+					if (!(f >= 0.f && f < 1.f)) ++fracOutOfRange;
+					if (f < fMin) fMin = f;
+					if (f > fMax) fMax = f;
+					// The RAW quotient, from the two voltages this test itself
+					// supplied, in float and in the header's own order.
+					const float raw = (1.0f - m.volts[(size_t)(i - 1)]) / (m.volts[(size_t)i] - m.volts[(size_t)(i - 1)]);
+					if (!(raw > 0.f && raw <= 1.f)) ++rawOutOfRange;
+					if (raw < rawMin) rawMin = raw;
+					if (raw > rawMax) rawMax = raw;
+					// The guard did NOT have to intervene anywhere on this drive,
+					// and that is asserted rather than assumed: the recorded
+					// fraction IS the raw quotient, bit for bit.
+					if (f != raw) ++guardFired;
+				}
+
+				if (fMin < spreadMin) spreadMin = fMin;
+				if (fMax > spreadMax) spreadMax = fMax;
+
+				CAPTURE(fired);
+				CAPTURE(fMin);
+				CAPTURE(fMax);
+				CAPTURE(rawMin);
+				CAPTURE(rawMax);
+				CAPTURE(maxAbs);
+				INFO("band-limited master: the two-point polyBLEP residual from 33-RESEARCH Pitfall 7, applied at every wrap");
+
+				// Every wrap still produces exactly one reset — at g = 0.96875 it
+				// arrives one sample LATE, which is a placement finding rather
+				// than a detection failure. See the banner.
+				CHECK(fired == (int)m.totalWraps);
+				// The recorded fraction never leaves the guarded range...
+				CHECK(fracOutOfRange == 0);
+				// ...and MEASURED, neither does the raw quotient, for the
+				// structural reason in the banner.
+				CHECK(rawOutOfRange == 0);
+				CHECK(guardFired == 0);
+				CHECK(allFinite);
+				CHECK(maxAbs <= kHostileBoundV);
+				CHECK(phaseInRange);
+			}
+
+			// NON-VACUITY, AND THE CONTRAST THAT MAKES THIS SUBCASE WORTH ITS
+			// COST. Invariant 7 measured the HARD-EDGED master's fraction moving
+			// by 0.004 while the true wrap fraction halved. Here the fraction
+			// spans 0.150582 .. 0.828161 — MEASURED spread 0.677579, two orders
+			// of magnitude larger. A band-limited master is what makes the
+			// sub-sample solve carry information at all, and that is exactly
+			// 33-RESEARCH Pitfall 10's warning to plan 33-05's placement grid,
+			// stated as a number this suite reproduces on every run.
+			CAPTURE(spreadMin);
+			CAPTURE(spreadMax);
+			CHECK(spreadMax - spreadMin > 0.3f);
 		}
 	}
 }
