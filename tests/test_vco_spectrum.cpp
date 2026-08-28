@@ -933,16 +933,36 @@ enum SpectrumMethod {
 // sampleTime and sampleRate are injected per sample, exactly as
 // forge::VcoBlockDriver does (tests/VcoBlockDriver.hpp:56-60), because nothing
 // in forge::VcoInputs couples the two and the harness owns timing.
+//
+// THE `master` PARAMETER IS AN EXTENSION, NOT A FORK (plan 33-05). The D-06
+// sync sub-grid needs a PER-SAMPLE hard-sync voltage, which a constant `base`
+// cannot carry. The alternative — a second, sync-aware drive loop — is exactly
+// what the paragraph above forbids, and it would be forbidden for a sharper
+// reason here than anywhere else in this file: plan 33-05's whole claim is that
+// its placement probe IS forge::VcoCore on the no-correction leg, and a
+// comparison whose two sides ran different loops could not support that claim
+// at all. So the ONE loop gained one defaulted pointer instead.
+//
+// IT IS BIT-INERT FOR EVERY PRE-EXISTING CALLER. A null `master` leaves the
+// body byte-for-byte what it was, and forge::VcoInputs::syncConnected defaults
+// to false, so no existing caller can reach the sync block in the core. Every
+// Phase 32 figure this file records is therefore unmoved by this parameter, and
+// that was verified by re-running the suite across the change rather than
+// argued.
 // ---------------------------------------------------------------------------
 template <typename CoreT>
 void driveSecondBlock(CoreT& core, const forge::VcoInputs& base, float dt, double sr,
-                      std::vector<float>& out) {
+                      std::vector<float>& out, const std::vector<float>* master = 0) {
 	out.clear();
 	out.reserve((std::size_t)kSpectrumN);
 	for (int i = 0; i < 2 * kSpectrumN; ++i) {
 		forge::VcoInputs in = base;
 		in.sampleTime = dt;
 		in.sampleRate = (float)sr;
+		if (master) {
+			in.syncVolts     = (*master)[(std::size_t)i];
+			in.syncConnected = true;
+		}
 		const float s = core.step(in);
 		if (i >= kSpectrumN) out.push_back(s);
 	}
@@ -1052,6 +1072,375 @@ double measureCellDb(const SpectrumCell& cell, bool useMirror,
 
 	int aliasBin = -1;
 	return aliasPeakDb(block, cell.K, &aliasBin, aliasRmsDbOut);
+}
+
+// ===========================================================================
+// ============  THE D-06 / D-11 SYNC SUB-GRID (plan 33-05)  =================
+// ===========================================================================
+//
+// WHAT THIS SUB-GRID IS FOR. Phase 33's central question is a PLACEMENT
+// question: forge::MorphBlep's seam is FUTURE-FACING — `addStep(xAhead, jump)`
+// puts the edge ahead of the sample being emitted — while a Schmitt-detected
+// hard-sync edge is ALWAYS IN THE PAST, having happened between the previous
+// sample and this one. The two-point residual straddles an edge symmetrically,
+// so for a past edge the half that belonged on the ALREADY-EMITTED previous
+// sample is structurally unrecoverable without the one-sample output delay
+// buffer src/dsp/MorphBlep.hpp:225-230 rejects (partly citing this phase).
+// Which recoverable half to take — and whether taking the wrong one is worse
+// than taking none at all — is not an argument. It is a measurement, and this
+// is the instrument for it.
+//
+// >>> DISCRETION RESOLVED, WITH ITS RATIONALE, RATHER THAN LEFT IMPLICIT. <<<
+// This sub-grid lands in THIS EXISTING translation unit rather than a new one,
+// and there are two reasons, the second of which is the substantive one.
+//   (1) A new test TU would cost an explicit `VCO_SIDE_ALLOW` entry in
+//       tests/check_includes.sh. Cheap, but a guard-allowlist edit is never
+//       free in this project.
+//   (2) THE ONE-MEASUREMENT-FUNCTION DISCIPLINE THIS FILE ALREADY ENFORCES
+//       ONLY WORKS WHILE THE SYNC LEGS AND THE STANDING GRID SHARE THE SAME
+//       CELL-MEASURING CODE. measureCellDb's banner states it outright: "If a
+//       later agent adds a second measurement function for the corrected path,
+//       the phase's central claim stops being a measurement and becomes a
+//       coincidence." Six near-copies of a placement path, one per leg, would
+//       make the RANKING below a coincidence in exactly that sense. Everything
+//       here therefore comes out of ONE cell-measuring function parameterised
+//       by leg, driven through the ONE drive loop above.
+//
+// >>> PART D — THE METRIC, AND ITS DERIVATION. THE FUNDAMENTAL BIN IS THE
+//     MASTER'S, NOT THE SLAVE'S. <<<
+// Under hard sync the slave's WHOLE TRAJECTORY is determined by the master: it
+// is reset to a fixed fractional overshoot at every master wrap, so whatever it
+// does between wraps it does identically in every master period. The ideal
+// continuous-time output is therefore exactly periodic at the MASTER's period.
+// With K_m master cycles per N-sample block, the master's period is N/K_m
+// samples, every true harmonic of the ideal band-limited signal lands exactly
+// on bin n*K_m, and everything off that lattice is alias energy. That is the
+// same coprimality argument the file banner makes at length, with K_m
+// substituted for K — and N = 4096 = 2^12 still reduces the requirement to
+// "pick an odd K_m", which every master cycle count below is.
+//   CONSEQUENCE 1: aliasPeakDb is called UNCHANGED, with the master's cycle
+// count. There is no second metric and no forked classifier.
+//   CONSEQUENCE 2, AND IT IS THE ONE A LATER AGENT WILL BE TEMPTED TO "FIX":
+// THE SLAVE'S FREQUENCY IS FREE. It is NOT bin-centred, it must NOT be solved
+// for, and NEITHER binCentredPitchCV NOR binCentredSampleTime APPLIES TO IT.
+// The leakage argument attaches to the fundamental BEING MEASURED, which is the
+// master's; running a bin-centring solver on the slave would imply a leakage
+// claim that does not attach there at all. This is a simplification the
+// derivation licenses, not a weakening of it.
+//
+// >>> THE TWO HAZARDS THAT ARE THE REASON FOR TWO OF THE GRID'S AXES. <<<
+//
+// HAZARD ONE — THE SUB-UNITY RATIO IS NOT OPTIONAL. In the classic hard-sync
+// sweep region (slave at or above the master) the placement candidates separate
+// by LESS THAN THE CROSS-TOOLCHAIN REPRODUCTION BOUND. Register item 8 binds:
+// every absolute decibel figure this milestone has recorded is an APPLE-CLANG
+// figure, the step-dominated reproduction bound is 1.0 dB and the plateau bound
+// is 4.0 dB, and a decision taken only on cells separated by less than the
+// applicable bound IS NOT DEFENSIBLE CROSS-TOOLCHAIN AND MUST NOT BE TAKEN. The
+// sub-unity ratio is where the candidates separate by several decibels, so a
+// grid without it cannot carry a defensible decision at all. That is why
+// SYNC_RATIOS opens with 0.5 and why the D-06 decision rule's condition 2 is
+// evaluated on the sub-unity cells specifically.
+//
+// HAZARD TWO — A GRID WHOSE MASTERS ALL HAVE HARD EDGES TESTS NOTHING ABOUT
+// SUB-SAMPLE PLACEMENT, AND FAILS TO DO SO SILENTLY. The detector solves
+// f = (HIGH - prev) / (now - prev). That recovers the master's true wrap
+// fraction ONLY WHEN THE MASTER'S EDGE SPANS THE THRESHOLD OVER ONE SAMPLE OR
+// MORE. For a master whose wrap is a single-sample full-scale jump — a naive
+// saw or a gate, which is what most patched masters are — the interpolation
+// returns the VOLTAGE fraction of the threshold WITHIN THE JUMP, which is
+// very nearly constant: for a +/-amp falling saw with an instantaneous rising
+// wrap at HIGH = 1.0 V and true wrap fraction g,
+//     prev = -5 + 10*g*dtm ,  now = 5 - 10*(1-g)*dtm
+//     f    = (6 - 10*g*dtm) / (10 - 10*dtm)  ~=  0.6 - g*dtm
+// so g enters only at order dtm. THIS IS MEASURED, NOT PREDICTED: plan 33-04's
+// invariant 7 drives two master offsets whose TRUE wrap fractions are 1.000000
+// and 0.500000 and records detected fractions of 0.596850 and 0.600787 — g
+// HALVES while f moves by 0.004. The same plan measures a band-limited master's
+// f spanning 0.677579. A sub-grid built on hard edges alone therefore leaves
+// SYNC-02's sub-sample clause untested while reporting green, which is why
+// SYNC_EDGES carries BOTH shapes and why every reported figure below is broken
+// out per edge shape.
+//   This is not a defect in the detector. It is the standard technique and VCV
+// Fundamental's own VCO does exactly the same thing. It is a property of the
+// INSTRUMENT, named before a number is written against it.
+// ---------------------------------------------------------------------------
+
+// The master's edge shape — ONE parameter, not two near-copy generators.
+enum SyncMasterEdge {
+	kMasterHardEdge    = 0,   // a single-sample full-scale wrap: a naive saw or a gate
+	kMasterBandLimited = 1    // the same saw with the two-point polyBLEP residual at its wrap
+};
+
+// ---------------------------------------------------------------------------
+// SyncMaster / makeSyncMaster — THE MASTER IS GENERATED IN THE TEST, never by a
+// second forge::VcoCore. A second core would make every sync claim circular:
+// the thing under test would be producing its own stimulus.
+//
+// WHY THE INCREMENT IS EXACTLY REPRESENTABLE, AND WHAT THAT BUYS. The phase
+// increment is K_m / 4096 = K_m * 2^-12, a dyadic rational, so it is EXACT in
+// binary floating point and every partial sum of it is a multiple of 2^-12 and
+// therefore also exact. `phim += dtm` accumulates over the block with ZERO
+// rounding error — not "small" error, zero — so after exactly 4096 samples the
+// accumulator has returned EXACTLY to its start and the block holds EXACTLY
+// K_m master cycles. The achieved bin error is therefore EXACTLY zero rather
+// than merely small, and the case below asserts it as such rather than
+// tolerating it. Do not "simplify" a caller to a rounded frequency in hertz.
+//
+// THE POLARITY IS CHOSEN, NOT INHERITED. A +/-amp FALLING saw,
+// v = amp*(1 - 2*phi_m). The falling ramp crosses the 0.1 V LOW threshold
+// DOWNWARD in the middle of every master cycle, which RE-ARMS
+// forge::SchmittTrigger, and then jumps UPWARD through the 1.0 V HIGH threshold
+// at the wrap, which FIRES it: one arm and one fire per master cycle out of one
+// waveform, with no hand-built gate sequence anywhere. It is also the Forge
+// saw's own polarity — src/dsp/MorphBlep.hpp:422-431 records the wrap jump as
+// +2.000000 — so it models what an operator actually patches.
+//
+// AND IT KNOWS THE TRUE WRAP FRACTION EXACTLY, WHICH IS THE ORACLE LEG'S INPUT.
+// `wrapGHeld[i]` is g = (1 - phi_before) / dtm for the most recent wrap at or
+// before sample i, taken from the generator's OWN accumulator rather than
+// inferred from the samples it emitted. That value is UNAVAILABLE TO THE CORE
+// BY CONSTRUCTION — the core sees only two voltages — which is exactly what
+// makes it an oracle rather than a fifth candidate.
+//   IT IS HELD, NOT PER-SAMPLE, AND THE REASON IS A MEASURED FACT. Plan 33-04
+// measured that at g = 0.96875 a band-limited master's residual pushes the wrap
+// sample down to 0.31 V, BELOW the high threshold, so the detector fires ONE
+// SAMPLE LATE. On that sample the master did not wrap, so a strictly
+// per-sample g would be absent exactly where the oracle is most needed. Holding
+// the most recent wrap's g hands the oracle the fraction of the wrap that
+// actually caused the (late) detection. The lateness itself is not swept under
+// that rug: `wrappedHere` is kept alongside and the late-fire count is reported
+// as a diagnostic column, because it is a placement error that exists BEFORE
+// any seam does and must not be attributed to one.
+// ---------------------------------------------------------------------------
+struct SyncMaster {
+	std::vector<float>  volts;        // the master voltage, one entry per slave sample
+	std::vector<double> wrapGHeld;    // the TRUE wrap fraction of the most recent wrap at or before this sample
+	std::vector<char>   wrappedHere;  // 1 if the master wrapped ON this sample
+	double achievedCyclesPerBlock;    // measured from the generator's own accumulator over the FIRST kSpectrumN samples
+	double binError;                  // |achievedCyclesPerBlock - K_m|, IN BINS — asserted EXACTLY zero
+	long   wrapsInFirstBlock;
+	double gMin;                      // the true wrap fraction's range over the whole run
+	double gMax;
+};
+
+SyncMaster makeSyncMaster(int nTotal, int Km, double amp, SyncMasterEdge edge) {
+	SyncMaster m;
+	m.achievedCyclesPerBlock = 0.0;
+	m.binError = 0.0;
+	m.wrapsInFirstBlock = 0;
+	m.gMin =  2.0;
+	m.gMax = -1.0;
+	m.volts.reserve((std::size_t)nTotal);
+	m.wrapGHeld.reserve((std::size_t)nTotal);
+	m.wrappedHere.reserve((std::size_t)nTotal);
+
+	const double dtm = (double)Km / (double)kSpectrumN;   // K_m * 2^-12 — exact
+
+	std::vector<int>    wrapIdx;
+	std::vector<double> wrapG;
+	double phim  = 0.0;
+	double gHeld = 0.0;
+	long   wraps = 0;
+	double phiAtBlockEnd = 0.0;
+	long   wrapsAtBlockEnd = 0;
+
+	for (int i = 0; i < nTotal; ++i) {
+		const double before = phim;
+		phim += dtm;
+		char wrapped = 0;
+		if (phim >= 1.0) {
+			// std::floor rather than a single subtract, matching
+			// tests/test_vco_core.cpp's generator: every caller here keeps dtm
+			// well under 1, but the two generators must not differ in a way a
+			// reader has to discover.
+			const double k = std::floor(phim);
+			gHeld = (1.0 - before) / dtm;
+			if (gHeld < m.gMin) m.gMin = gHeld;
+			if (gHeld > m.gMax) m.gMax = gHeld;
+			wraps += (long)k;
+			phim  -= k;
+			wrapped = 1;
+			wrapIdx.push_back(i);
+			wrapG.push_back(gHeld);
+		}
+		if (i == kSpectrumN - 1) { phiAtBlockEnd = phim; wrapsAtBlockEnd = wraps; }
+		m.volts.push_back((float)(amp * (1.0 - 2.0 * phim)));
+		m.wrapGHeld.push_back(gHeld);
+		m.wrappedHere.push_back(wrapped);
+	}
+
+	// The two-point polyBLEP residual at each wrap: +amp*(1-g)^2 on the sample
+	// BEFORE it and -amp*g^2 on the sample carrying it. Transcribed from
+	// 33-RESEARCH Pitfall 7's own worked expressions — and identical to
+	// tests/test_vco_core.cpp's makeMasterSawBandLimited — so the two files
+	// measure the same construction rather than two variants of it.
+	if (edge == kMasterBandLimited) {
+		for (std::size_t j = 0; j < wrapIdx.size(); ++j) {
+			const int    k = wrapIdx[j];
+			const double g = wrapG[j];
+			if (k - 1 >= 0) m.volts[(std::size_t)(k - 1)] += (float)(amp * (1.0 - g) * (1.0 - g));
+			m.volts[(std::size_t)k] -= (float)(amp * g * g);
+		}
+	}
+
+	m.wrapsInFirstBlock      = wrapsAtBlockEnd;
+	m.achievedCyclesPerBlock = (double)wrapsAtBlockEnd + phiAtBlockEnd;
+	m.binError               = std::fabs(m.achievedCyclesPerBlock - (double)Km);
+	return m;
+}
+
+// ---------------------------------------------------------------------------
+// SyncCell — one measurement point of the D-06 / D-11 sync sub-grid.
+//
+// It is shaped like SpectrumCell deliberately: same tier and provenance
+// discipline, same "the measured column IS the provenance, in numbers" coupling
+// described at length in that struct's banner. The coupling is the point —
+// loosening a threshold alone must break the reproduction check.
+//
+// >>> BOTH DECIBEL COLUMNS ARE UNPINNED IN PLAN 33-05, DELIBERATELY. <<<
+// This plan MEASURES and DECIDES; plan 33-07 pins the columns and turns the
+// sub-grid into a gate. Every row therefore carries kSyncUnpinnedDb in both
+// columns and the `kProvSyncUnpinned` provenance string, which SAYS SO. A
+// sentinel that stood in silently would be the very failure this file's
+// standing posture is written against; a sentinel that names its own successor
+// plan is a forward reference, and this project resolves those in place.
+// ---------------------------------------------------------------------------
+constexpr float kSyncUnpinnedDb = 999.0f;   // "no number pinned here yet" — never a measurement
+
+const char* const kProvSyncUnpinned =
+	"NOT PINNED BY PLAN 33-05, BY DECISION. That plan's job is to DECIDE the placement convention by "
+	"measurement, and it deliberately gates nothing: a threshold pinned in the same commit that chose "
+	"the leg would be a threshold pinned from a leg no gate had yet examined. Plan 33-07 owns both "
+	"columns and the gate, and re-anchors the bit-exactness case below to the leg 33-06 lands. Until "
+	"then kSyncUnpinnedDb is a SENTINEL and must never be read as a measurement";
+
+struct SyncCell {
+	double sr;                  // the sample rate
+	int    Km;                  // the MASTER's cycle count per 4096-sample block — odd, and the metric's fundamental
+	double masterHz;            // the ACHIEVED master frequency in hertz, recorded on every row (see the grid banner)
+	SyncMasterEdge edge;        // the master's edge shape
+	const char* edgeName;
+	double ratio;               // slave / master frequency ratio — the sub-unity value is not optional
+	float  pitchCV;             // the SLAVE's pitch control voltage. The slave is FREE and is not bin-centred
+	float  morph;
+	const char* region;
+	float  character;
+	float  measuredDb;          // unpinned in this plan — see the banner above
+	float  thresholdDb;         // unpinned in this plan — see the banner above
+	const char* tier;
+	const char* provenance;
+};
+
+// ---------------------------------------------------------------------------
+// THE GRID'S AXES, AND WHY THE MASTER FREQUENCY IS RECORDED ON EVERY ROW.
+//
+// The three per-rate master cycle counts are all ODD (the coprimality
+// requirement above reduces to exactly that) and are chosen so the master lands
+// within about one percent of the same frequency at all three rates, so the
+// cross-rate rows compare like with like.
+//
+// >>> AND THE THREE RATES CANNOT SHARE ONE EXACT MASTER FREQUENCY. <<< With N
+// pinned at 4096 the achievable master frequencies are the multiples of
+// sr/4096, which are 10.77 Hz apart at 44.1 kHz, 11.72 Hz at 48 kHz and
+// 23.44 Hz at 96 kHz. A single frequency integer-cycle at all three at once
+// would have to be a common multiple of those three spacings, and below about
+// 3.4 kHz there is none. The residual spread is therefore a PROPERTY OF THE
+// INSTRUMENT, and this file's posture is that such a property is written down
+// rather than hidden — hence `masterHz` on every row and the spread asserted
+// and reported by the case below rather than left to be assumed small.
+// ---------------------------------------------------------------------------
+struct SyncRateRow { double sr; int Km; };
+const SyncRateRow SYNC_RATES[] = {
+	{ 44100.0, 93 },   // 93 * 44100 / 4096 = 1001.2939453125 Hz
+	{ 48000.0, 85 },   // 85 * 48000 / 4096 =  996.09375      Hz
+	{ 96000.0, 43 },   // 43 * 96000 / 4096 = 1007.8125       Hz
+	// MEASURED spread across the three: 1.17647 % of the lowest. 33-RESEARCH
+	// quotes 1001.4 Hz for the 44.1 kHz row and 1.2 % for the spread; the exact
+	// arithmetic is 1001.2939453125 Hz and 1.17647 %, and the exact figures are
+	// what the case below asserts. The research figure was rounded, not wrong.
+};
+
+// HAZARD ONE'S AXIS. 0.5 is the sub-unity value and it is load-bearing; the
+// rest are the classic sweep region.
+const double SYNC_RATIOS[] = { 0.5, 1.0, 2.0, 3.0, 4.0, 6.0 };
+
+// The five shape centres, matching the standing grid's third-index discipline.
+const float       SYNC_MORPHS[]  = { 0.00f, 0.25f, 0.50f, 0.75f, 1.00f };
+const char* const SYNC_REGIONS[] = { "sine", "triangle", "saw", "square", "pulse 5%" };
+
+// Character at BOTH ENDS, D-11 as written.
+const float SYNC_CHARACTERS[] = { 0.00f, 1.00f };
+
+// HAZARD TWO'S AXIS. Both shapes, always.
+const SyncMasterEdge SYNC_EDGES[]     = { kMasterHardEdge, kMasterBandLimited };
+const char* const    SYNC_EDGE_NAME[] = { "hard-edge", "band-limited" };
+
+// ---------------------------------------------------------------------------
+// SYNC_GRID — the full cross product of the axes above, 3 * 6 * 5 * 2 * 2 = 360
+// cells, built once on first use.
+//
+// WHY THIS TABLE IS ENUMERATED IN CODE WHILE SPECTRUM_GRID IS SPELLED OUT.
+// SPECTRUM_GRID is spelled out because every row carries a PINNED NUMBER whose
+// provenance is per-row; a generated table there would put the phase's evidence
+// behind a loop. This table pins NOTHING (see the SyncCell banner), it is a
+// pure cross product of five named axes, and enumerating it here makes the axes
+// auditable and the cell count MECHANICAL rather than a claim about a hand-typed
+// list. PLAN 33-07 IS WARNED: the moment a per-cell threshold is pinned, that
+// number needs a per-cell home and a per-cell provenance, and this builder must
+// grow a lookup rather than a formula.
+//
+// The slave's pitch control voltage is solved from the ratio with std::log2 —
+// libm, which is available in tests/ and forbidden in src/ (the D-18
+// precedent). It is NOT bin-centred and MUST NOT BE: see CONSEQUENCE 2 in the
+// banner above. The frequency the core actually reaches differs from the
+// nominal ratio by forge::exp2_taylor5's approximation error, and that is fine
+// — the slave is free, and nothing here measures it.
+// ---------------------------------------------------------------------------
+std::vector<SyncCell> buildSyncGrid() {
+	std::vector<SyncCell> g;
+	const std::size_t nRates = sizeof(SYNC_RATES)      / sizeof(SYNC_RATES[0]);
+	const std::size_t nRatio = sizeof(SYNC_RATIOS)     / sizeof(SYNC_RATIOS[0]);
+	const std::size_t nMorph = sizeof(SYNC_MORPHS)     / sizeof(SYNC_MORPHS[0]);
+	const std::size_t nChar  = sizeof(SYNC_CHARACTERS) / sizeof(SYNC_CHARACTERS[0]);
+	const std::size_t nEdge  = sizeof(SYNC_EDGES)      / sizeof(SYNC_EDGES[0]);
+	g.reserve(nRates * nRatio * nMorph * nChar * nEdge);
+
+	for (std::size_t ri = 0; ri < nRates; ++ri) {
+		const double sr = SYNC_RATES[ri].sr;
+		const int    Km = SYNC_RATES[ri].Km;
+		const double masterHz = (double)Km * sr / (double)kSpectrumN;
+		for (std::size_t ei = 0; ei < nEdge; ++ei) {
+			for (std::size_t qi = 0; qi < nRatio; ++qi) {
+				for (std::size_t mi = 0; mi < nMorph; ++mi) {
+					for (std::size_t ci = 0; ci < nChar; ++ci) {
+						SyncCell c;
+						c.sr          = sr;
+						c.Km          = Km;
+						c.masterHz    = masterHz;
+						c.edge        = SYNC_EDGES[ei];
+						c.edgeName    = SYNC_EDGE_NAME[ei];
+						c.ratio       = SYNC_RATIOS[qi];
+						c.pitchCV     = (float)std::log2(SYNC_RATIOS[qi] * masterHz / (double)forge::kVcoFreqC4);
+						c.morph       = SYNC_MORPHS[mi];
+						c.region      = SYNC_REGIONS[mi];
+						c.character   = SYNC_CHARACTERS[ci];
+						c.measuredDb  = kSyncUnpinnedDb;
+						c.thresholdDb = kSyncUnpinnedDb;
+						c.tier        = "measure";   // never "gated" in this plan — nothing here is asserted against a pinned number
+						c.provenance  = kProvSyncUnpinned;
+						g.push_back(c);
+					}
+				}
+			}
+		}
+	}
+	return g;
+}
+
+const std::vector<SyncCell>& syncGrid() {
+	static const std::vector<SyncCell> SYNC_GRID = buildSyncGrid();
+	return SYNC_GRID;
 }
 
 }  // namespace
@@ -2663,4 +3052,180 @@ TEST_CASE("vco spectrum: the D-11 cross-rate regression - the same note behaves 
 	// the 0.5 dB bound still passes, the correction has started losing ground at
 	// the rate where it should be strongest, and that is a finding.
 	CHECK(worst96 < 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// TASK 1 OF PLAN 33-05 — THE SYNC SUB-GRID'S OWN VALIDATION, BEFORE ANY LEG IS
+// MEASURED THROUGH IT.
+//
+// Nothing in this case is about placement. It is about the INSTRUMENT: that the
+// master really is exactly periodic in the block, that its bin error really is
+// exactly zero, that both edge shapes really are present and really do differ
+// where the hazard says they differ, and that the grid really does carry the
+// axes the decision rule depends on. A measurement whose apparatus has not been
+// validated first is the failure mode this whole file is written against.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, its bin error is EXACTLY zero, and both master edge shapes are present") {
+
+	const std::vector<SyncCell>& grid = syncGrid();
+
+	// =======================================================================
+	// PART A — THE AXIS ENUMERATION. Counted from the built grid rather than
+	// asserted from the table's shape, because the point of building it in
+	// code is that the count is mechanical.
+	// =======================================================================
+	const std::size_t nCells = grid.size();
+	CAPTURE(nCells);
+	CHECK(nCells == 360);   // 3 rates * 2 edge shapes * 6 ratios * 5 morphs * 2 characters
+
+	int subUnityCells = 0, hardEdgeCells = 0, bandLimitedCells = 0, unpinnedCells = 0;
+	for (std::size_t i = 0; i < nCells; ++i) {
+		if (grid[i].ratio < 1.0)                    ++subUnityCells;
+		if (grid[i].edge == kMasterHardEdge)        ++hardEdgeCells;
+		if (grid[i].edge == kMasterBandLimited)     ++bandLimitedCells;
+		// NOTHING IS PINNED BY THIS PLAN — asserted, not merely intended.
+		if (grid[i].measuredDb == kSyncUnpinnedDb &&
+		    grid[i].thresholdDb == kSyncUnpinnedDb &&
+		    std::string(grid[i].provenance) == std::string(kProvSyncUnpinned)) ++unpinnedCells;
+	}
+	CAPTURE(subUnityCells);
+	CAPTURE(hardEdgeCells);
+	CAPTURE(bandLimitedCells);
+	CAPTURE(unpinnedCells);
+
+	// HAZARD ONE'S AXIS EXISTS. Without a sub-unity ratio the decision rule's
+	// condition 2 has no cells to evaluate on and no defensible answer is
+	// reachable at all.
+	CHECK(subUnityCells == 60);
+
+	// HAZARD TWO'S AXIS EXISTS, on both halves.
+	CHECK(hardEdgeCells    == 180);
+	CHECK(bandLimitedCells == 180);
+
+	// The whole grid is unpinned and says so.
+	CHECK(unpinnedCells == (int)nCells);
+
+	// =======================================================================
+	// PART B — THE BIN-ERROR ASSERTION, MADE DIRECTLY.
+	//
+	// >>> THE IMPLIED-LEAKAGE HELPER IS DELIBERATELY *NOT* THE VEHICLE FOR
+	//     THIS CLAIM, AND THAT IS THE WHOLE POINT OF THIS PART. <<<
+	// impliedLeakageDb's first line is `if (!(binError > 0.0)) return -999.0;`
+	// — its NEGATED branch returns the -999.0 sentinel for a bin error of
+	// exactly zero. Routing this claim through it would therefore "pass" by
+	// collecting a sentinel that means "there is nothing to report", which is
+	// semantically right here ONLY BY ACCIDENT: the identical -999.0 comes back
+	// for a fundamental bin of zero magnitude, i.e. for silence, and for a
+	// negative bin error, i.e. for a caller that computed it wrong. This file's
+	// standing posture is that a sentinel must not stand in for a measurement,
+	// and D-10 takes that posture everywhere else in it. So the exact-zero
+	// claim is made by DIRECT COMPARISON against the generator's own
+	// accumulated phase, and the sentinel is shown to be the reason NOT to use
+	// the helper rather than left as an unexamined convenience.
+	// =======================================================================
+	double hzMin = 1e30, hzMax = -1e30;
+	for (std::size_t ri = 0; ri < sizeof(SYNC_RATES) / sizeof(SYNC_RATES[0]); ++ri) {
+		const double sr = SYNC_RATES[ri].sr;
+		const int    Km = SYNC_RATES[ri].Km;
+		CAPTURE(sr);
+		CAPTURE(Km);
+
+		// The coprimality requirement, reduced to "pick an odd K_m" by
+		// N = 4096 = 2^12 — asserted mechanically rather than trusted to the
+		// table, exactly as the standing grid asserts its own K values.
+		CHECK((Km % 2) == 1);
+
+		const double masterHz = (double)Km * sr / (double)kSpectrumN;
+		CAPTURE(masterHz);
+		if (masterHz < hzMin) hzMin = masterHz;
+		if (masterHz > hzMax) hzMax = masterHz;
+
+		for (std::size_t ei = 0; ei < sizeof(SYNC_EDGES) / sizeof(SYNC_EDGES[0]); ++ei) {
+			const SyncMasterEdge edge = SYNC_EDGES[ei];
+			CAPTURE(SYNC_EDGE_NAME[ei]);
+
+			const SyncMaster m = makeSyncMaster(2 * kSpectrumN, Km, 5.0, edge);
+			REQUIRE(m.volts.size() == (std::size_t)(2 * kSpectrumN));
+
+			// >>> THE DIRECT COMPARISON. <<<
+			const double binError = m.binError;
+			CAPTURE(binError);
+			CAPTURE(m.achievedCyclesPerBlock);
+			CHECK(binError == 0.0);
+			CHECK(m.achievedCyclesPerBlock == (double)Km);
+			CHECK(m.wrapsInFirstBlock == (long)Km);
+
+			// And the sentinel, shown rather than described: the helper returns
+			// -999.0 for this bin error, which is why it is not the vehicle.
+			CHECK(impliedLeakageDb(binError) == -999.0);
+
+			// NON-VACUITY: the master must actually arm and actually fire, or
+			// every sync leg below measures a free-running oscillator. Counted
+			// on the MEASURED block only, the same block the metric analyses.
+			int crossHigh = 0, crossLow = 0;
+			for (int i = kSpectrumN; i < 2 * kSpectrumN; ++i) {
+				const float prev = m.volts[(std::size_t)(i - 1)];
+				const float now  = m.volts[(std::size_t)i];
+				if (prev < 1.0f && now >= 1.0f) ++crossHigh;
+				if (prev > 0.1f && now <= 0.1f) ++crossLow;
+			}
+			CAPTURE(crossHigh);
+			CAPTURE(crossLow);
+			CHECK(crossHigh == Km);
+			CHECK(crossLow  == Km);
+
+			// The true wrap fraction really does sweep, so the oracle leg has
+			// something to be an oracle ABOUT.
+			CAPTURE(m.gMin);
+			CAPTURE(m.gMax);
+			CHECK(m.gMin >= 0.0);
+			CHECK(m.gMax <= 1.0);
+			CHECK(m.gMax - m.gMin > 0.5);
+		}
+
+		// =================================================================
+		// HAZARD TWO, RE-MEASURED HERE RATHER THAN INHERITED FROM 33-04.
+		// The two edge shapes must differ in what the DETECTOR can see, not
+		// merely in their sample values. The quantity that matters is the
+		// interpolated fraction f = (1 - prev)/(now - prev) at the crossing:
+		// for a hard edge it is nearly constant however g moves, for a
+		// band-limited edge it tracks g. If this ever stopped being true the
+		// grid would still be green and SYNC-02's sub-sample clause would be
+		// silently untested — which is exactly the failure this part exists
+		// to make impossible.
+		// =================================================================
+		double fSpread[2] = {0.0, 0.0};
+		for (std::size_t ei = 0; ei < 2; ++ei) {
+			const SyncMaster m = makeSyncMaster(2 * kSpectrumN, Km, 5.0, SYNC_EDGES[ei]);
+			double fMin = 2.0, fMax = -1.0;
+			for (int i = kSpectrumN; i < 2 * kSpectrumN; ++i) {
+				const float prev = m.volts[(std::size_t)(i - 1)];
+				const float now  = m.volts[(std::size_t)i];
+				if (!(prev < 1.0f && now >= 1.0f)) continue;
+				const double f = (1.0 - (double)prev) / ((double)now - (double)prev);
+				if (f < fMin) fMin = f;
+				if (f > fMax) fMax = f;
+			}
+			fSpread[ei] = fMax - fMin;
+		}
+		CAPTURE(fSpread[0]);
+		CAPTURE(fSpread[1]);
+		CHECK(fSpread[0] < 0.05);   // hard edge: f is inert, 33-04 measured 0.004 across a halving of g
+		CHECK(fSpread[1] > 0.20);   // band-limited: f tracks g, 33-04 measured 0.678
+	}
+
+	// =======================================================================
+	// PART C — THE INSTRUMENT'S OWN SPREAD, WRITTEN DOWN RATHER THAN HIDDEN.
+	// No single master frequency is integer-cycle at all three rates at this
+	// block length (see the grid banner's derivation), so the three achieved
+	// frequencies differ. The bound below is a STATEMENT ABOUT THE INSTRUMENT:
+	// if a later edit moves a K_m and pushes the spread past it, the cross-rate
+	// rows have stopped comparing like with like and the rate-signature
+	// condition of the D-06 decision rule is no longer reading a rate effect.
+	// =======================================================================
+	CAPTURE(hzMin);
+	CAPTURE(hzMax);
+	const double spreadPct = 100.0 * (hzMax - hzMin) / hzMin;
+	CAPTURE(spreadPct);
+	CHECK(spreadPct < 1.5);
 }
