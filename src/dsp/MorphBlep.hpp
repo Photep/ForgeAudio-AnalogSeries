@@ -332,6 +332,132 @@ struct MorphBlep {
 		pending += jump * (-0.5f) * xAhead * xAhead;
 	}
 
+	// ========================================================================
+	// THE PAST-EDGE ENTRY POINT (D-06, plan 33-06). ADDITIVE. The seam above is
+	// UNTOUCHED — not one character of its gate or its body moved to land this.
+	//
+	// HOW THIS PLACEMENT WAS CHOSEN, STATED BEFORE THE ARITHMETIC BECAUSE IT IS
+	// THE MORE IMPORTANT HALF. Plan 33-05 built a 420-cell spectral grid, proved
+	// its probe BIT-EXACT against forge::VcoCore over 1,720,320 samples, measured
+	// eight placement legs on every cell, and then its three-condition decision
+	// rule REFUSED: all three conditions FAIL and NO WINNER WAS DECLARED BY THE
+	// RULE. This placement is therefore EVIDENCE-BASED, NOT RULE-SANCTIONED, and
+	// that sentence must not be softened by a later editor. An OPERATOR DECISION
+	// on 2026-08-30 closed the gap, on this evidence, all of it from 33-05's own
+	// table on the step-dominated instrument-valid population:
+	//   - pastEdge's worst-case single-cell deficit is 0.8553 dB — the ONLY
+	//     candidate inside register item 8's 1.0 dB reproduction bound;
+	//   - `none` (apply no correction at all): worst deficit 3.9259 dB;
+	//   - `detect` (the naive forward reading): ELIMINATED at 0 wins of 54 and a
+	//     5.0518 dB worst deficit — measurably WORSE THAN DOING NOTHING;
+	//   - `flatHalf`: ELIMINATED on variance, worst deficit 10.4567 dB.
+	// The refusal itself is recorded in .planning/phases/33-hard-sync/
+	// 33-05-SUMMARY.md with its figures and MUST NOT be promoted to a
+	// rule-sanctioned decision by deleting this paragraph.
+	//
+	// ---- ITEM 1. THE SEAM ABOVE FACES FORWARD. ------------------------------
+	// addStep's `xAhead` is an edge lying AHEAD of this sample, so the whole of
+	// the two-sample residual r(x) is still deliverable: the pre-edge half goes
+	// into `inject` for this sample and the post-edge half into `pending` for the
+	// next one. Nothing is lost, which is why that seam splits into two members.
+	//
+	// ---- ITEM 2. THIS ENTRY POINT'S EDGE IS BEHIND. -------------------------
+	// A Schmitt-detected hard-sync edge is ALWAYS IN THE PAST — it happened
+	// between the previous sample and this one, at fraction `xBehind` of the way
+	// across. The residual is nonzero on a SYMMETRIC interval around the edge
+	// (see the sign-convention banner above: r is supported on [-1, 1]), so the
+	// pre-edge half of it belonged on a sample that HAS ALREADY BEEN EMITTED.
+	// Only the after-edge half r(1 - xBehind) = -xBehind^2/2 is still placeable,
+	// and it belongs on THIS sample. There is nothing left to owe forward: the
+	// residual's support is exhausted here, so `pending` is deliberately not
+	// touched at all.
+	//
+	// ---- ITEM 3. THE PRE-EDGE HALF IS FORFEITED, DELIBERATELY AND PERMANENTLY.
+	// Recovering it would require holding the previous sample back and revising
+	// it — a ONE-SAMPLE OUTPUT DELAY BUFFER. Phase 32's D-13 rejected that on two
+	// grounds and both still bind: (1) it adds a sample of latency the module
+	// would have to DECLARE, and a VCO that silently delays by a sample desyncs
+	// against every other oscillator in the patch; (2) hard sync must act on the
+	// CURRENT sample rather than on one already emitted. The rejection paragraph
+	// is at the `pending` member above and names Phase 33 by name.
+	//
+	// ---- ITEM 4. THE MEASURED COST, PER RATIO REGION. -----------------------
+	// No leg on 33-05's grid recovers the forfeited half — that would need the
+	// delay buffer item 3 rejects — so the forfeit's own cost is NOT separately
+	// measurable there, and this paragraph does not pretend otherwise. What IS
+	// measured is the benefit the surviving half still buys over applying no
+	// correction at all (`none` minus `pastEdge`, mean dB, band-limited master,
+	// the three rates side by side; POSITIVE means past-edge is better):
+	//     master/slave ratio 0.50, 0.75   +2.80 to +3.26 dB
+	//     ratio 1.00 (unity, no real step)  -0.03 to +0.02 dB
+	//     ratio 1.50                        +1.09 to +1.58 dB
+	//     ratio 2.50                        +0.56 to +0.86 dB
+	//     ratio 3.50                        -0.07 to +0.48 dB
+	//     ratio 5.50                        -1.09 to -0.15 dB  <- WORSE than none
+	// The top of the sweep is where the forfeit shows: above about 4x the half
+	// that survives no longer pays for itself. 33-RESEARCH's prototype figures
+	// ("0.2-0.6 dB at slave >= 2x, 4.6-6.0 dB at slave < master") are SUPERSEDED
+	// by the table above, which came off nine discontinuity sites against the
+	// prototype's one. Every decibel here is an Apple-clang figure.
+	//
+	// ---- ITEM 5. WHY A MINIMUM-PHASE KERNEL WOULD NOT PAY THIS COST. --------
+	// A minBLEP is minimum-phase: ALL of its correction energy lies AFTER the
+	// edge, so a past-edge event forfeits nothing and item 3's trade would not
+	// arise. THAT IS RECORDED AS THE EXPLANATION FOR WHY THE CONSTRAINT BITES
+	// HERE SPECIFICALLY, NOT AS A PROPOSAL. AA-05 forbids minBLEP BY NAME for
+	// v2.0 ("table-free and Rack-free... no minBLEP, no oversampling in v2.0"),
+	// and this header's whole design — closed form, no tables, C++11-strict, bit
+	// stable across toolchains — is downstream of that. The 2-point polyBLEP's
+	// symmetric support is the price of those properties, and this is the one
+	// call site that pays it.
+	//
+	// ---- ITEM 6. THE [0,1] CONTRACT IS EXTENDED, NEVER REINTERPRETED. -------
+	// `xBehind` is a position in [0, 1] just as `xAhead` is, measured in samples,
+	// with the SAME sign convention for `jump` (value_after - value_before). What
+	// differs is the DIRECTION the position points, and that difference is why
+	// this is a second named function rather than a new meaning bolted onto the
+	// first. addStep keeps its documented behavior, its gate and its pinned
+	// residual split exactly; this is a purely additive neighbour.
+	//
+	// ---- ITEM 7. THE NUMERICAL IDENTITY, AND WHY THE NAMED FORM WAS CHOSEN. --
+	// addPastStep(f, h) is EXACTLY addStep(0.f, -f*f*h), operation for operation:
+	//     addStep(0.f, J) has u = 1 - 0 = 1, so
+	//       inject  += J * 0.5 * 1 * 1  ==  J * 0.5
+	//       pending += J * -0.5 * 0 * 0 ==  0     <- nothing owed forward
+	//   and with J = -f*f*h that current-sample term is -h*f^2/2, which IS the
+	//   after-edge residual above. The groupings below are written to match that
+	//   call term for term, so the two forms agree BIT-EXACTLY and not merely to
+	//   a tolerance. A reader can check this paragraph without running anything;
+	//   tests/test_morph_blep.cpp's "(D-06) the past-edge entry point is exactly
+	//   the pre-scaled seam call" case PINS it, and that identity is what makes
+	//   this header change SAFE rather than merely plausible — it is provably the
+	//   same arithmetic the already-pinned seam performs.
+	//   SO WHY ADD A FUNCTION AT ALL, given the trick is free? LEGIBILITY, chosen
+	//   as an operator decision on 2026-08-30 over 33-05's own observation that no
+	//   header change is REQUIRED. A bare `-f*f*jump` at the call site is opaque:
+	//   the next reader sees a forward-facing seam called at position zero with a
+	//   mysteriously pre-scaled magnitude, and the obvious "simplification" is
+	//   addStep(f, jump) — which is the `detect` candidate 33-05 ELIMINATED at 0
+	//   wins of 54, worse than applying no correction at all. Naming the entry
+	//   point makes that edit visible instead of invisible.
+	//
+	// THE GATE IS THE SAME NEGATED SHAPE AS addStep's, for the same reason and in
+	// the same order: the negated comparison FIRST so a not-a-number `xBehind` is
+	// REJECTED rather than accumulated, and the `jump - jump == 0.f` finiteness
+	// clause plan 33-01 landed (GUARD C, D-04's third item) applied to the value
+	// that ACTUALLY REACHES the accumulator — the pre-scaled one — so the
+	// rejection behaviour is identical to the pre-scaled call's for every input
+	// pair, including the ones where the scaling itself overflows. No new guard
+	// idiom is invented, no include is added, and per-instance state is untouched
+	// on every rejected path.
+	// ========================================================================
+	void addPastStep(float xBehind, float jump) {
+		const float pastJump = -xBehind * xBehind * jump;
+		if (!(xBehind >= 0.f) || xBehind > 1.f || !(pastJump - pastJump == 0.f)) return;
+		inject += pastJump * 0.5f;
+		// `pending` is deliberately NOT touched — see item 2 above.
+	}
+
 	// One sample of correction, ADDITIVE: the caller adds the return value to
 	// the naive morphedWave sample. Call AFTER the phase update, with the SAME
 	// float `p` that is handed to Waveshape::morphedWave this sample — Pattern 2
