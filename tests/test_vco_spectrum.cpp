@@ -1498,9 +1498,9 @@ const std::vector<SyncCell>& syncGrid() {
 // rendered as a measurement, so neither is selectable either.
 // ---------------------------------------------------------------------------
 enum SyncLeg {
-	kLegNone     = 0,   // CANDIDATE. Reset applied, sync correction withheld ENTIRELY. This is the shipped core as of plan 33-02
+	kLegNone     = 0,   // CANDIDATE. Reset applied, sync correction withheld ENTIRELY. This WAS the shipped core from plan 33-02 until plan 33-06 landed the seam; it is now the WITHHELD leg, and the reference leg for per-cell diagnostics that are properties of the RESET rather than of any correction
 	kLegDetect   = 1,   // CANDIDATE. addStep(f, jump) — the detection-sample placement, accepting the one-sample shift
-	kLegPastEdge = 2,   // CANDIDATE. The current sample takes the AFTER-EDGE half, scaled by f squared, and nothing is owed forward
+	kLegPastEdge = 2,   // CANDIDATE. The current sample takes the AFTER-EDGE half, scaled by f squared, and nothing is owed forward. THIS IS THE SHIPPED CORE from plan 33-06 onward, reached there via MorphBlep::addPastStep
 	kLegFlatHalf = 3,   // CANDIDATE. addStep(0, jump) — a flat half-jump on the detection sample
 	kLegOracle   = 4,   // DIAGNOSTIC. pastEdge with f replaced by the generator's TRUE wrap fraction
 	kLegSnap     = 5,   // DIAGNOSTIC. pastEdge with the reset forced to EXACTLY zero phase — the landmine, measured
@@ -1727,11 +1727,16 @@ struct SyncPlacementProbe {
 		if (syncFired) {
 			switch (leg) {
 				case kLegNone:
-					break;                                                  // withheld ENTIRELY — this is the shipped core
+					break;                                                  // withheld ENTIRELY — the shipped core until plan 33-06, the withheld audition leg after it
 				case kLegDetect:
 					blep.addStep(syncFrac, jump);                           // one sample late, and it also owes forward
 					break;
 				case kLegPastEdge:
+					// THE SHIPPED CORE from plan 33-06. Deliberately written in
+					// the PRE-SCALED form and NOT as a call to addPastStep, so
+					// this leg reaches the same arithmetic by a DIFFERENT ROUTE
+					// than the core does and the bit-exactness gate below stays a
+					// real comparison rather than a tautology.
 					blep.addStep(0.f, -syncFrac * syncFrac * jump);         // the identity in banner item (4)
 					break;
 				case kLegFlatHalf:
@@ -3701,24 +3706,38 @@ TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, i
 // the highest-severity threat assigned to this plan and this case is its
 // mitigation.
 //
-// >>> PLAN 33-07 MUST RE-ANCHOR THIS GATE, AND IF IT DOES NOT, THIS ASSERTION
-//     SILENTLY BECOMES A COMPARISON OF TWO DIFFERENT THINGS. <<<
-// As of plan 33-02 the shipped forge::VcoCore IS measurement leg `none`: the
-// reset is applied and the sync correction is withheld, deliberately and in
-// writing (src/dsp/VcoCore.hpp, "THE SEAM CALL IS DELIBERATELY ABSENT FROM THIS
-// COMMIT"). Plan 33-06 lands the seam. FROM THAT COMMIT THE SHIPPED CORE STOPS
-// BEING THE NO-CORRECTION LEG, and `kLegNone` below stops describing it. The
-// comparison would then be probe-without-correction against core-with-
-// correction, it would go red, and the tempting repair — loosening the equality
-// — would delete the gate. THE CORRECT REPAIR IS TO RE-ANCHOR: change the leg
-// argument to whichever leg 33-06 landed and keep the equality EXACT.
+// >>> THE GATE HAS BEEN RE-ANCHORED, AND THE INSTRUCTION THAT REQUIRED IT IS
+//     KEPT BELOW RATHER THAN DELETED. <<<
+// The paragraph this replaces was written by plan 33-05 and read: "As of plan
+// 33-02 the shipped forge::VcoCore IS measurement leg `none` ... Plan 33-06
+// lands the seam. FROM THAT COMMIT THE SHIPPED CORE STOPS BEING THE
+// NO-CORRECTION LEG, and `kLegNone` below stops describing it. The comparison
+// would then be probe-without-correction against core-with-correction, it would
+// go red, and the tempting repair — loosening the equality — would delete the
+// gate. THE CORRECT REPAIR IS TO RE-ANCHOR: change the leg argument to whichever
+// leg 33-06 landed and keep the equality EXACT."
+//   THAT IS EXACTLY WHAT HAPPENED, and it happened in plan 33-06 rather than in
+// 33-07, because the gate goes red in the same commit that lands the seam and a
+// red gate cannot be left for a later plan. OBSERVED before the re-anchor: 412
+// failed assertions in this one case, every one of them `mismatches == 0`.
+// The leg argument below is now `kLegPastEdge` and THE EQUALITY IS STILL A
+// DIRECT FLOAT `==`. It was not loosened by one character.
+//   WHY THE RE-ANCHORED GATE IS STILL A REAL COMPARISON AND NOT A TAUTOLOGY:
+// the two sides reach the same arithmetic by DIFFERENT ROUTES. The probe leg
+// calls the forward-facing seam with a pre-scaled magnitude,
+// addStep(0.f, -f*f*jump); the shipped core calls the named past-edge entry
+// point, addPastStep(f, jump). That those two agree BIT-EXACTLY is the identity
+// pinned in tests/test_morph_blep.cpp's "(D-06)" case, and this gate is where it
+// is exercised against 1,720,320 real samples rather than against a spread of
+// constructed arguments. If a later editor changes either form, this case is
+// what goes red.
 //
 // The comparison is a DIRECT float ==, never doctest's approximate comparator:
 // that comparator applies a relative-scaling margin even at epsilon(0), so it
 // is not a bit-exact comparator and would quietly absorb precisely the small
 // arithmetic drifts this case exists to see.
 // ---------------------------------------------------------------------------
-TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCore bit-exactly on the no-correction leg") {
+TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCore bit-exactly on the past-edge leg") {
 
 	const std::vector<SyncCell>& grid = syncGrid();
 	const std::size_t nCells = grid.size();
@@ -3748,8 +3767,8 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 		// BOTH SIDES THROUGH THE SAME FUNCTION, WHICH GOES THROUGH THE SAME
 		// DRIVE LOOP. A comparator whose two sides run different loops proves
 		// nothing about the difference between them.
-		measureSyncCellDb(cell, kLegNone, /*useLiveCore=*/false, &rms, &binErr, &diag, &probeBlock);
-		measureSyncCellDb(cell, kLegNone, /*useLiveCore=*/true,  &rms, &binErr, 0,     &coreBlock);
+		measureSyncCellDb(cell, kLegPastEdge, /*useLiveCore=*/false, &rms, &binErr, &diag, &probeBlock);
+		measureSyncCellDb(cell, kLegPastEdge, /*useLiveCore=*/true,  &rms, &binErr, 0,     &coreBlock);
 
 		REQUIRE(probeBlock.size() == (std::size_t)kSpectrumN);
 		REQUIRE(coreBlock.size()  == (std::size_t)kSpectrumN);
@@ -3880,12 +3899,18 @@ TEST_CASE("vco spectrum: (D-06 / D-11) the sync placement measurement - six legs
 			db[ci][(std::size_t)L] = measureSyncCellDb(cell, (SyncLeg)L, /*useLiveCore=*/false,
 			                                           &rms, &binErr, &d, 0);
 			if (binErr > worstBinError) worstBinError = binErr;
-			// The shipped core's own leg supplies the diagnostics: the jump that
-			// decides the class, the fire count, the late fires and the phantom.
+			// THE NO-CORRECTION LEG SUPPLIES THE DIAGNOSTICS, and it still does
+			// after plan 33-06 landed the seam and made `pastEdge` the shipped
+			// core. Every one of them — the jump that decides the class, the fire
+			// count, the late fires and the carried phantom — is a property of
+			// the RESET, which is identical on all eight legs, so taking them on
+			// the correction-free leg is what keeps them properties of the CELL
+			// rather than of whichever candidate happens to be shipping.
 			if (L == (int)kLegNone) {
 				diags[ci] = d;
-				// THE INSTRUMENT-VALIDITY COLUMN, taken on the shipped core's own
-				// leg so it is a property of the cell rather than of a candidate.
+				// THE INSTRUMENT-VALIDITY COLUMN, taken on the same
+				// correction-free reference leg and for the same reason: it must
+				// be a property of the cell rather than of a candidate.
 				std::vector<float> refBlock;
 				double rms2 = 0.0, be2 = 0.0;
 				measureSyncCellDb(cell, kLegNone, /*useLiveCore=*/false, &rms2, &be2, 0, &refBlock);

@@ -902,30 +902,32 @@ struct VcoCore {
 		tel.syncFired = syncFired;
 		tel.syncFrac = syncFrac;
 
-		// -- THE SEAM CALL IS DELIBERATELY ABSENT FROM THIS COMMIT (D-06) --
+		// -- THE SEAM CALL IS LANDED, AND IT IS NOT ON THIS LINE (D-06 / D-07) --
 		//
-		// No forge::MorphBlep entry point is called from this block, and that is a
-		// decision rather than an omission. THE REASON IS A CONTRACT MISMATCH THAT
-		// HAS NOT BEEN RESOLVED BY MEASUREMENT YET: MorphBlep::addStep's documented
-		// contract is FUTURE-FACING — its edge lies ahead of this sample, so both
-		// halves of the two-sample residual are still deliverable — whereas a
-		// Schmitt-detected edge is ALWAYS IN THE PAST, having happened between the
-		// previous sample and this one. Three placement candidates follow from
-		// that, they are not equivalent, and the phase's central question is which
-		// one to use.
+		// Plan 33-02 left this spot carrying a paragraph explaining why no
+		// forge::MorphBlep entry point was called from the sync block yet. Plan
+		// 33-06 has landed one, and it is at the SYNC JUMP COMPLETION line below
+		// rather than here, for the reason 33-02's own jump paragraph gives in
+		// full: THE JUMP DOES NOT EXIST YET AT THIS POINT IN THE SAMPLE. Its
+		// post-reset term is `naive`, which is computed twenty lines down, so a
+		// seam call here would have to recompute it and would cost the second
+		// frozen call D-05 authorises exactly one of. The full decision record —
+		// which placement candidate was selected, what the three D-06 conditions
+		// said, and what the losing candidates measured — lives beside that call.
 		//
-		// PLAN 33-05 MEASURES THEM AGAINST EXACTLY THIS ORDERING, and plan 33-06
-		// lands the winner. Writing a seam call here and measuring afterwards would
-		// skip the question and pin the convention by assumption.
+		// WHAT THAT MAKES THE CORE'S BEHAVIOR FROM THIS COMMIT ONWARD, stated
+		// precisely because a later plan depends on it: the reset is APPLIED and
+		// the sync correction is APPLIED. This core is NO LONGER measurement leg
+		// `none`. Plan 33-05's placement probe gates itself on reproducing this
+		// core BIT-EXACTLY, and its leg argument was `kLegNone`; PLAN 33-07 MUST
+		// RE-ANCHOR THAT GATE TO THE PAST-EDGE LEG AND KEEP THE EQUALITY EXACT.
+		// Loosening the equality would not repair the gate, it would delete it.
 		//
-		// WHAT THAT MAKES THE CORE'S BEHAVIOR AS OF THIS COMMIT, stated precisely
-		// because the measurement depends on it: the reset is APPLIED and the sync
-		// correction is WITHHELD. That is measurement leg `none`, exactly — which
-		// is what lets plan 33-05's probe check itself for bit-exactness against
-		// this core before it trusts any of its other legs.
-		//
-		// The correction telemetry is therefore zero on every sample and every
-		// branch. Plan 33-06 populates it, at the same line as its seam call.
+		// This unconditional store is the correction telemetry's DEFAULT, and it
+		// is what keeps the value zero on every non-sync sample and every branch
+		// — including the branch where the jack is unpatched, where the trigger
+		// does not fire, and where the seam's own entry gate rejects the event.
+		// The seam call below overwrites it on sync samples only.
 		tel.syncCorrection = 0.f;
 
 		const float p = (float)phase;
@@ -945,11 +947,160 @@ struct VcoCore {
 		//   THE SIGN IS AFTER MINUS BEFORE, matching src/dsp/MorphBlep.hpp's
 		// documented convention and NOT .planning/research/STACK.md:124, which
 		// writes the same quantity negated.
-		//   PLAN 33-06'S SEAM CALL BELONGS ON THE NEXT LINE, inside this same
-		// condition, feeding this jump and the guarded fraction in tel.syncFrac.
-		// It must stay AHEAD of the single blep.step call below so the residual it
-		// deposits is drained on this sample.
+		//   THE SEAM CALL IS ON THE NEXT LINES, inside this same condition, fed by
+		// this jump and by the guarded fraction the sync block produced. It stays
+		// AHEAD of the single blep.step call below so the residual it deposits is
+		// drained on THIS sample.
 		tel.syncJump = syncFired ? (naive - syncBefore) : 0.f;
+
+		// ====================================================================
+		// THE SYNC BAND-LIMITING SEAM (SYNC-02 / D-06 / D-08, plan 33-06).
+		//
+		// -- WHICH CANDIDATE, AND HOW IT WAS CHOSEN --
+		//
+		// SELECTED: the PAST-EDGE residual. The correction deposited is the
+		// after-edge half of the two-sample polyBLEP residual, -f^2/2 times the
+		// jump, landed entirely on THIS sample with nothing owed forward. The
+		// forfeited pre-edge half, the delay buffer that would recover it and the
+		// two grounds on which Phase 32's D-13 rejected that buffer are all
+		// documented at forge::MorphBlep::addPastStep and are not restated here.
+		//
+		// THE CHOICE IS EVIDENCE-BASED AND NOT RULE-SANCTIONED, AND THAT
+		// DISTINCTION IS LOAD-BEARING. Plan 33-05 measured eight legs over 420
+		// cells at three sample rates with its probe proved bit-exact against this
+		// core over 1,720,320 samples, then applied the D-06 three-condition
+		// decision rule — and the rule REFUSED. All three conditions FAIL:
+		//   CONDITION 1, sign consistency: FAIL on its first clause. The best
+		//     candidate is pastEdge at a win fraction of 0.6296 on the 54
+		//     step-dominated instrument-valid cells, short of the 0.90 required.
+		//     Its SECOND clause PASSES and is the durable half — pastEdge's worst
+		//     single-cell deficit is 0.8553 dB, INSIDE register item 8's 1.0 dB
+		//     step-dominated reproduction bound, and it is the ONLY candidate of
+		//     which that is true.
+		//   CONDITION 2, margin above the reproduction bound: FAIL. 22 of 38
+		//     sub-unity cells clear the bound, not all of them, and the minimum
+		//     margin is NEGATIVE at -0.5025 dB.
+		//   CONDITION 3, rate signature: FAIL — the margin is FLAT. On the single
+		//     common cell it measures 0.8968 / 0.9014 / 0.8487 dB at 44.1 / 48 /
+		//     96 kHz, a 0.0527 dB spread across a factor of 2.2 in sample rate.
+		//     By condition 3's own wording that means the legs differ in jump
+		//     MAGNITUDE rather than in placement.
+		// NO WINNER WAS DECLARED BY THE RULE. An OPERATOR DECISION on 2026-08-30,
+		// taken with the refusal and its figures in front of it, chose to land
+		// pastEdge on condition 1's second clause. A later editor must not delete
+		// this paragraph or restyle the choice as rule-sanctioned; the refusal is
+		// recorded in full in .planning/phases/33-hard-sync/33-05-SUMMARY.md.
+		//
+		// -- THE LOSING CANDIDATES, WITH THEIR MEASURED MARGINS --
+		//
+		//   `none`, apply no correction at all — the behavior this core had until
+		//     this commit. Worst deficit 3.9259 dB. pastEdge beats it by 1.00 to
+		//     1.22 dB on band-limited masters at all three rates, so the seam is
+		//     worth landing at all.
+		//   `detect`, the NAIVE READING: the existing forward-facing seam called
+		//     with the sub-sample fraction as a forward position, addStep(f, jump).
+		//     ELIMINATED. It won 0 of 54 valid step-dominated cells, its worst
+		//     deficit is 5.0518 dB, and — the finding that matters most here — it
+		//     was measured AGAINST THE ALTERNATIVE OF APPLYING NO CORRECTION AT
+		//     ALL and came out WORSE. Doing nothing beats doing this.
+		//   `flatHalf`, half the jump with no f-scaling. ELIMINATED ON VARIANCE:
+		//     it wins some high-ratio hard-edge cells outright but its worst
+		//     deficit is 10.4567 dB, an order of magnitude outside the bound. A
+		//     leg that is sometimes best and sometimes ten decibels worst is not a
+		//     convention.
+		//
+		// -- WHY `detect` LOSES TO DOING NOTHING: THE MECHANISM IN ONE PARAGRAPH --
+		//
+		// Under this phase's ordering the naive output has ALREADY STEPPED between
+		// the previous sample and this one — the reset happened above, `naive` is
+		// computed at the post-reset phase, so this sample is POST-edge. A
+		// correction placed as if the edge were still AHEAD pushes the sample
+		// FURTHER PAST the new value instead of pulling it back toward the
+		// band-limited midpoint. That is this project's already-falsified
+		// over-correction premise wearing a new costume: a step-shaped correction
+		// applied on the wrong side of a step is NEW BROADBAND ENERGY, not a
+		// filter. The same mistake is measured elsewhere in this file's D-07
+		// paragraph as a 30 dB regression when a step correction was applied to a
+		// signal with no step at all.
+		//
+		// -- THE SIGN, AND ITS RECONCILIATION, NOW WITH A PRICE ON IT --
+		//
+		// The jump above is AFTER MINUS BEFORE, which is src/dsp/MorphBlep.hpp's
+		// documented convention. .planning/research/STACK.md:124 prescribes the
+		// same quantity NEGATED. Transcribing the research expression verbatim is
+		// not a style difference: plan 33-05 ran it as the `badSign` MUTATION
+		// PROBE — the jump taken as before-minus-after, everything else identical
+		// — and measured it at 1.76 to 2.20 dB WORSE than this line on
+		// band-limited masters at all three rates, discriminating cleanly by more
+		// than the step-dominated reproduction bound. The probe collapses to noise
+		// on hard-edge masters, where the detector's fraction carries no
+		// information, and that asymmetry is the finding rather than a gap.
+		//
+		// -- D-08: BLEP ONLY ON THE SYNC PATH. A DECISION, NOT AN OMISSION --
+		//
+		// No slope-correction kernel is applied here, and no polyBLAMP entry point
+		// is called from this block. THE STEP IS WHAT BUZZES AND WHAT CLICKS;
+		// .planning/research/STACK.md:124 is explicit that the BLAMP is OPTIONAL
+		// for a lean v2.0 and that the step BLEP is the audible fix. It remains
+		// the documented FIRST escalation if a sync alias threshold proves
+		// unreachable — AHEAD OF ANY KERNEL-ORDER CHANGE, which is an operator
+		// decision with an impact assessment and never a silent implementation
+		// choice. TWO REASONS IT IS NOT TAKEN NOW, both concrete:
+		//   (1) The seam carries a VALUE JUMP ONLY. A slope seam would be a SECOND
+		//       header change on forge::MorphBlep, in a phase whose contract with
+		//       that header is one additive entry point and three guards.
+		//   (2) The slope difference across the reset HAS NO CLOSED FORM. The
+		//       waveshaper's derivative at an arbitrary phase is not available, so
+		//       it would need a numerical derivative of the crossfade at two
+		//       phases — new transcendental cost in the audio path and a fresh
+		//       cross-library divergence risk on a path this milestone has so far
+		//       kept entirely free of one.
+		// And plan 33-05's own measurement argues against escalating at all: the
+		// binding error term is the DETECTION THRESHOLD under a band-limited
+		// master, not the interpolation. Its oracle leg, handed the master's
+		// physically TRUE wrap fraction, measured 0.45 to 0.71 dB WORSE than the
+		// detector's own.
+		//
+		// -- THE CORRECTION TELEMETRY, RE-STATED AGAINST THE LEG ACTUALLY LANDED --
+		//
+		// The Telemetry paragraph on syncCorrection was written before the
+		// measurement and stated its reconstruction shortcut conditionally, naming
+		// this plan as the one that must re-state it against whichever candidate
+		// won. IT IS THE PAST-EDGE CANDIDATE, so the shortcut HOLDS: this seam
+		// deposits into `inject` ONLY and leaves `pending` untouched, so the
+		// correction is confined to the sample that carries it, NOTHING is owed
+		// forward, and no residual leaks into any later sample. The withheld
+		// audition leg is therefore reconstructible per sample as
+		// leg_none[n] = leg_full[n] - 5.f * syncCorrection[n], with the factor of
+		// five being this function's own output multiplier and syncCorrection
+		// recorded in the pre-multiply domain to match `naive`.
+		//   THE ONE CAVEAT, MEASURED RATHER THAN GLOSSED, because plan 33-10's
+		// renderer is the consumer and should be handed its own error bar rather
+		// than an adjective. The subtraction is not quite BIT-exact: this seam
+		// deposits into `inject`, forge::MorphBlep's preamble then SUMS `inject`
+		// and `pending` in float, and that one addition rounds differently when
+		// one addend changed. MEASURED over a 49,152-sample patched block at
+		// 44.1 / 48 / 96 kHz against a pre-seam binary, both master edge shapes:
+		// 93 resets fired, EXACTLY 93 output samples differed — one per reset,
+		// which is the nothing-owed-forward property observed at system level
+		// rather than argued — and the reconstruction reproduced the withheld leg
+		// BIT-EXACTLY on 49,136 of 49,152 samples, the remaining 16 differing by
+		// EXACTLY ONE ULP (worst absolute 4.77e-07 V). Every non-reset sample was
+		// exact, so the departure CANNOT ACCUMULATE, precisely because nothing is
+		// owed forward. Under the `detect` or `flatHalf` candidates neither
+		// sentence would be true: both deposit into `pending` as well, the
+		// difference would straddle two samples, and the reconstruction would
+		// need both halves.
+		//   The value is read back OFF THE ACCUMULATOR rather than recomputed, so
+		// it records what was ACTUALLY deposited — including zero on the path
+		// where the seam's own entry gate rejects the event, which a recomputed
+		// expression would silently misreport as a correction that never landed.
+		// ====================================================================
+		if (syncFired) {
+			const float injectBefore = blep.inject;
+			blep.addPastStep(syncFrac, tel.syncJump);
+			tel.syncCorrection = blep.inject - injectBefore;
+		}
 
 		// CORE-02 / AA-01..05 — THE ONE LINE OF PHASE 32 WHERE BAND-LIMITING
 		// BECOMES AUDIBLE. Three facts make it correct.
