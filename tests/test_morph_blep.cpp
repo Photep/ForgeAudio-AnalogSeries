@@ -1947,3 +1947,197 @@ TEST_CASE("morph blep: (D-04 third item) a non-finite jump is rejected by addSte
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// THE PAST-EDGE ENTRY POINT'S OWN NON-CIRCULAR CHECK (D-06, plan 33-06).
+//
+// WHY THIS CASE EXISTS, AND WHY IT IS AN IDENTITY RATHER THAN A VALUE TABLE.
+// Plan 33-06 added a SECOND entry point to forge::MorphBlep — the one shipped
+// header this project treats as load-bearing enough to byte-pin its neighbours
+// around. A new function asserted against numbers computed from its own
+// formula would be circular: it would prove the implementation matches itself.
+// What makes this extension SAFE rather than merely plausible is that it is
+// PROVABLY THE SAME ARITHMETIC THE ALREADY-PINNED SEAM PERFORMS.
+//   addPastStep(f, h) is exactly addStep(0.f, -f*f*h). The pinned seam's own
+// split — asserted in case five part A against the kernel banner's sign
+// convention, and MEASURED there at (+0.250000, -0.250000) — is therefore the
+// evidence backing this entry point too, transitively. That is why this case
+// asserts an EQUALITY BETWEEN TWO INSTANCES rather than against constants.
+//
+// AND WHY THE SHIPPED CORE DOES NOT SIMPLY CALL THE PRE-SCALED FORM. It is
+// numerically free to. The named entry point was chosen on LEGIBILITY, as an
+// operator decision on 2026-08-30: a bare `-f*f*jump` at the call site reads as
+// a forward-facing seam called at position zero with a mysteriously pre-scaled
+// magnitude, and the obvious "simplification" is addStep(f, jump) — which is
+// the `detect` candidate plan 33-05 ELIMINATED at 0 wins of 54 and measured
+// WORSE THAN APPLYING NO CORRECTION AT ALL. This case is what stops the two
+// forms silently diverging once they are both in the tree (T-33-22).
+//
+// PROVED ABLE TO FAIL (plan 33-06 Task 3). The entry point's coefficient was
+// temporarily perturbed in the working tree from `pastJump * 0.5f` to
+// `pastJump * 0.5001f` — a coefficient TYPO rather than a sign flip, because a
+// check that only catches gross errors is not a check. MEASURED: 2 cases red,
+// 514 failed assertions. This case went to 102 failed of 354, and the
+// bit-exactness gate in tests/test_vco_spectrum.cpp — which compares the
+// shipped core against the pre-scaled probe leg over 1,720,320 real samples —
+// went to 412 failed of 1261 alongside it. That second number is the useful
+// half of the signature: the identity is not only asserted here over
+// constructed arguments, it is exercised end to end. Restored from git and
+// re-verified green at 104 cases and 0 failures.
+// ---------------------------------------------------------------------------
+TEST_CASE("morph blep: (D-06) the past-edge entry point is exactly the pre-scaled seam call") {
+
+	// Positions across the OPEN unit interval, including both near-endpoints:
+	// a sub-sample fraction of exactly 0 is the snap-to-zero landmine the core's
+	// own guard makes unreachable, and exactly 1 is excluded by that same guard's
+	// STRICT upper bound. The two 1e-6 rows are what a fraction arriving just
+	// inside either end actually looks like.
+	const float xs[9] = {
+		1e-6f, 0.05f, 0.125f, 0.25f, 0.375f, 0.5f, 0.75f, 0.875f, 0.999999f
+	};
+	// Signed magnitudes. |jump| from the sync seam is a difference of two
+	// morphedWave values and is bounded by about 2 in practice; 1e30 is thirty
+	// orders above anything reachable and is here for the same reason the
+	// `largeness` subcase above carries its absurd values — the identity must
+	// not quietly hold only over the musical range.
+	const float hs[6] = { 2.f, -2.f, 0.5f, -1.75f, 1e30f, -1e30f };
+
+	SUBCASE("identity: the named call and the pre-scaled call produce IDENTICAL accumulator pairs") {
+		for (int i = 0; i < 9; ++i) {
+			for (int j = 0; j < 6; ++j) {
+				const float f = xs[i];
+				const float h = hs[j];
+				CAPTURE(f);
+				CAPTURE(h);
+
+				// FRESH instances on BOTH sides, so "identical" means identical
+				// from the post-construction state rather than identical to
+				// whatever the previous iteration left behind.
+				forge::MorphBlep named;
+				forge::MorphBlep prescaled;
+				named.addPastStep(f, h);
+				prescaled.addStep(0.f, -f * f * h);
+
+				CAPTURE(named.inject);
+				CAPTURE(prescaled.inject);
+				CAPTURE(named.pending);
+				CAPTURE(prescaled.pending);
+
+				// The tolerance shape case five part A uses for its pinned
+				// equivalence, kept so the two equivalence claims in this file
+				// read the same way...
+				CHECK(std::fabs(named.inject  - prescaled.inject)  < 1e-5f);
+				CHECK(std::fabs(named.pending - prescaled.pending) < 1e-5f);
+
+				// ...and then the STRONGER claim, which is the one that makes the
+				// header change safe. The groupings in addPastStep's body were
+				// written to match `addStep(0.f, -f*f*h)` operation for
+				// operation, so the two forms agree BIT-EXACTLY and not merely
+				// within a tolerance. A tolerance alone would let a later editor
+				// re-associate the multiplies — say to `jump * -0.5f * f * f` —
+				// and the bit-exactness gate in tests/test_vco_spectrum.cpp,
+				// which compares 1,720,320 real samples by direct float ==,
+				// would go red while this case stayed green. Exact here, exact
+				// there.
+				CHECK(named.inject  == prescaled.inject);
+				CHECK(named.pending == prescaled.pending);
+			}
+		}
+	}
+
+	SUBCASE("nothing owed forward: a legitimate past-edge call leaves pending EXACTLY zero") {
+		// THIS IS THE PROPERTY THE AUDITION RECONSTRUCTION RESTS ON. Plan 33-10's
+		// renderer recovers the withheld no-correction leg by subtracting a
+		// per-sample recorded value — leg_none[n] = leg_full[n] - 5 *
+		// syncCorrection[n] — and that subtraction is meaningful only while
+		// NOTHING IS OWED FORWARD. The moment a sync correction deposited into
+		// `pending` as well, the difference between the two legs would straddle
+		// two samples and a single per-sample subtraction could not express it.
+		// src/dsp/VcoCore.hpp states the relationship against this leg
+		// specifically and cites its measured error bar; this is the assertion
+		// underneath that statement.
+		//
+		// EXACT float equality, never a tolerance. "Approximately nothing owed
+		// forward" is not a property a reconstruction can rest on, and a
+		// tolerance here would pass for a correction that deposited a small real
+		// residual forward on every single reset.
+		for (int i = 0; i < 9; ++i) {
+			for (int j = 0; j < 6; ++j) {
+				CAPTURE(xs[i]);
+				CAPTURE(hs[j]);
+				forge::MorphBlep b;
+				b.addPastStep(xs[i], hs[j]);
+				CAPTURE(b.inject);
+				CAPTURE(b.pending);
+				CHECK(b.pending == 0.0f);
+				// NON-VACUITY: the call must have actually deposited something,
+				// or "pending is zero" would be satisfied by a function that did
+				// nothing at all — which is precisely what the gate subcase below
+				// makes it do, and the two claims must not be confusable.
+				CHECK(b.inject != 0.0f);
+			}
+		}
+	}
+
+	SUBCASE("gate: an out-of-range position or a non-finite magnitude touches neither accumulator") {
+		// THE SAME POPULATION AND THE SAME EXACT-EQUALITY SHAPE as case five part
+		// B's rejection subcase and as the `(D-04 third item)` rejection subcase,
+		// deliberately, because the gate exists for exactly the same reason:
+		// a value that reached per-instance state would poison every following
+		// sample. `pending` carries forward forever, and forge::VcoCore ADDS this
+		// correction to the sample it puts on the module's output.
+		const float badX[3] = {
+			-0.1f, 1.1f, std::numeric_limits<float>::quiet_NaN()
+		};
+		for (int i = 0; i < 3; ++i) {
+			CAPTURE(badX[i]);
+			forge::MorphBlep b;
+			b.addPastStep(badX[i], 2.f);
+			CAPTURE(b.inject);
+			CAPTURE(b.pending);
+			CHECK(b.inject  == 0.0f);
+			CHECK(b.pending == 0.0f);
+		}
+
+		const float badH[3] = {
+			 std::numeric_limits<float>::infinity(),
+			-std::numeric_limits<float>::infinity(),
+			 std::numeric_limits<float>::quiet_NaN()
+		};
+		for (int i = 0; i < 3; ++i) {
+			CAPTURE(badH[i]);
+			forge::MorphBlep b;
+			b.addPastStep(0.5f, badH[i]);
+			CAPTURE(b.inject);
+			CAPTURE(b.pending);
+			CHECK(b.inject  == 0.0f);
+			CHECK(b.pending == 0.0f);
+		}
+
+		// AND THE REJECTION IS IDENTICAL TO THE PRE-SCALED CALL'S, which is the
+		// half of the identity a value comparison alone would miss. The gate
+		// tests the value that ACTUALLY REACHES the accumulator — the pre-scaled
+		// one — rather than the raw argument, so the two forms agree even where
+		// the scaling itself overflows to infinity. FLT_MAX at a position of 0.5
+		// is finite when scaled and must be ACCEPTED by both; FLT_MAX at a
+		// position of 1e-6 underflows the scaling toward zero and must produce
+		// the same value in both. A gate written on the raw `jump` instead would
+		// diverge from addStep on the first of these.
+		const float edgeX[3] = { 1e-6f, 0.5f, 0.999999f };
+		const float edgeH[3] = { 3.402823466e38f, -3.402823466e38f, 1e-30f };
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 3; ++j) {
+				CAPTURE(edgeX[i]);
+				CAPTURE(edgeH[j]);
+				forge::MorphBlep named;
+				forge::MorphBlep prescaled;
+				named.addPastStep(edgeX[i], edgeH[j]);
+				prescaled.addStep(0.f, -edgeX[i] * edgeX[i] * edgeH[j]);
+				CAPTURE(named.inject);
+				CAPTURE(prescaled.inject);
+				CHECK(named.inject  == prescaled.inject);
+				CHECK(named.pending == prescaled.pending);
+			}
+		}
+	}
+}
