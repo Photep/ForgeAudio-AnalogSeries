@@ -74,7 +74,15 @@
 //      instrument is time-domain BY NECESSITY — single-sample full-amplitude
 //      spikes were measured at 0.0 dB spectrally, so the alias-floor gate is
 //      structurally blind to the artefact this criterion forbids (SC-3 / D-10)
-//      Appended by plan 33-08; nothing above it was renumbered.
+//  11. SC-3's ANTI-CIRCULARITY MARGIN — the worst reset step with the sync
+//      correction WITHHELD minus the worst with it applied, asserted at or
+//      above a pinned floor on every cell of a population stated on a PHYSICAL
+//      criterion before it is counted, with the population where the
+//      correction is WORSE than nothing asserted alongside it, and with three
+//      mutation probes each failing a STATED population exactly. Both legs
+//      come from ONE pass of ONE core, and the assertion consults no pinned
+//      number from anywhere else in this suite (SC-3 / D-10)
+//      Appended by plan 33-08; nothing above them was renumbered.
 //
 // THE D-16 LABEL, WHICH MUST NOT BE SOFTENED. Invariant 1 is NOT the TEST-02
 // V/Oct tracking gate. TEST-02 belongs to Phase 31 and requires better than one
@@ -935,6 +943,22 @@ double worstResetDeltaAt(const SyncDeltaCell& c, double k) {
 		if (d > worst) worst = d;
 	}
 	return worst;
+}
+
+// The cell's largest |tel.syncJump|, in PRE-MULTIPLY units. THIS IS A PROPERTY
+// OF THE RESET AND OF NOTHING ELSE: `tel.syncJump` is computed at the SYNC JUMP
+// COMPLETION line, BEFORE the seam runs, and is therefore identical on every
+// leg — the shipped one, the withheld one and both mutation probes. That is
+// what makes it usable as a classifier by invariant 11 without consulting
+// either side of the comparison it classifies. Same argument plan 33-07 gives
+// for inheriting 33-05's jump floor into the spectral tiers.
+float maxAbsJumpOf(const SyncDeltaCell& c) {
+	float m = 0.f;
+	for (size_t j = 0; j < c.obs.size(); ++j) {
+		const float a = std::fabs(c.obs[j].jump);
+		if (a > m) m = a;
+	}
+	return m;
 }
 
 // ---------------------------------------------------------------------------
@@ -3811,4 +3835,330 @@ TEST_CASE("vco sync: (SC-3 / D-10) the per-sample step across a reset is bounded
 		CHECK(perRateCorrected[r] > kSyncResetDeltaFloorV);
 		CHECK(perRateWithheld[r]  > kSyncResetDeltaBoundV);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// 11. SC-3's ANTI-CIRCULARITY MARGIN — THE CORRECTED RESET STEP BEATS THE
+//     UNCORRECTED ONE BY A MEASURED AMOUNT (SC-3 / D-10). Appended by plan
+//     33-08; nothing above it was renumbered.
+//
+//     ------------------------------------------------------------------------
+//     WHY THIS CASE EXISTS AND INVARIANT 10 IS NOT ENOUGH
+//     ------------------------------------------------------------------------
+//     Invariant 10's envelope is pinned OUTWARD FROM THE IMPLEMENTATION'S OWN
+//     OUTPUT. A number derived that way cannot, on its own, fail — it passes by
+//     construction with whatever headroom the rounding gave it. THIS case is
+//     the other half, and it is built to a different shape: it asserts a
+//     relationship between TWO MEASUREMENTS, and it consults no pinned figure
+//     from anywhere else in this suite or in any other. Nothing here reads an
+//     alias threshold, a decibel column, an output tier or invariant 10's
+//     envelope — that last one is not even in scope, because invariant 10
+//     declares it INSIDE its own TEST_CASE for exactly this reason.
+//
+//     THE ONLY PINNED NUMBERS IN THIS CASE ARE THE MARGIN ITSELF AND THE
+//     CLASSIFIER'S FLOOR, and both are derived below from this run's own
+//     measurements rather than transferred from another instrument.
+//
+//     ------------------------------------------------------------------------
+//     BOTH LEGS COME FROM THE SAME PASS, AND THAT IS STRUCTURAL
+//     ------------------------------------------------------------------------
+//     There is no second forge::VcoCore, no NaiveVcoCoreMirror, no `bool
+//     bandLimit` flag in the shipped body and no second drive. `sweepSyncDeltaGrid`
+//     records, per reset, the SHIPPED output at the reset and at its
+//     predecessor together with `tel.syncCorrection` on both; the withheld leg
+//     is `out[n] - 5.f * syncCorrection[n]`, which is the reconstruction
+//     src/dsp/VcoCore.hpp states and plan 33-06 measured. A second core would
+//     make the comparison a claim about two implementations rather than about
+//     one correction.
+//
+//     ------------------------------------------------------------------------
+//     THE PHYSICAL CRITERION — STATED HERE, BEFORE ANY POPULATION IS COUNTED
+//     ------------------------------------------------------------------------
+//     >>> A CELL IS STEP-CARRYING WHEN THE LARGEST JUMP ITS RESETS PRODUCE IS
+//         AT LEAST 0.75 PRE-MULTIPLY UNITS — three quarters of the naive
+//         waveform's own unit amplitude, or 3.75 V at the output. <<<
+//
+//     THE PHYSICS, AND IT IS THE SEAM'S OWN ARITHMETIC. forge::MorphBlep::
+//     addPastStep deposits -f*f*jump/2, i.e. a correction PROPORTIONAL TO THE
+//     JUMP and to at most half of it. On a cell whose resets produce a large
+//     jump, that deposit is a genuine correction to a genuine discontinuity and
+//     it can only act in the direction that reduces the step. On a cell whose
+//     resets barely move the waveform — because the slave's phase hardly
+//     advances between wraps, or because the reset lands inside a smooth or
+//     flat region — there is no step for a STEP blep to correct, and the
+//     surviving after-edge half is a small additive perturbation that can land
+//     either way. The criterion asks whether the CELL carries a step, which is
+//     the same question plan 33-07's step-dominated clause asks of the spectral
+//     grid, and it is answered from `tel.syncJump`: a quantity computed BEFORE
+//     the seam runs, identical on the shipped leg, the withheld leg and both
+//     probes, and therefore incapable of being a restatement of the result.
+//
+//     >>> THIS IS NOT "EXCLUDE THE CELLS THAT FAILED", AND THE MEASUREMENT SAYS
+//         SO RATHER THAN THE PROSE. <<< The classifier's floor sits inside a
+//         wide EMPTY GAP in the measured jump distribution: no cell anywhere on
+//         the 420-cell grid has a largest jump between 0.639500 and 0.921976.
+//         Any floor in that window — a factor of 1.44 wide — selects the SAME
+//         277 cells. A floor tuned to exclude particular failures would have to
+//         be tuned to a particular value, and there is no value in that window
+//         that changes the answer. Both edges of the gap are ASSERTED below.
+//
+//     ------------------------------------------------------------------------
+//     AND THE POPULATION WHERE THE CORRECTION DOES NOT HELP IS ASSERTED TOO
+//     ------------------------------------------------------------------------
+//     >>> THE SYNC CORRECTION IS NOT A UNIFORM IMPROVEMENT, AND THIS CASE SAYS
+//         SO IN AN ASSERTION RATHER THAN IN A COMMENT. <<< MEASURED on the 143
+//         cells the criterion does NOT select: 56 of the 420 cells have a
+//         NEGATIVE margin — the shipped leg's worst reset step is LARGER than
+//         the withheld leg's — and every one of the 56 is outside the gated
+//         population. The worst is -0.246492 V, at 44.1 kHz, hard-edge master,
+//         RATIO 5.50, the square centre, character 1.00.
+//
+//     THAT IS THE SAME REGION, IN A SECOND AND INDEPENDENT INSTRUMENT. Plan
+//     33-06 measured the shipped leg 0.15 to 1.09 dB WORSE than no correction
+//     at ratio 5.5 SPECTRALLY, and plan 33-07 reproduced it at a mean of
+//     -1.0281 dB over 60 cells and asserted the sign permanently. This case
+//     finds it again in the TIME DOMAIN, on a different metric, and pins it
+//     with its own assertion. Two instruments that disagreed about this would
+//     be a finding; two that agree are the honest reading of the forfeited
+//     pre-edge half showing up where the detected fraction is largest.
+//
+//     ------------------------------------------------------------------------
+//     THE MARGIN — PROVENANCE
+//     ------------------------------------------------------------------------
+//     MEASURED by plan 33-08 over the 277 gated cells, with the margin defined
+//     as (worst withheld reset step) - (worst shipped reset step):
+//
+//         minimum   0.095148 V   48 kHz, band-limited, ratio 5.50,
+//                                the square centre, character 1.00
+//         median    0.874437 V
+//         maximum   1.781152 V
+//         per rate (44.1 / 48 / 96 kHz)   n = 91 / 95 / 91
+//                   minima 0.095156 / 0.095148 / 0.095148 V
+//         per master edge shape           hard-edge n = 139, min 0.874437 V
+//                                         band-limited n = 138, min 0.095148 V
+//
+//     >>> THE BINDING CELLS ARE THE BAND-LIMITED ONES, BY AN ORDER OF
+//         MAGNITUDE, AND THAT IS THE EXPECTED DIRECTION RATHER THAN A SURPRISE.
+//         <<< On a hard-edged master the detected fraction is a nearly constant
+//         0.5968 (invariant 7 measures it), so f*f is a stable 0.36 and the
+//         deposit is predictable; on a band-limited master f ranges across most
+//         of the unit interval, so the deposit is small wherever f is small.
+//
+//     PINNED AT 0.04 V, in two stated steps:
+//       (1) the measured minimum, 0.095148 V, ROUNDED OUTWARD — downward, since
+//           this is a floor — to the nearest hundredth of a volt: 0.09 V;
+//       (2) HALVED and rounded outward again to the nearest hundredth: 0.04 V.
+//     Step (2) is a deliberate factor-of-2.4 cushion and it is spent on ONE
+//     problem: every volt and every decibel in this phase is an APPLE-CLANG
+//     figure, and this margin has never been measured on another toolchain.
+//     Plan 33-07 spent a factor of five on the same problem for its snap floor
+//     and said so; this spends 2.4 and says so. The gate is still 0.04 V
+//     against a measured 0.095148 V over 277 cells, and the DISTRIBUTION above
+//     is the evidence, not the constant.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco sync: (SC-3 / D-10) the corrected reset delta beats the uncorrected one by a measured margin") {
+	// THE CLASSIFIER'S FLOOR, in PRE-MULTIPLY units. See the criterion in the
+	// banner, which is stated ABOVE this line and above every count below it.
+	const float kSyncStepCarryingJumpV = 0.75f;
+
+	// THE MARGIN. Derived in the banner; local to this case for the same reason
+	// invariant 10's envelope is local to its own.
+	const float kSyncAntiCircularityMarginV = 0.04f;
+
+	const std::vector<SyncDeltaCell> grid = sweepSyncDeltaGrid();
+	REQUIRE(grid.size() == 420u);
+
+	// --- THE CLASSIFICATION, AND THE GAP THAT MAKES IT ROBUST -------------
+	int   nGated = 0, nUngated = 0;
+	float largestJumpBelowFloor = 0.f;
+	float smallestJumpAboveFloor = 1e30f;
+	for (size_t ci = 0; ci < grid.size(); ++ci) {
+		const float j = maxAbsJumpOf(grid[ci]);
+		if (j >= kSyncStepCarryingJumpV) {
+			++nGated;
+			if (j < smallestJumpAboveFloor) smallestJumpAboveFloor = j;
+		} else {
+			++nUngated;
+			if (j > largestJumpBelowFloor) largestJumpBelowFloor = j;
+		}
+	}
+	CAPTURE(nGated);
+	CAPTURE(nUngated);
+	CAPTURE(largestJumpBelowFloor);
+	CAPTURE(smallestJumpAboveFloor);
+	INFO("the step-carrying criterion is stated in this case's banner, ABOVE this enumeration");
+	// Both populations exactly, so a cell that changed class is visible.
+	CHECK(nGated   == 277);
+	CHECK(nUngated == 143);
+	// THE EMPTY GAP, ASSERTED. MEASURED 0.639500 below and 0.921976 above, so
+	// any floor in that window selects the same 277 cells and the criterion is
+	// not a value that was tuned.
+	CHECK(largestJumpBelowFloor  <= 0.65f);
+	CHECK(smallestJumpAboveFloor >= 0.92f);
+	CHECK(largestJumpBelowFloor  <  kSyncStepCarryingJumpV);
+	CHECK(smallestJumpAboveFloor >  kSyncStepCarryingJumpV);
+
+	// --- THE TWO MEASUREMENTS, AND THE ASSERTION BETWEEN THEM -------------
+	double minGatedMargin  = 1e30, maxGatedMargin = -1e30;
+	double worstNegativeAnywhere = 0.0;
+	double worstNegativeAtRatio55 = 0.0;
+	int    nNegativeAnywhere = 0, nNegativeInGated = 0;
+	int    nBelowProbeCut = 0;                 // gated cells with margin < 4 x the margin
+	double largestGatedMarginBelowCut = 0.0;
+	double smallestGatedMarginAboveCut = 1e30;
+	double worstDerivationError = 0.0;
+	std::string minMarginCell;
+
+	for (size_t ci = 0; ci < grid.size(); ++ci) {
+		const SyncDeltaCell& c = grid[ci];
+		// BOTH SIDES ARE MEASUREMENTS FROM THE SAME PASS. k = 0 withholds the
+		// seam's deposit; k = 1 is the leg that ships.
+		const double withheld = worstResetDeltaAt(c, 0.0);
+		const double shipped  = worstResetDeltaAt(c, 1.0);
+		const double margin   = withheld - shipped;
+
+		if (margin < 0.0) {
+			++nNegativeAnywhere;
+			if (margin < worstNegativeAnywhere) worstNegativeAnywhere = margin;
+			if (c.ratio == 5.5 && margin < worstNegativeAtRatio55) worstNegativeAtRatio55 = margin;
+		}
+
+		if (maxAbsJumpOf(c) < kSyncStepCarryingJumpV) continue;
+
+		if (margin < 0.0) ++nNegativeInGated;
+		if (margin > maxGatedMargin) maxGatedMargin = margin;
+		if (margin < minGatedMargin) {
+			minGatedMargin = margin;
+			minMarginCell = std::string("sr ") + std::to_string((long)c.sr) + " / " + c.edgeName
+			              + " / ratio " + std::to_string(c.ratio) + " / " + c.region
+			              + " / character " + std::to_string(c.character);
+		}
+
+		// >>> THE ASSERTION. Two measurements, one pinned floor between them,
+		//     and no other number consulted anywhere. <<<
+		CAPTURE(c.sr);
+		CAPTURE(c.ratio);
+		CAPTURE(c.morph);
+		CAPTURE(c.character);
+		CAPTURE(withheld);
+		CAPTURE(shipped);
+		CAPTURE(margin);
+		CHECK(margin >= (double)kSyncAntiCircularityMarginV);
+
+		// The probe cut, and how far the nearest cell sits from it — see the
+		// mutation section below.
+		const double cut = 4.0 * (double)kSyncAntiCircularityMarginV;
+		if (margin < cut) {
+			++nBelowProbeCut;
+			if (margin > largestGatedMarginBelowCut) largestGatedMarginBelowCut = margin;
+		} else if (margin < smallestGatedMarginAboveCut) {
+			smallestGatedMarginAboveCut = margin;
+		}
+
+		// THE DERIVATION THE MUTATION PROBE'S STATED POPULATION RESTS ON,
+		// CHECKED RATHER THAN ASSUMED. The seam's deposit is purely additive
+		// and nothing is owed forward, so a leg whose seam deposited k times
+		// the correction differs from the shipped leg by exactly
+		// 5*(k-1)*syncCorrection on every sample — which makes the margin
+		// EXACTLY k times the unprobed margin. MEASURED departure over all 277
+		// gated cells: exactly zero. Asserted at 1e-5 V rather than by float
+		// equality, because plan 33-06 measured the reconstruction itself to be
+		// one ulp off on 16 samples in 49,152 and this suite does not write
+		// bit-exact equalities against a quantity with a known error bar.
+		const double marginQuarter = withheld - worstResetDeltaAt(c, 0.25);
+		const double derivErr = std::fabs(marginQuarter - 0.25 * margin);
+		if (derivErr > worstDerivationError) worstDerivationError = derivErr;
+		CHECK(derivErr < 1e-5);
+	}
+
+	CAPTURE(minGatedMargin);
+	CAPTURE(maxGatedMargin);
+	CAPTURE(worstDerivationError);
+	INFO("minimum-margin cell: " << minMarginCell);
+	// MEASURED 0.095148 V minimum over the 277 gated cells against a pinned
+	// 0.04 V, and 1.781152 V maximum. The minimum is recorded as an assertion
+	// too, so a future run that drifted UP would be as visible as one that
+	// drifted down.
+	CHECK(minGatedMargin >= (double)kSyncAntiCircularityMarginV);
+	CHECK(minGatedMargin <= 0.11);
+	CHECK(maxGatedMargin >= 1.7);
+	CHECK(nNegativeInGated == 0);
+
+	// --- THE POPULATION WHERE THE CORRECTION IS WORSE THAN NOTHING --------
+	// Not a failure and not hidden: the honest complement of the claim above.
+	// MEASURED 56 cells of 420 with a negative margin, all of them outside the
+	// gated population, worst -0.246492 V at ratio 5.50.
+	//
+	// THE COUNT IS DELIBERATELY NOT PINNED AS AN EQUALITY. Twenty of those 56
+	// margins are within a millionth of a volt of zero, so an exact count would
+	// pin float rounding rather than physics. What IS pinned is the two robust
+	// facts: the population is non-empty, and the worst of it is at ratio 5.50
+	// and is at least two tenths of a volt.
+	CAPTURE(nNegativeAnywhere);
+	CAPTURE(worstNegativeAnywhere);
+	CAPTURE(worstNegativeAtRatio55);
+	INFO("the shipped correction is NOT a uniform improvement; 33-06 and 33-07 measured the same region spectrally");
+	CHECK(nNegativeAnywhere > 0);
+	CHECK(worstNegativeAtRatio55 <= -0.20);
+
+	// --- MUTATION PROBE ONE: A QUARTER OF THE DEPOSIT ---------------------
+	// The defect class is a coefficient typo at the seam — `inject += pastJump
+	// * 0.5f` mistyped as `* 0.125f`. It is applied to the RECONSTRUCTION
+	// rather than to the shipped header, which is faithful for the reason the
+	// derivation above states and MEASURES: the deposit is purely additive.
+	//
+	// >>> THE POPULATION IS STATED BEFORE THE PROBE RUNS, AND IT IS DERIVED
+	//     RATHER THAN OBSERVED. <<< A quarter deposit gives exactly a quarter
+	//     of the margin, so the probe must fail EXACTLY the gated cells whose
+	//     unprobed margin is below four times the pinned margin — no more and
+	//     no fewer. MEASURED: 69 of 277.
+	const int statedQuarter = nBelowProbeCut;
+	int observedQuarter = 0, observedHalf = 0, observedInverted = 0;
+	int statedHalf = 0;
+	for (size_t ci = 0; ci < grid.size(); ++ci) {
+		const SyncDeltaCell& c = grid[ci];
+		if (maxAbsJumpOf(c) < kSyncStepCarryingJumpV) continue;
+		const double withheld = worstResetDeltaAt(c, 0.0);
+		const double margin   = withheld - worstResetDeltaAt(c, 1.0);
+		if (margin < 2.0 * (double)kSyncAntiCircularityMarginV) ++statedHalf;
+		if (withheld - worstResetDeltaAt(c,  0.25) < (double)kSyncAntiCircularityMarginV) ++observedQuarter;
+		if (withheld - worstResetDeltaAt(c,  0.50) < (double)kSyncAntiCircularityMarginV) ++observedHalf;
+		if (withheld - worstResetDeltaAt(c, -1.00) < (double)kSyncAntiCircularityMarginV) ++observedInverted;
+	}
+
+	CAPTURE(statedQuarter);
+	CAPTURE(observedQuarter);
+	CAPTURE(largestGatedMarginBelowCut);
+	CAPTURE(smallestGatedMarginAboveCut);
+	CHECK(statedQuarter   == 69);
+	CHECK(observedQuarter == 69);
+	CHECK(observedQuarter == statedQuarter);
+	// THE CUT'S OWN ROBUSTNESS, MEASURED. The cut at four times the pinned
+	// margin (0.16 V) sits in a gap: the nearest gated margins are 0.155046
+	// below it and 0.173168 above, so the stated population of 69 does not turn
+	// on the last digit of the pin.
+	CHECK(largestGatedMarginBelowCut   <= 0.156);
+	CHECK(smallestGatedMarginAboveCut  >= 0.172);
+
+	// --- MUTATION PROBE TWO: HALF THE DEPOSIT, WHICH MUST FIRE NOTHING ----
+	// >>> A PROBE THAT FIRES ON EVERYTHING PROVES NOTHING ABOUT SENSITIVITY,
+	//     AND THIS IS THE CONTROL THAT SAYS PROBE ONE IS NOT ONE OF THOSE. <<<
+	// Half the deposit halves every margin, and the smallest gated margin is
+	// 0.095148 V, so every halved margin is at least 0.047574 V — above the
+	// pinned 0.04 V. STATED 0 of 277; MEASURED 0. Plan 33-07's +2.0 dB probe
+	// firing on 192 step-dominated cells and 0 plateau ones is the same shape.
+	CAPTURE(statedHalf);
+	CAPTURE(observedHalf);
+	CHECK(statedHalf   == 0);
+	CHECK(observedHalf == 0);
+
+	// --- MUTATION PROBE THREE: THE DEPOSIT'S SIGN INVERTED ----------------
+	// 33-05's kProbeBadSign class, which that plan priced spectrally at 1.76 to
+	// 2.20 dB worse. STATED to fail ALL 277, and the statement is derived: on a
+	// gated cell the deposit reduces the worst step by margin > 0, so negating
+	// it INCREASES that step by the same amount and the margin becomes at most
+	// -margin, which is below the pinned floor everywhere. MEASURED 277.
+	CAPTURE(observedInverted);
+	CHECK(observedInverted == 277);
+	CHECK(observedInverted == nGated);
 }
