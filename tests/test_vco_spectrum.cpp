@@ -939,9 +939,11 @@ enum SpectrumMethod {
 // cannot carry. The alternative — a second, sync-aware drive loop — is exactly
 // what the paragraph above forbids, and it would be forbidden for a sharper
 // reason here than anywhere else in this file: plan 33-05's whole claim is that
-// its placement probe IS forge::VcoCore on the no-correction leg, and a
-// comparison whose two sides ran different loops could not support that claim
-// at all. So the ONE loop gained one defaulted pointer instead.
+// its placement probe IS forge::VcoCore — on the no-correction leg as 33-05
+// wrote it, and on the past-edge leg since 33-06 landed the seam and re-anchored
+// the gate — and a comparison whose two sides ran different loops could not
+// support that claim at all. So the ONE loop gained one defaulted pointer
+// instead.
 //
 // IT IS BIT-INERT FOR EVERY PRE-EXISTING CALLER. A null `master` leaves the
 // body byte-for-byte what it was, and forge::VcoInputs::syncConnected defaults
@@ -1305,6 +1307,80 @@ SyncMaster makeSyncMaster(int nTotal, int Km, double amp, SyncMasterEdge edge) {
 // sentinel that stood in silently would be the very failure this file's
 // standing posture is written against; a sentinel that names its own successor
 // plan is a forward reference, and this project resolves those in place.
+//
+// ===========================================================================
+// >>> PLAN 33-07 REFUSES, IN WRITING, TO WRITE AN IMPROVEMENT GATE FOR THE
+//     SYNC CORRECTION ON THIS INSTRUMENT — AND THE REFUSAL CARRIES ITS
+//     MEASURED REASON. READ THIS BEFORE PROPOSING ONE. <<<
+//
+// This milestone already has an improvement gate: the TEST-03 case above CHECKs
+// `naiveDb - correctedDb >= 8.0` on five named cells, and it is the strongest
+// non-circular evidence Phase 32 produced, precisely because it consults NO
+// pinned number — it compares two measurements of the same apparatus. The
+// obvious move for hard sync is to copy that shape. IT DOES NOT WORK HERE, AND
+// THE REASON IS A PROPERTY OF THE INSTRUMENT RATHER THAN OF THE IMPLEMENTATION.
+//
+// MEASURED, from plan 33-05's own leg table (mean dB, `none` minus `pastEdge`,
+// positive = the shipped correction is better), over the seventy cells of each
+// (rate x master edge shape) group:
+//
+//     rate     hard-edge   band-limited
+//     44.1 k     +0.061       +1.053
+//     48   k     -0.010       +0.996
+//     96   k     +0.174       +1.222
+//
+// THE GRID-WIDE MEAN IS +0.5827 dB. 33-VALIDATION's Threshold Policy predicted
+// "a mean of about 0.5 dB" from the research prototype and named the
+// consequence in advance: "a gate written in Phase 32's shape --
+// naiveDb - correctedDb >= 8.0 -- therefore FAILS, and the failure is a property
+// of the instrument, not of the implementation." That prediction is confirmed by
+// the table above to within a twentieth of a decibel.
+//
+// WHY THE CORRECTION'S OWN SPECTRAL IMPROVEMENT IS SO SMALL, PHYSICALLY: the
+// hard-sync edge lies BEHIND the sample that detects it, so only the after-edge
+// half of the residual is still deliverable. src/dsp/MorphBlep.hpp's addPastStep
+// banner item 3 records that the pre-edge half is FORFEITED deliberately and
+// permanently, because recovering it needs the one-sample output delay buffer
+// D-13 rejected. A one-sided correction cannot buy a Phase-32-sized number, and
+// no amount of implementation care will make it.
+//
+// AND THE CORRECTION IS NOT UNIFORMLY AN IMPROVEMENT, WHICH IS THE OTHER HALF OF
+// WHY THE GATE SHAPE IS REFUSED. Per ratio, mean `none` minus `pastEdge`,
+// measured by plan 33-07 over all 60 cells of each ratio:
+//
+//     0.50  +2.4495     1.50  +0.7247     3.50  -0.1911
+//     0.75  +1.9150     2.50  +0.2051     5.50  -1.0281   <-- WORSE THAN NONE
+//     1.00  +0.0037
+//
+// At ratio 5.5 the shipped leg measures WORSE than applying no correction at all
+// on 47 of 60 cells, by up to 7.0218 dB on the worst single cell. That is the
+// forfeited pre-edge half showing up where the detected fraction is largest, it
+// is 33-06's deferred register item 3, and an improvement gate would have to
+// carve those cells out — which is the anti-reclassification clause's forbidden
+// move performed on a whole ratio.
+//
+// SO WHERE DOES THE SYNC CORRECTION'S OWN NON-CIRCULAR EVIDENCE LIVE? IN THE
+// TIME DOMAIN, AND THAT IS PLAN 33-08'S INSTRUMENT (D-10). Register item 5
+// MEASURED that a single-sample full-amplitude spike reads 0.0 dB spectrally:
+// the alias-floor metric is structurally BLIND to the artefact SC-3 exists to
+// forbid. A spectral improvement gate for a click is not a weak gate, it is the
+// wrong instrument. What THIS instrument can carry is stated positively in two
+// places and both are asserted below: a PER-CELL ALIAS FLOOR pinned from
+// measurement, and the SNAP-TO-ZERO comparison, which measures 5.31 to 5.58 dB
+// on the informative masters and is the one sync claim with a comfortable margin.
+//
+// >>> THE TWO WARNING SIGNS THIS FILE IS TO BE READ AGAINST, NAMED SO A LATER
+//     READER CAN CHECK FOR THEM RATHER THAN BEING TOLD THEY DO NOT HAPPEN: <<<
+//   (1) A GATE THAT HAS TO BE LOOSENED REPEATEDLY. One loosening is a mistake in
+//       the pin; a second is evidence the gate was written in a shape the
+//       instrument cannot support, and the response is to ESCALATE and re-shape
+//       it, never to loosen it a third time.
+//   (2) A THRESHOLD AND ITS MEASURED SIBLING DRIFTING TOGETHER. That edit passes
+//       both the derivation assertion and the reproduction check while recording
+//       agreement rather than measurement. It is the reason `measuredDb` is
+//       compared against THIS RUN and not only against `thresholdDb`, and the
+//       reason both edits are named here where a reviewer will see them.
+// ===========================================================================
 // ---------------------------------------------------------------------------
 constexpr float kSyncUnpinnedDb = 999.0f;   // "no number pinned here yet" — never a measurement
 
@@ -1314,6 +1390,74 @@ const char* const kProvSyncUnpinned =
 	"the leg would be a threshold pinned from a leg no gate had yet examined. Plan 33-07 owns both "
 	"columns and the gate, and re-anchors the bit-exactness case below to the leg 33-06 lands. Until "
 	"then kSyncUnpinnedDb is a SENTINEL and must never be read as a measurement";
+
+// ---------------------------------------------------------------------------
+// THE SYNC PROVENANCE STRINGS (plan 33-07). NINE NEW CONSTANTS, AND NOT ONE OF
+// THEM IS A REUSE OF THE SIX ABOVE.
+//
+// >>> WHY kProvMeasured AND ITS FIVE SIBLINGS COULD NOT BE REUSED. <<< Every one
+// of them opens "MEASURED by plan 32-07", names that plan's own measurement run,
+// and states the derivation `thresholdDb = ceil(measuredDb + 3.0)` with a 3 dB
+// margin. All three clauses are FALSE of the rows below: these numbers were
+// measured by plan 33-07, on a different signal class (a hard-synced slave
+// against a master, not a free-running oscillator), and their margin is register
+// item 8's per-CLASS reproduction bound rather than a flat 3 dB. Attaching a
+// 32-07 string to a 33-07 row would misattribute the number to a run that never
+// produced it — which is exactly the failure a provenance column exists to make
+// impossible. The strings are therefore new, and the case below asserts they are
+// new rather than merely claiming it.
+//
+// THE RATE IS IN THE STRING, not only in the row's `sr` field, because register
+// item 8 binds per rate: 44.1 kHz is the BINDING rate and 48 / 96 kHz are
+// REGRESSION rows, and a reader who has only the provenance in front of them
+// must be able to tell which is which.
+//
+// AND EVERY ONE OF THEM SAYS THE SAME THING ABOUT WHAT THE NUMBER IS NOT: it is
+// the alias floor the SHIPPED past-edge leg reaches on that cell, and it makes
+// NO claim that the correction is an improvement there. 33-06's deferred item 3
+// requires that in terms, and the ratio table in the SyncCell banner above is
+// why.
+// ---------------------------------------------------------------------------
+const char* const kProvSync441Step =
+	"MEASURED by plan 33-07 in this repository AT 44.1 kHz - the BINDING rate - driving the SHIPPED "
+	"past-edge leg through measureSyncCellDb with useLiveCore=false, on the cell named by this row's own "
+	"five axes; STEP-DOMINATED class, so thresholdDb = ceil(measuredDb + 1.0), register item 8's "
+	"step-dominated reproduction bound. This is the alias floor the shipped leg REACHES here; it is not a "
+	"claim that the correction improves this cell";
+const char* const kProvSync441Plateau =
+	"MEASURED by plan 33-07 in this repository AT 44.1 kHz - the BINDING rate - on the SHIPPED past-edge "
+	"leg; PLATEAU class by the physical criterion stated in the D-11 gate below (no true value step from "
+	"either source, so the arg-max over non-harmonic bins is a near-tie one libm ULP reorders), so "
+	"thresholdDb = ceil(measuredDb + 4.0), register item 8's plateau reproduction bound - the wider bound "
+	"is EARNED by the physics of the cell, never granted because the cell failed";
+const char* const kProvSync48Step =
+	"MEASURED by plan 33-07 in this repository AT 48 kHz, this row's OWN rate, never transferred from the "
+	"44.1 kHz row - the cross-rate transfer the standing grid used to rely on was FALSIFIED in phase 32 "
+	"and is not resurrected here; REGRESSION tier and STEP-DOMINATED class, so "
+	"thresholdDb = ceil(measuredDb + 1.0)";
+const char* const kProvSync48Plateau =
+	"MEASURED by plan 33-07 in this repository AT 48 kHz, this row's OWN rate; REGRESSION tier and PLATEAU "
+	"class by the physical criterion stated in the D-11 gate below, so thresholdDb = ceil(measuredDb + 4.0)";
+const char* const kProvSync96Step =
+	"MEASURED by plan 33-07 in this repository AT 96 kHz, this row's OWN rate, never transferred from the "
+	"44.1 kHz row; REGRESSION tier and STEP-DOMINATED class, so thresholdDb = ceil(measuredDb + 1.0)";
+const char* const kProvSync96Plateau =
+	"MEASURED by plan 33-07 in this repository AT 96 kHz, this row's OWN rate; REGRESSION tier and PLATEAU "
+	"class by the physical criterion stated in the D-11 gate below, so thresholdDb = ceil(measuredDb + 4.0)";
+const char* const kProvSync441Invalid =
+	"MEASURED by plan 33-07 AT 44.1 kHz on the shipped past-edge leg, and DIAGNOSTIC tier: this cell fails "
+	"the fundamentalDominanceDb self-check, so aliasPeakDb is normalising by a bin that is NOT the master's "
+	"fundamental and the figure is not an alias floor at all. The measured value is recorded and "
+	"REPRODUCTION-CHECKED, and the threshold is derived for uniformity, but it is never CHECKed - gating a "
+	"number the instrument cannot produce would be coverage that means nothing";
+const char* const kProvSync48Invalid =
+	"MEASURED by plan 33-07 AT 48 kHz on the shipped past-edge leg, DIAGNOSTIC tier for the same reason as "
+	"kProvSync441Invalid: fundamentalDominanceDb reports the master's fundamental is not the strongest bin "
+	"on its own harmonic lattice, so this row is recorded and reproduction-checked but never CHECKed";
+const char* const kProvSync96Invalid =
+	"MEASURED by plan 33-07 AT 96 kHz on the shipped past-edge leg, DIAGNOSTIC tier for the same reason as "
+	"kProvSync441Invalid: fundamentalDominanceDb reports the master's fundamental is not the strongest bin "
+	"on its own harmonic lattice, so this row is recorded and reproduction-checked but never CHECKed";
 
 struct SyncCell {
 	double sr;                  // the sample rate
@@ -1568,7 +1712,10 @@ inline SyncProbeDiag zeroedSyncDiag() {
 // reimplements neither.
 //   AND THE MIRRORING IS PROVED, NOT ASSERTED. The case named
 // "(D-06) the sync placement probe reproduces forge::VcoCore bit-exactly on the
-// no-correction leg" drives this struct and the LIVE core through the SAME loop
+// past-edge leg" — it said "no-correction leg" until plan 33-06 landed the seam
+// and re-anchored it, and the name is quoted here in its CURRENT form on purpose,
+// because a banner quoting a case name that no longer exists is a banner nobody
+// can follow — drives this struct and the LIVE core through the SAME loop
 // with the SAME inputs, the SAME seeds and the SAME injected timing, and
 // requires ZERO mismatches by DIRECT FLOAT EQUALITY over the whole grid at all
 // three rates. That is the same non-vacuity move NaiveVcoCoreMirror already
@@ -3693,6 +3840,53 @@ TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, i
 	const double spreadPct = 100.0 * (hzMax - hzMin) / hzMin;
 	CAPTURE(spreadPct);
 	CHECK(spreadPct < 1.5);
+
+	// =======================================================================
+	// PART D (plan 33-07) — THE SYNC PROVENANCE STRINGS ARE NEW CONSTANTS,
+	// ASSERTED RATHER THAN CLAIMED.
+	//
+	// The constants' own banner says they are not reuses of Phase 32's six. A
+	// sentence cannot stop the next agent attaching kProvMeasured to a sync row
+	// and misattributing a 33-07 number to plan 32-07's measurement run. This
+	// block can: every sync string must be non-empty, mutually distinct, and
+	// distinct from every Phase 32 string by CONTENT, not by pointer identity —
+	// a copy-paste of kProvMeasured's text under a new name would defeat a
+	// pointer comparison and is exactly the edit worth catching.
+	// =======================================================================
+	{
+		const char* const syncProv[] = {
+			kProvSync441Step, kProvSync441Plateau,
+			kProvSync48Step,  kProvSync48Plateau,
+			kProvSync96Step,  kProvSync96Plateau,
+			kProvSync441Invalid, kProvSync48Invalid, kProvSync96Invalid
+		};
+		const char* const phase32Prov[] = {
+			kProvMeasured, kProvFloored, kProvCrossRate,
+			kProvCrossRateFloored, kProvDiagnostic, kProvDiagnosticFloored
+		};
+		const int nSync = (int)(sizeof(syncProv) / sizeof(syncProv[0]));
+		const int n32   = (int)(sizeof(phase32Prov) / sizeof(phase32Prov[0]));
+		CAPTURE(nSync);
+		CAPTURE(n32);
+		CHECK(nSync == 9);
+		CHECK(n32 == 6);
+		for (int i = 0; i < nSync; ++i) {
+			const std::string si(syncProv[i]);
+			CAPTURE(i);
+			CHECK(si.size() > 0);
+			// Every one names the plan that measured it and the rate it was
+			// measured at — the two things the plan requires of a provenance.
+			CHECK(si.find("33-07") != std::string::npos);
+			const bool namesARate = (si.find("44.1 kHz") != std::string::npos)
+			                     || (si.find("48 kHz")   != std::string::npos)
+			                     || (si.find("96 kHz")   != std::string::npos);
+			CHECK(namesARate);
+			// And not one of them claims plan 32-07 measured it.
+			CHECK(si.find("32-07") == std::string::npos);
+			for (int j = i + 1; j < nSync; ++j) { CAPTURE(j); CHECK(si != std::string(syncProv[j])); }
+			for (int j = 0; j < n32; ++j)       { CAPTURE(j); CHECK(si != std::string(phase32Prov[j])); }
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -3736,6 +3930,41 @@ TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, i
 // that comparator applies a relative-scaling margin even at epsilon(0), so it
 // is not a bit-exact comparator and would quietly absorb precisely the small
 // arithmetic drifts this case exists to see.
+//
+// ===========================================================================
+// >>> PLAN 33-07: THIS CASE MAKES TWO DIFFERENT CLAIMS AND THEY ARE LABELLED
+//     SEPARATELY BELOW, BECAUSE BEFORE THE RE-ANCHOR ONE ASSERTION WAS
+//     CARRYING BOTH AND THEREFORE CARRYING NEITHER. <<<
+//
+// Until plan 33-06 the case held a SINGLE assertion — probe on `kLegNone`
+// against the live core, zero mismatches — and that one assertion happened to
+// be true for two independent reasons at once: the probe reproduced the core's
+// arithmetic (an IDENTITY statement), AND the shipped core applied no sync
+// correction (a MAGNITUDE statement, that the correction was zero). Landing the
+// seam falsified the second while leaving the first true, and the assertion went
+// red without being able to say WHICH claim had moved. An un-re-anchored gate is
+// worse than a deleted one for exactly that reason: it still passes or fails on
+// something, so it reads as coverage, while comparing two different things.
+//
+// THE TWO CLAIMS, AS THEY NOW STAND:
+//
+//   CLAIM 1 — THE IDENTITY CLAIM. `SyncPlacementProbe` on `kLegPastEdge` IS
+//   `forge::VcoCore`, sample for sample, by direct float equality. This is the
+//   claim T-33-17 is about and it is the one every decibel in this file's sync
+//   rows rests on. Its two sides are the PROBE and the LIVE CORE.
+//
+//   CLAIM 2 — THE MAGNITUDE CONTROL. The probe's own `kLegNone` leg differs from
+//   the probe's own `kLegPastEdge` leg on a non-zero number of samples. BOTH
+//   SIDES ARE THE PROBE: this says nothing whatever about the core's identity,
+//   it says the CORRECTION IS NOT A NO-OP. It is the non-vacuity partner of
+//   claim 1 — without it, a seam that had been silently disabled would leave
+//   claim 1 trivially true and this case entirely green.
+//
+// A comparison of the probe's `kLegNone` leg against the LIVE CORE — which is
+// what the pre-33-06 assertion literally was — is now the SUM of those two
+// claims and is not asserted as such, because a failure of it could not be
+// attributed to either. The information it carried is fully covered above.
+// ===========================================================================
 // ---------------------------------------------------------------------------
 TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCore bit-exactly on the past-edge leg") {
 
@@ -3757,10 +3986,18 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 	long totalSamples = 0, totalMismatches = 0;
 	int  cellsWithSyncActivity = 0;
 
+	// CLAIM 2's tallies — see the banner. Both sides of these are the PROBE.
+	long totalCorrectionDiffs = 0;
+	int  cellsWhereCorrectionMoved = 0;
+	int  cellsWithZeroJump = 0;
+	int  zeroJumpCellsAtUnityFlatTop = 0;
+	long correctionDiffs[3] = { 0, 0, 0 };
+	float largestCorrection = 0.f;
+
 	for (std::size_t ci = 0; ci < nCells; ++ci) {
 		const SyncCell& cell = grid[ci];
 
-		std::vector<float> probeBlock, coreBlock;
+		std::vector<float> probeBlock, coreBlock, noneBlock;
 		double rms = 0.0, binErr = 0.0;
 		SyncProbeDiag diag = zeroedSyncDiag();
 
@@ -3769,13 +4006,60 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 		// nothing about the difference between them.
 		measureSyncCellDb(cell, kLegPastEdge, /*useLiveCore=*/false, &rms, &binErr, &diag, &probeBlock);
 		measureSyncCellDb(cell, kLegPastEdge, /*useLiveCore=*/true,  &rms, &binErr, 0,     &coreBlock);
+		// CLAIM 2's second side: the probe's OWN no-correction leg.
+		measureSyncCellDb(cell, kLegNone,     /*useLiveCore=*/false, &rms, &binErr, 0,     &noneBlock);
 
 		REQUIRE(probeBlock.size() == (std::size_t)kSpectrumN);
 		REQUIRE(coreBlock.size()  == (std::size_t)kSpectrumN);
+		REQUIRE(noneBlock.size()  == (std::size_t)kSpectrumN);
 
 		long mismatches = 0;
 		for (int i = 0; i < kSpectrumN; ++i)
 			if (probeBlock[(std::size_t)i] != coreBlock[(std::size_t)i]) ++mismatches;
+
+		// CLAIM 2 — THE MAGNITUDE CONTROL, counted per cell. Probe against
+		// probe: how many samples does the shipped correction actually move?
+		long correctionDiff = 0;
+		for (int i = 0; i < kSpectrumN; ++i) {
+			if (noneBlock[(std::size_t)i] == probeBlock[(std::size_t)i]) continue;
+			++correctionDiff;
+			const float d = std::fabs(noneBlock[(std::size_t)i] - probeBlock[(std::size_t)i]);
+			if (d > largestCorrection) largestCorrection = d;
+		}
+		if (correctionDiff > 0) ++cellsWhereCorrectionMoved;
+
+		// >>> THE ONE POPULATION WHERE THE CORRECTION MOVES NOTHING, AND IT IS
+		//     PREDICTED BY THE PHYSICS RATHER THAN OBSERVED AND THEN EXCUSED.
+		//     THE CRITERION IS STATED HERE, BEFORE THE COUNT BELOW. <<<
+		// The seam deposits -f*f*jump. When the reset produces a jump of EXACTLY
+		// zero it deposits exactly zero and the two legs are bit-identical — not
+		// approximately, identically. That happens when the pre-reset and
+		// post-reset phases land inside the SAME FLAT SEGMENT of a piecewise-
+		// constant waveform, which needs two things at once: a ratio at which the
+		// reset barely moves the phase, and a shape with a flat top for it to
+		// move within. This grid contains exactly one such corner — the unity
+		// ratio crossed with the square and pulse centres at character 0.00,
+		// where the shape is at its hardest and its plateaux are widest. Sine,
+		// triangle and saw have no flat segment at any character, and character
+		// 1.00 softens the square's edges into a slope with no plateau at all.
+		// A cell in this class is a cell with NOTHING TO CORRECT, and reporting
+		// it as a correction failure would be reporting the waveform.
+		const bool zeroJump = (diag.jumpAbsSum == 0.0);
+		if (zeroJump) {
+			++cellsWithZeroJump;
+			const bool unityFlatTop = (cell.ratio == 1.0)
+			                       && (cell.character == 0.00f)
+			                       && (cell.morph >= 0.75f);
+			if (unityFlatTop) ++zeroJumpCellsAtUnityFlatTop;
+		}
+		// The correction moves samples EXACTLY when there is a jump to correct.
+		CAPTURE(cell.sr);
+		CAPTURE(cell.edgeName);
+		CAPTURE(cell.ratio);
+		CAPTURE(cell.morph);
+		CAPTURE(cell.character);
+		CAPTURE(correctionDiff);
+		CHECK((correctionDiff > 0) == !zeroJump);
 
 		// NON-VACUITY: the cell must have actually SYNCED. Two blocks of a
 		// free-running oscillator would be trivially identical and would say
@@ -3787,8 +4071,10 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 		tally[slot].samples    += kSpectrumN;
 		tally[slot].mismatches += mismatches;
 		tally[slot].cells      += 1;
+		correctionDiffs[slot]  += correctionDiff;
 		totalSamples    += kSpectrumN;
 		totalMismatches += mismatches;
+		totalCorrectionDiffs += correctionDiff;
 
 		if (mismatches != 0) {
 			// Only report per cell when something is wrong: 360 CAPTUREd cells
@@ -3819,10 +4105,63 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 		CHECK(tally[r].mismatches == 0);
 	}
 
+	// =======================================================================
+	// >>> CLAIM 1 — THE IDENTITY CLAIM, ASSERTED ABOVE. <<<
+	// Probe on kLegPastEdge == forge::VcoCore, sample for sample, 0 mismatches.
+	// This is the claim that used to be anchored to the no-correction leg and is
+	// now anchored to the leg that ships; the equality was never loosened.
+	// =======================================================================
 	CAPTURE(totalSamples);
 	CAPTURE(totalMismatches);
 	CHECK(totalSamples == 420L * kSpectrumN);
 	CHECK(totalMismatches == 0);
+
+	// =======================================================================
+	// >>> CLAIM 2 — THE MAGNITUDE CONTROL. A DIFFERENT CLAIM, ASSERTED
+	//     SEPARATELY, WITH BOTH OF ITS SIDES COMING FROM THE PROBE. <<<
+	//
+	// This is NOT a statement about the core's identity — claim 1 above is the
+	// only assertion in this file that makes one. This says the shipped sync
+	// correction is not a no-op: the probe's kLegNone leg and its kLegPastEdge
+	// leg produce different samples, on every cell, and the difference is the
+	// correction's magnitude.
+	//
+	// WHY IT IS HERE AND NOT SOMEWHERE ELSE: claim 1 is a bit-exactness gate,
+	// and a bit-exactness gate is trivially satisfiable by disabling the thing
+	// on both sides of it. If the seam were removed from src/dsp/VcoCore.hpp and
+	// from the probe's kLegPastEdge arm in the same edit, claim 1 would go green
+	// on 1,720,320 samples and say nothing. Claim 2 is what goes red then.
+	//
+	// The SAMPLE count is deliberately not pinned: it is a function of how many
+	// resets each cell fires, which is a property of the master and the ratio and
+	// is already asserted elsewhere. The CELL counts below are pinned exactly,
+	// because they partition the grid on the physical criterion stated at the
+	// zero-jump test inside the loop above — stated there BEFORE these counts,
+	// and not adjusted to whatever the run produced.
+	// =======================================================================
+	CAPTURE(totalCorrectionDiffs);
+	CAPTURE(cellsWhereCorrectionMoved);
+	CAPTURE(cellsWithZeroJump);
+	CAPTURE(zeroJumpCellsAtUnityFlatTop);
+	CAPTURE(largestCorrection);
+	for (int r = 0; r < 3; ++r) {
+		CAPTURE(tally[r].sr);
+		CAPTURE(correctionDiffs[r]);
+		CHECK(correctionDiffs[r] > 0);
+	}
+	CHECK(totalCorrectionDiffs > 0);
+	CHECK(largestCorrection > 0.f);
+
+	// The two populations, EXACT. 12 cells carry a sync jump of exactly zero:
+	// 3 rates x 2 master edge shapes x 2 flat-top shape centres (square and
+	// pulse) at the unity ratio and character 0.00. The other 408 are moved by
+	// the correction. Both are equalities, never inequalities — a `>=` here
+	// would stop being able to see a grid that quietly lost cells, or a seam
+	// that quietly stopped depositing on half of them.
+	CHECK(cellsWithZeroJump == 12);
+	CHECK(zeroJumpCellsAtUnityFlatTop == 12);   // every zero-jump cell is in the predicted class
+	CHECK(cellsWhereCorrectionMoved == 408);
+	CHECK(cellsWhereCorrectionMoved + cellsWithZeroJump == (int)nCells);
 }
 
 // ---------------------------------------------------------------------------
@@ -4216,6 +4555,17 @@ TEST_CASE("vco spectrum: (D-06 / D-11) the sync placement measurement - six legs
 			CAPTURE(edgeName);
 			const double snapVsWinner   = snapSum   / (double)n;   // positive = snap is WORSE
 			const double oracleVsWinner = oracleSum / (double)n;   // negative = oracle is BETTER
+			// >>> THE MAGNITUDE CLAIM, IN DECIBELS. Plan 33-07 labels this site
+			// so it cannot be read as the IDENTITY CLAIM, which is a different
+			// statement about a different pair of things and lives in the
+			// bit-exactness case above — see that case's banner, which sets the
+			// two out side by side. BOTH SIDES OF THIS ONE ARE THE PROBE: it
+			// compares the probe's no-correction leg against the probe's shipped
+			// leg, so it is a statement about the CORRECTION's magnitude and
+			// never about whether the probe is the core. It is also the number
+			// the SyncCell banner's refusal paragraph quotes: a grid-wide mean of
+			// +0.5827 dB is why an improvement gate in the Phase 32 shape is
+			// REFUSED here rather than written and then loosened.
 			const double noneVsWinner   = noneSum   / (double)n;   // positive = doing nothing is WORSE
 			const double misVsWinner    = misSum    / (double)n;
 			const double badVsWinner    = badSum    / (double)n;
