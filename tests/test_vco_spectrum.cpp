@@ -1300,13 +1300,39 @@ SyncMaster makeSyncMaster(int nTotal, int Km, double amp, SyncMasterEdge edge) {
 // described at length in that struct's banner. The coupling is the point —
 // loosening a threshold alone must break the reproduction check.
 //
-// >>> BOTH DECIBEL COLUMNS ARE UNPINNED IN PLAN 33-05, DELIBERATELY. <<<
-// This plan MEASURES and DECIDES; plan 33-07 pins the columns and turns the
-// sub-grid into a gate. Every row therefore carries kSyncUnpinnedDb in both
-// columns and the `kProvSyncUnpinned` provenance string, which SAYS SO. A
-// sentinel that stood in silently would be the very failure this file's
-// standing posture is written against; a sentinel that names its own successor
-// plan is a forward reference, and this project resolves those in place.
+// >>> BOTH DECIBEL COLUMNS WERE UNPINNED IN PLAN 33-05, DELIBERATELY, AND ARE
+//     PINNED BY PLAN 33-07 FROM ITS OWN MEASUREMENTS. <<<
+// 33-05 measured and decided; every row carried kSyncUnpinnedDb in both columns
+// and the `kProvSyncUnpinned` provenance string, which said so in terms. That
+// sentinel is now reached only by a cell for which SYNC_PINS below has NO ROW,
+// which is a build error wearing a data mask: the gate case detects it and goes
+// red rather than passing on a sentinel. A sentinel that stood in silently would
+// be the very failure this file's standing posture is written against.
+//
+// >>> A GRID THAT GATES NOTHING CANNOT GO RED, WHICH IS WHY PINNING IS A
+//     SEPARATE PLAN FROM MEASURING RATHER THAN A LINE IN THE SAME ONE. <<<
+// Plan 33-05 refused to pin a column from a leg no gate had examined, and plan
+// 33-06 landed the leg. This plan pins from ITS OWN measurement of the leg that
+// now ships, and it pins per cell — 420 rows, each with its measured value, its
+// outward-rounded threshold, its tier and its written provenance.
+//
+// >>> EVERY ABSOLUTE DECIBEL IN SYNC_PINS IS AN APPLE-CLANG FIGURE. <<<
+// Register item 8 binds every one of them. Phase 32 measured this instrument
+// TOOLCHAIN-DEPENDENT BY UP TO 3.02596 dB on the sync grid's older sibling: the
+// FIRST CI run of that phase was RED on Ubuntu and Windows and GREEN on macOS,
+// with no src/ behaviour differing at all, because aliasPeakDb is an arg-max
+// over roughly two thousand bins and one libm ULP reorders near-tied ones. THE
+// SYNC ROWS JOIN THAT PROBLEM. They must NOT be captured as a golden from one
+// toolchain, and the CI MinGW leg (plan 33-11) is where their reproduction is
+// actually measured rather than assumed.
+//   AND ONE CLAUSE OF ITEM 8 IS INHERITED HERE RATHER THAN RE-MEASURED, WHICH
+// IS SAID OUT LOUD BECAUSE IT IS THE LARGEST OPEN RISK IN THIS TABLE: the
+// 1.0 dB step-dominated bound was measured on Phase 32's FREE-RUNNING cells, not
+// on hard-synced ones. The physical argument for it transfers — a true value
+// step produces a broad skirt and a genuine arg-max — but the number has never
+// been measured on this signal class. If a step-dominated sync cell reproduces
+// outside 1.0 dB on another toolchain, THAT IS A FINDING ABOUT THE BOUND and it
+// is escalated per the anti-softening rule, not absorbed by widening the column.
 //
 // ===========================================================================
 // >>> PLAN 33-07 REFUSES, IN WRITING, TO WRITE AN IMPROVEMENT GATE FOR THE
@@ -1563,6 +1589,500 @@ const float SYNC_CHARACTERS[] = { 0.00f, 1.00f };
 const SyncMasterEdge SYNC_EDGES[]     = { kMasterHardEdge, kMasterBandLimited };
 const char* const    SYNC_EDGE_NAME[] = { "hard-edge", "band-limited" };
 
+
+// ---------------------------------------------------------------------------
+// SYNC_PINS — THE PER-CELL LOOKUP, 420 ROWS, ONE PER CELL OF SYNC_GRID.
+//
+// >>> PLAN 33-05 WARNED THAT THIS WOULD BE NEEDED, IN THESE WORDS: "PLAN 33-07
+//     IS WARNED: the moment a per-cell threshold is pinned, that number needs a
+//     per-cell home and a per-cell provenance, and this builder must grow a
+//     LOOKUP rather than a FORMULA." THIS IS THAT LOOKUP. <<<
+// A formula would have made the threshold a property of the axes rather than of
+// the measurement, which is the opposite of pinning from measurement. Each row
+// below is keyed by the FIVE axes that identify a cell, and buildSyncGrid finds
+// its row by matching all five. A cell with no matching row keeps the unpinned
+// sentinel and the tier "UNPINNED", and the gate case turns that into a RED —
+// which is what makes an added grid row impossible to leave silently unpinned.
+//
+// THE COLUMNS:
+//   sr, edgeIdx, ratio, morph, character — the key. edgeIdx indexes SYNC_EDGES.
+//   measuredDb   — the alias floor the SHIPPED past-edge leg reached on this
+//                  cell when plan 33-07 measured it, in this repository, on
+//                  Apple clang. IT IS THE PROVENANCE, IN NUMBERS.
+//   thresholdDb  — max(ceil(measuredDb + bound), kThresholdFloorDb), where the
+//                  bound is 1.0 dB for a step-dominated cell and 4.0 dB for a
+//                  plateau cell. ROUNDED OUTWARD, never inward. The derivation
+//                  is asserted MECHANICALLY in the gate case, so a threshold
+//                  edited by hand without its measured sibling goes red.
+//   tier         — "gated" at 44.1 kHz (the binding rate), "regression" at 48
+//                  and 96 kHz, "diagnostic" where the cell fails the
+//                  fundamental-dominance self-check. Gated and regression rows
+//                  are CHECKed; diagnostic rows are CAPTUREd and never CHECKed,
+//                  exactly as SPECTRUM_GRID's diagnostic tier already works.
+//   provenance   — one of the nine kProvSync* strings above. Never one of Phase
+//                  32's six, and the sub-grid case asserts that.
+//
+// THE TRAILING COMMENT ON EVERY ROW carries the three physical quantities the
+// classification and the tier were decided from — the fundamental dominance in
+// dB, the mean absolute sync jump, and the no-correction leg's own figure — so
+// a reader can audit both decisions off the table without running anything.
+//
+// >>> HOW TO CHANGE A NUMBER HERE, AND IT IS NOT BY EDITING IT. <<< If a cell
+// goes red, the response is the anti-softening rule the TEST-03 gate's banner
+// states: ESCALATE with the measurement, never quietly loosen. Editing
+// thresholdDb alone breaks the derivation assertion. Editing measuredDb with it
+// breaks the reproduction check, which compares this column against THIS RUN.
+// Both edits are named here, and in the SyncCell banner's warning signs, so
+// neither can be a quiet one.
+// ---------------------------------------------------------------------------
+struct SyncPin {
+	double sr;
+	int    edgeIdx;      // index into SYNC_EDGES / SYNC_EDGE_NAME
+	double ratio;
+	float  morph;
+	float  character;
+	float  measuredDb;
+	float  thresholdDb;
+	const char* tier;
+	const char* provenance;
+};
+
+static const SyncPin SYNC_PINS[] = {
+
+	// --- 44.1 kHz, hard-edge master. BINDING rate.
+	{ 44100.0, 0, 0.50, 0.00f, 0.00f,   -32.2312f,  -31.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.0567  none  -32.2517
+	{ 44100.0, 0, 0.50, 0.00f, 1.00f,   -32.4151f,  -31.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.0470  none  -32.4297
+	{ 44100.0, 0, 0.50, 0.25f, 0.00f,   -30.9759f,  -29.0f, "gated"     , kProvSync441Step       },  // triangle  step  fundDom    +0.00  jump   1.9639  none  -27.2147
+	{ 44100.0, 0, 0.50, 0.25f, 1.00f,   -31.0312f,  -30.0f, "gated"     , kProvSync441Step       },  // triangle  step  fundDom    +0.00  jump   1.8053  none  -27.1053
+	{ 44100.0, 0, 0.50, 0.50f, 0.00f,   -31.0965f,  -30.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.0000  none  -27.2428
+	{ 44100.0, 0, 0.50, 0.50f, 1.00f,   -31.0970f,  -30.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.3809  none  -27.2398
+	{ 44100.0, 0, 0.50, 0.75f, 0.00f,    -2.5083f,   -1.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom    -5.53  jump   2.0000  none   +4.2384
+	{ 44100.0, 0, 0.50, 0.75f, 1.00f,   -31.4031f,  -30.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   0.1824  none  -31.4464
+	{ 44100.0, 0, 0.50, 1.00f, 0.00f,   -21.7259f,  -20.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -21.7998
+	{ 44100.0, 0, 0.50, 1.00f, 1.00f,   -25.3887f,  -24.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   1.0526  none  -25.5861
+	{ 44100.0, 0, 0.75, 0.00f, 0.00f,   -32.4663f,  -31.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   1.0414  none  -32.4906
+	{ 44100.0, 0, 0.75, 0.00f, 1.00f,   -32.4740f,  -31.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   1.0523  none  -32.4978
+	{ 44100.0, 0, 0.75, 0.25f, 0.00f,   -32.5146f,  -31.0f, "gated"     , kProvSync441Step       },  // triangle  step  fundDom    +0.00  jump   0.9458  none  -32.5551
+	{ 44100.0, 0, 0.75, 0.25f, 1.00f,   -32.5505f,  -31.0f, "gated"     , kProvSync441Step       },  // triangle  step  fundDom    +0.00  jump   1.0750  none  -32.6059
+	{ 44100.0, 0, 0.75, 0.50f, 0.00f,   -31.0965f,  -30.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.5000  none  -27.2428
+	{ 44100.0, 0, 0.75, 0.50f, 1.00f,   -31.1818f,  -30.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.6785  none  -27.3416
+	{ 44100.0, 0, 0.75, 0.75f, 0.00f,   -31.8150f,  -30.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   2.0000  none  -30.8866
+	{ 44100.0, 0, 0.75, 0.75f, 1.00f,   -32.5085f,  -31.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   1.1157  none  -32.5333
+	{ 44100.0, 0, 0.75, 1.00f, 0.00f,   -18.1957f,  -17.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -16.5282
+	{ 44100.0, 0, 0.75, 1.00f, 1.00f,   -21.8333f,  -20.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   1.1615  none  -21.9756
+	{ 44100.0, 0, 1.00, 0.00f, 0.00f,   -32.3118f,  -31.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.0119  none  -32.3097
+	{ 44100.0, 0, 1.00, 0.00f, 1.00f,   -32.2934f,  -31.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.0101  none  -32.2916
+	{ 44100.0, 0, 1.00, 0.25f, 0.00f,   -32.5668f,  -28.0f, "gated"     , kProvSync441Plateau    },  // triangle  PLAT  fundDom    +0.00  jump   0.0076  none  -32.5518
+	{ 44100.0, 0, 1.00, 0.25f, 1.00f,   -32.5796f,  -28.0f, "gated"     , kProvSync441Plateau    },  // triangle  PLAT  fundDom    +0.00  jump   0.0018  none  -32.5742
+	{ 44100.0, 0, 1.00, 0.50f, 0.00f,   -32.2181f,  -31.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   0.0038  none  -32.2225
+	{ 44100.0, 0, 1.00, 0.50f, 1.00f,   -31.3777f,  -30.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   0.0021  none  -31.3841
+	{ 44100.0, 0, 1.00, 0.75f, 0.00f,   -32.1627f,  -31.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   0.0000  none  -32.1627
+	{ 44100.0, 0, 1.00, 0.75f, 1.00f,   -32.3849f,  -31.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   0.0216  none  -32.3815
+	{ 44100.0, 0, 1.00, 1.00f, 0.00f,   -16.5912f,  -15.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   0.0000  none  -16.5912
+	{ 44100.0, 0, 1.00, 1.00f, 1.00f,   -23.8834f,  -22.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   0.0312  none  -23.8262
+	{ 44100.0, 0, 1.50, 0.00f, 0.00f,   -29.2703f,  -28.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.1699  none  -29.3298
+	{ 44100.0, 0, 1.50, 0.00f, 1.00f,   -28.9949f,  -27.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.1412  none  -29.0433
+	{ 44100.0, 0, 1.50, 0.25f, 0.00f,   -23.7527f,  -22.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom    -2.92  jump   1.8916  none  -23.2969
+	{ 44100.0, 0, 1.50, 0.25f, 1.00f,   -24.0494f,  -23.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom    -2.43  jump   1.8309  none  -24.1847
+	{ 44100.0, 0, 1.50, 0.50f, 0.00f,   -27.3310f,  -26.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.0000  none  -27.3892
+	{ 44100.0, 0, 1.50, 0.50f, 1.00f,   -25.0877f,  -24.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.3926  none  -24.8858
+	{ 44100.0, 0, 1.50, 0.75f, 0.00f,   -30.8655f,  -29.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   2.0000  none  -30.3808
+	{ 44100.0, 0, 1.50, 0.75f, 1.00f,   -30.0547f,  -29.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   0.3919  none  -30.1671
+	{ 44100.0, 0, 1.50, 1.00f, 0.00f,    -7.3407f,   -6.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom    -5.77  jump   2.0000  none   -7.3056
+	{ 44100.0, 0, 1.50, 1.00f, 1.00f,   -13.4053f,  -12.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom    -3.71  jump   1.2597  none  -13.2728
+	{ 44100.0, 0, 2.50, 0.00f, 0.00f,   -17.3735f,  -16.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom    -7.32  jump   0.2822  none  -17.4936
+	{ 44100.0, 0, 2.50, 0.00f, 1.00f,   -17.1375f,  -16.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom    -7.41  jump   0.2355  none  -17.2379
+	{ 44100.0, 0, 2.50, 0.25f, 0.00f,    -8.2495f,   -7.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -14.97  jump   1.8193  none   -8.2334
+	{ 44100.0, 0, 2.50, 0.25f, 1.00f,    -9.2780f,   -8.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -13.33  jump   1.8407  none   -9.8459
+	{ 44100.0, 0, 2.50, 0.50f, 0.00f,   -15.3134f,  -14.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom    -6.36  jump   1.0000  none  -15.6173
+	{ 44100.0, 0, 2.50, 0.50f, 1.00f,   -13.9380f,  -12.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom    -6.43  jump   1.3941  none  -14.0922
+	{ 44100.0, 0, 2.50, 0.75f, 0.00f,   -18.6195f,  -17.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom    -6.36  jump   2.0000  none  -18.5030
+	{ 44100.0, 0, 2.50, 0.75f, 1.00f,   -18.0668f,  -17.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom    -7.04  jump   0.5899  none  -18.2724
+	{ 44100.0, 0, 2.50, 1.00f, 0.00f,     3.3170f,    5.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -12.26  jump   2.0000  none   +1.8236
+	{ 44100.0, 0, 2.50, 1.00f, 1.00f,    -1.0547f,    0.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -10.86  jump   1.4394  none   -1.7052
+	{ 44100.0, 0, 3.50, 0.00f, 0.00f,   -10.8564f,   -9.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom   -10.69  jump   0.3930  none  -10.9876
+	{ 44100.0, 0, 3.50, 0.00f, 1.00f,   -10.7454f,   -9.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom   -10.81  jump   0.3301  none  -10.8586
+	{ 44100.0, 0, 3.50, 0.25f, 0.00f,     0.7906f,    2.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -21.25  jump   1.7470  none   +0.7277
+	{ 44100.0, 0, 3.50, 0.25f, 1.00f,    -0.8419f,    1.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -18.31  jump   1.8346  none   -2.2504
+	{ 44100.0, 0, 3.50, 0.50f, 0.00f,    -8.7761f,   -7.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom    -9.29  jump   1.0000  none   -9.2048
+	{ 44100.0, 0, 3.50, 0.50f, 1.00f,    -7.7551f,   -6.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom    -9.26  jump   1.3816  none   -8.3567
+	{ 44100.0, 0, 3.50, 0.75f, 0.00f,   -11.9336f,  -10.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom    -9.29  jump   2.0000  none  -12.2598
+	{ 44100.0, 0, 3.50, 0.75f, 1.00f,   -11.1717f,  -10.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom   -10.28  jump   0.7728  none  -11.3687
+	{ 44100.0, 0, 3.50, 1.00f, 0.00f,     7.9564f,    9.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -14.42  jump   2.0000  none   +4.9770
+	{ 44100.0, 0, 3.50, 1.00f, 1.00f,     5.5701f,    7.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -13.91  jump   1.3673  none   +3.8926
+	{ 44100.0, 0, 5.50, 0.00f, 0.00f,    -1.8752f,    0.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom   -14.62  jump   0.6075  none   -2.2010
+	{ 44100.0, 0, 5.50, 0.00f, 1.00f,    -1.7584f,    0.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom   -14.78  jump   0.5191  none   -2.0438
+	{ 44100.0, 0, 5.50, 0.25f, 0.00f,    12.7165f,   14.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -27.88  jump   1.6026  none  +11.3136
+	{ 44100.0, 0, 5.50, 0.25f, 1.00f,     9.3091f,   11.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -22.64  jump   1.7890  none   +6.0397
+	{ 44100.0, 0, 5.50, 0.50f, 0.00f,    -0.8456f,    1.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom   -12.66  jump   1.0000  none   -1.5005
+	{ 44100.0, 0, 5.50, 0.50f, 1.00f,     0.3086f,    2.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom   -12.64  jump   1.3160  none   -0.6037
+	{ 44100.0, 0, 5.50, 0.75f, 0.00f,    -3.5107f,   -2.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom   -12.65  jump   2.0000  none   -4.1216
+	{ 44100.0, 0, 5.50, 0.75f, 1.00f,    -2.3838f,   -1.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom   -13.95  jump   1.0880  none   -2.8428
+	{ 44100.0, 0, 5.50, 1.00f, 0.00f,    22.2717f,   24.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -23.54  jump   1.2258  none  +15.2499
+	{ 44100.0, 0, 5.50, 1.00f, 1.00f,     4.2610f,    6.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -12.15  jump   0.9788  none   +2.1179
+
+	// --- 44.1 kHz, band-limited master. BINDING rate.
+	{ 44100.0, 1, 0.50, 0.00f, 0.00f,   -44.3295f,  -43.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.0647  none  -44.0383
+	{ 44100.0, 1, 0.50, 0.00f, 1.00f,   -44.5115f,  -43.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.0537  none  -44.3032
+	{ 44100.0, 1, 0.50, 0.25f, 0.00f,   -30.2731f,  -29.0f, "gated"     , kProvSync441Step       },  // triangle  step  fundDom    +0.00  jump   1.9588  none  -27.2216
+	{ 44100.0, 1, 0.50, 0.25f, 1.00f,   -30.2380f,  -29.0f, "gated"     , kProvSync441Step       },  // triangle  step  fundDom    +0.00  jump   1.8072  none  -27.1092
+	{ 44100.0, 1, 0.50, 0.50f, 0.00f,   -30.3143f,  -29.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.0000  none  -27.2356
+	{ 44100.0, 1, 0.50, 0.50f, 1.00f,   -30.2693f,  -29.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.3817  none  -27.2111
+	{ 44100.0, 1, 0.50, 0.75f, 0.00f,    -1.6616f,    0.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom   -11.58  jump   2.0000  none  +11.7029
+	{ 44100.0, 1, 0.50, 0.75f, 1.00f,   -42.8787f,  -41.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   0.1973  none  -41.9624
+	{ 44100.0, 1, 0.50, 1.00f, 0.00f,   -24.2518f,  -23.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -21.5998
+	{ 44100.0, 1, 0.50, 1.00f, 1.00f,   -29.4160f,  -28.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   1.0671  none  -26.5496
+	{ 44100.0, 1, 0.75, 0.00f, 0.00f,   -39.5293f,  -38.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   1.0470  none  -36.3803
+	{ 44100.0, 1, 0.75, 0.00f, 1.00f,   -39.5572f,  -38.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   1.0567  none  -36.4142
+	{ 44100.0, 1, 0.75, 0.25f, 0.00f,   -37.6687f,  -36.0f, "gated"     , kProvSync441Step       },  // triangle  step  fundDom    +0.00  jump   0.9382  none  -34.5942
+	{ 44100.0, 1, 0.75, 0.25f, 1.00f,   -36.7170f,  -35.0f, "gated"     , kProvSync441Step       },  // triangle  step  fundDom    +0.00  jump   1.0699  none  -33.7352
+	{ 44100.0, 1, 0.75, 0.50f, 0.00f,   -30.3143f,  -29.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.5000  none  -27.2356
+	{ 44100.0, 1, 0.75, 0.50f, 1.00f,   -30.3574f,  -29.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.6784  none  -27.3186
+	{ 44100.0, 1, 0.75, 0.75f, 0.00f,   -33.6717f,  -32.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   2.0000  none  -30.3272
+	{ 44100.0, 1, 0.75, 0.75f, 1.00f,   -40.0955f,  -39.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   1.1266  none  -36.9436
+	{ 44100.0, 1, 0.75, 1.00f, 0.00f,   -18.2541f,  -17.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -16.8173
+	{ 44100.0, 1, 0.75, 1.00f, 1.00f,   -29.4323f,  -28.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   1.1815  none  -26.0097
+	{ 44100.0, 1, 1.00, 0.00f, 0.00f,   -44.7765f,  -40.0f, "gated"     , kProvSync441Plateau    },  // sine      PLAT  fundDom    +0.00  jump   0.0020  none  -44.7750
+	{ 44100.0, 1, 1.00, 0.00f, 1.00f,   -44.7590f,  -40.0f, "gated"     , kProvSync441Plateau    },  // sine      PLAT  fundDom    +0.00  jump   0.0016  none  -44.7577
+	{ 44100.0, 1, 1.00, 0.25f, 0.00f,   -44.6305f,  -40.0f, "gated"     , kProvSync441Plateau    },  // triangle  PLAT  fundDom    +0.00  jump   0.0012  none  -44.6216
+	{ 44100.0, 1, 1.00, 0.25f, 1.00f,   -44.6306f,  -40.0f, "gated"     , kProvSync441Plateau    },  // triangle  PLAT  fundDom    +0.00  jump   0.0003  none  -44.6297
+	{ 44100.0, 1, 1.00, 0.50f, 0.00f,   -35.1925f,  -34.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   0.0006  none  -35.1942
+	{ 44100.0, 1, 1.00, 0.50f, 1.00f,   -34.7747f,  -33.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   0.0003  none  -34.7750
+	{ 44100.0, 1, 1.00, 0.75f, 0.00f,   -35.1407f,  -34.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   0.0000  none  -35.1407
+	{ 44100.0, 1, 1.00, 0.75f, 1.00f,   -44.8589f,  -40.0f, "gated"     , kProvSync441Plateau    },  // square    PLAT  fundDom    +0.00  jump   0.0036  none  -44.8564
+	{ 44100.0, 1, 1.00, 1.00f, 0.00f,   -25.2883f,  -24.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   0.0000  none  -25.2883
+	{ 44100.0, 1, 1.00, 1.00f, 1.00f,   -35.9557f,  -34.0f, "gated"     , kProvSync441Step       },  // pulse 5%  step  fundDom    +0.00  jump   0.0066  none  -36.0033
+	{ 44100.0, 1, 1.50, 0.00f, 0.00f,   -41.1663f,  -40.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.1936  none  -40.8720
+	{ 44100.0, 1, 1.50, 0.00f, 1.00f,   -40.8892f,  -39.0f, "gated"     , kProvSync441Step       },  // sine      step  fundDom    +0.00  jump   0.1612  none  -40.6512
+	{ 44100.0, 1, 1.50, 0.25f, 0.00f,   -26.1698f,  -25.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom    -2.91  jump   1.8764  none  -23.2471
+	{ 44100.0, 1, 1.50, 0.25f, 1.00f,   -27.7144f,  -26.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom    -2.47  jump   1.8312  none  -24.6788
+	{ 44100.0, 1, 1.50, 0.50f, 0.00f,   -30.6124f,  -29.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.0000  none  -28.6538
+	{ 44100.0, 1, 1.50, 0.50f, 1.00f,   -28.2265f,  -27.0f, "gated"     , kProvSync441Step       },  // saw       step  fundDom    +0.00  jump   1.3893  none  -26.1266
+	{ 44100.0, 1, 1.50, 0.75f, 0.00f,   -32.8376f,  -31.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   2.0000  none  -33.6474
+	{ 44100.0, 1, 1.50, 0.75f, 1.00f,   -41.7519f,  -40.0f, "gated"     , kProvSync441Step       },  // square    step  fundDom    +0.00  jump   0.4330  none  -41.1988
+	{ 44100.0, 1, 1.50, 1.00f, 0.00f,   -13.4497f,  -12.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom    -5.83  jump   2.0000  none  -13.3915
+	{ 44100.0, 1, 1.50, 1.00f, 1.00f,   -18.9045f,  -17.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom    -3.78  jump   1.2662  none  -18.3791
+	{ 44100.0, 1, 2.50, 0.00f, 0.00f,   -29.0551f,  -28.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom    -7.35  jump   0.3209  none  -28.8070
+	{ 44100.0, 1, 2.50, 0.00f, 1.00f,   -28.8181f,  -27.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom    -7.44  jump   0.2691  none  -28.6166
+	{ 44100.0, 1, 2.50, 0.25f, 0.00f,   -13.0936f,  -12.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -15.00  jump   1.7939  none  -10.3358
+	{ 44100.0, 1, 2.50, 0.25f, 1.00f,   -15.8368f,  -14.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -13.59  jump   1.8328  none  -13.1871
+	{ 44100.0, 1, 2.50, 0.50f, 0.00f,   -20.1559f,  -19.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom    -6.43  jump   1.0000  none  -18.9377
+	{ 44100.0, 1, 2.50, 0.50f, 1.00f,   -16.6644f,  -15.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom    -6.51  jump   1.3761  none  -15.5807
+	{ 44100.0, 1, 2.50, 0.75f, 0.00f,   -21.2199f,  -20.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom    -6.43  jump   2.0000  none  -22.8092
+	{ 44100.0, 1, 2.50, 0.75f, 1.00f,   -29.5922f,  -28.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom    -7.08  jump   0.6472  none  -29.1561
+	{ 44100.0, 1, 2.50, 1.00f, 0.00f,     3.0880f,    5.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -13.17  jump   1.8710  none   +1.9164
+	{ 44100.0, 1, 2.50, 1.00f, 1.00f,    -2.5729f,   -1.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -12.19  jump   1.2571  none   -2.7439
+	{ 44100.0, 1, 3.50, 0.00f, 0.00f,   -22.5781f,  -21.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom   -10.77  jump   0.4456  none  -22.4008
+	{ 44100.0, 1, 3.50, 0.00f, 1.00f,   -22.3681f,  -21.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom   -10.89  jump   0.3776  none  -22.2259
+	{ 44100.0, 1, 3.50, 0.25f, 0.00f,    -6.9880f,   -5.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -21.39  jump   1.7115  none   -3.9972
+	{ 44100.0, 1, 3.50, 0.25f, 1.00f,    -8.6306f,   -7.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -18.83  jump   1.8115  none   -7.5019
+	{ 44100.0, 1, 3.50, 0.50f, 0.00f,   -16.8519f,  -15.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom    -9.44  jump   1.0000  none  -15.8199
+	{ 44100.0, 1, 3.50, 0.50f, 1.00f,   -13.0047f,  -12.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom    -9.51  jump   1.3460  none  -12.1161
+	{ 44100.0, 1, 3.50, 0.75f, 0.00f,   -18.0198f,  -17.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom    -9.44  jump   2.0000  none  -16.8420
+	{ 44100.0, 1, 3.50, 0.75f, 1.00f,   -23.0694f,  -22.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom   -10.39  jump   0.8333  none  -22.7613
+	{ 44100.0, 1, 3.50, 1.00f, 0.00f,     8.7324f,   10.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -17.18  jump   1.5054  none   +5.6822
+	{ 44100.0, 1, 3.50, 1.00f, 1.00f,     3.3814f,    5.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -16.09  jump   1.1243  none   +2.0400
+	{ 44100.0, 1, 5.50, 0.00f, 0.00f,   -14.3391f,  -13.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom   -14.87  jump   0.6828  none  -14.3594
+	{ 44100.0, 1, 5.50, 0.00f, 1.00f,   -14.3086f,  -13.0f, "diagnostic", kProvSync441Invalid    },  // sine      step  fundDom   -15.02  jump   0.5970  none  -14.3348
+	{ 44100.0, 1, 5.50, 0.25f, 0.00f,     1.7183f,    3.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -28.87  jump   1.5468  none   +3.8798
+	{ 44100.0, 1, 5.50, 0.25f, 1.00f,     3.0708f,    5.0f, "diagnostic", kProvSync441Invalid    },  // triangle  step  fundDom   -24.14  jump   1.7099  none   +0.3913
+	{ 44100.0, 1, 5.50, 0.50f, 0.00f,   -10.4203f,   -9.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom   -13.00  jump   1.0000  none   -9.8122
+	{ 44100.0, 1, 5.50, 0.50f, 1.00f,    -6.4081f,   -5.0f, "diagnostic", kProvSync441Invalid    },  // saw       step  fundDom   -13.07  jump   1.2771  none   -6.1830
+	{ 44100.0, 1, 5.50, 0.75f, 0.00f,   -10.4262f,   -9.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom   -13.00  jump   2.0000  none  -11.5216
+	{ 44100.0, 1, 5.50, 0.75f, 1.00f,   -14.4588f,  -13.0f, "diagnostic", kProvSync441Invalid    },  // square    step  fundDom   -14.30  jump   1.1218  none  -14.8192
+	{ 44100.0, 1, 5.50, 1.00f, 0.00f,    14.7007f,   16.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -24.52  jump   0.8817  none  +12.1505
+	{ 44100.0, 1, 5.50, 1.00f, 1.00f,    12.7872f,   14.0f, "diagnostic", kProvSync441Invalid    },  // pulse 5%  step  fundDom   -20.77  jump   0.8231  none   +7.8479
+
+	// --- 48 kHz, hard-edge master. REGRESSION rate.
+	{ 48000.0, 0, 0.50, 0.00f, 0.00f,   -31.6339f,  -30.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.0519  none  -31.7001
+	{ 48000.0, 0, 0.50, 0.00f, 1.00f,   -32.2471f,  -31.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.0430  none  -32.2968
+	{ 48000.0, 0, 0.50, 0.25f, 0.00f,   -31.7330f,  -30.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   1.9670  none  -27.9434
+	{ 48000.0, 0, 0.50, 0.25f, 1.00f,   -31.7519f,  -30.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   1.8035  none  -27.8229
+	{ 48000.0, 0, 0.50, 0.50f, 0.00f,   -31.8446f,  -30.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.0000  none  -27.9791
+	{ 48000.0, 0, 0.50, 0.50f, 1.00f,   -31.8017f,  -30.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.3802  none  -27.9434
+	{ 48000.0, 0, 0.50, 0.75f, 0.00f,     7.3918f,    9.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom    -7.34  jump   2.0000  none   +7.3851
+	{ 48000.0, 0, 0.50, 0.75f, 1.00f,   -29.1643f,  -28.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   0.1731  none  -29.2811
+	{ 48000.0, 0, 0.50, 1.00f, 0.00f,   -22.5558f,  -21.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -20.8457
+	{ 48000.0, 0, 0.50, 1.00f, 1.00f,   -26.2276f,  -25.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   1.0433  none  -26.3637
+	{ 48000.0, 0, 0.75, 0.00f, 0.00f,   -32.3142f,  -31.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   1.0374  none  -32.3136
+	{ 48000.0, 0, 0.75, 0.00f, 1.00f,   -32.3157f,  -31.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   1.0487  none  -32.3143
+	{ 48000.0, 0, 0.75, 0.25f, 0.00f,   -33.9234f,  -32.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   0.9505  none  -33.9672
+	{ 48000.0, 0, 0.75, 0.25f, 1.00f,   -34.1531f,  -33.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   1.0776  none  -34.2210
+	{ 48000.0, 0, 0.75, 0.50f, 0.00f,   -31.8446f,  -30.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.5000  none  -27.9791
+	{ 48000.0, 0, 0.75, 0.50f, 1.00f,   -31.9052f,  -30.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.6780  none  -28.0560
+	{ 48000.0, 0, 0.75, 0.75f, 0.00f,   -31.7474f,  -30.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   2.0000  none  -30.0347
+	{ 48000.0, 0, 0.75, 0.75f, 1.00f,   -32.5225f,  -31.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   1.1089  none  -32.5248
+	{ 48000.0, 0, 0.75, 1.00f, 0.00f,   -19.0315f,  -18.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -18.2898
+	{ 48000.0, 0, 0.75, 1.00f, 1.00f,   -22.7084f,  -21.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   1.1479  none  -22.8550
+	{ 48000.0, 0, 1.00, 0.00f, 0.00f,   -33.0572f,  -32.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.0406  none  -33.0510
+	{ 48000.0, 0, 1.00, 0.00f, 1.00f,   -32.9687f,  -31.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.0341  none  -32.9625
+	{ 48000.0, 0, 1.00, 0.25f, 0.00f,   -32.6858f,  -31.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   0.0259  none  -32.6335
+	{ 48000.0, 0, 1.00, 0.25f, 1.00f,   -32.7696f,  -28.0f, "regression", kProvSync48Plateau     },  // triangle  PLAT  fundDom    +0.00  jump   0.0047  none  -32.7562
+	{ 48000.0, 0, 1.00, 0.50f, 0.00f,   -32.1537f,  -31.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   0.0130  none  -32.1368
+	{ 48000.0, 0, 1.00, 0.50f, 1.00f,   -30.6828f,  -29.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   0.0051  none  -30.6703
+	{ 48000.0, 0, 1.00, 0.75f, 0.00f,   -33.3360f,  -32.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   0.0000  none  -33.3360
+	{ 48000.0, 0, 1.00, 0.75f, 1.00f,   -33.4114f,  -32.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   0.0743  none  -33.4039
+	{ 48000.0, 0, 1.00, 1.00f, 0.00f,   -17.9477f,  -16.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.0000  none  -17.9477
+	{ 48000.0, 0, 1.00, 1.00f, 1.00f,   -24.9781f,  -23.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.1388  none  -25.2588
+	{ 48000.0, 0, 1.50, 0.00f, 0.00f,   -28.4174f,  -27.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.1551  none  -28.5182
+	{ 48000.0, 0, 1.50, 0.00f, 1.00f,   -28.1526f,  -27.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.1289  none  -28.2340
+	{ 48000.0, 0, 1.50, 0.25f, 0.00f,   -23.3862f,  -22.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom    -2.91  jump   1.9009  none  -23.3436
+	{ 48000.0, 0, 1.50, 0.25f, 1.00f,   -23.5572f,  -22.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom    -2.44  jump   1.8242  none  -23.6420
+	{ 48000.0, 0, 1.50, 0.50f, 0.00f,   -28.8050f,  -27.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.0000  none  -28.5927
+	{ 48000.0, 0, 1.50, 0.50f, 1.00f,   -26.4260f,  -25.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.3912  none  -26.3675
+	{ 48000.0, 0, 1.50, 0.75f, 0.00f,   -28.2266f,  -27.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   2.0000  none  -27.8980
+	{ 48000.0, 0, 1.50, 0.75f, 1.00f,   -28.9389f,  -27.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   0.3621  none  -29.1125
+	{ 48000.0, 0, 1.50, 1.00f, 0.00f,    -8.3665f,   -7.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom    -5.79  jump   2.0000  none   -8.5323
+	{ 48000.0, 0, 1.50, 1.00f, 1.00f,   -14.4096f,  -13.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom    -3.71  jump   1.2343  none  -14.4465
+	{ 48000.0, 0, 2.50, 0.00f, 0.00f,   -16.3913f,  -15.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom    -7.34  jump   0.2571  none  -16.5392
+	{ 48000.0, 0, 2.50, 0.00f, 1.00f,   -16.1663f,  -15.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom    -7.43  jump   0.2149  none  -16.2891
+	{ 48000.0, 0, 2.50, 0.25f, 0.00f,    -7.7550f,   -6.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -14.97  jump   1.8348  none   -7.6746
+	{ 48000.0, 0, 2.50, 0.25f, 1.00f,    -8.5457f,   -7.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -13.45  jump   1.8270  none   -9.0115
+	{ 48000.0, 0, 2.50, 0.50f, 0.00f,   -16.8588f,  -15.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom    -6.39  jump   1.0000  none  -17.2547
+	{ 48000.0, 0, 2.50, 0.50f, 1.00f,   -15.3613f,  -14.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom    -6.43  jump   1.3937  none  -15.7645
+	{ 48000.0, 0, 2.50, 0.75f, 0.00f,   -16.6561f,  -15.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom    -6.38  jump   2.0000  none  -16.6282
+	{ 48000.0, 0, 2.50, 0.75f, 1.00f,   -16.7723f,  -15.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom    -7.07  jump   0.5352  none  -16.9627
+	{ 48000.0, 0, 2.50, 1.00f, 0.00f,     1.8764f,    3.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -12.40  jump   2.0000  none   +0.4243
+	{ 48000.0, 0, 2.50, 1.00f, 1.00f,    -1.9452f,    0.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -11.33  jump   1.4038  none   -2.6928
+	{ 48000.0, 0, 3.50, 0.00f, 0.00f,    -9.5450f,   -8.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom   -10.74  jump   0.3568  none   -9.7231
+	{ 48000.0, 0, 3.50, 0.00f, 1.00f,    -9.4157f,   -8.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom   -10.85  jump   0.3013  none   -9.5683
+	{ 48000.0, 0, 3.50, 0.25f, 0.00f,     1.1080f,    3.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -21.25  jump   1.7688  none   +1.0881
+	{ 48000.0, 0, 3.50, 0.25f, 1.00f,    -0.2664f,    1.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -18.54  jump   1.8087  none   -1.4434
+	{ 48000.0, 0, 3.50, 0.50f, 0.00f,   -10.2009f,   -9.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom    -9.34  jump   1.0000  none  -10.7192
+	{ 48000.0, 0, 3.50, 0.50f, 1.00f,    -9.2110f,   -8.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom    -9.36  jump   1.3845  none   -9.9182
+	{ 48000.0, 0, 3.50, 0.75f, 0.00f,   -10.3496f,   -9.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom    -9.33  jump   2.0000  none  -10.6905
+	{ 48000.0, 0, 3.50, 0.75f, 1.00f,    -9.8381f,   -8.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom   -10.36  jump   0.6894  none  -10.0906
+	{ 48000.0, 0, 3.50, 1.00f, 0.00f,     7.3729f,    9.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -14.68  jump   2.0000  none   +4.7326
+	{ 48000.0, 0, 3.50, 1.00f, 1.00f,     5.2014f,    7.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -14.87  jump   1.4165  none   +3.4872
+	{ 48000.0, 0, 5.50, 0.00f, 0.00f,    -0.6301f,    1.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom   -14.77  jump   0.5465  none   -0.9661
+	{ 48000.0, 0, 5.50, 0.00f, 1.00f,    -0.5345f,    1.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom   -14.89  jump   0.4744  none   -0.8330
+	{ 48000.0, 0, 5.50, 0.25f, 0.00f,    13.1561f,   15.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -27.94  jump   1.6365  none  +11.7654
+	{ 48000.0, 0, 5.50, 0.25f, 1.00f,    10.4184f,   12.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -23.21  jump   1.7322  none   +7.3864
+	{ 48000.0, 0, 5.50, 0.50f, 0.00f,    -2.1562f,   -1.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom   -12.81  jump   1.0000  none   -2.9075
+	{ 48000.0, 0, 5.50, 0.50f, 1.00f,    -1.1448f,    0.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom   -12.86  jump   1.3299  none   -2.1689
+	{ 48000.0, 0, 5.50, 0.75f, 0.00f,    -2.1533f,   -1.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom   -12.76  jump   2.0000  none   -2.7495
+	{ 48000.0, 0, 5.50, 0.75f, 1.00f,    -1.3745f,    0.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom   -13.87  jump   0.9471  none   -1.8054
+	{ 48000.0, 0, 5.50, 1.00f, 0.00f,    13.1695f,   15.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -16.27  jump   2.0000  none   +7.7165
+	{ 48000.0, 0, 5.50, 1.00f, 1.00f,    10.4574f,   12.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -17.01  jump   1.0766  none   +8.0419
+
+	// --- 48 kHz, band-limited master. REGRESSION rate.
+	{ 48000.0, 1, 0.50, 0.00f, 0.00f,   -43.9372f,  -42.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.0591  none  -43.7468
+	{ 48000.0, 1, 0.50, 0.00f, 1.00f,   -44.5104f,  -43.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.0490  none  -44.3691
+	{ 48000.0, 1, 0.50, 0.25f, 0.00f,   -30.9758f,  -29.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   1.9624  none  -27.9469
+	{ 48000.0, 1, 0.50, 0.25f, 1.00f,   -30.8288f,  -29.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   1.8056  none  -27.7972
+	{ 48000.0, 1, 0.50, 0.50f, 0.00f,   -31.0061f,  -30.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.0000  none  -27.9616
+	{ 48000.0, 1, 0.50, 0.50f, 1.00f,   -30.9154f,  -29.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.3810  none  -27.9112
+	{ 48000.0, 1, 0.50, 0.75f, 0.00f,    -0.6637f,    1.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom   -12.08  jump   2.0000  none  +12.4660
+	{ 48000.0, 1, 0.50, 0.75f, 1.00f,   -41.0330f,  -40.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   0.1867  none  -40.2650
+	{ 48000.0, 1, 0.50, 1.00f, 0.00f,   -22.5946f,  -21.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -20.8864
+	{ 48000.0, 1, 0.50, 1.00f, 1.00f,   -29.6901f,  -28.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   1.0565  none  -27.1470
+	{ 48000.0, 1, 0.75, 0.00f, 0.00f,   -40.2166f,  -39.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   1.0429  none  -37.1039
+	{ 48000.0, 1, 0.75, 0.00f, 1.00f,   -40.2466f,  -39.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   1.0534  none  -37.1388
+	{ 48000.0, 1, 0.75, 0.25f, 0.00f,   -38.0438f,  -37.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   0.9436  none  -35.0887
+	{ 48000.0, 1, 0.75, 0.25f, 1.00f,   -37.6503f,  -36.0f, "regression", kProvSync48Step        },  // triangle  step  fundDom    +0.00  jump   1.0731  none  -34.5475
+	{ 48000.0, 1, 0.75, 0.50f, 0.00f,   -31.0061f,  -30.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.5000  none  -27.9616
+	{ 48000.0, 1, 0.75, 0.50f, 1.00f,   -31.0391f,  -30.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.6781  none  -28.0191
+	{ 48000.0, 1, 0.75, 0.75f, 0.00f,   -32.4624f,  -31.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   2.0000  none  -30.8499
+	{ 48000.0, 1, 0.75, 0.75f, 1.00f,   -40.7586f,  -39.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   1.1188  none  -37.6485
+	{ 48000.0, 1, 0.75, 1.00f, 0.00f,   -19.8783f,  -18.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -18.7328
+	{ 48000.0, 1, 0.75, 1.00f, 1.00f,   -29.8561f,  -28.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   1.1664  none  -26.1220
+	{ 48000.0, 1, 1.00, 0.00f, 0.00f,   -45.5279f,  -41.0f, "regression", kProvSync48Plateau     },  // sine      PLAT  fundDom    +0.00  jump   0.0074  none  -45.5131
+	{ 48000.0, 1, 1.00, 0.00f, 1.00f,   -45.4417f,  -41.0f, "regression", kProvSync48Plateau     },  // sine      PLAT  fundDom    +0.00  jump   0.0062  none  -45.4290
+	{ 48000.0, 1, 1.00, 0.25f, 0.00f,   -44.7773f,  -40.0f, "regression", kProvSync48Plateau     },  // triangle  PLAT  fundDom    +0.00  jump   0.0047  none  -44.7445
+	{ 48000.0, 1, 1.00, 0.25f, 1.00f,   -44.8866f,  -40.0f, "regression", kProvSync48Plateau     },  // triangle  PLAT  fundDom    +0.00  jump   0.0009  none  -44.8832
+	{ 48000.0, 1, 1.00, 0.50f, 0.00f,   -36.7880f,  -35.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   0.0024  none  -36.7953
+	{ 48000.0, 1, 1.00, 0.50f, 1.00f,   -36.3607f,  -35.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   0.0009  none  -36.3613
+	{ 48000.0, 1, 1.00, 0.75f, 0.00f,   -36.4400f,  -35.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   0.0000  none  -36.4400
+	{ 48000.0, 1, 1.00, 0.75f, 1.00f,   -45.8784f,  -44.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   0.0136  none  -45.8542
+	{ 48000.0, 1, 1.00, 1.00f, 0.00f,   -23.5001f,  -22.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.0000  none  -23.5001
+	{ 48000.0, 1, 1.00, 1.00f, 1.00f,   -36.6591f,  -35.0f, "regression", kProvSync48Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.0258  none  -36.4363
+	{ 48000.0, 1, 1.50, 0.00f, 0.00f,   -40.5578f,  -39.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.1767  none  -40.3766
+	{ 48000.0, 1, 1.50, 0.00f, 1.00f,   -40.2579f,  -39.0f, "regression", kProvSync48Step        },  // sine      step  fundDom    +0.00  jump   0.1470  none  -40.1127
+	{ 48000.0, 1, 1.50, 0.25f, 0.00f,   -27.4851f,  -26.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom    -2.91  jump   1.8872  none  -24.3861
+	{ 48000.0, 1, 1.50, 0.25f, 1.00f,   -28.4656f,  -27.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom    -2.47  jump   1.8284  none  -25.5453
+	{ 48000.0, 1, 1.50, 0.50f, 0.00f,   -31.1263f,  -30.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.0000  none  -29.0890
+	{ 48000.0, 1, 1.50, 0.50f, 1.00f,   -29.0864f,  -28.0f, "regression", kProvSync48Step        },  // saw       step  fundDom    +0.00  jump   1.3893  none  -26.7306
+	{ 48000.0, 1, 1.50, 0.75f, 0.00f,   -33.2134f,  -32.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   2.0000  none  -33.3809
+	{ 48000.0, 1, 1.50, 0.75f, 1.00f,   -41.0025f,  -40.0f, "regression", kProvSync48Step        },  // square    step  fundDom    +0.00  jump   0.4024  none  -40.5681
+	{ 48000.0, 1, 1.50, 1.00f, 0.00f,   -17.2838f,  -16.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom    -5.84  jump   2.0000  none  -14.3872
+	{ 48000.0, 1, 1.50, 1.00f, 1.00f,   -21.9257f,  -20.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom    -3.78  jump   1.2511  none  -20.0099
+	{ 48000.0, 1, 2.50, 0.00f, 0.00f,   -28.3519f,  -27.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom    -7.36  jump   0.2930  none  -28.2114
+	{ 48000.0, 1, 2.50, 0.00f, 1.00f,   -28.0923f,  -27.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom    -7.44  jump   0.2453  none  -27.9800
+	{ 48000.0, 1, 2.50, 0.25f, 0.00f,   -14.6749f,  -13.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -15.00  jump   1.8120  none  -11.6569
+	{ 48000.0, 1, 2.50, 0.25f, 1.00f,   -15.5315f,  -14.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -13.63  jump   1.8318  none  -13.8315
+	{ 48000.0, 1, 2.50, 0.50f, 0.00f,   -18.8044f,  -17.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom    -6.44  jump   1.0000  none  -17.8893
+	{ 48000.0, 1, 2.50, 0.50f, 1.00f,   -15.6772f,  -14.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom    -6.52  jump   1.3806  none  -14.8460
+	{ 48000.0, 1, 2.50, 0.75f, 0.00f,   -24.9953f,  -23.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom    -6.44  jump   2.0000  none  -23.9888
+	{ 48000.0, 1, 2.50, 0.75f, 1.00f,   -28.8754f,  -27.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom    -7.08  jump   0.6000  none  -28.5609
+	{ 48000.0, 1, 2.50, 1.00f, 0.00f,     3.9150f,    5.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -13.07  jump   1.9529  none   +2.6814
+	{ 48000.0, 1, 2.50, 1.00f, 1.00f,    -2.0353f,   -1.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -12.23  jump   1.2740  none   -2.2904
+	{ 48000.0, 1, 3.50, 0.00f, 0.00f,   -21.8260f,  -20.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom   -10.78  jump   0.4071  none  -21.7426
+	{ 48000.0, 1, 3.50, 0.00f, 1.00f,   -21.5932f,  -20.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom   -10.90  jump   0.3442  none  -21.5293
+	{ 48000.0, 1, 3.50, 0.25f, 0.00f,    -6.4893f,   -5.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -21.39  jump   1.7368  none   -3.9016
+	{ 48000.0, 1, 3.50, 0.25f, 1.00f,    -8.5238f,   -7.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -18.89  jump   1.8148  none   -7.7102
+	{ 48000.0, 1, 3.50, 0.50f, 0.00f,   -15.4425f,  -14.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom    -9.47  jump   1.0000  none  -14.6855
+	{ 48000.0, 1, 3.50, 0.50f, 1.00f,   -12.0242f,  -11.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom    -9.55  jump   1.3557  none  -11.3420
+	{ 48000.0, 1, 3.50, 0.75f, 0.00f,   -15.6964f,  -14.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom    -9.46  jump   2.0000  none  -17.2284
+	{ 48000.0, 1, 3.50, 0.75f, 1.00f,   -22.3142f,  -21.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom   -10.40  jump   0.7734  none  -22.1104
+	{ 48000.0, 1, 3.50, 1.00f, 0.00f,     9.4611f,   11.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -16.89  jump   1.6235  none   +6.4761
+	{ 48000.0, 1, 3.50, 1.00f, 1.00f,     4.3456f,    6.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -16.17  jump   1.1702  none   +3.0028
+	{ 48000.0, 1, 5.50, 0.00f, 0.00f,   -13.5412f,  -12.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom   -14.90  jump   0.6255  none  -13.6123
+	{ 48000.0, 1, 5.50, 0.00f, 1.00f,   -13.3390f,  -12.0f, "diagnostic", kProvSync48Invalid     },  // sine      step  fundDom   -15.04  jump   0.5442  none  -13.4105
+	{ 48000.0, 1, 5.50, 0.25f, 0.00f,     1.7031f,    3.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -28.98  jump   1.5862  none   +3.8775
+	{ 48000.0, 1, 5.50, 0.25f, 1.00f,     2.9139f,    4.0f, "diagnostic", kProvSync48Invalid     },  // triangle  step  fundDom   -24.35  jump   1.7242  none   +0.7218
+	{ 48000.0, 1, 5.50, 0.50f, 0.00f,   -10.8809f,   -9.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom   -13.08  jump   1.0000  none  -11.5320
+	{ 48000.0, 1, 5.50, 0.50f, 1.00f,    -7.8090f,   -6.0f, "diagnostic", kProvSync48Invalid     },  // saw       step  fundDom   -13.17  jump   1.2920  none   -7.9564
+	{ 48000.0, 1, 5.50, 0.75f, 0.00f,   -11.1838f,  -10.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom   -13.07  jump   2.0000  none  -10.8251
+	{ 48000.0, 1, 5.50, 0.75f, 1.00f,   -13.8948f,  -12.0f, "diagnostic", kProvSync48Invalid     },  // square    step  fundDom   -14.32  jump   1.0472  none  -13.8164
+	{ 48000.0, 1, 5.50, 1.00f, 0.00f,    16.8324f,   18.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -23.48  jump   1.0118  none  +11.2196
+	{ 48000.0, 1, 5.50, 1.00f, 1.00f,    12.6737f,   14.0f, "diagnostic", kProvSync48Invalid     },  // pulse 5%  step  fundDom   -20.37  jump   0.8883  none   +7.9810
+
+	// --- 96 kHz, hard-edge master. REGRESSION rate.
+	{ 96000.0, 0, 0.50, 0.00f, 0.00f,   -37.3576f,  -36.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0263  none  -37.4003
+	{ 96000.0, 0, 0.50, 0.00f, 1.00f,   -38.0887f,  -37.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0218  none  -38.1211
+	{ 96000.0, 0, 0.50, 0.25f, 0.00f,   -37.4604f,  -36.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   1.9832  none  -33.6140
+	{ 96000.0, 0, 0.50, 0.25f, 1.00f,   -37.2622f,  -36.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   1.7959  none  -33.5064
+	{ 96000.0, 0, 0.50, 0.50f, 0.00f,   -37.5195f,  -36.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.0000  none  -33.6325
+	{ 96000.0, 0, 0.50, 0.50f, 1.00f,   -37.4890f,  -36.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.3767  none  -33.6002
+	{ 96000.0, 0, 0.50, 0.75f, 0.00f,     9.6579f,   11.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom    -8.51  jump   2.0000  none   +8.9766
+	{ 96000.0, 0, 0.50, 0.75f, 1.00f,   -34.4893f,  -33.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   0.1251  none  -34.5638
+	{ 96000.0, 0, 0.50, 1.00f, 0.00f,   -28.5969f,  -27.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -28.2183
+	{ 96000.0, 0, 0.50, 1.00f, 1.00f,   -32.4890f,  -31.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.9944  none  -32.5689
+	{ 96000.0, 0, 0.75, 0.00f, 0.00f,   -38.0647f,  -37.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   1.0193  none  -38.0612
+	{ 96000.0, 0, 0.75, 0.00f, 1.00f,   -38.0540f,  -37.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   1.0344  none  -38.0503
+	{ 96000.0, 0, 0.75, 0.25f, 0.00f,   -40.5851f,  -39.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   0.9749  none  -40.6129
+	{ 96000.0, 0, 0.75, 0.25f, 1.00f,   -40.9816f,  -39.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   1.0909  none  -40.2027
+	{ 96000.0, 0, 0.75, 0.50f, 0.00f,   -37.5195f,  -36.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.5000  none  -33.6325
+	{ 96000.0, 0, 0.75, 0.50f, 1.00f,   -37.5409f,  -36.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.6755  none  -33.6701
+	{ 96000.0, 0, 0.75, 0.75f, 0.00f,   -37.6170f,  -36.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   2.0000  none  -37.1530
+	{ 96000.0, 0, 0.75, 0.75f, 1.00f,   -38.3532f,  -37.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   1.0731  none  -38.3510
+	{ 96000.0, 0, 0.75, 1.00f, 0.00f,   -25.2705f,  -24.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -24.8931
+	{ 96000.0, 0, 0.75, 1.00f, 1.00f,   -29.0874f,  -28.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   1.0761  none  -29.1925
+	{ 96000.0, 0, 1.00, 0.00f, 0.00f,   -39.3878f,  -38.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0254  none  -39.3858
+	{ 96000.0, 0, 1.00, 0.00f, 1.00f,   -39.2605f,  -38.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0212  none  -39.2580
+	{ 96000.0, 0, 1.00, 0.25f, 0.00f,   -38.4787f,  -37.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   0.0162  none  -38.4455
+	{ 96000.0, 0, 1.00, 0.25f, 1.00f,   -38.6510f,  -34.0f, "regression", kProvSync96Plateau     },  // triangle  PLAT  fundDom    +0.00  jump   0.0009  none  -38.6482
+	{ 96000.0, 0, 1.00, 0.50f, 0.00f,   -37.7399f,  -36.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   0.0081  none  -37.7280
+	{ 96000.0, 0, 1.00, 0.50f, 1.00f,   -35.9793f,  -34.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   0.0008  none  -35.9773
+	{ 96000.0, 0, 1.00, 0.75f, 0.00f,   -39.6884f,  -38.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   0.0000  none  -39.6884
+	{ 96000.0, 0, 1.00, 0.75f, 1.00f,   -39.8998f,  -38.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   0.0474  none  -39.8987
+	{ 96000.0, 0, 1.00, 1.00f, 0.00f,   -22.9484f,  -21.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.0000  none  -22.9484
+	{ 96000.0, 0, 1.00, 1.00f, 1.00f,   -31.1149f,  -30.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.0943  none  -31.3921
+	{ 96000.0, 0, 1.50, 0.00f, 0.00f,   -33.9253f,  -32.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0789  none  -33.9795
+	{ 96000.0, 0, 1.50, 0.00f, 1.00f,   -33.6477f,  -32.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0654  none  -33.6912
+	{ 96000.0, 0, 1.50, 0.25f, 0.00f,   -28.8997f,  -27.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom    -2.91  jump   1.9497  none  -28.8697
+	{ 96000.0, 0, 1.50, 0.25f, 1.00f,   -29.0732f,  -28.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom    -2.47  jump   1.8102  none  -29.1191
+	{ 96000.0, 0, 1.50, 0.50f, 0.00f,   -35.2513f,  -34.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.0000  none  -34.7978
+	{ 96000.0, 0, 1.50, 0.50f, 1.00f,   -32.9487f,  -31.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.3836  none  -32.6068
+	{ 96000.0, 0, 1.50, 0.75f, 0.00f,   -33.2193f,  -32.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   2.0000  none  -32.9046
+	{ 96000.0, 0, 1.50, 0.75f, 1.00f,   -34.4302f,  -33.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   0.2234  none  -34.5270
+	{ 96000.0, 0, 1.50, 1.00f, 0.00f,   -14.4468f,  -13.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom    -5.85  jump   2.0000  none  -14.4221
+	{ 96000.0, 0, 1.50, 1.00f, 1.00f,   -21.1202f,  -20.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom    -3.78  jump   1.0945  none  -21.2410
+	{ 96000.0, 0, 2.50, 0.00f, 0.00f,   -21.7763f,  -20.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom    -7.36  jump   0.1313  none  -21.8434
+	{ 96000.0, 0, 2.50, 0.00f, 1.00f,   -21.5300f,  -20.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom    -7.44  jump   0.1089  none  -21.5846
+	{ 96000.0, 0, 2.50, 0.25f, 0.00f,   -13.1011f,  -12.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -14.98  jump   1.9162  none  -13.0507
+	{ 96000.0, 0, 2.50, 0.25f, 1.00f,   -13.9699f,  -12.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -13.62  jump   1.8201  none  -14.2173
+	{ 96000.0, 0, 2.50, 0.50f, 0.00f,   -23.1037f,  -22.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom    -6.46  jump   1.0000  none  -23.0194
+	{ 96000.0, 0, 2.50, 0.50f, 1.00f,   -21.3569f,  -20.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom    -6.54  jump   1.3892  none  -21.1046
+	{ 96000.0, 0, 2.50, 0.75f, 0.00f,   -21.8530f,  -20.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom    -6.46  jump   2.0000  none  -21.7774
+	{ 96000.0, 0, 2.50, 0.75f, 1.00f,   -22.3280f,  -21.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom    -7.09  jump   0.3190  none  -22.4457
+	{ 96000.0, 0, 2.50, 1.00f, 0.00f,    -2.3477f,   -1.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -13.05  jump   2.0000  none   -3.0657
+	{ 96000.0, 0, 2.50, 1.00f, 1.00f,    -8.0430f,   -7.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -12.32  jump   1.1915  none   -8.5812
+	{ 96000.0, 0, 3.50, 0.00f, 0.00f,   -15.3059f,  -14.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom   -10.78  jump   0.1833  none  -15.3851
+	{ 96000.0, 0, 3.50, 0.00f, 1.00f,   -15.1181f,  -14.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom   -10.89  jump   0.1525  none  -15.1877
+	{ 96000.0, 0, 3.50, 0.25f, 0.00f,    -4.0851f,   -3.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -21.39  jump   1.8827  none   -4.0409
+	{ 96000.0, 0, 3.50, 0.25f, 1.00f,    -5.7456f,   -4.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -18.89  jump   1.8252  none   -6.3596
+	{ 96000.0, 0, 3.50, 0.50f, 0.00f,   -16.5130f,  -15.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom    -9.52  jump   1.0000  none  -16.6091
+	{ 96000.0, 0, 3.50, 0.50f, 1.00f,   -15.0704f,  -14.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom    -9.60  jump   1.3928  none  -15.0469
+	{ 96000.0, 0, 3.50, 0.75f, 0.00f,   -15.6286f,  -14.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom    -9.52  jump   2.0000  none  -15.7148
+	{ 96000.0, 0, 3.50, 0.75f, 1.00f,   -15.6720f,  -14.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom   -10.41  jump   0.4105  none  -15.8021
+	{ 96000.0, 0, 3.50, 1.00f, 0.00f,     3.3224f,    5.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -15.99  jump   2.0000  none   +1.9390
+	{ 96000.0, 0, 3.50, 1.00f, 1.00f,    -1.5484f,    0.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -15.52  jump   1.2836  none   -2.4944
+	{ 96000.0, 0, 5.50, 0.00f, 0.00f,    -6.6708f,   -5.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom   -14.89  jump   0.2862  none   -6.7932
+	{ 96000.0, 0, 5.50, 0.00f, 1.00f,    -6.5095f,   -5.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom   -15.03  jump   0.2398  none   -6.6126
+	{ 96000.0, 0, 5.50, 0.25f, 0.00f,     7.5353f,    9.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -29.22  jump   1.8156  none   +7.3539
+	{ 96000.0, 0, 5.50, 0.25f, 1.00f,     4.2204f,    6.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -24.36  jump   1.8194  none   +2.6507
+	{ 96000.0, 0, 5.50, 0.50f, 0.00f,    -8.3029f,   -7.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom   -13.26  jump   1.0001  none   -8.5106
+	{ 96000.0, 0, 5.50, 0.50f, 1.00f,    -7.0645f,   -6.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom   -13.36  jump   1.3920  none   -7.3944
+	{ 96000.0, 0, 5.50, 0.75f, 0.00f,    -7.7633f,   -6.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom   -13.24  jump   2.0000  none   -7.9588
+	{ 96000.0, 0, 5.50, 0.75f, 1.00f,    -7.0775f,   -6.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom   -14.44  jump   0.5779  none   -7.2683
+	{ 96000.0, 0, 5.50, 1.00f, 0.00f,     9.7395f,   11.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -19.04  jump   2.0000  none   +6.9504
+	{ 96000.0, 0, 5.50, 1.00f, 1.00f,     7.9403f,    9.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -19.90  jump   1.4477  none   +5.7435
+
+	// --- 96 kHz, band-limited master. REGRESSION rate.
+	{ 96000.0, 1, 0.50, 0.00f, 0.00f,   -49.7496f,  -48.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0296  none  -49.6721
+	{ 96000.0, 1, 0.50, 0.00f, 1.00f,   -50.4556f,  -49.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0245  none  -50.3972
+	{ 96000.0, 1, 0.50, 0.25f, 0.00f,   -36.5434f,  -35.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   1.9812  none  -33.6167
+	{ 96000.0, 1, 0.50, 0.25f, 1.00f,   -36.4158f,  -35.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   1.7970  none  -33.4838
+	{ 96000.0, 1, 0.50, 0.50f, 0.00f,   -36.5566f,  -35.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.0000  none  -33.6243
+	{ 96000.0, 1, 0.50, 0.50f, 1.00f,   -36.5042f,  -35.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.3771  none  -33.5856
+	{ 96000.0, 1, 0.50, 0.75f, 0.00f,    -0.2637f,    1.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom   -11.64  jump   2.0000  none  +12.1864
+	{ 96000.0, 1, 0.50, 0.75f, 1.00f,   -46.4022f,  -45.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   0.1312  none  -45.7870
+	{ 96000.0, 1, 0.50, 1.00f, 0.00f,   -31.4403f,  -30.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -28.5856
+	{ 96000.0, 1, 0.50, 1.00f, 1.00f,   -36.1303f,  -35.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   1.0006  none  -33.5514
+	{ 96000.0, 1, 0.75, 0.00f, 0.00f,   -45.7215f,  -44.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   1.0218  none  -42.7582
+	{ 96000.0, 1, 0.75, 0.00f, 1.00f,   -45.7612f,  -44.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   1.0365  none  -42.7991
+	{ 96000.0, 1, 0.75, 0.25f, 0.00f,   -43.7888f,  -42.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   0.9718  none  -40.9146
+	{ 96000.0, 1, 0.75, 0.25f, 1.00f,   -43.1378f,  -42.0f, "regression", kProvSync96Step        },  // triangle  step  fundDom    +0.00  jump   1.0891  none  -40.1937
+	{ 96000.0, 1, 0.75, 0.50f, 0.00f,   -36.5566f,  -35.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.5000  none  -33.6243
+	{ 96000.0, 1, 0.75, 0.50f, 1.00f,   -36.5647f,  -35.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.6758  none  -33.6580
+	{ 96000.0, 1, 0.75, 0.75f, 0.00f,   -39.0421f,  -38.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   2.0000  none  -36.7916
+	{ 96000.0, 1, 0.75, 0.75f, 1.00f,   -46.2467f,  -45.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   1.0777  none  -43.2842
+	{ 96000.0, 1, 0.75, 1.00f, 0.00f,   -27.1907f,  -26.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   2.0000  none  -24.5908
+	{ 96000.0, 1, 0.75, 1.00f, 1.00f,   -33.4864f,  -32.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   1.0851  none  -30.8919
+	{ 96000.0, 1, 1.00, 0.00f, 0.00f,   -51.8377f,  -47.0f, "regression", kProvSync96Plateau     },  // sine      PLAT  fundDom    +0.00  jump   0.0048  none  -51.8267
+	{ 96000.0, 1, 1.00, 0.00f, 1.00f,   -51.7116f,  -47.0f, "regression", kProvSync96Plateau     },  // sine      PLAT  fundDom    +0.00  jump   0.0040  none  -51.7021
+	{ 96000.0, 1, 1.00, 0.25f, 0.00f,   -50.7416f,  -46.0f, "regression", kProvSync96Plateau     },  // triangle  PLAT  fundDom    +0.00  jump   0.0031  none  -50.7180
+	{ 96000.0, 1, 1.00, 0.25f, 1.00f,   -50.9360f,  -46.0f, "regression", kProvSync96Plateau     },  // triangle  PLAT  fundDom    +0.00  jump   0.0002  none  -50.9356
+	{ 96000.0, 1, 1.00, 0.50f, 0.00f,   -42.3155f,  -41.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   0.0015  none  -42.3194
+	{ 96000.0, 1, 1.00, 0.50f, 1.00f,   -41.9685f,  -40.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   0.0002  none  -41.9685
+	{ 96000.0, 1, 1.00, 0.75f, 0.00f,   -42.7502f,  -41.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   0.0000  none  -42.7502
+	{ 96000.0, 1, 1.00, 0.75f, 1.00f,   -52.3439f,  -48.0f, "regression", kProvSync96Plateau     },  // square    PLAT  fundDom    +0.00  jump   0.0090  none  -52.3259
+	{ 96000.0, 1, 1.00, 1.00f, 0.00f,   -25.7308f,  -24.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.0000  none  -25.7308
+	{ 96000.0, 1, 1.00, 1.00f, 1.00f,   -43.7854f,  -42.0f, "regression", kProvSync96Step        },  // pulse 5%  step  fundDom    +0.00  jump   0.0179  none  -43.5755
+	{ 96000.0, 1, 1.50, 0.00f, 0.00f,   -46.2397f,  -45.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0887  none  -46.1620
+	{ 96000.0, 1, 1.50, 0.00f, 1.00f,   -45.9395f,  -44.0f, "regression", kProvSync96Step        },  // sine      step  fundDom    +0.00  jump   0.0736  none  -45.8773
+	{ 96000.0, 1, 1.50, 0.25f, 0.00f,   -32.8195f,  -31.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom    -2.90  jump   1.9435  none  -29.9035
+	{ 96000.0, 1, 1.50, 0.25f, 1.00f,   -34.0320f,  -33.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom    -2.49  jump   1.8131  none  -31.1917
+	{ 96000.0, 1, 1.50, 0.50f, 0.00f,   -35.2764f,  -34.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.0000  none  -33.7977
+	{ 96000.0, 1, 1.50, 0.50f, 1.00f,   -33.0453f,  -32.0f, "regression", kProvSync96Step        },  // saw       step  fundDom    +0.00  jump   1.3843  none  -31.3152
+	{ 96000.0, 1, 1.50, 0.75f, 0.00f,   -39.7342f,  -38.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   2.0000  none  -38.0690
+	{ 96000.0, 1, 1.50, 0.75f, 1.00f,   -46.6299f,  -45.0f, "regression", kProvSync96Step        },  // square    step  fundDom    +0.00  jump   0.2420  none  -46.3385
+	{ 96000.0, 1, 1.50, 1.00f, 0.00f,   -14.6549f,  -13.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom    -5.87  jump   2.0000  none  -14.0512
+	{ 96000.0, 1, 1.50, 1.00f, 1.00f,   -31.6692f,  -30.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom    -3.79  jump   1.1114  none  -28.2464
+	{ 96000.0, 1, 2.50, 0.00f, 0.00f,   -34.0047f,  -33.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom    -7.36  jump   0.1476  none  -33.9368
+	{ 96000.0, 1, 2.50, 0.00f, 1.00f,   -33.7357f,  -32.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom    -7.45  jump   0.1227  none  -33.6810
+	{ 96000.0, 1, 2.50, 0.25f, 0.00f,   -19.8912f,  -18.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -14.99  jump   1.9058  none  -17.1339
+	{ 96000.0, 1, 2.50, 0.25f, 1.00f,   -21.9818f,  -20.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -13.70  jump   1.8243  none  -19.4137
+	{ 96000.0, 1, 2.50, 0.50f, 0.00f,   -24.5989f,  -23.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom    -6.49  jump   1.0000  none  -23.4440
+	{ 96000.0, 1, 2.50, 0.50f, 1.00f,   -22.9814f,  -21.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom    -6.58  jump   1.3886  none  -21.5668
+	{ 96000.0, 1, 2.50, 0.75f, 0.00f,   -26.9551f,  -25.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom    -6.49  jump   2.0000  none  -28.0236
+	{ 96000.0, 1, 2.50, 0.75f, 1.00f,   -34.5220f,  -33.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom    -7.09  jump   0.3501  none  -34.3137
+	{ 96000.0, 1, 2.50, 1.00f, 0.00f,   -11.1919f,  -10.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -13.30  jump   2.0000  none   -9.5176
+	{ 96000.0, 1, 2.50, 1.00f, 1.00f,   -16.5731f,  -15.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -12.50  jump   1.2139  none  -16.7520
+	{ 96000.0, 1, 3.50, 0.00f, 0.00f,   -27.4837f,  -26.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom   -10.78  jump   0.2063  none  -27.4302
+	{ 96000.0, 1, 3.50, 0.00f, 1.00f,   -27.2361f,  -26.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom   -10.90  jump   0.1718  none  -27.1933
+	{ 96000.0, 1, 3.50, 0.25f, 0.00f,   -13.6270f,  -12.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -21.42  jump   1.8682  none  -10.7315
+	{ 96000.0, 1, 3.50, 0.25f, 1.00f,   -16.2546f,  -15.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -19.04  jump   1.8306  none  -14.0184
+	{ 96000.0, 1, 3.50, 0.50f, 0.00f,   -18.3267f,  -17.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom    -9.57  jump   1.0000  none  -17.6729
+	{ 96000.0, 1, 3.50, 0.50f, 1.00f,   -16.4766f,  -15.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom    -9.68  jump   1.3888  none  -15.8231
+	{ 96000.0, 1, 3.50, 0.75f, 0.00f,   -23.8905f,  -22.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom    -9.57  jump   2.0000  none  -23.4423
+	{ 96000.0, 1, 3.50, 0.75f, 1.00f,   -28.0245f,  -27.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom   -10.41  jump   0.4541  none  -27.8693
+	{ 96000.0, 1, 3.50, 1.00f, 0.00f,     2.4283f,    4.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -16.45  jump   2.0000  none   +0.6709
+	{ 96000.0, 1, 3.50, 1.00f, 1.00f,    -5.1628f,   -4.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -16.20  jump   1.2745  none   -5.8290
+	{ 96000.0, 1, 5.50, 0.00f, 0.00f,   -19.2583f,  -18.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom   -14.92  jump   0.3224  none  -19.2447
+	{ 96000.0, 1, 5.50, 0.00f, 1.00f,   -19.0370f,  -18.0f, "diagnostic", kProvSync96Invalid     },  // sine      step  fundDom   -15.06  jump   0.2706  none  -19.0279
+	{ 96000.0, 1, 5.50, 0.25f, 0.00f,    -3.8823f,   -2.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -29.45  jump   1.7927  none   -1.5098
+	{ 96000.0, 1, 5.50, 0.25f, 1.00f,    -6.5042f,   -5.0f, "diagnostic", kProvSync96Invalid     },  // triangle  step  fundDom   -24.79  jump   1.8281  none   -6.6949
+	{ 96000.0, 1, 5.50, 0.50f, 0.00f,   -13.5247f,  -12.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom   -13.36  jump   1.0001  none  -13.0451
+	{ 96000.0, 1, 5.50, 0.50f, 1.00f,   -10.5022f,   -9.0f, "diagnostic", kProvSync96Invalid     },  // saw       step  fundDom   -13.49  jump   1.3752  none  -10.1605
+	{ 96000.0, 1, 5.50, 0.75f, 0.00f,   -14.3509f,  -13.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom   -13.36  jump   2.0000  none  -14.3026
+	{ 96000.0, 1, 5.50, 0.75f, 1.00f,   -19.8005f,  -18.0f, "diagnostic", kProvSync96Invalid     },  // square    step  fundDom   -14.46  jump   0.6456  none  -19.7350
+	{ 96000.0, 1, 5.50, 1.00f, 0.00f,    10.6177f,   12.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -20.40  jump   1.8605  none   +7.4463
+	{ 96000.0, 1, 5.50, 1.00f, 1.00f,     4.9095f,    6.0f, "diagnostic", kProvSync96Invalid     },  // pulse 5%  step  fundDom   -20.50  jump   1.2530  none   +3.4564
+};
+
+const std::size_t kSyncPinCount = sizeof(SYNC_PINS) / sizeof(SYNC_PINS[0]);
 // ---------------------------------------------------------------------------
 // SYNC_GRID — the full cross product of the axes above, 3 * 6 * 5 * 2 * 2 = 360
 // cells, built once on first use.
@@ -1612,10 +2132,34 @@ std::vector<SyncCell> buildSyncGrid() {
 						c.morph       = SYNC_MORPHS[mi];
 						c.region      = SYNC_REGIONS[mi];
 						c.character   = SYNC_CHARACTERS[ci];
+						// >>> THE PER-CELL LOOKUP (plan 33-07), NOT A FORMULA. <<<
+						// The default is the SENTINEL, deliberately: a cell whose
+						// five axes match no row of SYNC_PINS keeps kSyncUnpinnedDb
+						// and the tier "UNPINNED", and the gate case turns that
+						// into a RED. Defaulting to anything derivable from the
+						// axes would let a newly added grid row pass silently
+						// against a threshold nobody measured.
 						c.measuredDb  = kSyncUnpinnedDb;
 						c.thresholdDb = kSyncUnpinnedDb;
-						c.tier        = "measure";   // never "gated" in this plan — nothing here is asserted against a pinned number
+						c.tier        = "UNPINNED";
 						c.provenance  = kProvSyncUnpinned;
+						for (std::size_t pi = 0; pi < kSyncPinCount; ++pi) {
+							const SyncPin& pin = SYNC_PINS[pi];
+							// ALL FIVE AXES MUST MATCH. Every one of them is an
+							// exact comparison of a value copied from the same
+							// axis array the cell was built from, so there is no
+							// rounding question: these are the same literals.
+							if (pin.sr        != c.sr)        continue;
+							if (pin.edgeIdx   != (int)ei)     continue;
+							if (pin.ratio     != c.ratio)     continue;
+							if (pin.morph     != c.morph)     continue;
+							if (pin.character != c.character) continue;
+							c.measuredDb  = pin.measuredDb;
+							c.thresholdDb = pin.thresholdDb;
+							c.tier        = pin.tier;
+							c.provenance  = pin.provenance;
+							break;
+						}
 						g.push_back(c);
 					}
 				}
@@ -3684,10 +4228,20 @@ TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, i
 		if (grid[i].ratio < 1.0)                    ++subUnityCells;
 		if (grid[i].edge == kMasterHardEdge)        ++hardEdgeCells;
 		if (grid[i].edge == kMasterBandLimited)     ++bandLimitedCells;
-		// NOTHING IS PINNED BY THIS PLAN — asserted, not merely intended.
-		if (grid[i].measuredDb == kSyncUnpinnedDb &&
-		    grid[i].thresholdDb == kSyncUnpinnedDb &&
-		    std::string(grid[i].provenance) == std::string(kProvSyncUnpinned)) ++unpinnedCells;
+		// >>> INVERTED BY PLAN 33-07. <<< This counted UNPINNED cells and
+		// asserted all 420 of them, because plan 33-05 deliberately gated
+		// nothing. Plan 33-07 pins every cell from SYNC_PINS, so the same
+		// mechanical count now asserts the OPPOSITE and is the tripwire for a
+		// grid row added without a pin: any cell still holding the sentinel, the
+		// "UNPINNED" tier or the 33-05 provenance string is counted here and the
+		// assertion below requires the count to be ZERO. The direction of the
+		// claim was inverted; the mechanism was not weakened, and it was not
+		// deleted either — a deleted count cannot detect an unpinned row.
+		const bool stillUnpinned = (grid[i].measuredDb == kSyncUnpinnedDb)
+		                        || (grid[i].thresholdDb == kSyncUnpinnedDb)
+		                        || (std::string(grid[i].tier) == std::string("UNPINNED"))
+		                        || (std::string(grid[i].provenance) == std::string(kProvSyncUnpinned));
+		if (stillUnpinned) ++unpinnedCells;
 	}
 	CAPTURE(subUnityCells);
 	CAPTURE(hardEdgeCells);
@@ -3714,8 +4268,9 @@ TEST_CASE("vco spectrum: (D-11) the sync sub-grid's master is the fundamental, i
 	CAPTURE(integerRatioCellsAtOrAboveTwo);
 	CHECK(integerRatioCellsAtOrAboveTwo == 0);
 
-	// The whole grid is unpinned and says so.
-	CHECK(unpinnedCells == (int)nCells);
+	// EVERY CELL IS PINNED, AND SAYS SO. Inverted by plan 33-07 from 33-05's
+	// `== nCells`; see the counting site above for why the mechanism was kept.
+	CHECK(unpinnedCells == 0);
 
 	// =======================================================================
 	// PART B — THE BIN-ERROR ASSERTION, MADE DIRECTLY.
@@ -4880,3 +5435,494 @@ TEST_CASE("vco spectrum: (D-06 / D-11) the sync placement measurement - six legs
 	CHECK(winnerFrac >= 0.0);
 }
 
+
+// ---------------------------------------------------------------------------
+// TASK 2 OF PLAN 33-07 — THE SYNC SUB-GRID BECOMES A GATE.
+//
+// >>> A GRID THAT GATES NOTHING CANNOT GO RED. THAT SENTENCE IS THE WHOLE
+//     REASON THIS CASE EXISTS AND THE WHOLE REASON IT IS A SEPARATE PLAN FROM
+//     THE MEASUREMENT THAT PRODUCED ITS NUMBERS. <<<
+// Plan 33-05 built the instrument, measured 3,360 figures with it and pinned
+// none of them, on the stated ground that a threshold pinned in the same commit
+// that chose the leg is a threshold pinned from a leg no gate had examined. Plan
+// 33-06 landed the leg. This case pins the columns from plan 33-07's own
+// measurement of the leg that ships, and gates on them.
+//
+// ===========================================================================
+// >>> THE PLATEAU / STEP-DOMINATED CLASSIFICATION. STATED HERE, ON ITS
+//     PHYSICAL CRITERION, BEFORE ANY POPULATION IS ENUMERATED ANYWHERE BELOW.
+//     READ THIS BEFORE THE COUNTS. <<<
+//
+// Register item 8 splits the cross-toolchain reproduction bound in two, and the
+// split is PHYSICAL rather than statistical. aliasPeakDb reports an ARG-MAX over
+// roughly two thousand non-harmonic bins. When the emitted waveform carries a
+// TRUE VALUE STEP, that step's spectrum is a broad 1/f skirt, the arg-max sits
+// well above its neighbours, and no plausible unit-in-the-last-place difference
+// in a library function can reorder it: the cell is STEP-DOMINATED and earns the
+// 1.0 dB bound. When there is no true value step the surviving non-harmonic
+// energy is a near-flat PLATEAU of near-tied bins, one libm ULP decides which
+// one wins, and the reported figure moves by several decibels for no DSP reason
+// at all: the cell is PLATEAU class and earns the 4.0 dB bound. Phase 32
+// MEASURED that difference — 3.02596 dB on cell i=86, a plateau cell — when its
+// first CI run came back red on Ubuntu and Windows and green on macOS with no
+// src/ behaviour differing anywhere.
+//
+// THE CRITERION HAS TWO CLAUSES BECAUSE A HARD-SYNCED CELL HAS TWO INDEPENDENT
+// SOURCES OF A VALUE STEP, AND THE QUESTION THE BOUND ASKS IS WHETHER THE CELL
+// CARRIES ONE — NOT WHETHER THE RESET DOES:
+//
+//   (i)  THE SYNC JUMP. The reset moves the slave's phase, and the frozen
+//        waveshaper's value moves with it. That difference is exactly what
+//        forge::VcoCore::Telemetry::syncJump records, and plan 33-05 fixed the
+//        floor at a mean absolute 0.01 in pre-scale units (0.05 V at the
+//        output) — below that the reset moves the waveform by less than one
+//        percent of its range and there is no step for the arg-max to lock on
+//        to. THAT FLOOR WAS FIXED IN PLAN 33-05'S SOURCE, BEFORE ANY CELL IN
+//        THIS FILE WAS GATED, AND IS INHERITED HERE UNCHANGED.
+//
+//   (ii) THE SLAVE'S OWN DISCONTINUITY. A saw or a pulse carries a value step
+//        every cycle whether or not anything syncs it, and so does a square
+//        below full character. Phase 32 measured exactly this partition on the
+//        standing grid: saw and pulse at every character and square below full
+//        character are step-dominated; sine and triangle carry a CORNER, not a
+//        step; and the square at character 1.00 was measured with its jump
+//        collapsed to -0.001661, which is a corner too.
+//
+// A CELL IS STEP-DOMINATED WHEN EITHER CLAUSE HOLDS, AND PLATEAU ONLY WHEN
+// NEITHER DOES. Clause (i) alone would have called a unity-ratio SAW cell a
+// plateau — a waveform with a full-scale discontinuity every cycle — which is
+// plainly false about the cell and would have granted it a 4.0 dB bound it has
+// not earned. Both clauses are properties of the WAVEFORM, measured or
+// inherited-from-measurement, and neither mentions a threshold, a margin or a
+// result.
+//
+// >>> THE ANTI-RECLASSIFICATION CLAUSE, EXTENDED TO THE SYNC ROWS BY NAME. <<<
+// 33-VALIDATION's Threshold Policy states it for the standing grid and it now
+// binds here as well: A CLASSIFICATION PRODUCED BY RENAMING THE CELLS THAT
+// FAILED IS FORBIDDEN. If a sync cell fires and it is step-dominated, THAT IS A
+// FINDING ABOUT THE CRITERION OR ABOUT THE IMPLEMENTATION — it is reported, with
+// its figures, and escalated. It is never a cell to move into the plateau class
+// so the wider bound covers it. The criterion above is written before the counts
+// below for exactly that reason, and both populations are asserted EXACTLY so
+// that moving one cell between them turns two assertions red rather than none.
+//
+// >>> THE TIERS, AND THE ONE DECISION PLAN 33-05 LEFT OPEN. <<<
+// 33-05 asked plan 33-07 to "decide whether to gate the instrument-invalid half
+// at all". THE DECISION IS: NO, AND IT IS TAKEN ON THE INSTRUMENT RATHER THAN ON
+// THE NUMBERS. A cell that fails fundamentalDominanceDb is a cell where
+// aliasPeakDb is normalising by a bin that is NOT the master's fundamental, so
+// its decibel figure is not an alias floor and gating it would be gating a
+// quantity the instrument does not produce. Those 210 cells are "diagnostic":
+// measured, recorded, and REPRODUCTION-CHECKED like every other row, but never
+// CHECKed against their threshold. The remaining 210 are gated — "gated" at
+// 44.1 kHz, which register item 8 makes the BINDING rate, and "regression" at 48
+// and 96 kHz, which are asserted on the same terms and exist so a rate-dependent
+// regression cannot hide at one rate.
+// ===========================================================================
+TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its per-cell pinned threshold, and every pinned number reproduces") {
+
+	// The criterion's constants, named above before any count below.
+	const double kStepDominatedJumpFloor = 0.01;   // pre-scale units — plan 33-05's, inherited unchanged
+	const double kBoundStepDominatedDb   = 1.0;    // register item 8
+	const double kBoundPlateauDb         = 4.0;    // register item 8
+
+	const std::vector<SyncCell>& grid = syncGrid();
+	const std::size_t nCells = grid.size();
+	REQUIRE(nCells == 420);
+	REQUIRE(kSyncPinCount == 420);
+
+	// =======================================================================
+	// THE MEASUREMENT PASS. Two legs per cell through the ONE cell-measuring
+	// function: the SHIPPED past-edge leg, which is what every pinned number in
+	// SYNC_PINS is a measurement of, and the correction-free reference leg,
+	// which supplies the diagnostics that decide the CLASS and the TIER. The
+	// reference leg is used for those and only those, for the reason the 33-05
+	// measurement case already records: the reset is identical on all eight
+	// legs, so a diagnostic taken there is a property of the CELL rather than of
+	// whichever candidate happens to be shipping.
+	// =======================================================================
+	std::vector<double> runDb(nCells, 0.0);
+	std::vector<double> noneDb(nCells, 0.0);
+	std::vector<char>   stepDom(nCells, 0);
+	std::vector<char>   shapeStep(nCells, 0);
+	std::vector<char>   jumpStep(nCells, 0);
+	std::vector<char>   instrumentValid(nCells, 0);
+	std::vector<double> fundDom(nCells, 0.0);
+
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& cell = grid[ci];
+		double rms = 0.0, binErr = 0.0;
+		SyncProbeDiag d = zeroedSyncDiag();
+		std::vector<float> refBlock;
+
+		noneDb[ci] = measureSyncCellDb(cell, kLegNone,     /*useLiveCore=*/false, &rms, &binErr, &d, &refBlock);
+		runDb[ci]  = measureSyncCellDb(cell, kLegPastEdge, /*useLiveCore=*/false, &rms, &binErr, 0,  0);
+
+		int strongestN = 0;
+		fundDom[ci] = fundamentalDominanceDb(refBlock, cell.Km, &strongestN);
+		instrumentValid[ci] = (strongestN == 1) ? 1 : 0;
+
+		// CLAUSE (i) — the sync jump, on the correction-free reference leg.
+		const double meanAbsJump = (d.fires > 0) ? d.jumpAbsSum / (double)d.fires : 0.0;
+		jumpStep[ci] = (meanAbsJump >= kStepDominatedJumpFloor) ? 1 : 0;
+		// CLAUSE (ii) — the slave's own discontinuity, by Phase 32's measured
+		// partition of the shape centres.
+		const bool sawCentre    = (cell.morph == 0.50f);
+		const bool pulseCentre  = (cell.morph == 1.00f);
+		const bool hardSquare   = (cell.morph == 0.75f) && (cell.character < 1.00f);
+		shapeStep[ci] = (sawCentre || pulseCentre || hardSquare) ? 1 : 0;
+
+		stepDom[ci] = (jumpStep[ci] || shapeStep[ci]) ? 1 : 0;
+	}
+
+	// =======================================================================
+	// THE POPULATIONS, COUNTED ONLY NOW, AND ASSERTED EXACTLY.
+	// =======================================================================
+	int nStepDominated = 0, nPlateau = 0, nJumpOnly = 0, nShapeOnly = 0, nBoth = 0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		if (stepDom[ci]) ++nStepDominated; else ++nPlateau;
+		if (jumpStep[ci] && shapeStep[ci]) ++nBoth;
+		else if (jumpStep[ci])             ++nJumpOnly;
+		else if (shapeStep[ci])            ++nShapeOnly;
+	}
+	CAPTURE(nStepDominated);
+	CAPTURE(nPlateau);
+	CAPTURE(nJumpOnly);
+	CAPTURE(nShapeOnly);
+	CAPTURE(nBoth);
+	CHECK(nStepDominated == 402);
+	CHECK(nPlateau == 18);
+	CHECK(nStepDominated + nPlateau == (int)nCells);
+	// BOTH CLAUSES DO WORK. If either count were zero the criterion would have
+	// one live clause and one decoration, and the two-clause reading above would
+	// be a story rather than a description.
+	CHECK(nJumpOnly > 0);
+	CHECK(nShapeOnly > 0);
+
+	// THE INSTRUMENT-VALIDITY PARTITION, also exact. 33-05 measured 210/210 and
+	// a worst dominance of -29.4473 dB; this run reproduces it.
+	int nValid = 0, nInvalid = 0;
+	double worstFundDom = 0.0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		if (instrumentValid[ci]) ++nValid; else ++nInvalid;
+		if (fundDom[ci] < worstFundDom) worstFundDom = fundDom[ci];
+	}
+	CAPTURE(nValid);
+	CAPTURE(nInvalid);
+	CAPTURE(worstFundDom);
+	CHECK(nValid == 210);
+	CHECK(nInvalid == 210);
+	CHECK(worstFundDom < -20.0);
+
+	// =======================================================================
+	// THE PIN TABLE'S OWN INTEGRITY, ASSERTED INSIDE THE TEST SO AN ADDED ROW
+	// WITH AN EMPTY PROVENANCE GOES RED RATHER THAN PASSING SILENTLY.
+	// =======================================================================
+	int nGated = 0, nRegression = 0, nDiagnostic = 0, nAsserted = 0;
+	int nFloored = 0;
+	int nGatedStep = 0, nGatedPlateau = 0;
+	double tightestThreshold = 1e30;
+
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& cell = grid[ci];
+		const std::string tier(cell.tier);
+		const std::string prov(cell.provenance);
+		const bool isDiagnostic = (tier == "diagnostic");
+		const bool isAsserted   = (tier == "gated") || (tier == "regression");
+
+		// CAPTURE of a const char* prints a POINTER, which is unreadable in a
+		// failure log; the two label columns go through std::string so a red
+		// cell names itself.
+		const std::string edgeName(cell.edgeName);
+		const std::string region(cell.region);
+		CAPTURE(ci);
+		CAPTURE(cell.sr);
+		CAPTURE(edgeName);
+		CAPTURE(cell.ratio);
+		CAPTURE(region);
+		CAPTURE(cell.character);
+		CAPTURE(cell.measuredDb);
+		CAPTURE(cell.thresholdDb);
+		CAPTURE(tier);
+
+		// EVERY cell has a provenance, and it is not the 33-05 sentinel string
+		// and not one of Phase 32's six. A row added to SYNC_GRID without a row
+		// in SYNC_PINS reaches here holding the sentinel and fails all three.
+		CHECK(prov.size() > 0);
+		CHECK(prov != std::string(kProvSyncUnpinned));
+		CHECK(prov.find("33-07") != std::string::npos);
+		CHECK(cell.measuredDb != kSyncUnpinnedDb);
+		CHECK(cell.thresholdDb != kSyncUnpinnedDb);
+		CHECK((isDiagnostic || isAsserted));   // "UNPINNED" is neither, and reds here
+
+		// THE TIER IS A MEASUREMENT, NOT A LABEL. It is re-derived from this
+		// run's own fundamental-dominance result and its rate, and must match
+		// what the table recorded. A tier edited to move a failing cell into the
+		// diagnostic half goes red here.
+		const bool tierShouldBeDiagnostic = !instrumentValid[ci];
+		CHECK(isDiagnostic == tierShouldBeDiagnostic);
+		if (!tierShouldBeDiagnostic) {
+			const bool binding = (cell.sr == 44100.0);
+			CHECK((tier == "gated") == binding);
+			CHECK((tier == "regression") == !binding);
+		}
+
+		// THE PROVENANCE NAMES THE CLASS'S BOUND, and the class is re-derived
+		// above from the physical criterion. A provenance swapped to buy a cell
+		// the wider bound goes red here, and so does a class that moved.
+		const double bound = stepDom[ci] ? kBoundStepDominatedDb : kBoundPlateauDb;
+		if (!isDiagnostic) {
+			const bool namesStepBound    = (prov.find("measuredDb + 1.0") != std::string::npos);
+			const bool namesPlateauBound = (prov.find("measuredDb + 4.0") != std::string::npos);
+			CHECK(namesStepBound == (stepDom[ci] != 0));
+			CHECK(namesPlateauBound == (stepDom[ci] == 0));
+		}
+
+		// THE DERIVATION, ASSERTED MECHANICALLY. Rounded OUTWARD by the bound
+		// the cell's class earns, then floored at the static threshold floor.
+		// Loosening thresholdDb by hand, without touching its measured sibling,
+		// breaks THIS.
+		const double derived = std::ceil((double)cell.measuredDb + bound);
+		const double expected = (derived < (double)kThresholdFloorDb) ? (double)kThresholdFloorDb : derived;
+		CAPTURE(bound);
+		CAPTURE(derived);
+		CAPTURE(expected);
+		CHECK((double)cell.thresholdDb == expected);
+		if (derived < (double)kThresholdFloorDb) ++nFloored;
+
+		// NO THRESHOLD IS TIGHTER THAN THE STATIC FLOOR, asserted over the WHOLE
+		// sync grid rather than only over the gated half.
+		CHECK((double)cell.thresholdDb >= (double)kThresholdFloorDb);
+		if ((double)cell.thresholdDb < tightestThreshold) tightestThreshold = (double)cell.thresholdDb;
+
+		if (tier == "gated")      ++nGated;
+		if (tier == "regression") ++nRegression;
+		if (isDiagnostic)         ++nDiagnostic;
+		if (isAsserted) {
+			++nAsserted;
+			if (stepDom[ci]) ++nGatedStep; else ++nGatedPlateau;
+		}
+	}
+
+	CAPTURE(nGated);
+	CAPTURE(nRegression);
+	CAPTURE(nDiagnostic);
+	CAPTURE(nAsserted);
+	CAPTURE(nGatedStep);
+	CAPTURE(nGatedPlateau);
+	CAPTURE(nFloored);
+	CAPTURE(tightestThreshold);
+	CHECK(nGated == 70);          // 44.1 kHz, instrument-valid — the BINDING rows
+	CHECK(nRegression == 140);    // 48 and 96 kHz, instrument-valid
+	CHECK(nDiagnostic == 210);    // instrument-invalid at every rate
+	CHECK(nAsserted == 210);
+	CHECK(nGatedStep == 192);
+	CHECK(nGatedPlateau == 18);
+	CHECK(nGatedStep + nGatedPlateau == nAsserted);
+	// THE FLOOR DOES NOT BIND ANYWHERE ON THIS GRID, AND THAT IS RECORDED RATHER
+	// THAN LEFT TO BE ASSUMED. The tightest pinned threshold is -49 dB against a
+	// floor of -75, so no sync row is silently floored and no sync provenance
+	// string has to claim it was. The floor is still asserted per cell above,
+	// because a later re-pin at a quieter cell could reach it.
+	CHECK(nFloored == 0);
+	CHECK(tightestThreshold > (double)kThresholdFloorDb);
+
+	// =======================================================================
+	// THE REPRODUCTION PASS — WHAT MAKES "PINNED FROM MEASUREMENT" DEFENSIBLE
+	// RATHER THAN CIRCULAR.
+	//
+	// >>> A THRESHOLD PINNED FROM THE IMPLEMENTATION'S OWN OUTPUT CANNOT, ON ITS
+	//     OWN, FAIL. EVERY GATED CELL PASSES BY CONSTRUCTION WITH AT LEAST ITS
+	//     CLASS BOUND OF ROOM. <<< That is true here exactly as the standing
+	//     grid's banner says it is true there, and it is why the table is not
+	//     the evidence on its own. The coupling below is:
+	//
+	//   * loosening thresholdDb alone breaks the DERIVATION assertion above;
+	//   * loosening measuredDb with it breaks the REPRODUCTION check here,
+	//     which compares the recorded column against WHAT THIS RUN MEASURED;
+	//   * and the two together are still visible, because both edits are named
+	//     in the SyncCell banner's warning signs and in SYNC_PINS' own banner.
+	//
+	// The bound is the class's, not a fixed number, because that is the quantity
+	// register item 8 actually measured.
+	// =======================================================================
+	double worstReproduction = 0.0;
+	int    worstReproductionCell = -1;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& cell = grid[ci];
+		const double bound = stepDom[ci] ? kBoundStepDominatedDb : kBoundPlateauDb;
+		const double delta = std::fabs(runDb[ci] - (double)cell.measuredDb);
+		if (delta > worstReproduction) { worstReproduction = delta; worstReproductionCell = (int)ci; }
+		const std::string edgeName(cell.edgeName);
+		const std::string region(cell.region);
+		CAPTURE(ci);
+		CAPTURE(cell.sr);
+		CAPTURE(edgeName);
+		CAPTURE(cell.ratio);
+		CAPTURE(region);
+		CAPTURE(cell.character);
+		CAPTURE(cell.measuredDb);
+		CAPTURE(runDb[ci]);
+		CAPTURE(bound);
+		CAPTURE(delta);
+		CHECK(delta <= bound);
+	}
+	CAPTURE(worstReproduction);
+	CAPTURE(worstReproductionCell);
+
+	// =======================================================================
+	// >>> THE GATE ITSELF. <<<
+	// The alias floor this run measures on the SHIPPED leg stays below the
+	// threshold pinned for that cell. Gated and regression rows are CHECKed;
+	// diagnostic rows are CAPTUREd and never CHECKed, because their figure is
+	// not an alias floor at all.
+	// =======================================================================
+	int nGateChecked = 0;
+	double worstHeadroom = 1e30;
+	int    worstHeadroomCell = -1;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& cell = grid[ci];
+		const std::string tier(cell.tier);
+		if (tier == "diagnostic") continue;
+		const double headroom = (double)cell.thresholdDb - runDb[ci];
+		if (headroom < worstHeadroom) { worstHeadroom = headroom; worstHeadroomCell = (int)ci; }
+		++nGateChecked;
+		const std::string edgeName(cell.edgeName);
+		const std::string region(cell.region);
+		CAPTURE(ci);
+		CAPTURE(cell.sr);
+		CAPTURE(edgeName);
+		CAPTURE(cell.ratio);
+		CAPTURE(region);
+		CAPTURE(cell.character);
+		CAPTURE(cell.thresholdDb);
+		CAPTURE(runDb[ci]);
+		CAPTURE(headroom);
+		CHECK(runDb[ci] <= (double)cell.thresholdDb);
+	}
+	CAPTURE(nGateChecked);
+	CAPTURE(worstHeadroom);
+	CAPTURE(worstHeadroomCell);
+	CHECK(nGateChecked == 210);
+	CHECK(worstHeadroom > 0.0);
+
+	// =======================================================================
+	// THE MUTATION PROBE — DISCRIMINATING, AND ITS POPULATION IS STATED BEFORE
+	// IT IS RUN.
+	//
+	// >>> THE STATED POPULATIONS, AS LITERALS, WRITTEN DOWN BEFORE THE LOOP
+	//     BELOW EXECUTES AND NOT ADJUSTED TO WHATEVER IT PRODUCES. <<<
+	// The probe adds a fixed offset to the value that comes out of the
+	// measurement path, at the gate's input, and counts how many gated cells
+	// then exceed their threshold. This is the shape Phase 32's probe already
+	// takes — a +2.0 dB probe failing exactly 48 cells and +5.0 exactly 90 — and
+	// it is chosen over perturbing the DSP because it isolates the GATE: a probe
+	// that perturbs the core measures the core's sensitivity as well as the
+	// gate's, and cannot fail a stated population exactly.
+	//
+	// WHY +2.0 DISCRIMINATES BY CLASS, DERIVED RATHER THAN OBSERVED: every gated
+	// cell's headroom against its own pinned threshold is
+	// ceil(measuredDb + bound) - measuredDb, which lies in [bound, bound+1) by
+	// construction. A step-dominated cell therefore has headroom in [1.0, 2.0)
+	// and a plateau cell in [4.0, 5.0). An offset of +2.0 dB is above EVERY
+	// step-dominated headroom and below EVERY plateau one, so it must fail
+	// exactly the 192 gated step-dominated cells and exactly zero of the 18
+	// plateau ones. An offset of +5.0 dB is above both, so it must fail all 210.
+	//
+	// IF THE OBSERVED COUNTS DIFFER FROM THESE, THE DISCREPANCY IS REPORTED AND
+	// THE STATED NUMBERS ARE NOT MOVED TO MATCH.
+	// =======================================================================
+	const int kStatedProbe2FiresStep    = 192;   // every gated step-dominated cell
+	const int kStatedProbe2FiresPlateau = 0;     // and not one plateau cell
+	const int kStatedProbe5Fires        = 210;   // every gated cell, both classes
+
+	int probe2Step = 0, probe2Plateau = 0, probe5All = 0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& cell = grid[ci];
+		const std::string tier(cell.tier);
+		if (tier == "diagnostic") continue;
+		const double mutated2 = runDb[ci] + 2.0;
+		const double mutated5 = runDb[ci] + 5.0;
+		if (mutated2 > (double)cell.thresholdDb) { if (stepDom[ci]) ++probe2Step; else ++probe2Plateau; }
+		if (mutated5 > (double)cell.thresholdDb) ++probe5All;
+	}
+	CAPTURE(kStatedProbe2FiresStep);
+	CAPTURE(probe2Step);
+	CAPTURE(kStatedProbe2FiresPlateau);
+	CAPTURE(probe2Plateau);
+	CAPTURE(kStatedProbe5Fires);
+	CAPTURE(probe5All);
+	CHECK(probe2Step == kStatedProbe2FiresStep);
+	CHECK(probe2Plateau == kStatedProbe2FiresPlateau);
+	CHECK(probe5All == kStatedProbe5Fires);
+
+	// =======================================================================
+	// THE CORRECTION'S OWN MAGNITUDE, RECORDED HERE BECAUSE THE SyncCell
+	// BANNER'S REFUSAL PARAGRAPH QUOTES IT AND A QUOTED NUMBER WITH NOTHING
+	// BEHIND IT IS A NUMBER THAT DRIFTS.
+	//
+	// >>> WHAT IS ASSERTED IS THE SIGN AND THE ORDER OF MAGNITUDE, NEVER THE
+	//     DECIBEL. <<< Every figure here is an Apple-clang figure and the counts
+	//     below include cells where the two legs differ by thousandths of a
+	//     decibel — at the unity ratio the mean is +0.0037 dB, which is a coin
+	//     flip and must not be gated as though it were a result. The magnitudes
+	//     and the counts are CAPTUREd; the three claims that survive a toolchain
+	//     crossing are CHECKed.
+	// =======================================================================
+	double gridImprovementSum = 0.0;
+	int    cellsWherePastIsWorse = 0;
+	double worstPastDeficit = 0.0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const double improvement = noneDb[ci] - runDb[ci];   // positive = the correction is better
+		gridImprovementSum += improvement;
+		if (improvement < 0.0) ++cellsWherePastIsWorse;
+		if (-improvement > worstPastDeficit) worstPastDeficit = -improvement;
+	}
+	const double gridImprovementMean = gridImprovementSum / (double)nCells;
+	CAPTURE(gridImprovementMean);
+	CAPTURE(cellsWherePastIsWorse);
+	CAPTURE(worstPastDeficit);
+
+	// CLAIM A — the correction's own spectral improvement is A FRACTION OF A
+	// DECIBEL, which is why an improvement gate in the Phase 32 shape is refused
+	// in the SyncCell banner rather than written and then loosened. 33-VALIDATION
+	// predicted "a mean of about 0.5 dB" in advance; measured +0.5827.
+	CHECK(gridImprovementMean > 0.0);
+	CHECK(gridImprovementMean < 1.0);
+
+	double ratioMean[7];
+	int    ratioCells[7];
+	for (int q = 0; q < 7; ++q) { ratioMean[q] = 0.0; ratioCells[q] = 0; }
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		for (int q = 0; q < 7; ++q) {
+			if (grid[ci].ratio != SYNC_RATIOS[q]) continue;
+			ratioMean[q] += noneDb[ci] - runDb[ci];
+			++ratioCells[q];
+		}
+	}
+	for (int q = 0; q < 7; ++q) {
+		REQUIRE(ratioCells[q] == 60);
+		ratioMean[q] /= 60.0;
+		const double ratio = SYNC_RATIOS[q];
+		CAPTURE(ratio);
+		CAPTURE(ratioMean[q]);
+	}
+
+	// CLAIM B — the correction pays for itself HANDSOMELY below unity, which is
+	// hazard one's whole point: that is where the reset truncates the slave
+	// mid-cycle on every master wrap.
+	CHECK(ratioMean[0] > 1.0);   // ratio 0.50 — measured +2.4495
+	CHECK(ratioMean[1] > 1.0);   // ratio 0.75 — measured +1.9150
+
+	// CLAIM C — AND AT THE TOP OF THE SWEEP IT IS WORSE THAN DOING NOTHING. This
+	// is 33-06's deferred register item 3, asserted rather than left in a
+	// document: at ratio 5.5 the shipped leg's mean alias floor is ABOVE the
+	// no-correction leg's. It is the forfeited pre-edge half showing up where the
+	// detected fraction is largest, MorphBlep.hpp's addPastStep banner item 3
+	// records the forfeit as deliberate and permanent, and no threshold pinned
+	// above assumes the correction helps anywhere — every one of them is pinned
+	// from the shipped leg's OWN figure. If this ever goes positive, the forfeit
+	// has stopped costing what it costs and THAT is a finding worth reporting,
+	// which is why the sign is asserted in both directions rather than ignored.
+	CHECK(ratioMean[6] < 0.0);   // ratio 5.50 — measured -1.0281
+}
