@@ -408,7 +408,7 @@ Plans:
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
 | 31. Pitch, Tuning & Exponential FM | 9/9 | Complete    | 2026-07-30 |
 | 32. Morph-Aware Anti-Aliasing | 11/11 | Complete    | 2026-08-27 |
-| 33. Hard Sync | 9/12 | In Progress|  |
+| 33. Hard Sync | 11/12 | In Progress|  |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |
 | 35. Shell, Panel & Display | 0/? | Not started | - |
 | 36. Goldens, CI & Library Update | 0/? | Not started | - |
