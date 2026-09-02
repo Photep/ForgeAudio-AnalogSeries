@@ -716,6 +716,114 @@ struct DeliberatelyMultiplicativeFmCore {
 	}
 };
 
+// ===========================================================================
+// SYNC SUPPORT (plan 33-09). Everything below this line belongs to invariant
+// 10. Nothing above it is redefined, wrapped or shadowed here, and no constant
+// above it is widened by anything below it.
+// ===========================================================================
+
+// THE SYNC AXIS'S MASTER SIGNAL SHAPES.
+//
+// forge::VcoCore's sync block reads ONE VOLTAGE PER SAMPLE and hands it to a
+// frozen forge::SchmittTrigger at hysteresis 0.1 / 1.0 V. Everything the core
+// knows about the master is that voltage, so a "master" here is nothing more
+// than a per-sample voltage function -- there is deliberately no second
+// oscillator, no phase model and no rate estimate anywhere in this file.
+//
+// WHY EACH SHAPE IS PRESENT. The first three are legitimate cables. The last
+// four exist because plan 33-09 is where PITCH-04's third input class meets the
+// phase's NEW DIVISOR, `f = (1 - prevSyncVolts) / (syncVolts - prevSyncVolts)`
+// at src/dsp/VcoCore.hpp:863 -- a division that appeared behind a new POD field
+// this phase, which is the same "a new division appeared behind an input field"
+// rationale that moved the hostile-timing grid into Phase 32 under that phase's
+// D-15. That rationale is applied DELIBERATELY here rather than inherited:
+// Phase 32's version of it was itself a correction of a falsified one, so it is
+// re-argued for this divisor rather than copied.
+enum SyncKind {
+	kSyncUnpatched,      // the jack is not patched at all -- the control row
+	kSyncRamp,           // a rising 0..5 V ramp at a stated rate: a normal master
+	kSyncIdleHigh,       // a steady 5 V present from sample ZERO
+	kSyncNanHeld,        // a not-a-number cable voltage, held for the whole block
+	kSyncOnThreshold,    // a sample landing EXACTLY on the 1.0 V high threshold
+	kSyncNanGlitch,      // a legitimate master with intermittent not-a-number samples
+	kSyncStaleStore      // LOW, then a steady 5 V held against the store
+};
+
+struct SyncAxisRow {
+	SyncKind    kind;
+	double      masterHz;   // the ramp rate; 0 for the shapes that have no rate
+	bool        mustFire;   // whether the detector CAN fire on this shape at all
+	const char* role;
+};
+
+// The master voltage this row presents on sample `i`.
+//
+// The three not-a-number and threshold shapes are written so their MECHANISM is
+// visible, because each one is the physical case behind a specific clause of
+// the core's own guard:
+//
+//   kSyncIdleHigh    -- the trigger's UNINITIALIZED state sees a voltage at or
+//                       above the high threshold on sample zero, goes HIGH and
+//                       returns FALSE. It then never returns to LOW, so it never
+//                       fires and the divisor is never evaluated. This is the
+//                       steady-voltage case the core's store paragraph names,
+//                       and it is the reason a 0/0 quotient is UNREACHABLE
+//                       rather than merely guarded.
+//   kSyncStaleStore  -- the same steady 5 V, but reached from LOW, so it DOES
+//                       fire exactly once and then holds the store at 5 V
+//                       against a HIGH trigger for the rest of the block.
+//   kSyncNanHeld     -- every comparison against a not-a-number is false, so the
+//                       trigger cannot leave UNINITIALIZED and cannot fire. The
+//                       cable value never reaches the divisor.
+//   kSyncNanGlitch   -- the case that DOES reach it. A not-a-number sample is
+//                       STORED unconditionally into prevSyncVolts, and the next
+//                       legitimate rising edge then evaluates
+//                       (1 - NaN) / (volts - NaN) = NaN. The core's negated
+//                       guard, `if (!(f >= 0.f) || !(f < 1.f)) f = 0.f`, is what
+//                       stops that reaching the accumulator.
+//   kSyncOnThreshold -- a sample of EXACTLY 1.0 V from a previous sample of
+//                       exactly 0.0 V makes the quotient EXACTLY 1.0, which is
+//                       the open end of the [0,1) contract. The guard's second
+//                       clause is the one that fires.
+float syncMasterVolts(const SyncAxisRow& s, int i, double sampleRate) {
+	const float qnan = std::numeric_limits<float>::quiet_NaN();
+	switch (s.kind) {
+		case kSyncUnpatched:
+			return 0.f;
+		case kSyncRamp:
+			return (float)(5.0 * std::fmod((double)i * (s.masterHz / sampleRate), 1.0));
+		case kSyncIdleHigh:
+			return 5.f;
+		case kSyncNanHeld:
+			return qnan;
+		case kSyncOnThreshold:
+			// EXACTLY 1.0f against EXACTLY 0.0f. Never 0.999999 or 1.000001 --
+			// the whole point of the row is the equality case.
+			return ((i % 64) == 0) ? 1.0f : 0.0f;
+		case kSyncNanGlitch:
+			// Sample zero is deliberately NOT the glitch, so the trigger reaches
+			// LOW normally first and the block's first edges are legitimate.
+			if (i > 0 && (i % 977) == 0) return qnan;
+			return (float)(5.0 * std::fmod((double)i * (s.masterHz / sampleRate), 1.0));
+		case kSyncStaleStore:
+			// Eight samples at zero so the trigger reaches LOW, then a steady
+			// five volts forever. It fires EXACTLY ONCE, on the transition, and
+			// from then on the store holds 5 V against a HIGH trigger -- which
+			// is the configuration a 0/0 quotient would need and cannot reach.
+			return (i < 8) ? 0.f : 5.f;
+	}
+	return 0.f;
+}
+
+// What the CLAMP is required to have done on a pitch/FM row, stated per row in
+// invariant 10's table rather than recomputed from the core's own summation --
+// recomputing it here would be TRAP 2, a mirror of the code under test.
+enum ClampExpectation {
+	kClampBelow,       // the driven pitch is below the ceiling: the clamp must NOT fire
+	kClampAtCeiling,   // the driven pitch is above the ceiling: the clamp must pin EXACTLY
+	kClampSilent       // a sanitised not-a-number path: the frequency floors to silence
+};
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -2708,6 +2816,633 @@ TEST_CASE("vco pitch D-14 / D-22 hostile pitch and FM volts: the STANDING regres
 			CAPTURE(finalPhase);
 			CAPTURE(firstBadStep);
 			CHECK(phaseInRange);
+		}
+	}
+}
+
+TEST_CASE("vco pitch: (PITCH-04 / D-12) the Nyquist clamp RE-CONFIRMED with SYNC as the THIRD input class, on the SAME hostile pitch and FM population invariant 9 drives - closing Phase 31 deferred item 11, with the detector OBSERVED FIRING behind every claim") {
+	// -------------------------------------------------------------------
+	// WHY THIS CASE IS IN THIS FILE AND NOT A NEW ONE SOMEWHERE ELSE.
+	//
+	// D-12 rejects a dedicated separate case BY NAME, on the ground that it
+	// SPLITS ONE REQUIREMENT'S EVIDENCE ACROSS TWO FILES. PITCH-04's evidence
+	// lives here -- invariant 8 is its clamp case and invariant 9 its hostile
+	// grid -- so the third input class lives here too, immediately below them,
+	// driving the SAME pitch/FM population invariant 9 drives.
+	//
+	// AND WHY IT IS NOT FOLDED INTO INVARIANT 9 ITSELF. D-12 rejects that too,
+	// for a reason that is about instruments rather than about tidiness:
+	// invariant 9 asserts FINITENESS AND BOUNDEDNESS, and it is explicitly NOT
+	// the red for the bound it pins. It is the wrong instrument for a claim
+	// about PITCH. Subcase two below makes a claim about pitch, measured on the
+	// RETURNED SAMPLES, and it needed a case that could say so in its own title.
+	// Both halves therefore live here, in ONE case, in ONE file.
+	// -------------------------------------------------------------------
+
+	// How many steps each cell of the hostile product is driven for. The same
+	// figure invariant 9 uses, deliberately: this subcase is that grid with a
+	// third axis, not a new drive with new timing.
+	const int kSyncHostileSteps = 4000;
+
+	SUBCASE("the three input classes driven TOGETHER: extreme pitch x extreme FM x hostile sync, with the firing count ASSERTED per cell") {
+		// -------------------------------------------------------------------
+		// THE PITCH / FM AXIS. Rows 1-26 are invariant 9's population, copied
+		// row for row so this is demonstrably the SAME two input classes rather
+		// than a fresh selection that happens to look similar. Rows 27-29 are
+		// invariant 8's own points -- one volt below the clamp ceiling, one volt
+		// above, three volts above -- because a re-confirmation of a CLAMP has
+		// to include the points where the clamp is the thing being observed.
+		//
+		// THE `expect` COLUMN IS STATED PER ROW AND IS NOT RECOMPUTED FROM THE
+		// CORE'S OWN SUMMATION. Deriving it here from pitchCV + fmVolts *
+		// fmAtten would be TRAP 2: a mirror of the code under test, green even
+		// if that code were replaced by a constant. Each row states what the
+		// clamp is required to have done and the role string says why.
+		// -------------------------------------------------------------------
+		struct SyncPitchPoint {
+			float pitchCV;
+			int   ceilingRelative;   // 1 = pitchCV is IGNORED, the row sits at ceiling + ceilingOffsetVolts
+			double ceilingOffsetVolts;
+			float fmVolts;
+			float fmAtten;
+			bool  fmConnected;
+			ClampExpectation expect;
+			const char* role;
+		};
+
+		const float qnan  = std::numeric_limits<float>::quiet_NaN();
+		const float pinf  = std::numeric_limits<float>::infinity();
+		const float ninf  = -std::numeric_limits<float>::infinity();
+		const float huge  = 1e30f;
+		// Read from the forge:: constant and never typed in, exactly as
+		// invariant 9 reads it.
+		const float bound = forge::kVcoMaxPitchVolts;
+
+		const SyncPitchPoint PITCH_GRID[] = {
+			// --- routed through the V/OCT pitch field, FM jack unpatched ---
+			{  0.f,    0, 0.0, 0.f, 0.f, false, kClampBelow,     "the CONTROL: a legitimate zero-volt pitch, FM jack unpatched" },
+			{  qnan,   0, 0.0, 0.f, 0.f, false, kClampSilent,    "pitch: a quiet not-a-number" },
+			{  pinf,   0, 0.0, 0.f, 0.f, false, kClampAtCeiling, "pitch: positive infinity" },
+			{  ninf,   0, 0.0, 0.f, 0.f, false, kClampBelow,     "pitch: negative infinity" },
+			{  huge,   0, 0.0, 0.f, 0.f, false, kClampAtCeiling, "pitch: a very large POSITIVE finite magnitude" },
+			{ -huge,   0, 0.0, 0.f, 0.f, false, kClampBelow,     "pitch: a very large NEGATIVE finite magnitude" },
+			{  200.f,  0, 0.0, 0.f, 0.f, false, kClampAtCeiling, "pitch: plus two hundred volts" },
+			{ -200.f,  0, 0.0, 0.f, 0.f, false, kClampBelow,     "pitch: minus two hundred volts" },
+			{  130.f,  0, 0.0, 0.f, 0.f, false, kClampAtCeiling, "pitch: plus one hundred and thirty volts" },
+			{ -130.f,  0, 0.0, 0.f, 0.f, false, kClampBelow,     "pitch: minus one hundred and thirty volts" },
+			{  bound,  0, 0.0, 0.f, 0.f, false, kClampAtCeiling, "PINNED (D-22): pitch driven to EXACTLY PLUS the bound" },
+			{ -bound,  0, 0.0, 0.f, 0.f, false, kClampBelow,     "PINNED (D-22): pitch driven to EXACTLY MINUS the bound" },
+			// --- routed through the FM field instead, jack CONNECTED, attenuverter FULL ---
+			{  0.f, 0, 0.0, qnan,   1.f, true, kClampSilent,    "FM route: a quiet not-a-number at a full attenuverter" },
+			{  0.f, 0, 0.0, pinf,   1.f, true, kClampAtCeiling, "FM route: positive infinity at a full attenuverter" },
+			{  0.f, 0, 0.0, ninf,   1.f, true, kClampBelow,     "FM route: negative infinity at a full attenuverter" },
+			{  0.f, 0, 0.0, huge,   1.f, true, kClampAtCeiling, "FM route: a very large POSITIVE finite magnitude" },
+			{  0.f, 0, 0.0, -huge,  1.f, true, kClampBelow,     "FM route: a very large NEGATIVE finite magnitude" },
+			{  0.f, 0, 0.0, 200.f,  1.f, true, kClampAtCeiling, "FM route: plus two hundred volts" },
+			{  0.f, 0, 0.0, -200.f, 1.f, true, kClampBelow,     "FM route: minus two hundred volts" },
+			{  0.f, 0, 0.0, 130.f,  1.f, true, kClampAtCeiling, "FM route: plus one hundred and thirty volts" },
+			{  0.f, 0, 0.0, -130.f, 1.f, true, kClampBelow,     "FM route: minus one hundred and thirty volts" },
+			{  0.f, 0, 0.0, bound,  1.f, true, kClampAtCeiling, "PINNED through the FM route: EXACTLY PLUS the bound" },
+			{  0.f, 0, 0.0, -bound, 1.f, true, kClampBelow,     "PINNED through the FM route: EXACTLY MINUS the bound" },
+			// --- a NON-FINITE ATTENUVERTER with a perfectly finite voltage ---
+			{  0.f, 0, 0.0, 5.f, qnan, true, kClampSilent,    "FM route: a FINITE five volts through a NOT-A-NUMBER attenuverter" },
+			{  0.f, 0, 0.0, 5.f, pinf, true, kClampAtCeiling, "FM route: a FINITE five volts through a POSITIVELY INFINITE attenuverter" },
+			{  0.f, 0, 0.0, 5.f, ninf, true, kClampBelow,     "FM route: a FINITE five volts through a NEGATIVELY INFINITE attenuverter" },
+			// --- invariant 8's own boundary points, brought in so the clamp is
+			//     observed BINDING and observed NOT firing early, under sync ---
+			{  0.f, 1, -1.0, 0.f, 0.f, false, kClampBelow,     "one volt BELOW the derived clamp ceiling: the clamp must NOT fire" },
+			{  0.f, 1, +1.0, 0.f, 0.f, false, kClampAtCeiling, "one volt ABOVE the derived clamp ceiling: the clamp must pin EXACTLY" },
+			{  0.f, 1, +3.0, 0.f, 0.f, false, kClampAtCeiling, "three volts ABOVE the ceiling: eight times the ceiling frequency before clamping" },
+		};
+		const size_t PITCH_N = sizeof(PITCH_GRID) / sizeof(PITCH_GRID[0]);
+
+		// -------------------------------------------------------------------
+		// THE SYNC AXIS -- the third input class, and the phase's new divisor.
+		//
+		// `mustFire` is a claim about the DETECTOR'S MECHANISM, written from
+		// forge::SchmittTrigger's own state machine rather than from what the
+		// run happened to produce. Three rows CANNOT fire, and each cannot for
+		// a different named reason (see syncMasterVolts above); the other five
+		// must. Both directions are asserted, because a firing counter that is
+		// only ever checked for "greater than zero" has not been shown to be
+		// counting the right thing.
+		// -------------------------------------------------------------------
+		const SyncAxisRow SYNC_AXIS[] = {
+			{ kSyncUnpatched,   0.0,     false, "the CONTROL: the SYNC jack UNPATCHED - invariant 9's own evidence, preserved as a ROW rather than replaced" },
+			{ kSyncRamp,        110.0,   true,  "a legitimate master at a musical rate (110 Hz)" },
+			{ kSyncRamp,        55.0,    true,  "a legitimate master an octave lower (55 Hz)" },
+			{ kSyncRamp,        70000.0, true,  "a master FAR ABOVE the sample rate (70 kHz)" },
+			{ kSyncIdleHigh,    0.0,     false, "NEW DIVISOR: a master IDLING at a steady five volts from sample zero" },
+			{ kSyncNanHeld,     0.0,     false, "NEW DIVISOR: a NOT-A-NUMBER cable voltage, held for the whole block" },
+			{ kSyncOnThreshold, 0.0,     true,  "NEW DIVISOR: a master sample landing EXACTLY on the 1.0 V high threshold" },
+			{ kSyncNanGlitch,   110.0,   true,  "NEW DIVISOR: a NOT-A-NUMBER GLITCH stored against an otherwise legitimate master" },
+			{ kSyncStaleStore,  0.0,     true,  "NEW DIVISOR: LOW, then a steady five volts held against the store" },
+		};
+		const size_t SYNC_N = sizeof(SYNC_AXIS) / sizeof(SYNC_AXIS[0]);
+
+		// The populations are pinned so a later edit that drops a row is loud.
+		REQUIRE(PITCH_N == 29u);
+		REQUIRE(SYNC_N  == 9u);
+
+		for (double sr : SAMPLE_RATES) {
+			const float  srf = (float)sr;
+			const double ceilingVolts = clampCeilingVolts(sr);
+
+			// Recomputed the way the core computes it, in FLOAT, through the
+			// same non-positive-rate sanitising rule -- invariant 8's symbolic
+			// idiom, so the exact equality below is not a coin flip (D-21).
+			const float expectedMaxFreq = forge::kVcoNyquistGuardFrac * ((srf > 0.f) ? srf : 0.f);
+
+			for (size_t pi = 0; pi < PITCH_N; ++pi) {
+				const SyncPitchPoint& p = PITCH_GRID[pi];
+				const float pitchVolts = (p.ceilingRelative == 1)
+					? (float)(ceilingVolts + p.ceilingOffsetVolts)
+					: p.pitchCV;
+
+				// The UNPATCHED row's clamped frequency, captured on the first
+				// pass of the inner loop and compared against every patched row
+				// on the same pitch point. See the assertion's own comment.
+				float unpatchedTelFreq = 0.f;
+
+				for (size_t si = 0; si < SYNC_N; ++si) {
+					const SyncAxisRow& s = SYNC_AXIS[si];
+					const char* role     = p.role;
+					const char* syncRole = s.role;
+
+					forge::VcoBlockDriver d(sr);
+
+					forge::VcoInputs base = pitchBase();
+					base.pitchCV     = pitchVolts;
+					base.fmVolts     = p.fmVolts;
+					base.fmAtten     = p.fmAtten;
+					base.fmConnected = p.fmConnected;
+					base.morph       = 0.5f;
+					base.character   = 1.f;
+					base.syncConnected = (s.kind != kSyncUnpatched);
+
+					// ACCUMULATED, not asserted per sample: 783 cells at 4000
+					// steps would otherwise add over three million assertions.
+					// Same idiom as invariant 9, with a first-bad-step index
+					// carried out so a red names a step rather than a property.
+					long   fireCount          = 0;
+					bool   allFinite          = true;
+					bool   insideLooseBound   = true;
+					bool   phaseInRange       = true;
+					double maxAbs             = 0.0;
+					int    firstBadStep       = -1;
+
+					for (int i = 0; i < kSyncHostileSteps; ++i) {
+						forge::VcoInputs in = base;
+						in.syncVolts = syncMasterVolts(s, i, sr);
+						// sampleTime and sampleRate are the driver's to own, but
+						// this loop calls step(...) directly so that the sync
+						// voltage can vary per sample; both are written here on
+						// every sample for the same reason the driver writes
+						// them, and never conditionally.
+						in.sampleTime = (float)(1.0 / sr);
+						in.sampleRate = srf;
+
+						const float sample = d.core.step(in);
+						if (d.core.tel.syncFired) ++fireCount;
+
+						const double a = std::fabs((double)sample);
+						if (a > maxAbs) maxAbs = a;
+
+						bool bad = false;
+						if (!std::isfinite(sample))            { allFinite = false;        bad = true; }
+						if (!(a <= (double)kPitchLooseBoundV)) { insideLooseBound = false; bad = true; }
+						if (!(d.core.phase >= 0.0))            { phaseInRange = false;     bad = true; }
+						if (!(d.core.phase < 1.0))             { phaseInRange = false;     bad = true; }
+						if (bad && firstBadStep < 0) firstBadStep = i;
+					}
+
+					const float telFreq = d.core.tel.freqHz;
+					if (si == 0) unpatchedTelFreq = telFreq;
+
+					// Every comparison below is written NEGATED so that a
+					// not-a-number telemetry frequency lands on the FAILING
+					// branch, which is the shape the core's own floors use and
+					// the shape invariant 8 uses for exactly this reason.
+					bool freqNonNegative = true;
+					if (!(telFreq >= 0.f)) freqNonNegative = false;
+
+					bool freqNyquistBounded = true;
+					if (!(telFreq <= expectedMaxFreq)) freqNyquistBounded = false;
+
+					// THE CLAMP, AS CLASSIFIED BY THE ROW. Above the ceiling it
+					// must pin EXACTLY; below it must be strictly under, which is
+					// what stops a core that clamps everything from passing; on
+					// a sanitised not-a-number path it must floor to silence.
+					// MEASURED for the silence rows: 1.418275e-17 Hz at all three
+					// rates and all nine sync shapes -- seventeen orders of
+					// magnitude below the one hertz asserted here.
+					bool clampBehavedAsClassified = true;
+					if (p.expect == kClampAtCeiling) { if (!(telFreq == expectedMaxFreq)) clampBehavedAsClassified = false; }
+					else if (p.expect == kClampBelow) { if (!(telFreq < expectedMaxFreq))  clampBehavedAsClassified = false; }
+					else                              { if (!(telFreq < 1.f))              clampBehavedAsClassified = false; }
+
+					// THE ASSERTION PHASE 31 DEFERRED ITEM 11 ASKED FOR, AND THE
+					// ONE IT REFUSED TO MAKE ON FAITH. Item 11 records that "the
+					// clamp sits downstream of the frequency, so a sync-driven
+					// pitch source cannot bypass it STRUCTURALLY -- and that
+					// structural argument is exactly the kind of forward claim
+					// this phase has repeatedly declined to make on another
+					// phase's behalf." So it is MEASURED here instead of argued:
+					// the clamped frequency on every patched sync shape is
+					// compared to the UNPATCHED row's, on the same pitch point
+					// and the same rate, by EXACT float equality. Not a
+					// tolerance. If sync ever perturbs the frequency chain by
+					// one bit, this is red.
+					bool telemetryUnmovedBySync = true;
+					if (!(telFreq == unpatchedTelFreq)) telemetryUnmovedBySync = false;
+
+					// THE NON-VACUITY HALF, AND THE POINT OF THE PLAN.
+					//
+					// A hostile grid in which sync never fires reports green
+					// while covering the sync path with NOTHING. Every assertion
+					// above would hold on a core that ignored in.syncVolts
+					// entirely -- the clamp claims especially, since the clamp is
+					// upstream of the reset. This project has ELEVEN consecutive
+					// plans on record declining to tick a requirement whose own
+					// frontmatter already claimed it, and the discipline behind
+					// those declines is exactly this: observe the control FIRING
+					// behind the claim rather than inferring it from the patch.
+					//
+					// So the firing count is ASSERTED, in BOTH directions, and
+					// the direction is a property of the detector's state machine
+					// rather than of the run. MEASURED counts over 4000 steps,
+					// as (minimum .. maximum) across all 87 cells of each row:
+					//   UNPATCHED                       0 ..   0
+					//   musical master 110 Hz           5 ..  10
+					//   musical master 55 Hz            3 ..   5
+					//   master far above the rate      84 .. 167
+					//   idling at a steady 5 V          0 ..   0
+					//   not-a-number cable, held        0 ..   0
+					//   exactly on the high threshold  62 ..  62
+					//   not-a-number glitch             5 ..  10
+					//   low then steady 5 V             1 ..   1
+					bool firingAsClassified = true;
+					if (s.mustFire) { if (!(fireCount > 0))  firingAsClassified = false; }
+					else            { if (!(fireCount == 0)) firingAsClassified = false; }
+
+					CAPTURE(sr);
+					// Streamed rather than CAPTUREd: doctest renders a
+					// `const char*` capture as its ADDRESS, which is useless in
+					// a 783-cell grid where the row name is the only thing that
+					// identifies the failure.
+					INFO("pitch/FM row: " << role);
+					INFO("sync row    : " << syncRole);
+					CAPTURE(pitchVolts);
+					CAPTURE(p.fmVolts);
+					CAPTURE(p.fmAtten);
+					CAPTURE(fireCount);
+					CAPTURE(s.mustFire);
+					CAPTURE(maxAbs);
+					CAPTURE(telFreq);
+					CAPTURE(unpatchedTelFreq);
+					CAPTURE(expectedMaxFreq);
+					CAPTURE(firstBadStep);
+					INFO("PITCH-04's THIRD input class. The clamp claims here would all be green on a core that ignored in.syncVolts entirely - the firing assertion is the only thing standing between this grid and that vacuity");
+
+					CHECK(allFinite);
+					CHECK(insideLooseBound);
+					CHECK(phaseInRange);
+					CHECK(freqNonNegative);
+					CHECK(freqNyquistBounded);
+					CHECK(clampBehavedAsClassified);
+					CHECK(telemetryUnmovedBySync);
+					CHECK(firingAsClassified);
+				}
+			}
+		}
+	}
+
+	SUBCASE("the PITCH claim, made ONLY where the crossing estimator can see - and NOT made where it is blind") {
+		// -------------------------------------------------------------------
+		// THE RESTRICTION, STATED ON THE INSTRUMENT'S KNOWN LIMITATION, BEFORE
+		// ANY POPULATION IS ENUMERATED.
+		//
+		// estimateFreqRising counts RISING ZERO CROSSINGS. TRAP 3 at the top of
+		// this file records what it does near its resolution floor, and the
+		// wording matters: it does NOT fail loudly there, it returns a plausible
+		// wrong answer, tens of cents off, on a PERFECTLY CORRECT oscillator.
+		// kEstimatorMinSamplesPerCycle = 2.5 is where this file stops trusting
+		// it, and that cutoff was MEASURED -- good at 2.634 samples per cycle,
+		// broken at 2.027.
+		//
+		// AT THE NYQUIST CEILING THE ESTIMATOR IS STRUCTURALLY BLIND, and this
+		// is arithmetic from the forge:: constant rather than an opinion: a
+		// frequency pinned at kVcoNyquistGuardFrac x the sample rate is
+		// 1 / 0.495 = 2.0202 samples per cycle at EVERY rate, which is BELOW the
+		// cutoff. The subcase above therefore drives twelve pitch rows past the
+		// ceiling and makes NO PITCH CLAIM ON ANY OF THEM. That is not a gap and
+		// it is not the cells that failed being quietly dropped -- it is the one
+		// place in this file where the ruler provably cannot read.
+		const double samplesPerCycleAtCeiling = 1.0 / (double)forge::kVcoNyquistGuardFrac;
+		CAPTURE(samplesPerCycleAtCeiling);
+		CAPTURE(kEstimatorMinSamplesPerCycle);
+		INFO("if this goes red the Nyquist guard fraction has moved far enough that the estimator can suddenly see the clamped frequency - which would mean this subcase's whole restriction needs re-deriving, not relaxing");
+		CHECK(samplesPerCycleAtCeiling < kEstimatorMinSamplesPerCycle);
+
+		// AND THE OTHER HALF OF THE SAME HONESTY. Band-limiting (Phase 32) made
+		// this estimator's narrow-pulse tracking measurably WORSE at high pitch.
+		// That was measured to be a property of the estimator's SAMPLING -- the
+		// polyBLEP residual moves the sample either side of a crossing, and near
+		// the resolution floor there are too few samples per cycle for the linear
+		// interpolation to recover it -- and NOT a defect in the DSP. HARD SYNC
+		// MUST NOT BE BLAMED FOR IT EITHER. Nothing in this subcase asserts
+		// anything at a samples-per-cycle count where that effect lives; the
+		// smallest count anywhere in the population below is 200.45.
+
+		// -------------------------------------------------------------------
+		// THE PHYSICAL CRITERION FOR THE POPULATION, ALSO STATED BEFORE THE
+		// ENUMERATION.
+		//
+		// Hard sync REPLACES the slave's period with the master's: the phase is
+		// reset on every master rising edge, so the output repeats at the
+		// MASTER's rate whenever the reset arrives before the slave has finished
+		// a second cycle AND after the slave has passed its own rising zero
+		// crossing. Writing rho for slaveHz / masterHz, that is a window in rho,
+		// and it was MEASURED on this waveform (morph 0.50, character 1.00)
+		// rather than reasoned about: over a sweep of rho in steps of 0.005 at
+		// all three rates and at both master rates, the output locks to the
+		// master over
+		//
+		//     rho in [0.320, 1.310]
+		//
+		// identically at every rate. BELOW 0.320 the slave never reaches its own
+		// rising crossing between resets and the estimator returns its negative
+		// sentinel; ABOVE 1.310 a second crossing appears inside each master
+		// period and the reading walks toward twice the master rate.
+		//
+		// THE EDGES ARE SHARP, NOT A GAP -- rho = 0.315 does not lock and
+		// rho = 0.320 does -- and that is recorded rather than glossed, because
+		// plan 33-08 measured a threshold in this phase whose "physically
+		// obvious" value had a boundary gap of one part in a million and would
+		// plausibly have gone red on another toolchain. THE ANSWER TO A SHARP
+		// EDGE IS MARGIN, NOT A TIGHTER PIN: this subcase's rho values are 0.50,
+		// 0.75 and 1.00, which sit 0.18 inside the lower edge and 0.31 inside the
+		// upper one, and the two OUT-OF-WINDOW controls at the bottom of this
+		// subcase are what keep the window a measurement rather than a claim.
+		const double kSyncLockRhoLo = 0.50;
+		const double kSyncLockRhoHi = 1.00;
+		const double kMeasuredLockRhoLo = 0.320;   // measured, this shape, all three rates
+		const double kMeasuredLockRhoHi = 1.310;   // measured, this shape, all three rates
+		CHECK(kSyncLockRhoLo - kMeasuredLockRhoLo >= 0.15);
+		CHECK(kMeasuredLockRhoHi - kSyncLockRhoHi >= 0.25);
+
+		// -------------------------------------------------------------------
+		// THE WINDOW LENGTH, MEASURED RATHER THAN CHOSEN.
+		//
+		// The residual in the readings below is dominated by the estimator's
+		// first-crossing-to-last-crossing endpoint timing, so it shrinks with the
+		// window. Worst |cents| against the master over the whole population, at
+		// three window lengths:
+		//     0.25 s -> 0.148484      0.50 s -> 0.020443      1.00 s -> 0.015707
+		// Half a second is the knee: doubling it again buys 0.005 cents. Taking
+		// the quarter-second window instead would have forced a tolerance three
+		// times looser for no reason other than a shorter run.
+		const double kSyncLockWindowSeconds = 0.5;
+
+		// THE TOLERANCE FOR THE MASTER-LOCK CLAIM, AND IT IS DELIBERATELY NOT
+		// kTrackingToleranceCents.
+		//
+		// This is a DIFFERENT QUANTITY from the 1 V/oct law. It measures the
+		// MASTER's period recovered through a reset discontinuity, not the
+		// frozen exponential's accuracy, and it must not be read as, presented
+		// as, or merged into this file's v/oct tolerance. Hence its own constant.
+		//
+		// PINNED FROM A TWO-SIDED INTERVAL, in the shape plan 33-08 used for the
+		// SC-3 delta bound:
+		//   (a) it must be AT OR ABOVE the measured worst, 0.020443 cents, over
+		//       all 27 cells of the population below; and
+		//   (b) it must be STRICTLY BELOW the ONE CENT that PITCH-01 actually
+		//       asks for, so that passing it is a musically meaningful statement
+		//       rather than a bound wide enough to admit an audible error.
+		// Admissible interval [0.020443, 1.0). Pinned at 0.10 -- 4.89x above the
+		// measurement, which is the Apple-clang-only cushion this phase has been
+		// spending explicitly (plan 33-07 spent 5x on its snap floor, plan 33-08
+		// spent 2.38x on its margin, and both said so), and 10x under PITCH-01.
+		const double kSyncLockToleranceCents = 0.10;
+		CHECK(kSyncLockToleranceCents > kTrackingToleranceCents);   // deliberately LOOSER, and never a widening of it
+		CHECK(kSyncLockToleranceCents < 1.0);                       // and still strictly inside what PITCH-01 asks for
+
+		// Master rates. Three, an octave apart, all far below every rate's
+		// estimator ceiling so nothing here is near the resolution floor.
+		static const double SYNC_MASTER_HZ[] = {55.0, 110.0, 220.0};
+		static const size_t SYNC_MASTER_N = sizeof(SYNC_MASTER_HZ) / sizeof(SYNC_MASTER_HZ[0]);
+
+		// rho = 1.00 is the UNISON row and it is a different claim from the other
+		// two -- see its own branch below.
+		static const double SYNC_LOCK_RHO[] = {0.50, 0.75, 1.00};
+		static const size_t SYNC_LOCK_RHO_N = sizeof(SYNC_LOCK_RHO) / sizeof(SYNC_LOCK_RHO[0]);
+
+		for (double sr : SAMPLE_RATES) {
+			const int n = (int)std::lround(sr * kSyncLockWindowSeconds);
+
+			for (size_t mi = 0; mi < SYNC_MASTER_N; ++mi) {
+				const double masterHz = SYNC_MASTER_HZ[mi];
+
+				for (size_t ki = 0; ki < SYNC_LOCK_RHO_N; ++ki) {
+					const double rho      = SYNC_LOCK_RHO[ki];
+					const double slaveHz  = masterHz * rho;
+					// The volt that asks for that slave frequency, computed
+					// against the DECIMAL C4 reference in double -- the same
+					// independent ground truth expectedFreqHz uses, never the
+					// header's float constant (TRAP 2).
+					const double volts    = std::log2(slaveHz / 261.6256);
+					const double reference = expectedFreqHz(volts);
+
+					forge::VcoBlockDriver d(sr);
+					forge::VcoInputs base = pitchBase();
+					base.pitchCV   = (float)volts;
+					base.morph     = 0.5f;
+					base.character = 1.f;
+					base.syncConnected = true;
+
+					long fireCount = 0;
+					std::vector<float> out;
+					out.reserve((size_t)n);
+					for (int i = 0; i < n; ++i) {
+						forge::VcoInputs in = base;
+						in.syncVolts  = (float)(5.0 * std::fmod((double)i * (masterHz / sr), 1.0));
+						in.sampleTime = (float)(1.0 / sr);
+						in.sampleRate = (float)sr;
+						out.push_back(d.core.step(in));
+						if (d.core.tel.syncFired) ++fireCount;
+					}
+
+					int nUp = 0;
+					const double measured = estimateFreqRising(out, sr, &nUp);
+					const double samplesPerCycle = (measured > 0.0) ? (sr / measured) : -1.0;
+
+					CAPTURE(sr);
+					CAPTURE(masterHz);
+					CAPTURE(rho);
+					CAPTURE(volts);
+					CAPTURE(slaveHz);
+					CAPTURE(reference);
+					CAPTURE(measured);
+					CAPTURE(nUp);
+					CAPTURE(fireCount);
+					CAPTURE(samplesPerCycle);
+
+					// The oscillation precondition comes FIRST, the same
+					// discipline the tracking tiers use: a block the estimator
+					// could not read makes every number after it meaningless
+					// rather than merely wrong.
+					REQUIRE(nUp >= 16);
+					REQUIRE(measured > 0.0);
+
+					// AND THE INSTRUMENT IS INSIDE ITS OWN COMPETENCE HERE,
+					// asserted rather than assumed. Measured minimum over the
+					// whole population: 200.45 samples per cycle, eighty times
+					// the cutoff.
+					CHECK(samplesPerCycle > kEstimatorMinSamplesPerCycle);
+
+					// THE NON-VACUITY TIE, RESTATED PER CELL. Every claim below
+					// stands only while the detector actually fired on this
+					// cell, and this is the assertion that says so.
+					CHECK(fireCount > 0);
+
+					if (rho == 1.00) {
+						// -----------------------------------------------------
+						// THE UNISON ROW: 1 V/oct SURVIVES HARD SYNC.
+						//
+						// The master is at the slave's own rate, so the measured
+						// output frequency is checked against the LIBM REFERENCE
+						// at this file's own kTrackingToleranceCents, UNWIDENED.
+						// MEASURED worst over the nine unison cells: 0.006936
+						// cents, a 7.2x margin -- better than the 5.17x the
+						// primary tier records for itself.
+						//
+						// AND IT IS SAID PLAINLY THAT THIS ROW DOES NOT
+						// DISCRIMINATE FOR SYNC. An unpatched slave at the same
+						// volts would read the same frequency, so this row alone
+						// cannot evidence that sync did anything. It is a
+						// NON-REGRESSION claim -- hard sync does not break the
+						// pitch law at unison -- and the firing assertion above
+						// is what carries the sync half. The two rows below are
+						// the discriminating ones.
+						// -----------------------------------------------------
+						const double cents = centsError(measured, reference);
+						CAPTURE(cents);
+						INFO("UNISON: this row is deliberately NOT discriminating for sync - an unpatched slave reads the same frequency. It says the v/oct law is not BROKEN by sync; the master-locked rows say sync is DOING something");
+						bool withinTolerance = true;
+						if (!(std::fabs(cents) < kTrackingToleranceCents)) withinTolerance = false;
+						CHECK(withinTolerance);
+					} else {
+						// -----------------------------------------------------
+						// THE MASTER-LOCKED ROWS: THE OUTPUT PITCH IS THE
+						// MASTER'S, AND THIS IS THE CLAIM THAT ONLY EXISTS
+						// BECAUSE SYNC FIRED.
+						//
+						// MEASURED worst over the eighteen cells: 0.020443
+						// cents against the master.
+						//
+						// The separation below is what makes it discriminating,
+						// and it is ASSERTED rather than described: an unsynced
+						// slave at these volts would read `reference`, which is
+						// rho of the master -- 1200 cents away at rho = 0.50 and
+						// 498 at rho = 0.75. MEASURED smallest separation over
+						// the population: 498.0449 cents, which is 4980 times
+						// the pinned tolerance. There is no reading that can
+						// satisfy both.
+						// -----------------------------------------------------
+						const double centsVsMaster = centsError(measured, masterHz);
+						const double separationCents = std::fabs(centsError(reference, masterHz));
+						CAPTURE(centsVsMaster);
+						CAPTURE(separationCents);
+						INFO("MASTER-LOCKED: the output period is the MASTER's. Remove the reset and this reading moves to `reference`, which the separation assertion pins hundreds of tolerances away");
+
+						CHECK(separationCents > 100.0 * kSyncLockToleranceCents);
+						bool lockedToMaster = true;
+						if (!(std::fabs(centsVsMaster) < kSyncLockToleranceCents)) lockedToMaster = false;
+						CHECK(lockedToMaster);
+					}
+				}
+			}
+		}
+
+		// -------------------------------------------------------------------
+		// THE TWO OUT-OF-WINDOW CONTROLS.
+		//
+		// Without these the rho window above is just a set of values that
+		// happened to work. These drive rho OUTSIDE it, at both ends, and assert
+		// what the instrument does there -- which is the difference between a
+		// restriction stated on a physical criterion and one tuned to exclude
+		// awkward numbers.
+		//
+		// BOTH CONTROLS FIRE. rho = 0.20 produces 28, 55 or 110 sync events per
+		// block and the estimator STILL returns its negative sentinel: the
+		// detector is working perfectly and the ruler simply cannot read the
+		// result. That is the whole of this subcase's discipline in one row.
+		// -------------------------------------------------------------------
+		for (double sr : SAMPLE_RATES) {
+			const int n = (int)std::lround(sr * kSyncLockWindowSeconds);
+
+			for (size_t mi = 0; mi < SYNC_MASTER_N; ++mi) {
+				const double masterHz = SYNC_MASTER_HZ[mi];
+
+				for (int ci = 0; ci < 2; ++ci) {
+					const double rho = (ci == 0) ? 0.20 : 1.60;
+					const double volts = std::log2((masterHz * rho) / 261.6256);
+
+					forge::VcoBlockDriver d(sr);
+					forge::VcoInputs base = pitchBase();
+					base.pitchCV   = (float)volts;
+					base.morph     = 0.5f;
+					base.character = 1.f;
+					base.syncConnected = true;
+
+					long fireCount = 0;
+					std::vector<float> out;
+					out.reserve((size_t)n);
+					for (int i = 0; i < n; ++i) {
+						forge::VcoInputs in = base;
+						in.syncVolts  = (float)(5.0 * std::fmod((double)i * (masterHz / sr), 1.0));
+						in.sampleTime = (float)(1.0 / sr);
+						in.sampleRate = (float)sr;
+						out.push_back(d.core.step(in));
+						if (d.core.tel.syncFired) ++fireCount;
+					}
+
+					int nUp = 0;
+					const double measured = estimateFreqRising(out, sr, &nUp);
+
+					CAPTURE(sr);
+					CAPTURE(masterHz);
+					CAPTURE(rho);
+					CAPTURE(volts);
+					CAPTURE(measured);
+					CAPTURE(nUp);
+					CAPTURE(fireCount);
+
+					// The detector fires on BOTH controls. Asserted first, so a
+					// reader cannot mistake either row for a case where sync
+					// stopped working.
+					CHECK(fireCount > 0);
+
+					if (ci == 0) {
+						INFO("BELOW the lock window: the slave never reaches its own rising crossing between resets, so the estimator returns its NEGATIVE SENTINEL. Sync fired; the ruler cannot read. NO PITCH CLAIM IS MADE HERE, and that is the point of the row");
+						// The estimator's own documented sentinel condition:
+						// fewer than two crossings, hence a negative return.
+						CHECK(nUp < 2);
+						CHECK(measured < 0.0);
+					} else {
+						INFO("ABOVE the lock window: a second crossing appears inside each master period and the reading walks to TWICE the master rate - which is why the population above stops at rho = 1.00 rather than running on");
+						REQUIRE(measured > 0.0);
+						// MEASURED departures from an exact octave above the
+						// master: 0.003 to 3.99 cents over the eighteen control
+						// cells. Bounded loosely on purpose -- this row exists to
+						// show the lock BREAKS in a stated direction, not to pin
+						// a second tolerance.
+						const double centsVsDouble = centsError(measured, 2.0 * masterHz);
+						CAPTURE(centsVsDouble);
+						CHECK(std::fabs(centsVsDouble) < 10.0);
+					}
+				}
+			}
 		}
 	}
 }
