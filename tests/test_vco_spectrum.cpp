@@ -6146,7 +6146,46 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 	//
 	// IF THE OBSERVED COUNTS DIFFER FROM THESE, THE DISCREPANCY IS REPORTED AND
 	// THE STATED NUMBERS ARE NOT MOVED TO MATCH.
-	// =======================================================================
+	//
+	// ===========================================================================
+	// >>> PLAN 33-11a — THE OFFSET IS APPLIED TO measuredDb, NOT TO runDb, AND
+	//     THAT IS A CORRECTION TO THE PROBE RATHER THAN A CHANGE TO ITS CLAIM.
+	//     ALL THREE STATED POPULATIONS BELOW ARE 33-07'S, UNTOUCHED. <<<
+	//
+	// READ THE DERIVATION PARAGRAPH DIRECTLY ABOVE: it derives the two populations
+	// from `ceil(measuredDb + bound) - measuredDb`, a quantity built entirely out
+	// of the PINNED column. The code then fed the offset to `runDb`, THIS RUN's
+	// measurement. On Apple clang those two agree to within 5.1e-05 dB, so the
+	// substitution was invisible and stayed invisible for four plans.
+	//
+	// THEY DO NOT AGREE OFF APPLE CLANG, AND IT WAS MEASURED: CI run 33619097947
+	// on commit a540d28 reported probe2Step 188 against the stated 192, and
+	// probe5All 209 against 210, on ubuntu-latest and windows-latest alike. The
+	// five cells are 77, 229, 305, 315 (headroom 1.8787, 1.8561, 1.9793, 1.9487 —
+	// all near the TOP of the step class's [1.0, 2.0) band) and 373 (headroom
+	// 4.9360, near the top of the plateau band's [4.0, 5.0)). Each has a NEGATIVE
+	// runDb - measuredDb drift of 0.12 to 0.26 dB, which is enough to pull
+	// runDb + 2.0 back under a threshold that measuredDb + 2.0 clears.
+	//
+	// >>> AND NO STATED POPULATION IS AVAILABLE ON A runDb-COUPLED PROBE AT ALL.
+	//     THIS IS A PROOF, NOT A PREFERENCE, WHICH IS WHY THE FIX IS THE INPUT AND
+	//     NOT THE NUMBERS. <<< The separation the derivation relies on is that
+	// [1.0, 2.0) and [4.0, 5.0) do not overlap. runDb is only guaranteed to sit
+	// within the cell's REPRODUCTION BOUND of measuredDb — 1.0 dB for a
+	// step-dominated row and 4.0 for a plateau one, both asserted above. Admitting
+	// that drift widens the two bands to [0.0, 3.0) and [0.0, 9.0), which overlap
+	// completely. No offset separates them, so an exactly-stated class population
+	// is IMPOSSIBLE on a runDb-coupled probe. It only ever looked possible because
+	// one toolchain's drift is five hundredths of a millidecibel.
+	//
+	// WHAT IS LOST, SAID PLAINLY: this probe no longer touches the measurement at
+	// all. It tests the DERIVATION — that thresholdDb really is its class's
+	// outward round of measuredDb — and nothing else. That is what its own banner
+	// always said it tested, and it is what "it isolates the GATE" means above.
+	// The measurement's own coupling lives in the REPRODUCTION PASS, which
+	// compares measuredDb against runDb per cell and is the check that actually
+	// carries it.
+	// ===========================================================================
 	const int kStatedProbe2FiresStep    = 192;   // every gated step-dominated cell
 	const int kStatedProbe2FiresPlateau = 0;     // and not one plateau cell
 	const int kStatedProbe5Fires        = 210;   // every gated cell, both classes
@@ -6156,8 +6195,8 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 		const SyncCell& cell = grid[ci];
 		const std::string tier(cell.tier);
 		if (tier == "diagnostic") continue;
-		const double mutated2 = runDb[ci] + 2.0;
-		const double mutated5 = runDb[ci] + 5.0;
+		const double mutated2 = (double)cell.measuredDb + 2.0;
+		const double mutated5 = (double)cell.measuredDb + 5.0;
 		if (mutated2 > (double)cell.thresholdDb) { if (stepDom[ci]) ++probe2Step; else ++probe2Plateau; }
 		if (mutated5 > (double)cell.thresholdDb) ++probe5All;
 	}
