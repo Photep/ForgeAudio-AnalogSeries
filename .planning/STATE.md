@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 33
 current_phase_name: hard-sync
 status: ready
-stopped_at: Completed 33-03-PLAN.md
-last_updated: "2026-08-28T23:01:05.290Z"
-last_activity: 2026-08-28
-last_activity_desc: Phase 33 execution started
+stopped_at: Completed 33-06-PLAN.md
+last_updated: "2026-09-02T03:24:15.448Z"
+last_activity: 2026-09-01
+last_activity_desc: "Plan 33-06 complete. **THE SHIPPED CORE NOW BAND-LIMITS ITS HARD-SYNC RESET.** The D-06 rule's refusal was closed by an OPERATOR DECISION (2026-08-30) and the past-edge leg landed via a new named `forge::MorphBlep::addPastStep`, bit-exactly identical to the pre-scaled seam call and pinned as such. 33-05's bit-exactness gate was re-anchored to `kLegPastEdge` here rather than in 33-07, because it reds in the landing commit; the equality was NOT loosened. SYNC-02 declined a ninth time — the mechanism is complete, but no threshold is pinned (33-07) and no instrument can see a click (33-08)."
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 47
-  completed_plans: 40
+  completed_plans: 41
   percent: 50
 ---
 
@@ -31,7 +31,9 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 33 (hard-sync) — EXECUTING
-Plan: 6 of 12
+Plan: 7 of 12
+
+**THE SEAM IS LANDED (plan 33-06, 2026-09-01).** `forge::VcoCore` band-limits its hard-sync reset through `forge::MorphBlep::addPastStep`, and it is therefore no longer measurement leg `none` — it is leg `pastEdge`. Any later plan comparing against the shipped core must anchor to `kLegPastEdge`. SYNC-02 remains **Pending**: its mechanism is complete but its click-free claim has no instrument yet (33-08) and no alias threshold is pinned (33-07).
 
 **Phase 33 planning is complete (2026-08-29).** Research, pattern map and validation strategy all landed; the plan-checker passed on the first iteration with zero blockers and zero warnings; requirements coverage is 2/2 (SYNC-01, SYNC-02) and decision coverage is 18/18 (D-01…D-18, all cited in plan frontmatter `must_haves`).
 
@@ -214,6 +216,10 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 33]: 33-05: the spectral instrument is BLIND on hard-edge masters and on 210 of 420 cells (fundamental-dominance check). Read any hard-edge row as "no information", not "no difference"; the click claim's non-circular evidence lives in D-10's time-domain instrument (plan 33-08)
 - [Phase 33]: 33-05: D-07's residual phantom measured — mean 0.0569, MAX 0.9624 over 30,940 reset samples. The maximum is very nearly full-scale, much larger than the header's arithmetic estimate reads. Disposition unchanged (accept and document); 33-02 deferred item 1 now carries a number
 - [Phase 33]: 33-05: SYNC-02 declined for the eighth consecutive time — this plan adds NO shipped code (whole diff is one test file) and the seam is still absent; non-comment addStep count in src/dsp/VcoCore.hpp is still 0
+- [Phase 33]: 33-06: the D-06 rule REFUSED; the past-edge sync BLEP placement is landed under an OPERATOR DECISION (2026-08-30) and labelled EVIDENCE-BASED, NOT RULE-SANCTIONED in both shipped headers
+- [Phase 33]: 33-06: MorphBlep::addPastStep landed as a NAMED entry point over the numerically identical pre-scaled trick, on legibility; the identity is pinned bit-exactly so the two forms cannot diverge
+- [Phase 33]: 33-06: 33-05's bit-exactness gate re-anchored kLegNone to kLegPastEdge HERE rather than in 33-07 (it reds in the landing commit); the equality was not loosened
+- [Phase 33]: 33-06: SYNC-02 DECLINED a ninth time; the sync-BLEP now exists but no alias threshold is pinned (33-07) and no instrument can see a click (33-08)
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -228,7 +234,9 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 
 - open for v2.0. The v1.4 IP/public-flip gates all CLEARED (repo PUBLIC 2026-07-10; #929 live). Full v1.4 blocker history archived in `milestones/v1.4-ROADMAP.md`.
 - Plan 33-03 MUST NOT read a local check_canary.sh [2b/5] PASS as evidence that the two new VcoInputs fields are runtime-live: the per-field check is MEASURED insensitive on this host (33-02-SUMMARY Deferred Register #2 — it reports syncVolts runtime-live while the canary never assigns it). Observe the CI GCC leg on the commit, or add a sensitivity control that bites locally.
-- Plan 33-06 is scheduled to implement a decision that was NOT formally taken: 33-05's D-06 three-condition rule REFUSED (all three FAIL) and no winner is declared. 33-06 must say so before writing seam code, then either proceed on 33-05's labelled recommendation (past-edge — the only candidate whose worst deficit, 0.8553 dB, is inside the 1.0 dB reproduction bound), escalate to D-10's time-domain instrument, or escalate to the operator at 33-12's UAT. See 33-05-SUMMARY Deferred Register item 1.
+- ~~Plan 33-06 is scheduled to implement a decision that was NOT formally taken: 33-05's D-06 three-condition rule REFUSED (all three FAIL) and no winner is declared.~~ **RESOLVED 2026-08-30 by an OPERATOR DECISION**, the first of the three routes 33-05 proposed. The operator was shown the refusal, its figures and the four-leg deficit table, and chose to land the past-edge leg on that evidence and to add the named `addPastStep` entry point on legibility grounds. Plan 33-06 landed both and labelled the choice EVIDENCE-BASED, NOT RULE-SANCTIONED in `src/dsp/MorphBlep.hpp` and `src/dsp/VcoCore.hpp`. 33-05's recommendation paragraph was preserved, not promoted.
+- Plan 33-07 MUST NOT repeat the bit-exactness gate re-anchor 33-05 assigned to it — plan 33-06 discharged it early because the gate reds in the same commit that lands the seam. It is now on `kLegPastEdge` with the equality still an exact float `==`. 33-07's remaining 33-05 obligations stand: pin the two decibel columns via a per-cell lookup, and decide about the instrument-invalid half.
+- Plan 33-07 MUST NOT pin a sync alias threshold at ratios 3.5–5.5 that assumes the correction helps there: the landed past-edge leg measures 0.15–1.09 dB WORSE than applying no correction at all at ratio 5.5. See 33-06-SUMMARY Deferred Register item 3.
 
 ## Deferred Items
 
@@ -280,12 +288,13 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 33 P03 | 17min | 3 tasks | 3 files |
 | Phase 33 P04 | 39min | 3 tasks | 2 files |
 | Phase 33 P05 | 47min | 3 tasks | 1 files |
+| Phase 33 P06 | 95min | 3 tasks | 4 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-08-28T23:00:57.441Z
+Last session: 2026-09-01T10:22:47.385Z
 Stopped at: Completed 33-03-PLAN.md
 Resume: Phase 32 is closed. Both items 32-11 owned are discharged: (1) the verification-protocol fix landed — the browser carries THREE Forge Audio entries and the guardrail subject is now pinned BY NAME ("Analog LFO" from `ForgeAudio-AnalogSeries` 2.0.1, versus the stale plain "LFO" from `ForgeAudio` 2.0.0), closing deferred item 25's protocol half; (2) MORPH-02's shell-side knob + CV x attenuverter mix is operator-attested on absence of fault (deferred item 24) — the only evidence obtainable while no headless driver can reach the attenuverter.
 
