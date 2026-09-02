@@ -5,15 +5,15 @@ milestone_name: Forge Analog VCO
 current_phase: 33
 current_phase_name: hard-sync
 status: ready
-stopped_at: Completed 33-06-PLAN.md
-last_updated: "2026-09-02T03:24:15.448Z"
-last_activity: 2026-09-01
-last_activity_desc: "Plan 33-06 complete. **THE SHIPPED CORE NOW BAND-LIMITS ITS HARD-SYNC RESET.** The D-06 rule's refusal was closed by an OPERATOR DECISION (2026-08-30) and the past-edge leg landed via a new named `forge::MorphBlep::addPastStep`, bit-exactly identical to the pre-scaled seam call and pinned as such. 33-05's bit-exactness gate was re-anchored to `kLegPastEdge` here rather than in 33-07, because it reds in the landing commit; the equality was NOT loosened. SYNC-02 declined a ninth time — the mechanism is complete, but no threshold is pinned (33-07) and no instrument can see a click (33-08)."
+stopped_at: Completed 33-07-PLAN.md
+last_updated: "2026-09-02T06:12:15.355Z"
+last_activity: 2026-09-02
+last_activity_desc: "Plan 33-07 complete. **THE SYNC SUB-GRID IS NOW A GATE.** 420 cells carry a measured decibel, an outward-pinned threshold, a tier and a written provenance from a per-cell `SYNC_PINS` lookup; 210 instrument-valid cells are CHECKed and the 210 instrument-invalid ones are diagnostic BY DECISION. The reproduction coupling is proved to bite on both halves and the mutation probe fails its stated populations exactly (192 / 0 / 210). The Phase-32-shaped improvement gate is REFUSED IN WRITING with its measured reason (+0.5827 dB grid-wide; WORSE than no correction at ratio 5.5). The snap-to-zero landmine is a permanent non-circular case at 5.31-5.58 dB. SYNC-02 declined a TENTH time - the threshold half is closed, the click instrument (33-08) is not. **Read the new Blockers entry: the 1.0 dB step-dominated bound is INHERITED on this signal class and 192 gated rows ride on it.**"
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 47
-  completed_plans: 41
+  completed_plans: 42
   percent: 50
 ---
 
@@ -31,15 +31,15 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 33 (hard-sync) — EXECUTING
-Plan: 7 of 12
+Plan: 8 of 12
 
-**THE SEAM IS LANDED (plan 33-06, 2026-09-01).** `forge::VcoCore` band-limits its hard-sync reset through `forge::MorphBlep::addPastStep`, and it is therefore no longer measurement leg `none` — it is leg `pastEdge`. Any later plan comparing against the shipped core must anchor to `kLegPastEdge`. SYNC-02 remains **Pending**: its mechanism is complete but its click-free claim has no instrument yet (33-08) and no alias threshold is pinned (33-07).
+**THE SEAM IS LANDED (plan 33-06, 2026-09-01) AND THE SPECTRAL GRID NOW GATES IT (plan 33-07, 2026-09-02).** `forge::VcoCore` band-limits its hard-sync reset through `forge::MorphBlep::addPastStep`, and it is therefore no longer measurement leg `none` — it is leg `pastEdge`. Any later plan comparing against the shipped core must anchor to `kLegPastEdge`. The sync sub-grid's 420 cells are pinned per cell from 33-07's own measurement of that leg and 210 of them are CHECKed. SYNC-02 remains **Pending**, and its remaining gap is now exactly ONE item: its click-free claim still has no instrument (33-08). The alias-threshold half is closed.
 
 **Phase 33 planning is complete (2026-08-29).** Research, pattern map and validation strategy all landed; the plan-checker passed on the first iteration with zero blockers and zero warnings; requirements coverage is 2/2 (SYNC-01, SYNC-02) and decision coverage is 18/18 (D-01…D-18, all cited in plan frontmatter `must_haves`).
 
 **The two ordering gates are enforced structurally by `depends_on`, not just narratively:** plan 33-01 (the operator-scheduled CR-01/CR-02 + unguarded-`jump` prerequisite) is Wave 1 with no dependencies, and 33-02 — the first plan that could touch the seam — depends on it and deliberately withholds the `addStep` call. Plan 33-05 (the D-06 placement measurement) strictly precedes 33-06 (which finalises the seam convention) in the dependency graph.
 
-**One research finding changed the gate design and should not be re-litigated at execution time:** the sync BLEP's own spectral improvement measures ≈0.5 dB, so a Phase-32-shaped `naiveDb − correctedDb >= 8.0` gate fails by construction. Plan 33-07 refuses that gate shape *in writing, with its measured reason*; the click's evidence lives in 33-08's time-domain instrument, because register item 5 measured that single-sample full-amplitude spikes read 0.0 dB spectrally. The spectral grid instead evidences the snap-to-zero landmine at 4.5–5.0 dB, which is SYNC-02's sub-sample half.
+**One research finding changed the gate design and is now CLOSED by measurement:** the sync BLEP's own spectral improvement was predicted at ≈0.5 dB and plan 33-07 MEASURED it at **+0.5827 dB** grid-wide, so a Phase-32-shaped `naiveDb − correctedDb >= 8.0` gate fails by construction. Plan 33-07 refused that gate shape *in writing, with its measured reason*, at `tests/test_vco_spectrum.cpp:1312-1382`; the click's evidence lives in 33-08's time-domain instrument, because register item 5 measured that single-sample full-amplitude spikes read 0.0 dB spectrally. The spectral grid instead evidences the snap-to-zero landmine at 4.5–5.0 dB, which is SYNC-02's sub-sample half.
 
 Prior phase status: Phase 32 is COMPLETE (11/11) and VERIFIED PASSED — 9/9 requirements each discharged by a named test case the verifier located independently by grep, not from SUMMARY prose. The operator audition was answered and the reply is recorded VERBATIM in `32-11-SUMMARY.md`. The blocking `.continue-here.md` is deleted; the checkpoint it guarded is answered.
 
@@ -53,7 +53,7 @@ Prior phase status: Phase 32 is COMPLETE (11/11) and VERIFIED PASSED — 9/9 req
 
 **T-32-12 note:** the operator did **not** separately attest step 8, and no attestation was inferred. For this phase the LFO guardrail is discharged by **automated** evidence — six goldens byte-identical in `make test`, all 15 `FROZEN.sha256` paths at 0 changed lines over the whole phase diff, `FROZEN.sha256` byte-identical by `cmp`.
 
-Last activity: 2026-08-29 — Plan 33-05 complete. The D-06 placement measurement RAN and REFUSED: all three conditions FAIL, no winner is declared, and a labelled (not rule-sanctioned) recommendation is recorded for 33-06. Three of the six ratios the research recommends turned out to be metric null points and the grid's ratio axis was corrected. **Read the new Blockers entry before starting 33-06.**
+Last activity: 2026-09-02 — Plan 33-07 complete. **THE SYNC SUB-GRID IS NOW A GATE.** 420 cells carry a measured decibel, an outward-pinned threshold, a tier and a written provenance from a per-cell `SYNC_PINS` lookup; 210 instrument-valid cells are CHECKed and the 210 instrument-invalid ones are diagnostic BY DECISION. The reproduction coupling is proved to bite on both halves and the mutation probe fails its stated populations exactly (192 / 0 / 210). The Phase-32-shaped improvement gate is REFUSED IN WRITING with its measured reason (+0.5827 dB grid-wide; WORSE than no correction at ratio 5.5). The snap-to-zero landmine is a permanent non-circular case at 5.31-5.58 dB. SYNC-02 declined a TENTH time - the threshold half is closed, the click instrument (33-08) is not. **Read the new Blockers entry: the 1.0 dB step-dominated bound is INHERITED on this signal class and 192 gated rows ride on it.**
 
 ## Performance Metrics
 
@@ -220,6 +220,11 @@ Prior-milestone (v1.4) phase decisions retained below for reference:
 - [Phase 33]: 33-06: MorphBlep::addPastStep landed as a NAMED entry point over the numerically identical pre-scaled trick, on legibility; the identity is pinned bit-exactly so the two forms cannot diverge
 - [Phase 33]: 33-06: 33-05's bit-exactness gate re-anchored kLegNone to kLegPastEdge HERE rather than in 33-07 (it reds in the landing commit); the equality was not loosened
 - [Phase 33]: 33-06: SYNC-02 DECLINED a ninth time; the sync-BLEP now exists but no alias threshold is pinned (33-07) and no instrument can see a click (33-08)
+- [Phase 33]: 33-07: the sync sub-grid is a GATE — 420 cells pinned from THIS plan's own measurement of the shipped past-edge leg via a per-cell SYNC_PINS lookup. 210 instrument-valid cells CHECKed (70 gated at 44.1 kHz binding, 140 regression at 48/96 kHz); the 210 instrument-INVALID cells are diagnostic BY DECISION, answering 33-05's open question on the instrument rather than on the numbers. thresholdDb == max(ceil(measuredDb + bound), -75) with bound 1.0 step-dominated / 4.0 plateau. Worst gate headroom 1.00245 dB; the static floor binds on 0 cells — A grid that gates nothing cannot go red. Gating a cell where aliasPeakDb normalises by a bin 2.4-29.4 dB below the strongest lattice bin would be gating a quantity the instrument does not produce
+- [Phase 33]: 33-07: the Phase-32-shaped improvement gate is REFUSED IN WRITING at tests/test_vco_spectrum.cpp:1312-1382, with its measured reason — the sync correction's own spectral improvement is +0.5827 dB grid-wide (33-VALIDATION predicted ~0.5 in advance), and at ratio 5.5 the shipped leg is WORSE than no correction on 47 of 60 cells by up to 7.0218 dB. The sign at ratio 5.5 is now asserted permanently. The non-circular evidence for the correction itself lives in 33-08's time-domain instrument, because a single-sample full-amplitude spike was MEASURED at 0.0 dB spectrally — Writing the gate and loosening it later is the documented failure mode; the refusal names the two warning signs the file is to be read against
+- [Phase 33]: 33-07: the plateau/step-dominated criterion has TWO clauses, because a hard-synced cell has two independent sources of a value step: (i) mean |syncJump| >= 0.01, 33-05's floor fixed before any cell was gated, and (ii) the slave's own discontinuity by Phase 32's measured shape partition. Populations 402/18 asserted exactly (33-05's single-clause split was 378/42); both clauses measured to do work — 192 jump-only, 24 shape-only, 186 both — Clause (i) alone would have called a unity-ratio SAW cell a plateau — a waveform with a full-scale discontinuity every cycle — and granted it a 4.0 dB bound it has not earned
+- [Phase 33]: 33-07: the re-anchor was VERIFIED, NOT REPEATED — 33-06 discharged it one plan early because the gate reds in the landing commit. And Task 2's reproduction-check criterion is narrower than its own prose (the TENTH such instance): loosening one threshold alone reds the DERIVATION assertion plus the mutation probe (191 of a stated 192), while loosening both columns together reds the reproduction check proper (delta 2 vs bound 1). Both experiments were run and reported rather than reshaping the code to fit the wording — Following 33-05's deviation 3 and 33-06's deviation 5: give the numbers rather than the verdict
+- [Phase 33]: 33-07: SYNC-02 DECLINED — the TENTH consecutive decline. This plan closed exactly one of the two gaps 33-06 named: the alias threshold is now pinned. The other is untouched and is 33-08's — 'click-free' still has NO instrument, and the gate this plan just finished building is structurally blind to a single-sample click by its own written admission. REQUIREMENTS.md checked, not assumed: SYNC-01 [x]/Complete, SYNC-02 [ ]/Pending — Booking a click-free claim on an instrument that measures a full-amplitude spike at 0.0 dB would be the exact move this plan's own refusal paragraph argues against
 
 ### Carried Forward (deferred from v1.3, non-blockers)
 
@@ -237,6 +242,7 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 - ~~Plan 33-06 is scheduled to implement a decision that was NOT formally taken: 33-05's D-06 three-condition rule REFUSED (all three FAIL) and no winner is declared.~~ **RESOLVED 2026-08-30 by an OPERATOR DECISION**, the first of the three routes 33-05 proposed. The operator was shown the refusal, its figures and the four-leg deficit table, and chose to land the past-edge leg on that evidence and to add the named `addPastStep` entry point on legibility grounds. Plan 33-06 landed both and labelled the choice EVIDENCE-BASED, NOT RULE-SANCTIONED in `src/dsp/MorphBlep.hpp` and `src/dsp/VcoCore.hpp`. 33-05's recommendation paragraph was preserved, not promoted.
 - Plan 33-07 MUST NOT repeat the bit-exactness gate re-anchor 33-05 assigned to it — plan 33-06 discharged it early because the gate reds in the same commit that lands the seam. It is now on `kLegPastEdge` with the equality still an exact float `==`. 33-07's remaining 33-05 obligations stand: pin the two decibel columns via a per-cell lookup, and decide about the instrument-invalid half.
 - Plan 33-07 MUST NOT pin a sync alias threshold at ratios 3.5–5.5 that assumes the correction helps there: the landed past-edge leg measures 0.15–1.09 dB WORSE than applying no correction at all at ratio 5.5. See 33-06-SUMMARY Deferred Register item 3.
+- 33-07: register item 8's 1.0 dB step-dominated reproduction bound is INHERITED on hard-synced cells, never measured on them. 192 of the 210 gated sync rows depend on it with only 1.00245-1.99488 dB of headroom, on an instrument Phase 32 measured toolchain-dependent by up to 3.02596 dB. Plan 33-11's CI MinGW leg is the FIRST real measurement of this bound on this signal class; if a step-dominated sync cell reproduces outside 1.0 dB there, that is a FINDING ABOUT THE BOUND, escalated per the anti-softening rule and NOT absorbed by widening the column
 
 ## Deferred Items
 
@@ -289,13 +295,14 @@ None — all v1.3/v1.4 todos resolved (see `.planning/todos/done/`).
 | Phase 33 P04 | 39min | 3 tasks | 2 files |
 | Phase 33 P05 | 47min | 3 tasks | 1 files |
 | Phase 33 P06 | 95min | 3 tasks | 4 files |
+| Phase 33 P07 | 78min | 3 tasks | 1 files |
 
 ## Session Continuity
 
 **Resume file:** None
 
-Last session: 2026-09-01T10:22:47.385Z
-Stopped at: Completed 33-03-PLAN.md
+Last session: 2026-09-02T06:12:15.346Z
+Stopped at: Completed 33-07-PLAN.md
 Resume: Phase 32 is closed. Both items 32-11 owned are discharged: (1) the verification-protocol fix landed — the browser carries THREE Forge Audio entries and the guardrail subject is now pinned BY NAME ("Analog LFO" from `ForgeAudio-AnalogSeries` 2.0.1, versus the stale plain "LFO" from `ForgeAudio` 2.0.0), closing deferred item 25's protocol half; (2) MORPH-02's shell-side knob + CV x attenuverter mix is operator-attested on absence of fault (deferred item 24) — the only evidence obtainable while no headless driver can reach the attenuverter.
 
 Before Phase 33 plans anything, read `32-REVIEW.md`: CR-01 and CR-02 are real defects in `src/dsp/MorphBlep.hpp`, unreachable today only because `blep.step` has exactly ONE call site whose arguments are conditioned immediately above it. **Phase 33 adds the second call site** (`addStep` at the hard-sync seam), which is precisely the event that turns CR-01 into a live out-of-bounds write — and on x86 MinGW/Linux `(int)NaN` is `INT_MIN`, not the benign `0` this arm64 host produces. Fix before, not after.
