@@ -302,7 +302,7 @@ Plans:
   2. The reset uses sub-sample fractional placement plus a sync-BLEP applied at the **master's** wrap fraction, reusing the anti-aliasing machinery — explicitly **not** the LFO's 3 ms cosine crossfade — producing the sharp, buzzy sync timbre without clicks.
   3. A sync-continuity invariant bounds the per-sample step across a reset (no full-scale artifact) and correctly handles ≥1 sync event within a single sample.
 
-**Plans**: 7/12 plans executed
+**Plans**: 8/12 plans executed
 Plans:
 **Wave 1**
 
@@ -325,7 +325,7 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [x] 33-07-PLAN.md — Turn the sub-grid into a gate: per-cell thresholds with provenance, the snap-to-zero comparison landed permanently, the probe re-anchored, and the improvement gate refused in writing (SYNC-02 / D-01 / D-11)
-- [ ] 33-08-PLAN.md — SC-3's time-domain instrument: the measured reset-delta envelope, the anti-circularity margin from one pass, a discriminating mutation probe, and the output tiers re-derived for sync (D-10)
+- [x] 33-08-PLAN.md — SC-3's time-domain instrument: the measured reset-delta envelope, the anti-circularity margin from one pass, a discriminating mutation probe, and the output tiers re-derived for sync (D-10)
 - [ ] 33-09-PLAN.md — PITCH-04's third input class, re-ticked only where sync is observed FIRING (D-12; closes Phase 31 deferred item 11)
 - [ ] 33-10-PLAN.md — The reusable A/B audition renderer, both guard costs paid before the TU lands, uncommitted output on demand (D-13/D-14/D-15/D-16)
 
@@ -399,7 +399,7 @@ Plans:
 | 30. VcoCore Skeleton & Registration | 10/10 | Complete    | 2026-07-29 |
 | 31. Pitch, Tuning & Exponential FM | 9/9 | Complete    | 2026-07-30 |
 | 32. Morph-Aware Anti-Aliasing | 11/11 | Complete    | 2026-08-27 |
-| 33. Hard Sync | 7/12 | In Progress|  |
+| 33. Hard Sync | 8/12 | In Progress|  |
 | 34. Analog Engine, Drift & Output | 0/? | Not started | - |
 | 35. Shell, Panel & Display | 0/? | Not started | - |
 | 36. Goldens, CI & Library Update | 0/? | Not started | - |
