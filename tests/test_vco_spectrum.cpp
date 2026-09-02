@@ -5926,3 +5926,242 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 	// which is why the sign is asserted in both directions rather than ignored.
 	CHECK(ratioMean[6] < 0.0);   // ratio 5.50 — measured -1.0281
 }
+
+// ---------------------------------------------------------------------------
+// TASK 3 OF PLAN 33-07 — THE SNAP-TO-ZERO LANDMINE, LANDED AS A PERMANENT
+// MEASUREMENT INSTEAD OF AN INHERITED WARNING.
+//
+// >>> WHAT THIS CASE IS FOR. <<< `.planning/research/STACK.md:149` carries the
+// landmine as a table row and nothing more: "Snapping sync reset to exactly
+// phase = 0 | Destroys sub-sample sync timing -> sync itself aliases even with a
+// BLEP | Reset to fractional overshoot syncFracRemaining * deltaPhase." That is
+// an inherited assertion. It was true when someone wrote it and it stays true in
+// the document whether or not the shipped core still honours it. This case turns
+// it into a MEASUREMENT that runs on every invocation, so that a later edit
+// which snaps the reset goes red instead of merely contradicting a table.
+//
+// >>> AND IT IS THE HALF OF SYNC-02 THIS INSTRUMENT CAN ACTUALLY CARRY. <<<
+// The SyncCell banner's refusal paragraph records why the sync correction's own
+// improvement cannot be gated here: it measures +0.5827 dB grid-wide, a fraction
+// of a decibel, and a Phase-32-shaped improvement gate would fail by
+// construction. THE SUB-SAMPLE CLAUSE IS DIFFERENT. It measures 5.31 to 5.58 dB
+// on the informative masters — five times the pinned floor below — and it is the
+// one sync claim on this instrument with a comfortable margin. The other half of
+// SYNC-02, the click-free clause, is plan 33-08's, because register item 5
+// MEASURED that a single-sample full-amplitude spike reads 0.0 dB spectrally.
+//
+// >>> THIS CASE CONSULTS NO PINNED THRESHOLD. <<< It compares TWO MEASUREMENTS
+// of the same apparatus — the shipped leg's alias floor against the snap leg's
+// alias floor on the same cell — exactly as the standing grid's 8 dB
+// minimum-improvement CHECK does, and for the same reason. It selects the gated
+// population by TIER, never by a decibel column, so nothing here can be a
+// restatement of SYNC_PINS' own table. GREPPING THIS CASE FOR THE NAME OF THE
+// THRESHOLD COLUMN RETURNS NOTHING — that is the point rather than an accident,
+// and the name is deliberately not written out even here so the grep stays
+// clean.
+//
+// ===========================================================================
+// >>> THE INFORMATIVE-MASTER RESTRICTION, STATED ON ITS PHYSICAL CRITERION
+//     HERE, BEFORE ANY ROW IS ENUMERATED AS QUALIFYING. READ THIS FIRST. <<<
+//
+// The detector recovers the master's sub-sample wrap position by linear
+// interpolation across the trigger threshold, f = (HIGH - prev) / (now - prev).
+// THAT RECOVERS A TIME FRACTION ONLY WHEN THE MASTER'S EDGE SPANS THE THRESHOLD
+// OVER ONE SAMPLE OR MORE. When the master's wrap is a single-sample full-scale
+// jump — a naive saw or a gate, which is what most patched masters are — the
+// same expression returns the VOLTAGE fraction of the threshold within the jump,
+// and 33-RESEARCH works that out explicitly: for a +/-5 V falling saw wrapping
+// instantaneously at HIGH = 1.0 V with true wrap fraction g,
+//
+//     prev = -5 + 10*g*dt_m ,  now = 5 - 10*(1-g)*dt_m
+//     f    = (6 - 10*g*dt_m) / (10 - 10*dt_m)  ~=  0.6 - g*dt_m
+//
+// so g enters only at order dt_m and f is a NEARLY CONSTANT ~0.6 that has
+// nothing to do with the crossing time. THERE IS NO SUB-SAMPLE INFORMATION FOR
+// THE INTERPOLATION TO RECOVER, so a reset built from that fraction cannot be
+// better than snapping, and plan 33-05 measured it a decibel WORSE.
+//
+// THE OBSERVABLE, MEASURED RATHER THAN ASSUMED: the sub-grid's own apparatus
+// case measures the spread of the detected f over a block and asserts it is
+// below 0.05 on the hard-edge master and above 0.20 on the band-limited one.
+// This run reproduces 0.0104-0.0230 against 0.9554-0.9834. THE BAND-LIMITED
+// MASTER IS THE INFORMATIVE ONE. That is why the sub-grid carries both edge
+// shapes, and the criterion is the physics quoted above rather than "the rows
+// where the result came out".
+//
+// >>> AND THE OTHER HALF IS ASSERTED TOO, WHICH IS WHAT MAKES THE RESTRICTION
+//     EVIDENCE RATHER THAN A CONVENIENT EXCLUSION. <<< On the hard-edge rows the
+// two legs measure CLOSE TOGETHER, and this case CHECKs that rather than
+// treating it as a failure or leaving it out. It is the measurement-design
+// hazard rendered as an assertion. 33-RESEARCH predicted the two would measure
+// IDENTICALLY there; measured, snap is 0.21 to 0.38 dB BETTER on the gated
+// population, and that direction is recorded rather than gated because it is a
+// two-tenths-of-a-decibel effect on an instrument Phase 32 measured
+// toolchain-dependent by up to 3.02596 dB per cell.
+//
+// >>> NOT A DEFECT IN D-01, AND NOT A DEVIATION FROM THE STATE OF THE ART. <<<
+// The interpolation is the standard technique and the industry reference
+// computes THE SAME QUANTITY: VCV's own Fundamental VCO carries
+// `syncSubsample = -lastSync / deltaSync`, which is the identical linear
+// crossing solve interpolated to ZERO rather than to a hysteresis threshold.
+// The difference is deliberate here: this core drives the reset from the same
+// hysteresis detector the gate uses, so the fraction it recovers is the one
+// CONSISTENT WITH THE RESET THAT ACTUALLY FIRED. Plan 33-05 measured why that
+// coupling matters — the leg fed the master's TRUE wrap fraction is 0.45 to
+// 0.71 dB WORSE than the leg fed the detector's own, because 5.88 % of resets
+// on a band-limited master fire one sample late and a physically perfect
+// fraction is then sized for an edge the reset did not correspond to.
+// ===========================================================================
+TEST_CASE("vco spectrum: (SYNC-02 / D-01) snap to zero phase measures worse than the fractional overshoot on an informative master") {
+
+	const std::vector<SyncCell>& grid = syncGrid();
+	const std::size_t nCells = grid.size();
+	REQUIRE(nCells == 420);
+
+	// =======================================================================
+	// THE TWO PINNED MARGINS, AND THE RULE THAT PRODUCED THEM.
+	//
+	// Both are pinned from the LEAST FAVOURABLE of the three per-rate means over
+	// the gated population, rounded OUTWARD by register item 8's PLATEAU
+	// reproduction bound — the widest bound present in either population, since
+	// both contain plateau cells — and then to the whole decibel, outward again.
+	//
+	//   INFORMATIVE FLOOR: min per-rate mean 5.3051 (48 kHz)
+	//                      -> 5.3051 - 4.0 = 1.3051 -> floor -> 1.0 dB
+	//   HARD-EDGE CLOSENESS: max |per-rate mean| 0.3832 (48 kHz)
+	//                      -> 0.3832 + 4.0 = 4.3832 -> ceil  -> 5.0 dB
+	//
+	// THE FLOOR IS DELIBERATELY FIVE TIMES LOOSER THAN THE MEASUREMENT, and that
+	// is not a weak gate — it is the comfortable margin being spent on the
+	// toolchain problem rather than on the claim. Every decibel above is an
+	// Apple-clang figure; the pinned floor is what survives a 4 dB per-cell
+	// reproduction bound with 4.3 dB still to spare.
+	// =======================================================================
+	const double kSyncSnapMarginDb        = 1.0;   // informative masters: shipped must beat snap by at least this
+	const double kSyncHardEdgeClosenessDb = 5.0;   // hard-edge masters: the two must land within this of each other
+	const double kBoundPlateauDb          = 4.0;   // register item 8, and the DISCRIMINATION bound below
+
+	// =======================================================================
+	// THE MEASUREMENT. Two legs per cell through the ONE cell-measuring
+	// function. The gated population is selected BY TIER — no decibel column is
+	// read anywhere in this case.
+	// =======================================================================
+	double infSum[3]  = { 0.0, 0.0, 0.0 };
+	double hardSum[3] = { 0.0, 0.0, 0.0 };
+	int    infN[3]    = { 0, 0, 0 };
+	int    hardN[3]   = { 0, 0, 0 };
+	double infWorstCell = 1e30, infBestCell = -1e30;
+	double hardWorstAbsCell = 0.0;
+	int    infCellsWhereSnapWins = 0;
+
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const SyncCell& cell = grid[ci];
+		if (std::string(cell.tier) == std::string("diagnostic")) continue;
+
+		double rms = 0.0, binErr = 0.0;
+		const double shippedDb = measureSyncCellDb(cell, kLegPastEdge, /*useLiveCore=*/false, &rms, &binErr, 0, 0);
+		const double snapDb    = measureSyncCellDb(cell, kLegSnap,     /*useLiveCore=*/false, &rms, &binErr, 0, 0);
+		const double margin    = snapDb - shippedDb;   // positive = SNAP IS WORSE, which is the claim
+
+		int slot = -1;
+		for (int r = 0; r < 3; ++r) if (cell.sr == SYNC_RATES[r].sr) slot = r;
+		REQUIRE(slot >= 0);
+
+		// THE ENUMERATION OF QUALIFYING ROWS, and it happens only now — after the
+		// criterion above, and by the master's EDGE SHAPE, which is the physical
+		// property the criterion names.
+		if (cell.edge == kMasterBandLimited) {
+			infSum[slot] += margin;
+			++infN[slot];
+			if (margin < infWorstCell) infWorstCell = margin;
+			if (margin > infBestCell)  infBestCell  = margin;
+			if (margin < 0.0) ++infCellsWhereSnapWins;
+		} else {
+			hardSum[slot] += margin;
+			++hardN[slot];
+			if (std::fabs(margin) > hardWorstAbsCell) hardWorstAbsCell = std::fabs(margin);
+		}
+	}
+
+	// =======================================================================
+	// HALF ONE — THE INFORMATIVE MASTERS. THE CLAIM.
+	// =======================================================================
+	double infMean[3] = { 0.0, 0.0, 0.0 };
+	for (int r = 0; r < 3; ++r) {
+		const double sr = SYNC_RATES[r].sr;
+		CAPTURE(sr);
+		CAPTURE(infN[r]);
+		REQUIRE(infN[r] == 35);
+		infMean[r] = infSum[r] / (double)infN[r];
+		CAPTURE(infMean[r]);
+		CAPTURE(kSyncSnapMarginDb);
+		// SNAP IS WORSE, BY MORE THAN THE PINNED FLOOR, AT EVERY RATE.
+		CHECK(infMean[r] > kSyncSnapMarginDb);
+	}
+
+	// >>> THE PER-CELL SPREAD, RECORDED BECAUSE THE CLAIM IS A POPULATION CLAIM
+	//     AND SAYING SO IS THE HONEST WAY TO MAKE IT. <<< On 19 of the 105 gated
+	// informative cells the snap leg measures BETTER, the worst by 3.2022 dB.
+	// Those are cells where the reset lands somewhere the alias arg-max happens
+	// to prefer, and they are the reason this case asserts a MEAN over 35 cells
+	// per rate rather than a per-cell inequality. A per-cell claim here would be
+	// false, and a case that asserted one would have to be loosened later —
+	// which is warning sign (1) in the SyncCell banner, arriving in advance.
+	CAPTURE(infWorstCell);
+	CAPTURE(infBestCell);
+	CAPTURE(infCellsWhereSnapWins);
+
+	// =======================================================================
+	// HALF TWO — THE HARD-EDGE MASTERS. THE OTHER HALF, ASSERTED.
+	//
+	// This is NOT a failure and it is not an omission. It is the
+	// measurement-design hazard quoted in the banner, rendered as an assertion:
+	// where the master's wrap is a single-sample jump the detector's fraction is
+	// a near-constant voltage ratio, there is nothing sub-sample to preserve, and
+	// the two legs must therefore land close together. ASSERTING THIS IS WHAT
+	// MAKES THE INFORMATIVE-MASTER RESTRICTION A REAL DISTINCTION RATHER THAN A
+	// CONVENIENT EXCLUSION — without it, "we only assert on the band-limited
+	// rows" would be indistinguishable from "we only assert where it passed".
+	// =======================================================================
+	double hardMean[3] = { 0.0, 0.0, 0.0 };
+	for (int r = 0; r < 3; ++r) {
+		const double sr = SYNC_RATES[r].sr;
+		CAPTURE(sr);
+		CAPTURE(hardN[r]);
+		REQUIRE(hardN[r] == 35);
+		hardMean[r] = hardSum[r] / (double)hardN[r];
+		CAPTURE(hardMean[r]);
+		CAPTURE(kSyncHardEdgeClosenessDb);
+		CHECK(std::fabs(hardMean[r]) < kSyncHardEdgeClosenessDb);
+	}
+	// THE DIRECTION IS RECORDED AND NOT GATED. Measured, snap is 0.21 to 0.38 dB
+	// BETTER on the hard-edge gated population at all three rates — 33-RESEARCH
+	// predicted the two would measure IDENTICALLY, so the direction is a
+	// falsification worth carrying. It is a two-tenths-of-a-decibel effect on an
+	// instrument measured toolchain-dependent by up to 3.02596 dB per cell, and
+	// gating a sign at that size would be gating rounding.
+	CAPTURE(hardWorstAbsCell);
+
+	// =======================================================================
+	// THE DISCRIMINATION — THE ASSERTION THAT MAKES THE TWO HALVES A RESULT
+	// RATHER THAN TWO SEPARATE OBSERVATIONS.
+	//
+	// At every rate the informative-master margin exceeds the hard-edge one by
+	// more than a whole plateau reproduction bound. Measured: 5.79 / 5.69 /
+	// 5.78 dB of separation against a 4.0 dB bound. THIS is the sub-sample
+	// clause of SYNC-02 as evidence: the fractional-overshoot reset buys
+	// something exactly where there is sub-sample information to buy it with,
+	// and nothing where there is not — which is what a sub-sample mechanism
+	// should do and what a coincidence would not.
+	// =======================================================================
+	for (int r = 0; r < 3; ++r) {
+		const double sr = SYNC_RATES[r].sr;
+		const double separation = infMean[r] - hardMean[r];
+		CAPTURE(sr);
+		CAPTURE(infMean[r]);
+		CAPTURE(hardMean[r]);
+		CAPTURE(separation);
+		CAPTURE(kBoundPlateauDb);
+		CHECK(separation > kBoundPlateauDb);
+	}
+}
