@@ -81,8 +81,9 @@
 // reasonably but WRONGLY promote the secondary tier to equivalent evidence, or
 // read invariant 1 as part of the gate rather than as a check on the ruler.
 //
-// Invariants (numbered; ALL NINE ARE LANDED as of plan 31-07. A later plan that
-// adds one appends as invariant 10 and renumbers nothing here):
+// Invariants (numbered; nine were landed as of plan 31-07, and plan 33-09
+// appended the tenth exactly as that plan's note asked — as invariant 10, with
+// NOTHING below it renumbered. A later plan that adds one appends as 11):
 //   1. the DERIVED-BOUNDARY SELF-CHECK: both per-rate ceilings are computed
 //      from the forge:: constants, the lesser one binds, and the 0.5 V grid
 //      keeps real headroom below it (D-20 / D-21)                  [plan 31-05]
@@ -111,6 +112,11 @@
 //      pitch-volt bound and explicitly NOT the red for it; the arithmetic proof
 //      that the bound cannot fire on any reachable patch; and PITCH-05's two
 //      non-regression pins, one of them at COMPILE TIME     [plan 31-07]
+//  10. PITCH-04 / D-12: the clamp RE-CONFIRMED with SYNC as the third input
+//      class, on invariant 9's own pitch/FM population, closing Phase 31
+//      deferred item 11 — with the sync detector OBSERVED FIRING behind every
+//      claim and the pitch claim confined to where the estimator can see
+//                                                           [plan 33-09]
 //
 // MEASURED WORST-CASE TRACKING ERROR — THIS PHASE'S OWN FIGURES, harvested from
 // an actual run of these cases during plan 31-05. Worst ABSOLUTE cents per rate,
@@ -2820,6 +2826,120 @@ TEST_CASE("vco pitch D-14 / D-22 hostile pitch and FM volts: the STANDING regres
 	}
 }
 
+// ---------------------------------------------------------------------------
+// 10. PITCH-04 / D-12: THE NYQUIST CLAMP RE-CONFIRMED WITH **SYNC** AS THE
+//     THIRD INPUT CLASS — AND THE DEBT THAT MADE THE RE-CONFIRMATION NECESSARY.
+//
+//     ADDED BY PLAN 33-09. Invariants 1-9 above are renumbered by nothing here.
+//
+//     ---------------------------------------------------------------------
+//     (1) WHAT THIS CASE RE-CONFIRMS, AND WHO TICKED IT FIRST.
+//
+//     PITCH-04, in the requirement's own words: *"Frequency is clamped just
+//     below Nyquist so extreme pitch/FM/sync never aliases via out-of-range
+//     frequency."* It was marked COMPLETE by **PHASE 31**, on the evidence of
+//     invariant 8 (the clamp firing at its derived ceiling) and invariant 9
+//     (the hostile pitch and FM grid). Nothing in that evidence is withdrawn
+//     here and nothing in it is repeated here; this case is the third leg.
+//
+//     ---------------------------------------------------------------------
+//     (2) THE EXACT DEBT BEING CLOSED — Phase 31 deferred item 11.
+//
+//     PITCH-04 names THREE input classes and Phase 31 could reach only TWO.
+//     `forge::VcoInputs` carried no sync field at all when invariants 8 and 9
+//     were written, so the requirement was ticked on **two of the three input
+//     classes it names**. Item 11 records the reason it declined to close the
+//     gap by argument, and the sentence is worth having in front of a reader
+//     of this case: *"the clamp sits downstream of the frequency, so a
+//     sync-driven pitch source cannot bypass it STRUCTURALLY — and that
+//     structural argument is exactly the kind of forward claim this phase has
+//     repeatedly declined to make on another phase's behalf. A green mark for
+//     an input class that was UNREACHABLE when the assertion was written is not
+//     coverage of that class."* Its Resolve-at names **Phase 33** and requires
+//     the clamp to be RE-CONFIRMED rather than inherited. This is that phase,
+//     and this is that case. The structural argument item 11 refused to lean on
+//     is now MEASURED instead: see `telemetryUnmovedBySync` below.
+//
+//     ---------------------------------------------------------------------
+//     (3) WHAT THIS CASE ASSERTS.
+//
+//     Over 783 cells — 29 pitch/FM rows x 9 sync shapes x 3 sample rates, at
+//     4000 steps each:
+//       - every returned sample FINITE;
+//       - every magnitude inside kPitchLooseBoundV, this file's outer tier;
+//       - the phase accumulator inside its half-open [0, 1) range;
+//       - the clamped frequency non-negative and at or below the ceiling
+//         recomputed symbolically from the forge:: constants;
+//       - the clamp behaving as the row CLASSIFIES it — pinned EXACTLY at the
+//         ceiling above it, strictly under it below it, floored to silence on a
+//         sanitised not-a-number path;
+//       - the clamped frequency EXACTLY EQUAL to the unpatched row's on every
+//         patched sync shape, which is item 11's structural claim measured;
+//       - and the sync firing count matching the detector's own state machine,
+//         in BOTH directions, on every cell.
+//     Over a further 45 cells, at a half-second window:
+//       - 1 V/oct TRACKING ACCURACY against the libm reference at unison, at
+//         this file's own kTrackingToleranceCents, unwidened;
+//       - the MASTER-LOCK — the output period is the master's — over the
+//         subset where the estimator is valid, at its own pinned tolerance;
+//       - and two out-of-window controls that keep that subset a measurement.
+//
+//     ---------------------------------------------------------------------
+//     (4) WHAT THIS CASE DELIBERATELY DOES **NOT** ASSERT, AND WHERE EACH OF
+//         THOSE CLAIMS ACTUALLY LIVES.
+//
+//     Naming the neighbours is what stops a later reader treating this case as
+//     broader than it is. Every title below RESOLVES as a doctest selector.
+//
+//       (a) NO PITCH CLAIM WHERE THE ESTIMATOR IS BLIND. Twelve of the 29
+//           pitch/FM rows are driven past the clamp ceiling, where the pinned
+//           frequency is 1 / 0.495 = 2.0202 samples per cycle — BELOW
+//           kEstimatorMinSamplesPerCycle. TRAP 3 records that the estimator
+//           does not fail loudly there, it returns a plausible wrong answer on
+//           a perfectly correct oscillator. Those rows are asserted for
+//           finiteness, bound, accumulator, clamp and firing, and for NOTHING
+//           about pitch. There is no neighbouring case for this one because
+//           there is no instrument for it — that is the point of stating it.
+//
+//       (b) NO CLAIM ABOUT THE SYNC CORRECTION'S SPECTRAL QUALITY. That lives
+//           in `"vco spectrum: (SYNC-02 / D-11) the sync alias floor stays
+//           below its per-cell pinned threshold, and every pinned number
+//           reproduces"`, 1 case / 5286 assertions.
+//           NOTE FOR ANYONE RUNNING THAT SELECTOR: the title contains a COMMA
+//           and doctest treats a comma inside -tc as a FILTER SEPARATOR, so the
+//           full title matches ZERO cases. The form that resolves is the
+//           wildcard prefix `-tc="vco spectrum: (SYNC-02 / D-11) the sync alias
+//           floor*"`. Recorded here because a selector that silently matches
+//           nothing is precisely the failure this project keeps logging.
+//
+//       (c) NO CLAIM ABOUT THE PER-SAMPLE STEP ACROSS A RESET. That is the
+//           time-domain continuity gate, `"vco sync: (SC-3 / D-10) the
+//           per-sample step across a reset is bounded by a measured envelope"`
+//           (1 case / 32 assertions), with its anti-circularity half in
+//           `"vco sync: (SC-3 / D-10) the corrected reset delta beats the
+//           uncorrected one by a measured margin"` (1 case / 576 assertions).
+//           Those two own SC-3. This case owns PITCH-04 and nothing else.
+//
+//     A FOURTH NEIGHBOUR, named because it is a SIBLING rather than a boundary:
+//     the new divisor is exercised in the core suite too, by `"vco sync: (D-12)
+//     the new divisor cannot poison the phase accumulator"` (1 case / 639
+//     assertions). It is exercised in BOTH places on purpose. A new division
+//     appearing behind a new input field is the rationale that moved a hostile
+//     grid into the preceding phase under that phase's D-15 — and that
+//     rationale was itself a CORRECTION of a falsified one, so it is applied
+//     deliberately here rather than inherited. What the core suite cannot say
+//     is what this case says: that the divisor's hostile inputs cannot move the
+//     PITCH, which is a claim about PITCH-04 and belongs in the pitch file.
+//
+//     ---------------------------------------------------------------------
+//     (5) THE NON-VACUITY CONDITION, IN ONE SENTENCE.
+//
+//     EVERY PITCH CLAIM IN THIS CASE STANDS ONLY WHILE ITS SYNC-FIRING COUNTS
+//     ARE NON-ZERO, AND THE FIRING ASSERTIONS ARE WHAT ENFORCE THAT — remove
+//     the reset and 522 of them go red in the first subcase and 27 in the
+//     second, which was measured rather than assumed before this banner was
+//     written.
+// ---------------------------------------------------------------------------
 TEST_CASE("vco pitch: (PITCH-04 / D-12) the Nyquist clamp RE-CONFIRMED with SYNC as the THIRD input class, on the SAME hostile pitch and FM population invariant 9 drives - closing Phase 31 deferred item 11, with the detector OBSERVED FIRING behind every claim") {
 	// -------------------------------------------------------------------
 	// WHY THIS CASE IS IN THIS FILE AND NOT A NEW ONE SOMEWHERE ELSE.
