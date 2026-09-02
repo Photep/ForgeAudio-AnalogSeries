@@ -21,7 +21,13 @@ DISTRIBUTABLES += $(wildcard presets)
 # plugin.mk and $(CXX) falls back to the make default (CR-01).
 # `guards` joins the filter for the same reason (R-11 / P-6): the guard suite is
 # pure shell plus a checksum tool and must run on a runner with no Rack SDK.
-ifeq ($(filter test capture guards,$(MAKECMDGOALS)),)
+# `audition` joins it for the same reason again (plan 33-10 / D-15): the A/B
+# renderer drives forge::VcoCore, which is Rack-free by construction, so the
+# target must run on a machine with no ../Rack-SDK checked out — exactly like
+# its three siblings above. Omitting it here would hard-fail the target on a
+# runner with a `No such file or directory` from the bare include, which is a
+# failure about the SDK rather than about the renderer.
+ifeq ($(filter test capture guards audition,$(MAKECMDGOALS)),)
 include $(RACK_DIR)/plugin.mk
 endif
 
@@ -62,6 +68,55 @@ capture: $(CAPTURE_BIN)
 $(CAPTURE_BIN): tools/capture_golden.cpp $(TEST_HEADERS)
 	@mkdir -p build-test
 	$(CXX) $(TEST_CXXFLAGS) tools/capture_golden.cpp -o $@
+
+# ---------------------------------------------------------------------------
+# Hard-sync A/B audition renderer (Phase 33, plan 33-10 — D-13 / D-14 / D-15 /
+# D-16). One-shot, NOT wired into `test`, and modelled line for line on the
+# `capture` target above, which is this tree's only other standalone tool.
+#
+# WHAT IT IS FOR. Phase 32's operator audition asked whether an improvement was
+# AUDIBLE and supplied no reference to compare against, so that half of the
+# verdict was unanswerable BY CONSTRUCTION (register item 26; the operator's own
+# reply was "it's hard to remember what the old audio sounded like"). This target
+# puts the reference in the room: a matched pair per render point, the shipped
+# band-limited sync leg and the same reset with the sync correction withheld,
+# from the SAME PASS through the real forge::VcoCore.
+#
+# THE OUTPUT IS NEVER COMMITTED (D-15). It lands under build-test/, which
+# .gitignore already ignores, so this costs ZERO ignore-file edits and the
+# "generated on demand, never a pinned golden" rule is enforced BY CONSTRUCTION
+# rather than by anybody's discipline. A rendered pair captured from one
+# toolchain must never become a reference — every decibel and every volt in this
+# phase is an Apple-clang figure.
+#
+# IT COMPILES WITH TEST_CXXFLAGS, AND THAT IS LOAD-BEARING, NOT TIDINESS. The
+# same standard, the same -O2, the same -ffp-contract=off. It is what makes the
+# rendered audio bit-comparable with what `make test` measures, so the operator
+# is listening to the same arithmetic the 420-cell sync grid and the SC-3
+# time-domain gate report on. A fresh flags variable here would silently decouple
+# the two — -ffast-math or a contracted FMA alone would move the samples.
+#
+# WHY THE RENDERER IS NOT IN tests/. TEST_SOURCES is a wildcard over that whole
+# directory, so a tools-shaped .cpp placed there would be linked into the doctest
+# binary and its main() would collide with doctest's — and even if it did not, it
+# would run on EVERY `make test` invocation, which contradicts the
+# generated-on-demand decision outright. It also costs a tests/check_includes.sh
+# VCO_SIDE_ALLOW entry either way (paid in the same commit as this target).
+#
+# GNU Make 3.81 compatible, like every target above: plain rules, no $(file ...),
+# no ::=, no .ONESHELL.
+# ---------------------------------------------------------------------------
+AUDITION_BIN := build-test/audition-render
+AUDITION_OUT := build-test/audition
+
+.PHONY: audition
+audition: $(AUDITION_BIN)
+	@mkdir -p $(AUDITION_OUT)
+	./$(AUDITION_BIN)
+
+$(AUDITION_BIN): tools/render_sync_ab.cpp $(TEST_HEADERS)
+	@mkdir -p build-test
+	$(CXX) $(TEST_CXXFLAGS) tools/render_sync_ab.cpp -o $@
 
 # ---------------------------------------------------------------------------
 # Submission preflight (post-v2.0.0-rejection lesson — see RETROSPECTIVE.md).

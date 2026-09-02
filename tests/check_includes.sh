@@ -344,6 +344,29 @@ done
 #     guard-side edit Phase 32 makes is activating the canary's include of that
 #     header, which belongs to plan 32-04 and lands in the same commit as the
 #     header itself (P-9).
+#   * tools/render_sync_ab.cpp — Phase 33's D-13/D-15 A/B audition renderer
+#     (plan 33-10). THE FIRST ENTRY ON THIS LIST THAT IS NOT UNDER src/ OR
+#     tests/, and the reason it needs one is worth stating plainly: the scan set
+#     three paragraphs above is derived from `find src tests tools`, so a file
+#     in the TOOLS directory is LFO-side BY DEFAULT exactly like a test TU is.
+#     The renderer includes dsp/VcoCore.hpp BY CONSTRUCTION — its entire purpose
+#     is to drive the real forge::VcoCore so the operator hears the shipped core
+#     rather than a mirror of it (D-14) — so this section flags it the instant
+#     the file lands. It is not an LFO translation unit, it links into no LFO
+#     build graph, and it is not even in the doctest binary: `make audition`
+#     compiles it standalone and `make test` never sees it.
+#     The entry is added BEFORE the file exists, deliberately, which is the
+#     Phase-29 / Phase-32 precedent recorded above and the Phase-31 D-23 lesson
+#     applied on purpose rather than rediscovered at the phase gate.
+#     THE SAME COST APPLIES TO ANY NEW VCO-SIDE TRANSLATION UNIT, and Phase 33
+#     deliberately incurs it EXACTLY ONCE: the sync sub-grid (plan 33-05/33-07)
+#     landed in tests/test_vco_spectrum.cpp and the time-domain SC-3 gate (plan
+#     33-08) in tests/test_vco_core.cpp, both ALREADY on this list, precisely so
+#     that this renderer is the only entry the whole phase needs.
+#     Adding it changes the LFO-side scan set by exactly one file, and that file
+#     is VCO code. The match below compares against a QUOTED right-hand side, so
+#     it is exact-path: no glob, no substring, no basename, and no sibling path
+#     under tools/ is exempted along with it.
 # src/dsp/Vco*.hpp and src/dsp/MorphBlep.hpp are the VCO's own headers — the
 # other side of the boundary, not scan targets.
 #
@@ -361,6 +384,7 @@ VCO_SIDE_ALLOW=(
 	"tests/test_vco_pitch.cpp"
 	"tests/test_vco_spectrum.cpp"
 	"tests/test_morph_blep.cpp"
+	"tools/render_sync_ab.cpp"   # a tools/ file is LFO-side by default — see the rationale above
 )
 LFO_SCAN=()
 while IFS= read -r f; do
