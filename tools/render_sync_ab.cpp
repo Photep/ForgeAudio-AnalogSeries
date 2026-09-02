@@ -539,7 +539,7 @@ int16_t toPcm16(float volts, long& clipped) {
 }
 
 bool writeWav16(const std::string& path, const std::vector<float>& volts, uint32_t sampleRate,
-                long& clippedOut, std::size_t& bytesOut) {
+                long& clippedOut, std::size_t& bytesOut, std::vector<int16_t>& pcmOut) {
 	const uint16_t kChannels      = 1;
 	const uint16_t kBitsPerSample = 16;
 	const uint16_t kFormatPcm     = 1;
@@ -569,8 +569,11 @@ bool writeWav16(const std::string& path, const std::vector<float>& volts, uint32
 	putU32le(f, dataBytes);                                // Subchunk2Size
 
 	clippedOut = 0;
+	pcmOut.clear();
+	pcmOut.reserve(volts.size());
 	for (std::size_t i = 0; i < volts.size(); ++i) {
 		const int16_t s = toPcm16(volts[i], clippedOut);
+		pcmOut.push_back(s);          // kept so the pair can be verified AS ENCODED, below
 		putU16le(f, (uint16_t)s);
 	}
 
@@ -639,14 +642,18 @@ int main() {
 		            p.seconds, legs[0].volts.size(), resets);
 		std::printf("      WHY: %s\n", p.why);
 
+		std::vector<std::vector<int16_t> > pcm(kCoreConfigCount);
+		std::vector<std::size_t>           fileBytes(kCoreConfigCount, 0);
+
 		for (std::size_t c = 0; c < kCoreConfigCount; ++c) {
 			const std::string path = std::string(kOutDir) + "/" + p.label + "__" + CORE_PAIR[c].fileTag + ".wav";
 			long        clipped = 0;
 			std::size_t bytes   = 0;
-			if (!writeWav16(path, legs[c].volts, (uint32_t)p.sr, clipped, bytes)) {
+			if (!writeWav16(path, legs[c].volts, (uint32_t)p.sr, clipped, bytes, pcm[c])) {
 				anyFailure = true;
 				continue;
 			}
+			fileBytes[c] = bytes;
 			++filesWritten;
 			totalClipped   += clipped;
 			totalNonFinite += legs[c].nonFinite;
@@ -689,8 +696,50 @@ int main() {
 			            legs[0].worstResetStepV, legs[1].worstResetStepV, margin,
 			            margin > 0.0 ? "the correction HELPS here"
 			                         : "the correction is NO BETTER OR WORSE here (33-08's negative-margin region)");
-			if (nDiff == 0)
-				std::printf("      >>> WARNING: the two legs are BIT-IDENTICAL. The withheld leg is not withheld.\n");
+			// >>> THE PAIR IS VERIFIED MECHANICALLY BEFORE ANY HUMAN HEARS IT. <<<
+			// These run on EVERY invocation rather than once at plan time, so a
+			// later phase that changes the table or the configuration pair
+			// inherits the verification along with the renderer (D-16). Each
+			// check is one an operator could not make by listening: a swapped,
+			// truncated, silent or un-withheld leg all sound plausible.
+			bool pointOk = true;
+			if (fileBytes[0] != fileBytes[1]) {
+				std::printf("      >>> FAIL: the two legs are DIFFERENT LENGTHS (%zu vs %zu bytes).\n",
+				            fileBytes[0], fileBytes[1]);
+				pointOk = false;
+			}
+			if (nDiff == 0) {
+				std::printf("      >>> FAIL: the two legs are BIT-IDENTICAL. The withheld leg is not withheld,\n");
+				std::printf("               and the whole apparatus is decorative.\n");
+				pointOk = false;
+			}
+			for (std::size_t c = 0; c < kCoreConfigCount; ++c) {
+				if (!(legs[c].peakAbsV > 0.0)) {
+					std::printf("      >>> FAIL: leg %s is SILENT.\n", CORE_PAIR[c].fileTag);
+					pointOk = false;
+				}
+			}
+			// AND THE PAIR IS VERIFIED AS ENCODED, NOT ONLY AS FLOATS. 16-bit at
+			// this scale resolves 305.2 microvolts, and some per-reset
+			// corrections are smaller than that, so a difference that exists in
+			// the float legs can vanish in the files the operator actually opens.
+			// Reporting both counts is what stops "the legs differ" being a claim
+			// about a buffer the operator never hears.
+			std::size_t nDiffPcm = 0;
+			const std::size_t np = pcm[0].size() < pcm[1].size() ? pcm[0].size() : pcm[1].size();
+			for (std::size_t i = 0; i < np; ++i) if (pcm[0][i] != pcm[1][i]) ++nDiffPcm;
+			std::printf("               AS ENCODED   : %zu of %zu 16-bit samples differ",
+			            nDiffPcm, np);
+			if (nDiffPcm < nDiff)
+				std::printf("  (%zu float differences fall below one LSB = %.1f uV)",
+				            nDiff - nDiffPcm, (double)kFullScaleVolts / 32767.0 * 1e6);
+			std::printf("\n");
+			if (nDiffPcm == 0) {
+				std::printf("      >>> FAIL: the encoded files are IDENTICAL even though the float legs differ.\n");
+				pointOk = false;
+			}
+			std::printf("               PAIR CHECK   : %s\n", pointOk ? "PASS" : "FAIL");
+			if (!pointOk) anyFailure = true;
 		}
 	}
 
