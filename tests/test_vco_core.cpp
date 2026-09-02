@@ -66,6 +66,15 @@
 //      every branch, and the sample-rate-change choice asserted rather than
 //      inherited (D-12 / D-02)
 //      Appended by plan 33-04; nothing above them was renumbered.
+//  10. SC-3's OWN INSTRUMENT — the per-sample step across a reset, bounded by a
+//      MEASURED envelope over a 420-cell sync sweep, pinned outward from that
+//      measurement and NOT from a smallness claim: a legitimate reset at a
+//      slave at or below its master's rate genuinely steps the output by
+//      nearly its full range, and this case ASSERTS that it does. The
+//      instrument is time-domain BY NECESSITY — single-sample full-amplitude
+//      spikes were measured at 0.0 dB spectrally, so the alias-floor gate is
+//      structurally blind to the artefact this criterion forbids (SC-3 / D-10)
+//      Appended by plan 33-08; nothing above it was renumbered.
 //
 // THE D-16 LABEL, WHICH MUST NOT BE SOFTENED. Invariant 1 is NOT the TEST-02
 // V/Oct tracking gate. TEST-02 belongs to Phase 31 and requires better than one
@@ -125,6 +134,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>       // std::numeric_limits<float>::quiet_NaN() — scenario four's hostile timing grid
+#include <string>       // std::string — plan 33-08's cell labels; doctest prints a bare const char* as a POINTER
 
 namespace {
 
@@ -761,12 +771,21 @@ static const float HOSTILE_SYNC[] = {
 // returned SAMPLE instead would re-derive the claim through the whole frozen
 // waveshaper and the band-limiter, which is a different assertion.
 // ---------------------------------------------------------------------------
+// TWO FIELDS APPENDED BY PLAN 33-08, and nothing above them changed. `jump` and
+// `correction` are the two Phase 33 telemetry members the SC-3 cases need and
+// the four 33-04 cases do not read: the jump the seam was handed, and the value
+// it actually deposited into the band-limiter's accumulator. They are recorded
+// HERE rather than in a second recorder for the reason this file gives for
+// every mirror it declines to create — a hand-kept copy is a thing to keep in
+// step, and this file has watched one drift.
 struct SyncTrace {
 	std::vector<char>   fired;
 	std::vector<float>  frac;
 	std::vector<double> phase;
 	std::vector<float>  freqHz;
 	std::vector<float>  prevStore;   // forge::VcoCore::prevSyncVolts AFTER the step
+	std::vector<float>  jump;        // forge::VcoCore::Telemetry::syncJump (plan 33-08)
+	std::vector<float>  correction;  // forge::VcoCore::Telemetry::syncCorrection, PRE-multiply (plan 33-08)
 
 	void record(const forge::VcoCore& c) {
 		fired.push_back(c.tel.syncFired ? (char)1 : (char)0);
@@ -774,6 +793,8 @@ struct SyncTrace {
 		phase.push_back(c.phase);
 		freqHz.push_back(c.tel.freqHz);
 		prevStore.push_back(c.prevSyncVolts);
+		jump.push_back(c.tel.syncJump);
+		correction.push_back(c.tel.syncCorrection);
 	}
 };
 
@@ -799,6 +820,202 @@ double expectedDeltaPhase(float freqHz, float dt) {
 	if (!(dp > 0.0)) dp = 0.0;
 	if (dp > forge::kVcoMaxDeltaPhase) dp = forge::kVcoMaxDeltaPhase;
 	return dp;
+}
+
+// ===========================================================================
+// THE SC-3 SWEEP (plan 33-08). Everything below this line belongs to
+// invariants 10 and 11 — the time-domain per-sample delta bound and its
+// anti-circularity margin. Nothing above it is redefined or shadowed.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// THE GRID'S AXES, DELIBERATELY THE SAME FIVE AS THE SPECTRAL SUB-GRID'S.
+//
+// tests/test_vco_spectrum.cpp's SYNC_GRID sweeps master/slave ratio x the five
+// shape centres x character at both ends x both master edge shapes x three
+// sample rates, and plans 33-05 and 33-07 measured every one of those axes for
+// a reason that is written out at length there. The axes are REPRODUCED here
+// rather than transferred, because the two files are separate translation units
+// and this one may not include that one's helpers — but the VALUES are the same
+// values, so a finding in one instrument can be looked up cell-for-cell in the
+// other. That cross-reference is the whole point: 33-07's spectral gate and
+// this file's time-domain gate are two instruments pointed at ONE grid.
+//
+// THE RATIO SET IS 33-05's, INCLUDING ITS THREE CORRECTIONS TO THE RESEARCH.
+// 0.5 and 0.75 are the sub-unity region (a slave BELOW its master, where the
+// reset truncates a cycle that has barely started); 1.0 is unity; 1.5, 2.5, 3.5
+// and 5.5 are the classic sweep region. The integer ratios at and above two are
+// deliberately ABSENT — 33-05 measured them to be near-no-ops where hard sync
+// does almost nothing, and replaced them with non-integer neighbours. Do not
+// "restore" them.
+//
+// WHY dtm IS 1/128 AND NOT A FREQUENCY. Same argument as makeMasterSaw's own
+// banner: a dyadic master increment is exactly representable, so the block
+// holds an EXACT integer number of master cycles at every sample rate and the
+// reset counts below are exact expectations. The slave's pitch is solved from
+// the ratio with std::log2 (libm, allowed in tests/ and forbidden in src/).
+// ---------------------------------------------------------------------------
+const double SYNC_D10_RATIOS[]     = {0.5, 0.75, 1.0, 1.5, 2.5, 3.5, 5.5};
+const float  SYNC_D10_MORPHS[]     = {0.00f, 0.25f, 0.50f, 0.75f, 1.00f};
+const char* const SYNC_D10_REGIONS[] = {"sine", "triangle", "saw", "square", "pulse 5%"};
+const float  SYNC_D10_CHARS[]      = {0.00f, 1.00f};
+const char* const SYNC_D10_EDGES[] = {"hard-edge", "band-limited"};
+
+// The block length and master increment every SC-3 drive uses. 4096 samples at
+// dtm = 1/128 is exactly 32 master cycles, so every cell fires 32 resets (31
+// with a predecessor on a band-limited master, whose first wrap is moved by the
+// residual applied to the sample BEFORE it).
+const int    kSyncD10N   = 4096;
+const double kSyncD10Dtm = 1.0 / 128.0;
+
+// ---------------------------------------------------------------------------
+// SyncResetObs / SyncDeltaCell / worstResetDeltaAt — ONE PASS, EVERY LEG.
+//
+// >>> THIS IS THE STRUCTURE THAT MAKES THE NAIVE-VERSUS-CORRECTED COMPARISON
+//     LIKE FOR LIKE. <<< Both legs come from the SAME drive of the SAME core:
+// there is no second forge::VcoCore, no NaiveVcoCoreMirror, no `bool bandLimit`
+// flag in the shipped body and no second pass. What is recorded per reset is
+// the shipped output at the reset and at its predecessor, plus the sync
+// correction `tel.syncCorrection` deposited on each of those two samples.
+//
+// EVERY OTHER LEG IS THEN ARITHMETIC ON THOSE FOUR NUMBERS, and the licence to
+// do that is a MEASURED property rather than an assumption. Under the past-edge
+// placement plan 33-06 landed, the seam deposits into forge::MorphBlep::inject
+// ONLY and leaves `pending` untouched, so the correction is confined to the
+// sample that carries it and nothing is owed forward. src/dsp/VcoCore.hpp
+// states the reconstruction as leg_none[n] = leg_full[n] - 5.f *
+// syncCorrection[n] and carries plan 33-06's measurement of it: over a
+// 49,152-sample patched block, 93 resets fired and EXACTLY 93 samples differed,
+// and the reconstruction reproduced the withheld leg bit-exactly on 49,136 of
+// 49,152 samples with the remaining 16 off by EXACTLY ONE ULP, worst absolute
+// 4.77e-07 V.
+//
+// >>> SO NO EQUALITY IS WRITTEN AGAINST IT. <<< That error bar is why the cases
+// below compare ENVELOPES against pinned volt-scale numbers and never assert a
+// bit-exact identity on a reconstructed sample. A bit-exact assertion here
+// would be red on sixteen samples in fifty thousand, on correct behaviour, and
+// plan 33-06 wrote its measurement down precisely so that this plan would not
+// write one.
+//
+// `worstResetDeltaAt(c, k)` returns the worst |x[n] - x[n-1]| over the cell's
+// reset samples on the leg whose seam deposited k TIMES the correction it
+// actually deposited. k = 1 is the shipped leg. k = 0 is the withheld leg.
+// k = 0.25 and k = -1 are the two mutation probes of invariant 11.
+// ---------------------------------------------------------------------------
+struct SyncResetObs {
+	float outPrev  = 0.f;   // the SHIPPED output on the sample before the reset, in volts
+	float outNow   = 0.f;   // the SHIPPED output on the reset sample, in volts
+	float corrPrev = 0.f;   // tel.syncCorrection on that predecessor, PRE-multiply
+	float corrNow  = 0.f;   // tel.syncCorrection on the reset sample, PRE-multiply
+	float jump     = 0.f;   // tel.syncJump on the reset sample, PRE-multiply
+};
+
+struct SyncDeltaCell {
+	double      sr        = 0.0;
+	const char* edgeName  = "";
+	double      ratio     = 0.0;
+	float       morph     = 0.f;
+	const char* region    = "";
+	float       character = 0.f;
+	int         resets    = 0;     // resets fired anywhere in the block
+	bool        allFinite = true;
+	float       maxAbsOut = 0.f;   // worst |out| ANYWHERE in the block, not only on resets
+	std::vector<SyncResetObs> obs; // one entry per reset that has a predecessor
+};
+
+double worstResetDeltaAt(const SyncDeltaCell& c, double k) {
+	double worst = 0.0;
+	for (size_t j = 0; j < c.obs.size(); ++j) {
+		const SyncResetObs& o = c.obs[j];
+		// The factor of five is forge::VcoCore::step's own output multiplier;
+		// syncCorrection is recorded in the pre-multiply domain to match `naive`.
+		const double now  = (double)o.outNow  + 5.0 * (k - 1.0) * (double)o.corrNow;
+		const double prev = (double)o.outPrev + 5.0 * (k - 1.0) * (double)o.corrPrev;
+		const double d    = std::fabs(now - prev);
+		if (d > worst) worst = d;
+	}
+	return worst;
+}
+
+// ---------------------------------------------------------------------------
+// sweepSyncDeltaGrid — the 420-cell drive both SC-3 cases run on.
+//
+// It is a FUNCTION rather than a lazily-built static, deliberately: invariants
+// 10 and 11 each take their own pass, so neither can be made to pass by state
+// the other left behind, and each case's `-tc=` selector really does exercise
+// the whole sweep. MEASURED cost: 0.12 s per pass for 1,720,320 core steps, on
+// a suite that already runs in six and a half seconds.
+// ---------------------------------------------------------------------------
+std::vector<SyncDeltaCell> sweepSyncDeltaGrid() {
+	std::vector<SyncDeltaCell> grid;
+	grid.reserve(420);
+
+	const int    n   = kSyncD10N;
+	const double dtm = kSyncD10Dtm;
+
+	for (int ri = 0; ri < 3; ++ri) {
+		const double sr       = SAMPLE_RATES[ri];
+		const double masterHz = dtm * sr;
+		for (int ei = 0; ei < 2; ++ei) {
+			// The master is generated by this test, never by a second
+			// forge::VcoCore — makeMasterSaw's banner says why.
+			const MasterBlock m = (ei == 0) ? makeMasterSaw(n, dtm, 5.0, 0.0)
+			                                : makeMasterSawBandLimited(n, dtm, 5.0, 0.0);
+			for (int qi = 0; qi < 7; ++qi) {
+				const double ratio   = SYNC_D10_RATIOS[qi];
+				const float  pitchCV = (float)std::log2(ratio * masterHz / (double)forge::kVcoFreqC4);
+				for (int mi = 0; mi < 5; ++mi) {
+					for (int ci = 0; ci < 2; ++ci) {
+						forge::VcoInputs base = coreBase();
+						base.pitchCV   = pitchCV;
+						base.morph     = SYNC_D10_MORPHS[mi];
+						base.character = SYNC_D10_CHARS[ci];
+
+						forge::VcoBlockDriver d(sr);
+						SyncTrace tr;
+						std::vector<float> out = driveTraced(d, n, [&](int i) {
+							forge::VcoInputs in = base;
+							in.syncVolts     = m.volts[(size_t)i];
+							in.syncConnected = true;
+							return in;
+						}, tr);
+
+						SyncDeltaCell c;
+						c.sr        = sr;
+						c.edgeName  = SYNC_D10_EDGES[ei];
+						c.ratio     = ratio;
+						c.morph     = SYNC_D10_MORPHS[mi];
+						c.region    = SYNC_D10_REGIONS[mi];
+						c.character = SYNC_D10_CHARS[ci];
+						c.obs.reserve(32);
+
+						for (int i = 0; i < n; ++i) {
+							if (!std::isfinite(out[(size_t)i])) c.allFinite = false;
+							const float a = std::fabs(out[(size_t)i]);
+							if (a > c.maxAbsOut) c.maxAbsOut = a;
+							// >>> RESET SAMPLES ARE IDENTIFIED FROM THE TELEMETRY
+							//     FLAG, NEVER INFERRED FROM THE WAVEFORM. <<< A
+							//     waveform-side heuristic ("a big step means a
+							//     reset") would be circular in a case whose whole
+							//     subject is how big the step at a reset is.
+							if (!tr.fired[(size_t)i]) continue;
+							++c.resets;
+							if (i == 0) continue;   // no predecessor to difference against
+							SyncResetObs o;
+							o.outPrev  = out[(size_t)(i - 1)];
+							o.outNow   = out[(size_t)i];
+							o.corrPrev = tr.correction[(size_t)(i - 1)];
+							o.corrNow  = tr.correction[(size_t)i];
+							o.jump     = tr.jump[(size_t)i];
+							c.obs.push_back(o);
+						}
+						grid.push_back(c);
+					}
+				}
+			}
+		}
+	}
+	return grid;
 }
 
 } // namespace
@@ -3329,5 +3546,269 @@ TEST_CASE("vco sync: (D-12) the new divisor cannot poison the phase accumulator"
 			CAPTURE(spreadMax);
 			CHECK(spreadMax - spreadMin > 0.3f);
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 10. SC-3 — THE PER-SAMPLE STEP ACROSS A RESET, BOUNDED BY A MEASURED
+//     ENVELOPE (SC-3 / D-10). Appended by plan 33-08; nothing above it was
+//     renumbered.
+//
+//     ------------------------------------------------------------------------
+//     WHAT THIS CRITERION IS NOT, STATED BEFORE ANYTHING IS ASSERTED
+//     ------------------------------------------------------------------------
+//     >>> THIS IS NOT A CLAIM THAT THE STEP ACROSS A RESET IS SMALL. IT CANNOT
+//         BE, AND A PLAN THAT READ SC-3 THAT WAY WOULD BE ASSERTING SOMETHING
+//         FALSE ABOUT CORRECT BEHAVIOUR. <<<
+//     A legitimate hard-sync reset at a slave AT OR BELOW its master's rate
+//     truncates a cycle that has barely started and steps the output by nearly
+//     its full peak-to-peak range IN ONE SAMPLE. That is not an artefact; it is
+//     hard sync working. MEASURED on this grid: the worst step on a reset
+//     sample is 9.793601 V out of a naive +/-5 V waveform, and the case below
+//     ASSERTS that the worst step exceeds 9.0 V so that the sentence you are
+//     reading cannot quietly stop being true.
+//
+//     What SC-3 forbids is a full-scale ARTEFACT — a discontinuity the
+//     band-limiting failed to absorb — which is a DIFFERENT QUANTITY from the
+//     step itself. This case bounds the step with a measured ENVELOPE; the
+//     evidence that the band-limiting is doing something lives in invariant 11,
+//     which compares two measurements and consults no pinned number at all.
+//
+//     ------------------------------------------------------------------------
+//     WHY THE INSTRUMENT IS TIME-DOMAIN, MEASURED RATHER THAN PREFERRED
+//     ------------------------------------------------------------------------
+//     The obvious home for a sync gate is tests/test_vco_spectrum.cpp, which
+//     since plan 33-07 gates 210 sync cells against per-cell alias-floor
+//     thresholds. IT IS STRUCTURALLY BLIND TO THE ARTEFACT SC-3 NAMES. Phase
+//     32's register item 5 MEASURED a single-sample full-amplitude spike at
+//     0.0 dB on that metric — exactly zero difference, completely invisible.
+//     A sync gate built only on the alias floor would therefore be GREEN on
+//     precisely the click SC-3 exists to forbid, and plan 33-07 wrote that
+//     blindness into its own source as the reason it REFUSED an
+//     improvement-shaped spectral gate. This case is the other instrument.
+//
+//     ------------------------------------------------------------------------
+//     AND THE ANALYTIC BOUND IS REJECTED IN WRITING, NOT LEFT UNCONSIDERED
+//     ------------------------------------------------------------------------
+//     There is a bound available for free. Every sample is inside
+//     kHostileBoundV, so |x[n] - x[n-1]| <= 2 * kHostileBoundV = 20.0 V,
+//     permanently, with no measurement and no maintenance. IT IS CLOSE TO
+//     VACUOUS, AND THE REASON IS THE CRITERION ITSELF: a full-scale artefact —
+//     a +/-5 V waveform jumping to the opposite rail in one sample — is a step
+//     of about 10 V, which a 20 V bound ADMITS. A bound that admits the thing
+//     it exists to forbid is coverage, not evidence. The case below asserts
+//     mechanically that the pinned bound is strictly inside the analytic one,
+//     so this paragraph cannot become false without going red.
+//
+//     ------------------------------------------------------------------------
+//     THE BOUND — PROVENANCE, IN THE SHAPE INVARIANT 2 USES FOR ITS TIERS
+//     ------------------------------------------------------------------------
+//     MEASURED by plan 33-08 in this repository, on the SHIPPED past-edge leg
+//     (forge::VcoCore calling forge::MorphBlep::addPastStep since plan 33-06),
+//     over all 420 cells of the sweep below with the bound temporarily raised
+//     so nothing could fire:
+//
+//         grid worst |x[n] - x[n-1]| on a reset sample   9.793601 V
+//         the cell it came from   44.1 kHz, band-limited master, ratio 0.50,
+//                                 the 5 % pulse centre, character 0.00
+//         per rate (44.1 / 48 / 96 kHz)   9.793601 / 9.793601 / 9.793601 V
+//
+//     >>> THE ENVELOPE IS RATE-INDEPENDENT TO SIX DECIMAL PLACES, AND THAT IS
+//         RECORDED RATHER THAN ASSUMED. <<< It is the same cell and the same
+//         value at all three rates, because the grid is parametrised by master
+//         cycles PER SAMPLE rather than by hertz — the same construction
+//         invariant 8 uses, and the same reason it works.
+//
+//     THE SAME SWEEP, WITH THE SYNC CORRECTION WITHHELD (the diagnostic pair,
+//     reconstructed per sample from tel.syncCorrection in the SAME pass):
+//
+//         grid worst on the withheld leg                10.000000 V
+//         per rate                       10.000000 / 10.000000 / 10.000000 V
+//
+//     PINNED AT 9.90 V, and the derivation is TWO-SIDED, which is what stops it
+//     being either a restatement of the implementation or the analytic bound in
+//     disguise:
+//       (a) it must be AT OR ABOVE the measured worst, 9.793601 V; and
+//       (b) it must be STRICTLY BELOW what a seam-free core measures on this
+//           same grid, 10.000000 V, or the bound could not tell a core with the
+//           sync BLEP from a core without it.
+//     The admissible interval is therefore [9.793601, 10.000000), whose
+//     midpoint is 9.896800; ROUNDED OUTWARD — upward, since this is an upper
+//     bound — to the nearest hundredth of a volt, giving 9.90 V. Headroom above
+//     the measurement: 0.106 V. Clearance below the withheld leg: 0.100 V.
+//
+//     >>> THE HONEST READING OF THAT INTERVAL, WHICH IS NARROW ON PURPOSE AND
+//         MUST NOT BE WIDENED INTO COMFORT. <<< There are only 0.206 V between
+//         what the shipped leg does at this grid's worst cell and what a core
+//         with NO sync correction at all does there. The seam buys about two
+//         percent of the step at the worst cell. That is a small number and it
+//         is stated plainly rather than dressed up: the sync BLEP's benefit is
+//         real, it is asserted per cell in invariant 11 over a stated
+//         population, and it is NOT large. Widening this bound to a round 10.0
+//         or 11.0 V would delete constraint (b) and turn the case into the
+//         vacuous analytic bound the paragraph above rejects.
+//
+//     EVERY NUMBER ABOVE IS AN APPLE-CLANG FIGURE, like every other decibel and
+//     volt this phase has recorded. `make strict` passes locally at C++11
+//     -pedantic-errors; the CI MinGW leg is plan 33-11's.
+// ---------------------------------------------------------------------------
+TEST_CASE("vco sync: (SC-3 / D-10) the per-sample step across a reset is bounded by a measured envelope") {
+	// THE BOUND. Local to this case, exactly as scenario five's exercise floor
+	// is, and deliberately NOT hoisted to namespace scope: invariant 11 must be
+	// able to say it consults no pinned number, and the cheapest way to make
+	// that structural rather than a promise is for this constant not to be in
+	// scope there at all.
+	const float kSyncResetDeltaBoundV = 9.90f;
+
+	// THE EXERCISE FLOOR. Without it the bound is decoration — see scenario
+	// five's banner for the same argument applied to the hostile tier. This is
+	// also the assertable form of the sentence this case opens with: a
+	// legitimate reset really does step the output by nearly its full range.
+	// Pinned from the measured worst of 9.793601 V, less a 0.79 V cushion.
+	const float kSyncResetDeltaFloorV = 9.0f;
+
+	// THE ANALYTIC BOUND THE BANNER REJECTS, written as an expression of the
+	// suite's own outer tier rather than as a literal, so it moves with it.
+	const float kSyncAnalyticDeltaBoundV = 2.f * kHostileBoundV;   // 20.0 V
+
+	// --- THE RECORDER'S FLAG IS forge::VcoCore::Telemetry::syncFired, AND THAT
+	//     IS ASSERTED HERE RATHER THAN TRUSTED FROM THE HELPER --------------
+	// Every reset sample in this case and in invariant 11 is identified from
+	// the TELEMETRY FLAG and never inferred from the waveform, because
+	// inferring "a large step means a reset" would be circular in a case whose
+	// entire subject is how large the step at a reset is. SyncTrace records
+	// that flag with a deliberate off-by-one (see its banner), so the linkage
+	// between the recorder and the core's own `tel` is checked on a live core
+	// before anything is measured through it — the same validity-first REQUIRE
+	// habit invariant 4 uses on its interleave helper.
+	{
+		const int nv = 512;   // 4 master wraps at dtm = 1/128
+		const MasterBlock mv = makeMasterSaw(nv, kSyncD10Dtm, 5.0, 0.0);
+		forge::VcoInputs bv = coreBase();
+		bv.morph     = 0.5f;
+		bv.character = 1.f;
+
+		forge::VcoBlockDriver dv(SAMPLE_RATES[0]);
+		SyncTrace tv;
+		std::vector<float> ov = driveTraced(dv, nv, [&](int i) {
+			forge::VcoInputs in = bv;
+			in.syncVolts     = mv.volts[(size_t)i];
+			in.syncConnected = true;
+			return in;
+		}, tv);
+		REQUIRE(ov.size() == (size_t)nv);
+		REQUIRE(tv.fired.size() == (size_t)nv);
+
+		// The final entry is recorded from the live core AFTER run() returns,
+		// so all three members can be compared against the core's own telemetry
+		// directly. Exact equality, never a tolerance: this is an identity
+		// claim about a recorder, not a measurement.
+		CHECK(tv.fired[(size_t)(nv - 1)]      == (dv.core.tel.syncFired ? (char)1 : (char)0));
+		CHECK(tv.correction[(size_t)(nv - 1)] == dv.core.tel.syncCorrection);
+		CHECK(tv.jump[(size_t)(nv - 1)]       == dv.core.tel.syncJump);
+
+		// And the flag is not stuck at either value. MEASURED 4 resets in 512
+		// samples, one per master wrap.
+		int firedHere = 0;
+		for (int i = 0; i < nv; ++i) if (tv.fired[(size_t)i]) ++firedHere;
+		CAPTURE(firedHere);
+		REQUIRE(firedHere == 4);
+	}
+
+	const std::vector<SyncDeltaCell> grid = sweepSyncDeltaGrid();
+	REQUIRE(grid.size() == 420u);
+
+	double gridWorstCorrected = 0.0;
+	double gridWorstWithheld  = 0.0;
+	double perRateCorrected[3] = {0.0, 0.0, 0.0};
+	double perRateWithheld[3]  = {0.0, 0.0, 0.0};
+	int    totalResets    = 0;
+	int    cellsWithNoReset = 0;
+	int    cellsNotFinite   = 0;
+	std::string worstCellLabel;
+
+	for (size_t ci = 0; ci < grid.size(); ++ci) {
+		const SyncDeltaCell& c = grid[ci];
+		if (!c.allFinite)     ++cellsNotFinite;
+		if (c.obs.empty())    ++cellsWithNoReset;
+		totalResets += c.resets;
+
+		// k = 1 is the shipped leg; k = 0 is the leg with the seam's deposit
+		// withheld, reconstructed from tel.syncCorrection in this same pass.
+		const double wCorrected = worstResetDeltaAt(c, 1.0);
+		const double wWithheld  = worstResetDeltaAt(c, 0.0);
+
+		const int r = (c.sr == 44100.0) ? 0 : (c.sr == 48000.0 ? 1 : 2);
+		if (wCorrected > perRateCorrected[r]) perRateCorrected[r] = wCorrected;
+		if (wWithheld  > perRateWithheld[r])  perRateWithheld[r]  = wWithheld;
+		if (wWithheld  > gridWorstWithheld)   gridWorstWithheld   = wWithheld;
+		if (wCorrected > gridWorstCorrected) {
+			gridWorstCorrected = wCorrected;
+			// std::string, never a bare const char*: doctest stringifies a
+			// pointer as a hex address, which is the failure plan 33-07 spent a
+			// debugging session on with a 420-cell gate exactly like this one.
+			worstCellLabel = std::string("sr ") + std::to_string((long)c.sr) + " / " + c.edgeName
+			               + " / ratio " + std::to_string(c.ratio) + " / " + c.region
+			               + " / character " + std::to_string(c.character);
+		}
+	}
+
+	// --- NON-VACUITY, ASSERTED BEFORE ANY VALUE CLAIM ---------------------
+	// A sweep in which nothing ever synced would satisfy every bound below by
+	// having no reset samples to bound. MEASURED 13,230 resets: 32 per cell on
+	// the 210 hard-edge cells and 31 on the 210 band-limited ones, where the
+	// polyBLEP residual applied to the sample BEFORE the first wrap moves that
+	// wrap's detection out of the block.
+	CAPTURE(totalResets);
+	CAPTURE(cellsWithNoReset);
+	REQUIRE(totalResets == 13230);
+	REQUIRE(cellsWithNoReset == 0);
+	CHECK(cellsNotFinite == 0);
+
+	CAPTURE(gridWorstCorrected);
+	CAPTURE(gridWorstWithheld);
+	INFO("worst corrected reset delta at: " << worstCellLabel);
+
+	// --- THE BOUND --------------------------------------------------------
+	// MEASURED 9.793601 V against 9.90 V, clearing by 0.106 V.
+	CHECK(gridWorstCorrected <= kSyncResetDeltaBoundV);
+
+	// --- THE BOUND IS EXERCISED, NOT MERELY SATISFIED ---------------------
+	// This is the "it is an ENVELOPE, not a smallness claim" sentence made
+	// assertable. If a future change brought the worst reset step under 9.0 V
+	// this goes RED and asks whether hard sync is still resetting the phase.
+	CHECK(gridWorstCorrected > kSyncResetDeltaFloorV);
+
+	// --- THE BOUND IS NOT THE ANALYTIC ONE --------------------------------
+	// Mechanically asserted so the rejection paragraph cannot rot.
+	CHECK(kSyncResetDeltaBoundV < kSyncAnalyticDeltaBoundV);
+
+	// --- THE BOUND CAN FAIL, AND THAT IS MEASURED HERE RATHER THAN CLAIMED -
+	// A bound pinned from an implementation's own output cannot fail by
+	// construction. This is the other half: the SAME grid with the seam's
+	// deposit withheld measures 10.000000 V, which is ABOVE the pinned bound —
+	// so a core that stopped calling forge::MorphBlep::addPastStep would turn
+	// this case red on the very next run, without anyone editing a test.
+	//
+	// THIS IS A STATEMENT ABOUT THE BOUND'S FALSIFIABILITY, NOT ABOUT THE
+	// CORRECTION'S QUALITY. It is grid-wide and one-sided. The per-cell claim
+	// that the correction actually helps — over a stated population, with the
+	// population where it does NOT help asserted alongside it — is invariant 11
+	// and is deliberately not made here.
+	CHECK(gridWorstWithheld > kSyncResetDeltaBoundV);
+
+	// --- PER RATE, RECORDED AND ASSERTED ----------------------------------
+	// Recorded separately so a later phase can see whether the envelope is
+	// rate-dependent. MEASURED: it is not — 9.793601 V at all three rates, from
+	// the same cell, because the grid is parametrised by master cycles per
+	// sample rather than by hertz.
+	for (int r = 0; r < 3; ++r) {
+		CAPTURE(SAMPLE_RATES[r]);
+		CAPTURE(perRateCorrected[r]);
+		CAPTURE(perRateWithheld[r]);
+		INFO("per-rate SC-3 envelope; MEASURED 9.793601 corrected and 10.000000 withheld at every rate");
+		CHECK(perRateCorrected[r] <= kSyncResetDeltaBoundV);
+		CHECK(perRateCorrected[r] > kSyncResetDeltaFloorV);
+		CHECK(perRateWithheld[r]  > kSyncResetDeltaBoundV);
 	}
 }
