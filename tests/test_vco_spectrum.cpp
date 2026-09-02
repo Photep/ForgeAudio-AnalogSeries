@@ -1325,14 +1325,41 @@ SyncMaster makeSyncMaster(int nTotal, int Km, double amp, SyncMasterEdge edge) {
 // SYNC ROWS JOIN THAT PROBLEM. They must NOT be captured as a golden from one
 // toolchain, and the CI MinGW leg (plan 33-11) is where their reproduction is
 // actually measured rather than assumed.
-//   AND ONE CLAUSE OF ITEM 8 IS INHERITED HERE RATHER THAN RE-MEASURED, WHICH
-// IS SAID OUT LOUD BECAUSE IT IS THE LARGEST OPEN RISK IN THIS TABLE: the
-// 1.0 dB step-dominated bound was measured on Phase 32's FREE-RUNNING cells, not
-// on hard-synced ones. The physical argument for it transfers — a true value
-// step produces a broad skirt and a genuine arg-max — but the number has never
-// been measured on this signal class. If a step-dominated sync cell reproduces
-// outside 1.0 dB on another toolchain, THAT IS A FINDING ABOUT THE BOUND and it
-// is escalated per the anti-softening rule, not absorbed by widening the column.
+//   AND ONE CLAUSE OF ITEM 8 WAS INHERITED HERE RATHER THAN RE-MEASURED, WHICH
+// PLAN 33-07 SAID OUT LOUD AS THE LARGEST OPEN RISK IN THIS TABLE: the 1.0 dB
+// step-dominated bound was measured on Phase 32's FREE-RUNNING cells, not on
+// hard-synced ones. 33-07 wrote that if a step-dominated sync cell reproduced
+// outside 1.0 dB on another toolchain, THAT WOULD BE A FINDING ABOUT THE BOUND,
+// escalated per the anti-softening rule and not absorbed by widening the column.
+//
+// >>> IT HAS NOW BEEN MEASURED ON GCC AND MinGW, AND THE ANSWER IS FAVOURABLE
+//     FOR THE CLASS THE BOUND GOVERNS AND UNFAVOURABLE FOR A CLASS NOBODY HAD
+//     SEPARATED OUT. READ BOTH HALVES. <<<
+// Measured by plan 33-11a on CI run 33617538327, commit d18bdde, on
+// ubuntu-latest (GCC / libstdc++ / glibc) and windows-latest (MinGW g++),
+// against these Apple-clang columns, over all 420 rows:
+//
+//   * THE 210 INSTRUMENT-VALID ROWS — every "gated" and every "regression" row —
+//     reproduce to a WORST OF 0.481687 dB (cell 363), inside the 1.0 dB
+//     step-dominated bound with 52 % of it to spare. NOT ONE of the 210 exceeds
+//     1.0 dB. The inherited bound TRANSFERS to hard-synced cells, and that is
+//     33-07's open risk answered by measurement rather than by argument.
+//
+//   * THE 210 "diagnostic" ROWS reproduce to a WORST OF 3.797379 dB (cell 273),
+//     and 14 of them exceed 1.0 dB. That is worse than the 3.02596 dB
+//     free-running divergence that produced item 8's plateau bound in the first
+//     place. EVERY ONE of the 14 is instrument-invalid; NOT ONE is a row this
+//     grid gates.
+//
+// THE FIX IS A TIER, NOT A WIDER COLUMN, and the tier is the one this table
+// ALREADY carries: see kBoundDiagnosticDb in the D-11 gate case below. A
+// diagnostic row is one where fundamentalDominanceDb reports the master's
+// fundamental is NOT the strongest bin on its own harmonic lattice — so
+// aliasPeakDb is dividing by a bin with essentially no energy in it (0.81 to
+// 2.59 against harmonics near 6000 in the HAZARD THREE table below), and a
+// quotient by a near-empty denominator moves for reasons that have nothing to do
+// with the alias floor. THE 1.0 AND 4.0 dB BOUNDS ARE UNTOUCHED. Nothing was
+// widened for the class 33-07 measured, and nothing was reclassified.
 //
 // ===========================================================================
 // >>> PLAN 33-07 REFUSES, IN WRITING, TO WRITE AN IMPROVEMENT GATE FOR THE
@@ -4750,9 +4777,20 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 // the pre-reset phase and at the post-reset phase, which is exactly what
 // forge::VcoCore::Telemetry::syncJump records. A cell is STEP-DOMINATED when
 // its mean absolute sync jump, measured ON THE SHIPPED CORE'S OWN LEG, is at
-// least 0.01 in pre-scale units (0.05 V at the output). Below that the reset
-// moves the waveform by less than one percent of its full range and there is no
+// least kStepDominatedJumpFloor in pre-scale units. Below that the reset moves
+// the waveform by about one percent of its full range or less and there is no
 // step for the arg-max to lock onto.
+//
+// >>> THE FLOOR'S VALUE IS 0.00958394 AND IT IS NOT THE ROUND 0.01 IT WAS
+//     UNTIL PLAN 33-11a. THE ONE PLACE ITS DERIVATION LIVES IS THE D-11 GATE
+//     CASE BELOW; IT IS NOT RESTATED HERE, BECAUSE A DERIVATION KEPT IN TWO
+//     PLACES IS A DERIVATION THAT WILL DISAGREE WITH ITSELF. <<<
+// In one line: the round 0.01 was not inside an empty interval of the measured
+// distribution — it was inside ONE CELL'S OWN cross-toolchain range — and
+// 0.00958394 is the geometric centre of the widest interval that is empty on
+// all three toolchains at once. The floor MOVED DOWN, so this change can only
+// make a cell step-dominated that was not; it can never grant a cell the wider
+// bound. On this toolchain it moves NO cell at all.
 //
 // THE CRITERION IS FIXED HERE, IN THIS COMMENT, BEFORE THE POPULATION IS
 // COUNTED AND BEFORE ANY MARGIN IS COMPARED AGAINST IT. A CLASSIFICATION
@@ -4762,7 +4800,9 @@ TEST_CASE("vco spectrum: (D-06) the sync placement probe reproduces forge::VcoCo
 TEST_CASE("vco spectrum: (D-06 / D-11) the sync placement measurement - six legs on the sync sub-grid") {
 
 	// The physical criterion, as a constant, stated above before any count.
-	const double kStepDominatedJumpFloor = 0.01;   // pre-scale units
+	// The value and its derivation belong to the D-11 gate case below; this case
+	// uses it and does not re-derive it.
+	const double kStepDominatedJumpFloor = 0.00958394;   // pre-scale units — plan 33-11a
 	const double kBoundStepDominatedDb   = 1.0;    // register item 8
 	const double kBoundPlateauDb         = 4.0;    // register item 8
 
@@ -5473,12 +5513,13 @@ TEST_CASE("vco spectrum: (D-06 / D-11) the sync placement measurement - six legs
 //
 //   (i)  THE SYNC JUMP. The reset moves the slave's phase, and the frozen
 //        waveshaper's value moves with it. That difference is exactly what
-//        forge::VcoCore::Telemetry::syncJump records, and plan 33-05 fixed the
-//        floor at a mean absolute 0.01 in pre-scale units (0.05 V at the
-//        output) — below that the reset moves the waveform by less than one
-//        percent of its range and there is no step for the arg-max to lock on
-//        to. THAT FLOOR WAS FIXED IN PLAN 33-05'S SOURCE, BEFORE ANY CELL IN
-//        THIS FILE WAS GATED, AND IS INHERITED HERE UNCHANGED.
+//        forge::VcoCore::Telemetry::syncJump records, and the floor is a mean
+//        absolute kStepDominatedJumpFloor in pre-scale units — below that the
+//        reset moves the waveform by about one percent of its range or less and
+//        there is no step for the arg-max to lock on to. PLAN 33-05 FIXED THAT
+//        FLOOR AT THE ROUND 0.01 BEFORE ANY CELL IN THIS FILE WAS GATED, AND
+//        PLAN 33-11a MOVED IT — see THE FLOOR'S PLACEMENT below, which is the
+//        one place its value is derived.
 //
 //   (ii) THE SLAVE'S OWN DISCONTINUITY. A saw or a pulse carries a value step
 //        every cycle whether or not anything syncs it, and so does a square
@@ -5506,6 +5547,75 @@ TEST_CASE("vco spectrum: (D-06 / D-11) the sync placement measurement - six legs
 // below for exactly that reason, and both populations are asserted EXACTLY so
 // that moving one cell between them turns two assertions red rather than none.
 //
+// ===========================================================================
+// >>> THE FLOOR'S PLACEMENT — MEASURED, ON ALL THREE TOOLCHAINS, AND THE ONE
+//     PLACE kStepDominatedJumpFloor's VALUE IS DERIVED. PLAN 33-11a. <<<
+//
+// WHAT WENT WRONG WITH THE ROUND 0.01, IN ONE SENTENCE: it was never checked
+// against the distribution it partitions, and it does not sit in a gap of that
+// distribution — IT SITS INSIDE ONE CELL'S OWN CROSS-TOOLCHAIN RANGE. Cell
+// ci = 21 (44.1 kHz, hard-edge master, ratio 1.00, sine centre, character 1.00)
+// measures a mean absolute jump of 0.0100836423 on Apple clang and 0.0098816118
+// on GCC and on MinGW. The old floor lay BETWEEN those two numbers, so the cell
+// was step-dominated on one toolchain and plateau on the other, and ten
+// assertions in this case cascaded from it on CI run 33607312137.
+//
+// PLAN 33-08 SET ITS ANTI-CIRCULARITY THRESHOLD INSIDE A MEASURED EMPTY GAP AND
+// IT HELD ACROSS THE TOOLCHAIN CROSSING; THIS FLOOR WAS THE ONE CLASSIFIER IN
+// THE PHASE NEVER PLACED IN ONE, AND IT IS THE ONE THAT BROKE. The method below
+// is 33-08's, applied late.
+//
+// THE MEASUREMENT. All 420 cells, on all three CI toolchains at once — Apple
+// clang (macos-latest), GCC/libstdc++ (ubuntu-latest) and MinGW g++
+// (windows-latest) — from CI run 33617538327 on commit d18bdde. Each cell is
+// therefore not a POINT on the axis but the INTERVAL its three measurements
+// span, and an interval that is empty of every cell's whole interval is an
+// interval where the classification cannot depend on which toolchain ran.
+//
+// THE WIDEST SUCH INTERVAL THAT MOVES NO CELL BETWEEN THE CLASSES:
+//
+//     ( 0.0092952310 , 0.0098816118 )      a ratio of 1.063084
+//        ^ cell 377's toolchain MAX          ^ cell 21's toolchain MIN
+//        (96 kHz, band-limited, square,      (44.1 kHz, hard-edge, sine,
+//         character 1.00; MinGW is the        character 1.00; GCC and MinGW
+//         high end, clang reads 0.0089839878) agree, clang reads 0.0100836423)
+//
+// THE FLOOR IS ITS GEOMETRIC CENTRE, 0.0095839378, WRITTEN AS 0.00958394. The
+// centre is geometric rather than arithmetic because the drift this has to
+// survive is MULTIPLICATIVE — the measured cross-toolchain movement of this
+// quantity runs to 16.9 % of the cell's own value at the top of the grid — so
+// equal RELATIVE clearance on each side is the quantity worth maximising. The
+// clearance is 1.0311x below and 1.0311x above, symmetric to five digits.
+//
+// TWO WIDER INTERVALS EXIST AND BOTH ARE DECLINED, WITH THE REASON, so that the
+// choice is auditable rather than merely stated:
+//   * ( 0.0100836423 , 0.0119377152 ), ratio 1.1839 — DECLINED. It puts cell 21
+//     in the PLATEAU class, which loosens that cell's threshold from -31 to -28
+//     and grants the 4.0 dB bound to the very cell that failed. That is the
+//     anti-reclassification clause's forbidden move by name.
+//   * ( 0.0080811811 , 0.0089839878 ), ratio 1.1117 — DECLINED. It is only
+//     modestly wider and it moves cells 304 and 377 the other way, which means
+//     re-pinning two thresholdDb columns and two provenance strings. Tightening
+//     is the safe direction, but the chosen interval costs ZERO edits to the pin
+//     table, and a fix that touches no pinned number is worth more than four
+//     tenths of a percent of extra clearance.
+//   * The widest empty interval anywhere in the distribution is 1.2893x at
+//     about 0.0027 — declined outright, because moving the floor there would
+//     reclassify a whole handful of cells AND would make the criterion's
+//     physical sentence ("about one percent of the waveform's range") false.
+//
+// AND THE HONEST LIMIT, STATED RATHER THAN LEFT TO BE INFERRED: 1.063x IS A
+// NARROW GAP. 33-08's was 1.44x. The largest cross-toolchain drift measured
+// among the cells NEAR this floor is 3.5 % (cell 377 itself: 0.0089839878 on
+// clang against 0.0092952310 on MinGW), and the clearance either side is 3.1 %.
+// A FOURTH TOOLCHAIN THAT DRIFTED LIKE THE WORST CELL IN THIS NEIGHBOURHOOD
+// COULD STILL CROSS IT. That is exactly why both edges are ASSERTED below
+// rather than only commented: the next approach becomes a RED THAT NAMES THE
+// CELL, at 2 % of clearance — a third of the way before a misclassification —
+// instead of a silent reclassification that surfaces as ten unrelated-looking
+// count failures, which is what happened last time.
+// ===========================================================================
+//
 // >>> THE TIERS, AND THE ONE DECISION PLAN 33-05 LEFT OPEN. <<<
 // 33-05 asked plan 33-07 to "decide whether to gate the instrument-invalid half
 // at all". THE DECISION IS: NO, AND IT IS TAKEN ON THE INSTRUMENT RATHER THAN ON
@@ -5518,13 +5628,85 @@ TEST_CASE("vco spectrum: (D-06 / D-11) the sync placement measurement - six legs
 // 44.1 kHz, which register item 8 makes the BINDING rate, and "regression" at 48
 // and 96 kHz, which are asserted on the same terms and exist so a rate-dependent
 // regression cannot hide at one rate.
+//
+// ===========================================================================
+// >>> AND THE REPRODUCTION BOUND IS TIERED THE SAME WAY, WHICH IS PLAN 33-11a'S
+//     SECOND CHANGE AND THE STRUCTURAL ANSWER TO 33-07'S OPEN RISK. <<<
+//
+// Until 33-11a this case answered the question "how far may this row's decibel
+// move on another toolchain?" with the STEP/PLATEAU class alone, on all 420
+// rows. The tier and the class were doing two different jobs with one number:
+// the tier decides whether the figure IS AN ALIAS FLOOR AT ALL, and the class
+// decides how sharply an alias floor's arg-max is defined. A row can be
+// step-dominated and still not be an alias floor.
+//
+// MEASURED — CI run 33617538327, commit d18bdde, ubuntu-latest and
+// windows-latest against these Apple-clang columns:
+//
+//     population              n     worst |runDb - measuredDb|   over 1.0 dB
+//     instrument-valid      210            0.481687 dB               0
+//     diagnostic            210            3.797379 dB              14
+//
+// THE PARTITION IS EXACT. All fourteen rows that missed the 1.0 dB bound are
+// diagnostic; not one instrument-valid row missed it; and the instrument-valid
+// worst has 52 % of the bound still unused. THE PHYSICS IS THE SAME PHYSICS THE
+// TIER ALREADY ENCODES: on a diagnostic row aliasPeakDb divides by the master's
+// fundamental bin, and on a diagnostic row that bin is nearly empty — 0.81 to
+// 2.59 in absolute magnitude against harmonics near 6000, per the HAZARD THREE
+// table. A quotient whose denominator is 70 dB down is a quotient whose value
+// moves with the denominator's rounding, and it moves in decibels.
+//
+// SO THE DIAGNOSTIC ROWS EARN A THIRD BOUND, kBoundDiagnosticDb, AND THE 1.0 AND
+// 4.0 dB BOUNDS ARE LEFT EXACTLY AS REGISTER ITEM 8 SET THEM. Nothing was
+// widened for the class item 8 measured; a class item 8 never separated out
+// acquired its own number. The thresholdDb DERIVATION is deliberately NOT
+// tiered — every row's threshold is still ceil(measuredDb + 1.0 or 4.0) by its
+// step/plateau class, exactly as pinned — so this change re-pins nothing. The
+// two quantities simply stopped sharing one variable.
 // ===========================================================================
 TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its per-cell pinned threshold, and every pinned number reproduces") {
 
 	// The criterion's constants, named above before any count below.
-	const double kStepDominatedJumpFloor = 0.01;   // pre-scale units — plan 33-05's, inherited unchanged
-	const double kBoundStepDominatedDb   = 1.0;    // register item 8
-	const double kBoundPlateauDb         = 4.0;    // register item 8
+	//
+	// THE FLOOR. Plan 33-05 set it at the round 0.01 and plan 33-07 inherited it
+	// unchanged; plan 33-11a MEASURED the distribution it partitions on all three
+	// CI toolchains and moved it to the geometric centre of the widest
+	// three-toolchain-empty interval that reclassifies no cell. Full derivation in
+	// THE FLOOR'S PLACEMENT above. The two edges are the interval, as measured,
+	// and they are ASSERTED below — not decoration.
+	const double kStepDominatedJumpFloor = 0.00958394;    // pre-scale units — plan 33-11a
+	const double kJumpGapLowerEdge       = 0.0092952310;  // MEASURED: cell 377's cross-toolchain MAX (windows-latest / MinGW)
+	const double kJumpGapUpperEdge       = 0.0098816118;  // MEASURED: cell 21's cross-toolchain MIN (ubuntu-latest and windows-latest)
+	// The clearance the floor must keep from the nearest cell on EITHER side, on
+	// whatever toolchain is running. 1.02 is deliberately BELOW the 1.0311 the
+	// chosen interval actually affords, so this trips on APPROACH rather than on
+	// arrival: a cell has to come within 2 % of the floor to red it, and it has to
+	// come within 3.11 % to actually change class. A gate that only fires once the
+	// damage is done is the gate this plan is here to replace.
+	const double kJumpFloorMinClearance  = 1.02;
+
+	const double kBoundStepDominatedDb   = 1.0;    // register item 8 — instrument-valid, step-dominated. UNCHANGED.
+	const double kBoundPlateauDb         = 4.0;    // register item 8 — instrument-valid, plateau.        UNCHANGED.
+	// THE THIRD BOUND — plan 33-11a. For the 210 DIAGNOSTIC rows only, where
+	// aliasPeakDb divides by a bin that carries essentially no energy and the
+	// quotient moves in decibels for no DSP reason. See the banner above.
+	//
+	// >>> ITS DERIVATION, SO THAT IT IS NOT A ROUND NUMBER SOMEBODY LIKED. <<<
+	// The worst measured non-Apple divergence over the 210 diagnostic rows is
+	// 3.797379 dB (cell 273, ubuntu-latest and windows-latest alike, CI run
+	// 33617538327 on commit d18bdde). Register item 8's plateau bound was itself
+	// derived by giving a measured worst its headroom: 4.0 dB over a measured
+	// 3.02596 dB, which is 1.3219x. Applying THE SAME PROPORTIONAL HEADROOM to
+	// this class's measured worst gives 3.797379 x 1.3219 = 5.019736 dB, and that
+	// is rounded INWARD to 5.0 — a tightening of 0.019736 dB, never outward.
+	//
+	// >>> WHAT IT CAN AND CANNOT CATCH, SAID PLAINLY. <<< It catches any change of
+	// 5.0 dB or more in a diagnostic row's figure, and the bound-class probe below
+	// proves it fires on all 210 of them. It CANNOT distinguish toolchain noise
+	// from a real defect anywhere between 3.797379 and 5.0 dB on this class: in
+	// that band the check is inert, and no claim is made that it is not. The 210
+	// instrument-valid rows are unaffected and keep the 1.0 / 4.0 split.
+	const double kBoundDiagnosticDb      = 5.0;    // plan 33-11a — diagnostic tier only
 
 	const std::vector<SyncCell>& grid = syncGrid();
 	const std::size_t nCells = grid.size();
@@ -5548,6 +5730,9 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 	std::vector<char>   jumpStep(nCells, 0);
 	std::vector<char>   instrumentValid(nCells, 0);
 	std::vector<double> fundDom(nCells, 0.0);
+	// Retained per cell rather than consumed in place, because plan 33-11a's gap
+	// assertions below need the DISTRIBUTION and not only each cell's verdict.
+	std::vector<double> meanJump(nCells, 0.0);
 
 	for (std::size_t ci = 0; ci < nCells; ++ci) {
 		const SyncCell& cell = grid[ci];
@@ -5564,6 +5749,7 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 
 		// CLAUSE (i) — the sync jump, on the correction-free reference leg.
 		const double meanAbsJump = (d.fires > 0) ? d.jumpAbsSum / (double)d.fires : 0.0;
+		meanJump[ci] = meanAbsJump;
 		jumpStep[ci] = (meanAbsJump >= kStepDominatedJumpFloor) ? 1 : 0;
 		// CLAUSE (ii) — the slave's own discontinuity, by Phase 32's measured
 		// partition of the shape centres.
@@ -5574,6 +5760,57 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 
 		stepDom[ci] = (jumpStep[ci] || shapeStep[ci]) ? 1 : 0;
 	}
+
+	// =======================================================================
+	// >>> THE GAP, ASSERTED — BOTH EDGES, ON WHATEVER TOOLCHAIN IS RUNNING.
+	//     PLAN 33-11a. READ THE FLOOR'S PLACEMENT BANNER BEFORE THIS BLOCK. <<<
+	//
+	// The floor is only defensible while the interval it sits in is still empty.
+	// The old floor's interval was NOT empty — cell 21's own cross-toolchain range
+	// straddled it — and nothing in this file said so, so the emptiness failed
+	// silently and surfaced as ten population-count failures with no cell named.
+	//
+	// THREE ASSERTIONS, IN INCREASING STRENGTH:
+	//   1. the floor lies strictly inside the two MEASURED edges (a static
+	//      invariant: it catches an edit to the floor that walks it out of the
+	//      interval its own comment claims);
+	//   2. the nearest cell BELOW the floor, on THIS run, clears it by at least
+	//      kJumpFloorMinClearance;
+	//   3. the nearest cell ABOVE it does the same.
+	// Assertions 2 and 3 are the live ones. They are computed from THIS
+	// toolchain's own measurements, so a drift into the interval reds HERE and
+	// CAPTUREs the offending cell's index and value, BEFORE the population counts
+	// below can disagree.
+	// =======================================================================
+	CHECK(kJumpGapLowerEdge < kStepDominatedJumpFloor);
+	CHECK(kStepDominatedJumpFloor < kJumpGapUpperEdge);
+
+	double nearestBelowFloor = 0.0, nearestAboveFloor = 1e30;
+	int    nearestBelowCell = -1, nearestAboveCell = -1;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		// The floor decides the class only where clause (ii) has not already
+		// decided it, so the emptiness that matters is the emptiness among the
+		// cells the floor actually adjudicates.
+		if (shapeStep[ci]) continue;
+		const double m = meanJump[ci];
+		if (m < kStepDominatedJumpFloor) {
+			if (m > nearestBelowFloor) { nearestBelowFloor = m; nearestBelowCell = (int)ci; }
+		} else {
+			if (m < nearestAboveFloor) { nearestAboveFloor = m; nearestAboveCell = (int)ci; }
+		}
+	}
+	CAPTURE(kStepDominatedJumpFloor);
+	CAPTURE(kJumpGapLowerEdge);
+	CAPTURE(kJumpGapUpperEdge);
+	CAPTURE(kJumpFloorMinClearance);
+	CAPTURE(nearestBelowFloor);
+	CAPTURE(nearestBelowCell);
+	CAPTURE(nearestAboveFloor);
+	CAPTURE(nearestAboveCell);
+	REQUIRE(nearestBelowCell >= 0);   // non-vacuity: the interval has a cell on each side
+	REQUIRE(nearestAboveCell >= 0);
+	CHECK(nearestBelowFloor * kJumpFloorMinClearance <= kStepDominatedJumpFloor);
+	CHECK(nearestAboveFloor >= kStepDominatedJumpFloor * kJumpFloorMinClearance);
 
 	// =======================================================================
 	// THE POPULATIONS, COUNTED ONLY NOW, AND ASSERTED EXACTLY.
@@ -5670,6 +5907,14 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 		// THE PROVENANCE NAMES THE CLASS'S BOUND, and the class is re-derived
 		// above from the physical criterion. A provenance swapped to buy a cell
 		// the wider bound goes red here, and so does a class that moved.
+		//
+		// >>> THIS IS THE *DERIVATION* MARGIN, WHICH PLAN 33-11a DELIBERATELY DID
+		//     NOT TIER. <<< Every thresholdDb in SYNC_PINS was pinned as
+		//     ceil(measuredDb + 1.0 or 4.0) by the row's step/plateau class,
+		//     diagnostic rows included, and it stays pinned that way. The
+		//     REPRODUCTION bound further down is the one that gained a diagnostic
+		//     tier. Keeping the two apart is what makes this fix cost zero edits
+		//     to the pin table.
 		const double bound = stepDom[ci] ? kBoundStepDominatedDb : kBoundPlateauDb;
 		if (!isDiagnostic) {
 			const bool namesStepBound    = (prov.find("measuredDb + 1.0") != std::string::npos);
@@ -5744,15 +5989,28 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 	//     in the SyncCell banner's warning signs and in SYNC_PINS' own banner.
 	//
 	// The bound is the class's, not a fixed number, because that is the quantity
-	// register item 8 actually measured.
+	// register item 8 actually measured — AND SINCE PLAN 33-11a IT IS THE TIER'S
+	// AS WELL. An instrument-valid row keeps register item 8's per-class split
+	// exactly; a diagnostic row, whose figure is not an alias floor and whose
+	// normalising bin is nearly empty, earns kBoundDiagnosticDb. Both halves were
+	// measured on GCC and MinGW — see the banner above this case.
 	// =======================================================================
-	double worstReproduction = 0.0;
-	int    worstReproductionCell = -1;
+	double worstReproduction = 0.0, worstReproductionValid = 0.0, worstReproductionDiag = 0.0;
+	int    worstReproductionCell = -1, worstReproductionValidCell = -1, worstReproductionDiagCell = -1;
+	int    nReproValid = 0, nReproDiag = 0;
 	for (std::size_t ci = 0; ci < nCells; ++ci) {
 		const SyncCell& cell = grid[ci];
-		const double bound = stepDom[ci] ? kBoundStepDominatedDb : kBoundPlateauDb;
+		const double classBound = stepDom[ci] ? kBoundStepDominatedDb : kBoundPlateauDb;
+		const double bound = instrumentValid[ci] ? classBound : kBoundDiagnosticDb;
 		const double delta = std::fabs(runDb[ci] - (double)cell.measuredDb);
 		if (delta > worstReproduction) { worstReproduction = delta; worstReproductionCell = (int)ci; }
+		if (instrumentValid[ci]) {
+			++nReproValid;
+			if (delta > worstReproductionValid) { worstReproductionValid = delta; worstReproductionValidCell = (int)ci; }
+		} else {
+			++nReproDiag;
+			if (delta > worstReproductionDiag) { worstReproductionDiag = delta; worstReproductionDiagCell = (int)ci; }
+		}
 		const std::string edgeName(cell.edgeName);
 		const std::string region(cell.region);
 		CAPTURE(ci);
@@ -5763,12 +6021,69 @@ TEST_CASE("vco spectrum: (SYNC-02 / D-11) the sync alias floor stays below its p
 		CAPTURE(cell.character);
 		CAPTURE(cell.measuredDb);
 		CAPTURE(runDb[ci]);
+		CAPTURE(classBound);
 		CAPTURE(bound);
 		CAPTURE(delta);
 		CHECK(delta <= bound);
 	}
 	CAPTURE(worstReproduction);
 	CAPTURE(worstReproductionCell);
+	CAPTURE(worstReproductionValid);
+	CAPTURE(worstReproductionValidCell);
+	CAPTURE(worstReproductionDiag);
+	CAPTURE(worstReproductionDiagCell);
+	CAPTURE(nReproValid);
+	CAPTURE(nReproDiag);
+	CHECK(nReproValid == 210);
+	CHECK(nReproDiag == 210);
+
+	// =======================================================================
+	// >>> THE BOUND-CLASS PROBE — PLAN 33-11a. THE TIERING IS DISCRIMINATING,
+	//     NOT DECORATIVE, AND ITS POPULATIONS ARE WRITTEN DOWN BEFORE THE LOOP
+	//     RUNS. <<<
+	//
+	// The probe SUBSTITUTES a delta rather than ADDING one to the measured
+	// figure, and the reason is this plan's own finding: the measured deltas are
+	// themselves toolchain-dependent by up to 3.797379 dB on the diagnostic
+	// class, so an additive probe cannot state an exact population that holds on
+	// every toolchain — which is the exact defect this plan exists to remove. A
+	// substituted delta tests the BOUND ASSIGNMENT, is a pure function of the
+	// tier and the class, and is therefore identical on every toolchain.
+	//
+	// THE STATED POPULATIONS, DERIVED FROM THE THREE BOUNDS AND NOT OBSERVED:
+	// 1.5 dB is above the step-dominated bound and below the other two, so it must
+	// fail exactly the instrument-valid step-dominated rows. 4.5 dB is above the
+	// plateau bound too, so it must fail every instrument-valid row and no
+	// diagnostic one. 5.5 dB is above all three, so it must fail everything. And
+	// 0.5 dB is below all three, so it must fail nothing — the zero row is what
+	// stops this probe from being a counter that only ever goes up.
+	// =======================================================================
+	const int kStatedBoundProbe05 = 0;     // below every bound
+	const int kStatedBoundProbe15 = 192;   // instrument-valid AND step-dominated
+	const int kStatedBoundProbe45 = 210;   // every instrument-valid row, both classes
+	const int kStatedBoundProbe55 = 420;   // every row on the grid
+
+	int boundProbe05 = 0, boundProbe15 = 0, boundProbe45 = 0, boundProbe55 = 0;
+	for (std::size_t ci = 0; ci < nCells; ++ci) {
+		const double classBound = stepDom[ci] ? kBoundStepDominatedDb : kBoundPlateauDb;
+		const double bound = instrumentValid[ci] ? classBound : kBoundDiagnosticDb;
+		if (0.5 > bound) ++boundProbe05;
+		if (1.5 > bound) ++boundProbe15;
+		if (4.5 > bound) ++boundProbe45;
+		if (5.5 > bound) ++boundProbe55;
+	}
+	CAPTURE(kStatedBoundProbe05);
+	CAPTURE(boundProbe05);
+	CAPTURE(kStatedBoundProbe15);
+	CAPTURE(boundProbe15);
+	CAPTURE(kStatedBoundProbe45);
+	CAPTURE(boundProbe45);
+	CAPTURE(kStatedBoundProbe55);
+	CAPTURE(boundProbe55);
+	CHECK(boundProbe05 == kStatedBoundProbe05);
+	CHECK(boundProbe15 == kStatedBoundProbe15);
+	CHECK(boundProbe45 == kStatedBoundProbe45);
+	CHECK(boundProbe55 == kStatedBoundProbe55);
 
 	// =======================================================================
 	// >>> THE GATE ITSELF. <<<
