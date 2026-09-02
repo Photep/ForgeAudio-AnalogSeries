@@ -1315,6 +1315,72 @@ TEST_CASE("vco core: naive pitch tracks the C4 reference on the OUTPUT within 1 
 //    not a defect. Phase 34's OUT-01..03 owns output conditioning; writing a
 //    +/-5 V assertion here would contradict D-13 and pin an output stage that
 //    has not been designed yet.
+//
+//    ------------------------------------------------------------------------
+//    THE SYNC SCENARIO — ADDED BY PLAN 33-08, RE-DERIVED AND NOT INHERITED
+//    ------------------------------------------------------------------------
+//    >>> NOTHING ABOVE THIS LINE WAS EDITED. Every scenario row, every figure
+//        and both tier constants are exactly as plans 32-08 and 32-09 left
+//        them. This is a NEW row. <<<
+//
+//    WHAT WAS SWEPT. Invariant 10's 420-cell SC-3 grid: three sample rates x
+//    two master edge shapes x seven master/slave ratios (0.50, 0.75, 1.00,
+//    1.50, 2.50, 3.50, 5.50) x the five shape centres x character at both
+//    ends, 4096 samples each, master patched and syncConnected true on every
+//    one. The worst |out| is taken over the WHOLE block, not only over reset
+//    samples — a sync transient that rang for a few samples after the reset
+//    would otherwise be invisible to this row.
+//
+//    THE MEASUREMENT, taken with the tiers not yet asserted so nothing could
+//    fire:
+//
+//        grid-wide worst |out|               8.218569 V
+//        the cell it came from   44.1 kHz, hard-edge master, ratio 1.50, the
+//                                square centre, character 0.00
+//        per rate (44.1 / 48 / 96 kHz)   8.218569 / 8.216589 / 8.216589 V
+//                                (48 and 96 kHz peak at ratio 5.50 instead,
+//                                 same shape centre and character)
+//
+//    >>> THIS IS THE LARGEST ENVELOPE MEASURED ANYWHERE IN THIS SUITE. <<<
+//    Scenario five's Nyquist-ceiling worst case reaches 7.150281 V and the
+//    audio-rate MORPH sweep reaches 6.289864 V; hard sync reaches 8.218569 V,
+//    which is 1.07 V above the previous maximum. It is still 1.78 V inside
+//    kHostileBoundV.
+//
+//    WHICH TIER IS ASSERTED, AND THE DECISION IS THE MEASUREMENT'S:
+//      - kHostileBoundV IS asserted, unconditionally, grid-wide AND per rate.
+//        It is the phase-wide outer bound and this is exactly the "every
+//        scenario any later plan adds" clause plan 32-08 wrote.
+//      - kMusicalBoundV IS WITHHELD, and the withholding is ITSELF ASSERTED,
+//        the same way invariant 6 does it. 8.216589 V is 2.67 V outside the
+//        5.55 V tier at the LEAST favourable rate. Neither constant was
+//        widened, and widening one to admit this scenario would have destroyed
+//        what the tier means for the four scenarios that assert it.
+//
+//    >>> THE PER-RATE FORM WAS CHECKED BEFORE IT WAS WRITTEN, BECAUSE
+//        INVARIANT 6 RECORDS A TRAP THERE. <<< That case explains why its
+//        excess assertion is grid-wide and not per-rate: at 96 kHz its excess
+//        vanishes entirely and a per-rate form would be RED on correct
+//        behaviour. MEASURED here: the sync scenario's per-rate worsts are
+//        8.218569 / 8.216589 / 8.216589 V, so all three exceed the musical
+//        tier and the PER-RATE form is true. It is therefore the form written,
+//        and it is strictly stronger than the grid-wide one.
+//
+//    AND A CUSHIONED EXERCISE FLOOR IS AFFORDABLE HERE, which invariant 6 says
+//    it could not afford. Invariant 6 clears the musical tier by 0.74 V, so a
+//    1.5 V cushion would have put its floor BELOW the tier where it would
+//    assert nothing. This scenario clears it by 2.67 V at the least favourable
+//    rate, so scenario five's rule applies unchanged: the minimum of the three
+//    per-rate worsts (8.216589 V) less a 1.5 V cushion, pinned at 6.70 V.
+//
+//    WHY THE SYNC ENVELOPE IS LARGER THAN THE FREE-RUNNING ONE, in one
+//    sentence, so the number is not mistaken for a defect: the reset places a
+//    full-scale step at an arbitrary sub-sample position and the band-limiter
+//    deposits a residual for it on the SAME sample, so the corrected sample
+//    carries the waveform's own excursion plus a correction sized to a
+//    full-scale discontinuity — which is the D-13 additive-and-bipolar
+//    situation invariant 2's own kMusicalBoundV derivation already describes,
+//    driven harder.
 // ---------------------------------------------------------------------------
 TEST_CASE("vco core: output magnitude stays inside two measured tiers (D-18b)") {
 	// kHostileBoundV — THE OUTER BOUND. Applies to EVERY scenario below, with no
@@ -2767,6 +2833,26 @@ TEST_CASE("vco sync: (SYNC-01 / D-01 / D-03) a master rising edge resets the pha
 			// a transient plan 33-06 is about to change. T-33-07 makes plan 33-08
 			// the owner of the sync envelope's tighter tier. THE HEADROOM IS
 			// RECORDED SO THAT PLAN IS NOT STARTING FROM NOTHING.
+			//
+			// >>> THE THREE FIGURES ABOVE ARE PRE-SEAM AND ARE NOW STALE.
+			//     APPENDED BY PLAN 33-08; NOTHING PLAN 33-04 WROTE WAS DELETED,
+			//     because the paragraph is a correct record of what it measured
+			//     and of WHY it withheld the tier. <<< Plan 33-06 landed the seam
+			//     and this drive moved with it. RE-MEASURED on the shipped
+			//     past-edge leg: 4.908170 / 4.910800 / 4.920170 V at 44.1 / 48 /
+			//     96 kHz, so the correction REDUCES this envelope by 0.012545 /
+			//     0.010176 / 0.001540 V.
+			//
+			//     AND PLAN 33-08's OBLIGATION IS DISCHARGED — BUT NOT HERE. The
+			//     sync envelope's tier decision is taken over the whole 420-cell
+			//     SC-3 grid in invariant 10, where it MEASURES 8.218569 V and the
+			//     tighter tier is WITHHELD with the withholding asserted per rate.
+			//     This narrow drive would individually qualify for the musical
+			//     tier at 4.92 V, and it deliberately still does not assert it:
+			//     granting the tighter tier to one favourable sync drive while
+			//     the sync class as a whole measures 8.2 V would be a tier claimed
+			//     by the scenario that needs it least. See invariant 2's banner,
+			//     THE SYNC SCENARIO section.
 			CHECK(maxAbs <= kHostileBoundV);
 		}
 
@@ -3746,6 +3832,12 @@ TEST_CASE("vco sync: (SC-3 / D-10) the per-sample step across a reset is bounded
 	double gridWorstWithheld  = 0.0;
 	double perRateCorrected[3] = {0.0, 0.0, 0.0};
 	double perRateWithheld[3]  = {0.0, 0.0, 0.0};
+	// THE OUTPUT-TIER ROW (plan 33-08). The sync scenario's own envelope, which
+	// invariant 2's banner records with its full provenance. Accumulated in the
+	// same pass as everything else in this case.
+	float  gridWorstOut = 0.f;
+	float  perRateOut[3] = {0.f, 0.f, 0.f};
+	std::string worstOutCellLabel;
 	int    totalResets    = 0;
 	int    cellsWithNoReset = 0;
 	int    cellsNotFinite   = 0;
@@ -3766,6 +3858,13 @@ TEST_CASE("vco sync: (SC-3 / D-10) the per-sample step across a reset is bounded
 		if (wCorrected > perRateCorrected[r]) perRateCorrected[r] = wCorrected;
 		if (wWithheld  > perRateWithheld[r])  perRateWithheld[r]  = wWithheld;
 		if (wWithheld  > gridWorstWithheld)   gridWorstWithheld   = wWithheld;
+		if (c.maxAbsOut > perRateOut[r])      perRateOut[r]       = c.maxAbsOut;
+		if (c.maxAbsOut > gridWorstOut) {
+			gridWorstOut = c.maxAbsOut;
+			worstOutCellLabel = std::string("sr ") + std::to_string((long)c.sr) + " / " + c.edgeName
+			                  + " / ratio " + std::to_string(c.ratio) + " / " + c.region
+			                  + " / character " + std::to_string(c.character);
+		}
 		if (wCorrected > gridWorstCorrected) {
 			gridWorstCorrected = wCorrected;
 			// std::string, never a bare const char*: doctest stringifies a
@@ -3834,6 +3933,46 @@ TEST_CASE("vco sync: (SC-3 / D-10) the per-sample step across a reset is bounded
 		CHECK(perRateCorrected[r] <= kSyncResetDeltaBoundV);
 		CHECK(perRateCorrected[r] > kSyncResetDeltaFloorV);
 		CHECK(perRateWithheld[r]  > kSyncResetDeltaBoundV);
+	}
+
+	// --- THE OUTPUT TIERS, RE-DERIVED FOR SYNC (plan 33-08) ----------------
+	// Read invariant 2's banner, THE SYNC SCENARIO section, before reading
+	// these five assertions: it carries what was swept, the measured figures,
+	// which tier is asserted, why the tighter one is withheld and why the
+	// per-rate form of the withholding is the one written here. NEITHER TIER
+	// CONSTANT WAS WIDENED BY THIS PLAN.
+	//
+	// The exercise floor, by scenario five's rule: the minimum of the three
+	// per-rate worsts (MEASURED 8.216589 V) less a 1.5 V cushion, giving
+	// 6.716589 and pinned at 6.70 V. Invariant 6 explains why a scenario that
+	// clears the musical tier by only 0.74 V cannot afford this; this one
+	// clears it by 2.67 V and can.
+	const float kSyncExerciseFloorV = 6.70f;
+
+	CAPTURE(gridWorstOut);
+	INFO("sync output envelope, worst cell: " << worstOutCellLabel);
+	// THE OUTER TIER, WITH NO EXCEPTION AVAILABLE. MEASURED 8.218569 V against
+	// 10.0 V, clearing by 1.78 V. This is the largest envelope measured
+	// anywhere in this suite.
+	CHECK(gridWorstOut <= kHostileBoundV);
+	// THE TIGHTER TIER IS WITHHELD, AND THE WITHHOLDING IS ASSERTED — the same
+	// move invariant 6 makes, so the two tiers stay a provably real distinction
+	// rather than a pair of numbers one of which is never exercised. If a
+	// future change brought the sync grid back under 5.55 V this goes RED and
+	// asks whether the withholding is still needed. That is the intended
+	// behaviour.
+	CHECK(gridWorstOut > kSyncExerciseFloorV);
+	CHECK(kSyncExerciseFloorV > kMusicalBoundV);
+	for (int r = 0; r < 3; ++r) {
+		CAPTURE(SAMPLE_RATES[r]);
+		CAPTURE(perRateOut[r]);
+		INFO("per-rate sync output envelope; MEASURED 8.218569 / 8.216589 / 8.216589 V");
+		CHECK(perRateOut[r] <= kHostileBoundV);
+		// THE PER-RATE FORM OF THE WITHHOLDING, WRITTEN BECAUSE IT WAS CHECKED
+		// AND FOUND TRUE — invariant 6 records the trap where the same form
+		// would be red at 96 kHz on correct behaviour. Here every rate exceeds
+		// the musical tier by at least 2.67 V.
+		CHECK(perRateOut[r] > kSyncExerciseFloorV);
 	}
 }
 
