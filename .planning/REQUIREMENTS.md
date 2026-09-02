@@ -199,4 +199,43 @@ supplied, so it could not be answered in either direction — `deferred-items.md
 **CORE-02's operator-side guardrail check was NOT separately attested**, leaving T-32-12 discharged
 for this phase by its automated evidence alone (six goldens byte-identical, all 15 `FROZEN.sha256`
 paths at 0 changed lines over the whole phase diff). Full record in `32-11-SUMMARY.md`.*
+*Update: 2026-09-02 — Phase 33's gate (plan 33-11) RE-VERIFIED every requirement it owns against a
+named doctest case the gate located itself by searching the test tree, with the **matched case count
+read before the result** in every instance. **NO STATUS LINE ON THIS PAGE WAS CHANGED BY PLAN 33-11.**
+The gate is **RED**: CI run 33607312137 on `da9e611`, located by hash equality, has `toolchain-gate`
+green on every step (including the win-x64 compile-and-full-link reproduction, so T-33-08 is
+discharged) and **`test (ubuntu-latest)` and `test (windows-latest)` both FAILING** at 1 case / 24
+assertions — in `vco spectrum: (SYNC-02 / D-11) …`, the case that carries SYNC-02's spectral clause.
+Plan 33-11's own acceptance criteria forbid ticking any requirement on a red gate.*
+
+*Per-ID re-verification, all matched counts non-zero:*
+*• **SYNC-01** — unchanged at `[x]` / Complete (ticked by plan 33-04, not by 33-11). Located at
+`tests/test_vco_core.cpp:2730` `vco sync: (SYNC-01 / D-01 / D-03)…` — **1 case / 99 assertions**, and
+`tests/test_vco_core.cpp:3067` `vco sync: (SYNC-01 / D-09)…` — **1 case / 225 assertions**. Both
+**green on all three CI legs**.*
+*• **SYNC-02** — remains `[ ]` / Pending. **DECLINED for the thirteenth consecutive time**, now for a
+new reason on top of the standing one: the case carrying its spectral clause does not reproduce off
+Apple clang. Its two clauses are separately evidenced — the sub-sample clause by
+`tests/test_vco_spectrum.cpp:6015` `vco spectrum: (SYNC-02 / D-01) snap to zero…` (**1 case / 226
+assertions**, green everywhere) and by `tests/test_vco_core.cpp:2730`; the band-limiting clause by
+`tests/test_vco_spectrum.cpp:5522` `vco spectrum: (SYNC-02 / D-11)…` (**1 case / 5,286 assertions**,
+**RED on Ubuntu and Windows**) and by the two SC-3 time-domain cases at `tests/test_vco_core.cpp:3765`
+(**1 / 32**) and `:4098` (**1 / 576**), both green everywhere. The **residual-versus-intended-step
+separation** SC-3 actually forbids is still measured by **no instrument in this phase**, and plan
+33-10 measured that plan 33-08's grid never wraps its master between two samples, so the sub-sample
+fraction is unexercised there. The perceptual verdict is plan 33-12's.*
+*• **PITCH-04** — unchanged at `[x]` / Phase 31 / Complete. Its re-confirmation **condition is
+satisfied on the evidence** — `tests/test_vco_pitch.cpp:2943` `vco pitch: (PITCH-04 / D-12)…` matches
+**1 case / 6,478 assertions**, sync is observed FIRING with non-zero counts on every must-fire cell
+(min 1, max 167 over 87 cells per row) and zero on every cannot-fire row, and the case is **green on
+all three CI legs**. **No line was edited**, because the ID was already Complete and because nothing
+is ticked on a red gate. Phase 31 deferred item 11's evidence is landed; its formal closure is
+recorded in `33-hard-sync/deferred-items.md` item 12.*
+
+*A live demonstration of why the matched count is read first, reproduced during this gate: the
+exact full title of the PITCH-04 case contains two commas, doctest reads a comma as a filter
+separator, and `-tc="<full title>"` matched **0 cases**, ran nothing, and printed `Status: SUCCESS!`.*
+
+*Prior update: 2026-08-01 — Phase 32 gate (plan 32-10) RE-VERIFIED all nine Phase 32 IDs (see below).*
+
 *Prior update: 2026-07-20 — traceability populated by roadmapper (Phases 29-36); coverage corrected from 37 to 40 enumerated IDs*

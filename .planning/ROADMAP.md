@@ -302,7 +302,16 @@ Plans:
   2. The reset uses sub-sample fractional placement plus a sync-BLEP applied at the **master's** wrap fraction, reusing the anti-aliasing machinery — explicitly **not** the LFO's 3 ms cosine crossfade — producing the sharp, buzzy sync timbre without clicks.
   3. A sync-continuity invariant bounds the per-sample step across a reset (no full-scale artifact) and correctly handles ≥1 sync event within a single sample.
 
-**Plans**: 9/12 plans executed
+**Plans**: 11/12 plans executed — **the phase is NOT complete: the 33-11 gate is RED.** CI run
+33607312137 on `da9e611` (located by hash equality) has `toolchain-gate` green on every step
+including the win-x64 link reproduction, and **`test (ubuntu-latest)` and `test (windows-latest)`
+both FAILING** at 1 case / 24 assertions in `vco spectrum: (SYNC-02 / D-11) …`. Two findings, both
+about pinned Apple-clang bookkeeping rather than about the DSP: the inherited 1.0 dB
+step-dominated reproduction bound misses on 14 of 420 cells (worst 3.79738 dB, all at character
+1.00 and ratio ≥ 2.50), and the 0.01 mean-jump classifier floor flips one cell (`ci = 21`,
+measured 0.0101). The alias-floor gate itself passed on all three legs. **No requirement was
+ticked by 33-11 and this entry is not marked complete.** Full record in
+`33-hard-sync/deferred-items.md` § SECTION ZERO.
 Plans:
 **Wave 1**
 
@@ -327,11 +336,11 @@ Plans:
 - [x] 33-07-PLAN.md — Turn the sub-grid into a gate: per-cell thresholds with provenance, the snap-to-zero comparison landed permanently, the probe re-anchored, and the improvement gate refused in writing (SYNC-02 / D-01 / D-11)
 - [x] 33-08-PLAN.md — SC-3's time-domain instrument: the measured reset-delta envelope, the anti-circularity margin from one pass, a discriminating mutation probe, and the output tiers re-derived for sync (D-10)
 - [x] 33-09-PLAN.md — PITCH-04's third input class, re-ticked only where sync is observed FIRING (D-12; closes Phase 31 deferred item 11)
-- [ ] 33-10-PLAN.md — The reusable A/B audition renderer, both guard costs paid before the TU lands, uncommitted output on demand (D-13/D-14/D-15/D-16)
+- [x] 33-10-PLAN.md — The reusable A/B audition renderer, both guard costs paid before the TU lands, uncommitted output on demand (D-13/D-14/D-15/D-16)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 33-11-PLAN.md — Phase gate: full local suite as a precondition, CI link leg observed by SHA, requirement re-verification with non-zero matched counts, deferred register
+- [x] 33-11-PLAN.md — Phase gate: full local suite as a precondition, CI link leg observed by SHA, requirement re-verification with non-zero matched counts, deferred register — **executed; the gate it ran is RED (see the Plans note above)**
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
